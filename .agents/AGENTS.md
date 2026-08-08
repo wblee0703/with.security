@@ -14,9 +14,11 @@
 - **Encryption & Key Management**: Apply proper client/server-side encryption standards for sensitive data (e.g., Vault secrets, Access Passes, OTP tokens).
 - **Secure Communication & Headers**: Enforce HTTPS/WSS standards, CORS control, and token authentication protocols.
 
-## 4. Directory Structure & File Organization Rules
-- **HTML Templates (`template/`)**: All `.html` files MUST be created and managed under the `template/` directory (e.g. `template/home.html`, `template/demo.html`).
-- **Stylesheets (`stylesheet/`)**: All `.css` files MUST be created and managed under the `stylesheet/` directory (e.g. `stylesheet/home.css`).
-- **JavaScript Files (`javascript/`)**: All `.js` and `.jsx` files MUST be created and managed under the `javascript/` directory (e.g. `javascript/home.jsx`, `javascript/dbService.js`, `javascript/cryptoUtil.js`).
-- **Relative Path Consistency**: All HTML templates must reference stylesheets via `../stylesheet/` and JavaScript files via `../javascript/`.
-
+## 4. Single Source (`src/`) Directory Structure & Component Architecture Rules
+- **Single Source of Truth (`src/`)**: All application source code, components, services, and styles MUST reside under `src/`.
+- **Layout Components (`src/components/layout/`)**: Main shell and container components (e.g. `MobileContainer.jsx`, `WebDesktopLayout.jsx`, `PinLockModal.jsx`).
+- **Feature Tabs (`src/components/tabs/`)**: Independent functional views/tabs (e.g. `SiteSecurityChecklistTab.jsx`, `AccessPassTab.jsx`, `OtpAuthenticatorTab.jsx`, `EncryptedVaultTab.jsx`, `IncidentReportTab.jsx`).
+- **Common Components (`src/components/common/`)**: Shared reusable UI elements (e.g. `SignatureCanvas.jsx`).
+- **Services & Logic (`src/services/`)**: Business logic, Web Crypto encryption (`cryptoUtil.js`), and IndexedDB persistence (`dbService.js`).
+- **Entry HTML & CSS (`index.html` & `src/index.css`)**: Root HTML entry (`index.html`) and single application stylesheet (`src/index.css`).
+- **Relative Path Consistency**: Maintain relative path integrity across imports (`../layout/`, `../tabs/`, `../common/`, `../services/`).

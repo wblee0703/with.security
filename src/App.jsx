@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import MobileContainer from './components/MobileContainer';
-import WebDesktopLayout from './components/WebDesktopLayout';
-import PinLockModal from './components/PinLockModal';
-import DashboardTab from './components/tabs/DashboardTab';
+import MobileContainer from './components/layout/MobileContainer';
+import WebDesktopLayout from './components/layout/WebDesktopLayout';
+import PinLockModal from './components/layout/PinLockModal';
 import AccessPassTab from './components/tabs/AccessPassTab';
 import OtpAuthenticatorTab from './components/tabs/OtpAuthenticatorTab';
 import EncryptedVaultTab from './components/tabs/EncryptedVaultTab';
@@ -12,7 +11,7 @@ import { Bell, Monitor, Smartphone } from 'lucide-react';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('entryCheck');
   const [platform, setPlatform] = useState('ios');
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -113,7 +112,6 @@ export default function App() {
             isLocked={isLocked}
             setIsLocked={setIsLocked}
           >
-            {activeTab === 'dashboard' && <DashboardTab onTriggerToast={showToast} platform={platform} />}
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
             {activeTab === 'access' && <AccessPassTab onTriggerToast={showToast} />}
             {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={showToast} />}

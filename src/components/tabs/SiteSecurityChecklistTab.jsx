@@ -23,7 +23,7 @@ import {
   ExternalLink,
   Award
 } from 'lucide-react';
-import SignatureCanvas from '../SignatureCanvas';
+import SignatureCanvas from '../common/SignatureCanvas';
 import { dbService } from '../../services/dbService';
 
 export default function SiteSecurityChecklistTab({ onTriggerToast }) {

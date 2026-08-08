@@ -19,12 +19,11 @@ import {
   Building2,
   LockKeyhole
 } from 'lucide-react';
-import DashboardTab from './tabs/DashboardTab';
-import AccessPassTab from './tabs/AccessPassTab';
-import OtpAuthenticatorTab from './tabs/OtpAuthenticatorTab';
-import EncryptedVaultTab from './tabs/EncryptedVaultTab';
-import IncidentReportTab from './tabs/IncidentReportTab';
-import SiteSecurityChecklistTab from './tabs/SiteSecurityChecklistTab';
+import AccessPassTab from '../tabs/AccessPassTab';
+import OtpAuthenticatorTab from '../tabs/OtpAuthenticatorTab';
+import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
+import IncidentReportTab from '../tabs/IncidentReportTab';
+import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
 
 export default function WebDesktopLayout({ 
   activeTab, 
@@ -38,8 +37,7 @@ export default function WebDesktopLayout({
   const [searchQuery, setSearchQuery] = useState('');
 
   const navItems = [
-    { id: 'dashboard', label: '보안 종합 대시보드', icon: ShieldCheck, badge: '정상' },
-    { id: 'entryCheck', label: '삼성·하이닉스 출입 서약/자재', icon: Building2, badge: 'HOT' },
+    { id: 'entryCheck', label: '삼성·하이닉스 보안 서약', icon: Building2, badge: 'HOT' },
     { id: 'access', label: '사내 모바일/웹 출입 QR', icon: QrCode, badge: 'Live' },
     { id: 'otp', label: '2FA OTP 인증센터', icon: KeyRound, badge: '3' },
     { id: 'vault', label: '암호화 기밀 보관함', icon: Lock, badge: 'AES' },
@@ -289,7 +287,6 @@ export default function WebDesktopLayout({
         {/* Right Main Web Content Panel */}
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
           <div style={{ maxWidth: '800px', margin: '0 auto' }}>
-            {activeTab === 'dashboard' && <DashboardTab onTriggerToast={onTriggerToast} platform={platform} />}
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'access' && <AccessPassTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={onTriggerToast} />}

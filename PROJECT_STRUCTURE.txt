@@ -1,0 +1,51 @@
+======================================================================
+  WithSecurity 프로젝트 최신 단일 폴더 & 파일 구조 명세서
+======================================================================
+
+[1. 전체 디렉터리 요약]
+
+with.security/
+├── .agents/                      : 개발 에이전트 및 프로젝트 자동화 규칙
+│   └── AGENTS.md                 : 단일 src/ 구조 및 크로스플랫폼 개발 가이드라인
+├── android/                      : Android 네이티브 모바일 앱 프로젝트 (Capacitor)
+├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
+├── node_modules/                 : npm 의존성 라이브러리 폴더
+├── src/                          : [단일 소스 통합 폴더 (Single Source of Truth)]
+│   ├── components/               : React UI 컴포넌트 모음
+│   │   ├── common/               : 재사용 가능한 공통 UI 컴포넌트
+│   │   │   └── SignatureCanvas.jsx : 터치/마우스 전자 서명 캔버스 컴포넌트
+│   │   ├── layout/               : 메인 쉘 및 레이아웃 컴포넌트
+│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 탭바 레이아웃
+│   │   │   ├── PinLockModal.jsx     : PIN 번호 & 지문인증 잠금 화면 모달
+│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 및 사이드바 레이아웃
+│   │   └── tabs/                 : 5대 주요 보안 기능 탭 컴포넌트
+│   │       ├── AccessPassTab.jsx          : 사내 모바일/웹 출입 QR Pass
+│   │       ├── EncryptedVaultTab.jsx      : 암호화 기밀 보관함 (AES-256)
+│   │       ├── IncidentReportTab.jsx      : 보안관제(SOC) 위협 신고 탭
+│   │       ├── OtpAuthenticatorTab.jsx    : 2FA OTP 인증센터 탭
+│   │       └── SiteSecurityChecklistTab.jsx: 삼성·하이닉스 보안 서약 탭
+│   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
+│   │   ├── cryptoUtil.js         : Web Crypto API (AES-256-GCM) 암호화 함수
+│   │   └── dbService.js          : IndexedDB 데이터 영속성 처리 서비스
+│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트
+│   ├── index.css                 : 통합 디자인 토큰 & 애니메이션 CSS
+│   └── main.jsx                  : React DOM 렌더링 진입점 (Entry Point)
+├── capacitor.config.json         : Capacitor 모바일 앱 빌드 설정
+├── index.html                    : 루트 HTML 웹/모바일 엔트리 문서
+├── package.json                  : 의존성 패키지 및 npm 스크립트 실행 명령어
+└── vite.config.js                : Vite 개발 서버 및 빌드 설정 파일
+
+======================================================================
+[2. 주요 명령어 및 실행 가이드]
+
+1) 개발 서버 실행:
+   npm run dev (또는 npm.cmd run dev)
+   - 웹 접속 주소: http://localhost:3000/
+
+2) 생산용 번들 빌드:
+   npm run build (또는 npm.cmd run build)
+
+3) 모바일 동기화 (Capacitor):
+   npm run cap:sync
+
+======================================================================

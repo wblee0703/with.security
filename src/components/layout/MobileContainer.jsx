@@ -145,19 +145,11 @@ export default function MobileContainer({
       {/* Bottom Mobile Navigation Bar */}
       <nav className="bottom-nav">
         <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-        >
-          <ShieldCheck size={18} />
-          <span>보안 진단</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('entryCheck')}
           className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
         >
           <Building2 size={18} />
-          <span>출입 서약/자재</span>
+          <span>보안 서약</span>
         </button>
 
         <button
