@@ -326,8 +326,16 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     }
   };
 
+  // Helper: Get local date string YYYY-MM-DD in user system timezone (Avoids UTC timezone shift bug)
+  const getTodayLocalIsoDate = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Search & Filters & Interactive Date Navigator
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayLocalIsoDate();
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('ALL');
@@ -335,42 +343,48 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
   // Automatic Midnight Date Rollover Sync (24:00 -> 00:00 Auto Date Refresh)
   useEffect(() => {
-    let lastDateStr = new Date().toISOString().split('T')[0];
+    let lastDateStr = getTodayLocalIsoDate();
 
     const intervalId = setInterval(() => {
-      const currentDateStr = new Date().toISOString().split('T')[0];
+      const currentDateStr = getTodayLocalIsoDate();
       if (currentDateStr !== lastDateStr) {
         setSelectedDate(prev => (prev === lastDateStr ? currentDateStr : prev));
         lastDateStr = currentDateStr;
       }
-    }, 10000);
+    }, 3000);
 
     return () => clearInterval(intervalId);
   }, []);
 
   // Date Shift Handlers (Left/Right Arrow Navigation)
   const handlePrevDay = () => {
-    const d = new Date(selectedDate);
+    const parts = selectedDate.split('-');
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
     d.setDate(d.getDate() - 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(getTodayLocalIsoDate(d));
   };
 
   const handleNextDay = () => {
-    const d = new Date(selectedDate);
+    const parts = selectedDate.split('-');
+    const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
     d.setDate(d.getDate() + 1);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    setSelectedDate(getTodayLocalIsoDate(d));
   };
 
   const handleToday = () => {
-    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setSelectedDate(getTodayLocalIsoDate());
   };
 
   const getFormattedKoreanDate = (dateStr) => {
     try {
-      const d = new Date(dateStr);
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, month - 1, day);
       const days = ['일', '월', '화', '수', '목', '금', '토'];
       const dayName = days[d.getDay()];
-      const parts = dateStr.split('-');
       return `${parts[0]}년 ${parts[1]}월 ${parts[2]}일 (${dayName})`;
     } catch (e) {
       return dateStr;
@@ -412,7 +426,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     purposeType: '작업',
     customPurpose: '',
     purpose: '작업',
-    visitDate: `${new Date().toISOString().split('T')[0]} ~ ${new Date().toISOString().split('T')[0]}`,
+    visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
     mdmVerified: true,
     docChecklist: {
       gateApproved: false,
@@ -448,7 +462,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       purposeType: targetItem.purpose || '작업',
       customPurpose: '',
       purpose: targetItem.purpose || '작업',
-      visitDate: targetItem.visitDate || `${new Date().toISOString().split('T')[0]} ~ ${new Date().toISOString().split('T')[0]}`,
+      visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
       mdmVerified: true,
       docChecklist: {
         gateApproved: false,
@@ -614,7 +628,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           purposeType: '작업',
           customPurpose: '',
           purpose: '작업',
-          visitDate: `${new Date().toISOString().split('T')[0]} ~ ${new Date().toISOString().split('T')[0]}`,
+          visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
           mdmVerified: true,
           docChecklist: {
             gateApproved: false,
