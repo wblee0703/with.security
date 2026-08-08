@@ -6,7 +6,7 @@
 
 with.security/
 ├── .agents/                      : 개발 에이전트 및 프로젝트 자동화 규칙
-│   └── AGENTS.md                 : 단일 src/ 구조 및 크로스플랫폼 개발 가이드라인
+│   └── AGENTS.md                 : 단일 src/ 구조, 데이터 보존 및 개발 가이드라인
 ├── android/                      : Android 네이티브 모바일 앱 프로젝트 (Capacitor)
 ├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
 ├── node_modules/                 : npm 의존성 라이브러리 폴더
@@ -15,31 +15,48 @@ with.security/
 │   │   ├── common/               : 재사용 가능한 공통 UI 컴포넌트
 │   │   │   └── SignatureCanvas.jsx : 터치/마우스 전자 서명 캔버스 컴포넌트
 │   │   ├── layout/               : 메인 쉘 및 레이아웃 컴포넌트
-│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 탭바 레이아웃
+│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 하단 탭바 레이아웃 (권한별 메뉴 제어)
 │   │   │   ├── PinLockModal.jsx     : PIN 번호 & 지문인증 잠금 화면 모달
-│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 및 사이드바 레이아웃
-│   │   └── tabs/                 : 5대 주요 보안 기능 탭 컴포넌트
-│   │       ├── AccessPassTab.jsx          : 사내 모바일/웹 출입 QR Pass
-│   │       ├── EncryptedVaultTab.jsx      : 암호화 기밀 보관함 (AES-256)
+│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (권한별 메뉴 제어)
+│   │   └── tabs/                 : 주요 보안 기능 탭 컴포넌트
+│   │       ├── EncryptedVaultTab.jsx      : 사업장 관리 (Admin) 탭 (사업장 신규 등록/삭제 관리)
 │   │       ├── IncidentReportTab.jsx      : 보안관제(SOC) 위협 신고 탭
-│   │       ├── OtpAuthenticatorTab.jsx    : 2FA OTP 인증센터 탭
-│   │       └── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (삼성 MDM & SK하이닉스 SSM 어플 감지 검수 + Admin 사업장 관리 모달)
+│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (삼성 MDM & SK하이닉스 SSM 검수, 방문목적)
+│   │       └── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
+│   ├── data/                     : 기준 데이터 baseline 및 스키마 (Ground-Truth Data)
+│   │   ├── db_schema.json        : IndexedDB 데이터베이스 테이블 스키마 정의
+│   │   ├── pledges.json          : 작성된 출입 보안 서약서 데이터
+│   │   ├── sites.json            : 등록/삭제 동기화되는 출입 사업장 목록 데이터
+│   │   └── users.json            : 개발자(admin)/관리자/일반 사용자 계정 데이터
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
-│   │   ├── cryptoUtil.js         : Web Crypto API (AES-256-GCM) 암호화 함수
-│   │   └── dbService.js          : IndexedDB 영속성 서비스 (체크리스트, 보안 vault, OTP, 출입 대상 사업장 DB)
-│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트
+│   │   ├── cryptoUtil.js         : Web Crypto API (SHA-256 / AES-256) 암호화 유틸리티
+│   │   ├── dbMigrationService.js : IndexedDB 데이터 마이그레이션 서비스
+│   │   └── dbService.js          : IndexedDB & JSON 영속성 통합 서비스 (POST /api/sync-json 디스크 저장 연동)
+│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (라우팅 및 권한 가드)
 │   ├── index.css                 : 통합 디자인 토큰 & 애니메이션 CSS
 │   └── main.jsx                  : React DOM 렌더링 진입점 (Entry Point)
 ├── capacitor.config.json         : Capacitor 모바일 앱 빌드 설정
 ├── index.html                    : 루트 HTML 웹/모바일 엔트리 문서
 ├── package.json                  : 의존성 패키지 및 npm 스크립트 실행 명령어
-└── vite.config.js                : Vite 개발 서버 및 빌드 설정 파일
+└── vite.config.js                : Vite 개발 서버 및 jsonDiskSyncPlugin 디스크 실시간 동기화 미들웨어 설정
 
 ======================================================================
-[2. 주요 명령어 및 실행 가이드]
+[2. 주요 계정 체계 및 권한 구조]
 
-1) 개발 서버 실행:
-   npm run dev (또는 npm.cmd run dev)
+1) 계정 구분 (3단계):
+   - 개발자 (Developer): admin 계정 기본 권한. 전체 시스템 및 사용자 권한(개발자/관리자/일반) 지정 가능.
+   - 관리자 (Admin): 사업장 관리(Admin 탭) 및 사용자 권한(관리자/일반) 관리 가능.
+   - 일반 (General): 표준 사용자 계정.
+
+2) 기본 개발자 계정:
+   - 아이디: admin
+   - 비밀번호: withtech123!
+
+======================================================================
+[3. 주요 명령어 및 실행 가이드]
+
+1) 개발 서버 실행 (디스크 JSON 실시간 동기화 포함):
+   npm.cmd run dev
    - 웹 접속 주소: http://localhost:3000/
 
 2) 생산용 번들 빌드:

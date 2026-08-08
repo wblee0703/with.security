@@ -1,0 +1,60 @@
+{
+  "_metadata": {
+    "version": "1.0.0",
+    "description": "WithSecurity Application Structured JSON Data Store & RDBMS (MySQL) Schema Mapping",
+    "target_rdbms": "MySQL 8.0 / PostgreSQL 14+",
+    "exported_at": "2026-08-08T23:40:00Z"
+  },
+  "tables": {
+    "users": {
+      "rdbms_table_name": "users",
+      "columns": [
+        { "name": "username", "type": "VARCHAR(50)", "primary_key": true, "nullable": false },
+        { "name": "password_hash", "type": "VARCHAR(255)", "nullable": false },
+        { "name": "role", "type": "VARCHAR(20)", "default": "일반", "comment": "일반 또는 관리자" },
+        { "name": "division", "type": "VARCHAR(100)", "comment": "사업부" },
+        { "name": "team", "type": "VARCHAR(100)", "comment": "소속팀" },
+        { "name": "rank", "type": "VARCHAR(50)", "comment": "직급" },
+        { "name": "name", "type": "VARCHAR(50)", "nullable": false },
+        { "name": "phone", "type": "VARCHAR(30)" },
+        { "name": "email", "type": "VARCHAR(100)" }
+      ]
+    },
+    "sites": {
+      "rdbms_table_name": "sites",
+      "columns": [
+        { "name": "id", "type": "VARCHAR(50)", "primary_key": true },
+        { "name": "name", "type": "VARCHAR(100)", "nullable": false },
+        { "name": "category", "type": "VARCHAR(50)" },
+        { "name": "security_level", "type": "VARCHAR(20)" }
+      ]
+    },
+    "security_pledges": {
+      "rdbms_table_name": "security_pledges",
+      "columns": [
+        { "name": "id", "type": "VARCHAR(50)", "primary_key": true },
+        { "name": "site", "type": "VARCHAR(100)", "nullable": false },
+        { "name": "visitor_name", "type": "VARCHAR(50)", "nullable": false },
+        { "name": "team", "type": "VARCHAR(100)", "nullable": false },
+        { "name": "rank", "type": "VARCHAR(50)" },
+        { "name": "phone", "type": "VARCHAR(30)" },
+        { "name": "purpose", "type": "VARCHAR(255)" },
+        { "name": "visit_date", "type": "VARCHAR(100)" },
+        { "name": "status", "type": "VARCHAR(20)", "default": "승인완료" },
+        { "name": "created_at", "type": "DATETIME" }
+      ]
+    },
+    "pledge_companions": {
+      "rdbms_table_name": "pledge_companions",
+      "columns": [
+        { "name": "id", "type": "VARCHAR(50)", "primary_key": true },
+        { "name": "pledge_id", "type": "VARCHAR(50)", "foreign_key": "security_pledges(id)", "nullable": false },
+        { "name": "visitor_name", "type": "VARCHAR(50)", "nullable": false },
+        { "name": "team", "type": "VARCHAR(100)", "nullable": false },
+        { "name": "rank", "type": "VARCHAR(50)" },
+        { "name": "phone", "type": "VARCHAR(30)" },
+        { "name": "created_at", "type": "DATETIME" }
+      ]
+    }
+  }
+}

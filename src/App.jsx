@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
 import PinLockModal from './components/layout/PinLockModal';
-import AccessPassTab from './components/tabs/AccessPassTab';
-import OtpAuthenticatorTab from './components/tabs/OtpAuthenticatorTab';
 import EncryptedVaultTab from './components/tabs/EncryptedVaultTab';
 import IncidentReportTab from './components/tabs/IncidentReportTab';
 import SiteSecurityChecklistTab from './components/tabs/SiteSecurityChecklistTab';
+import UserProfileTab from './components/tabs/UserProfileTab';
 import { Bell, Monitor, Smartphone } from 'lucide-react';
+import { dbService } from './services/dbService';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
@@ -19,6 +19,21 @@ export default function App() {
   const [viewMode, setViewMode] = useState(() => {
     return window.innerWidth > 768 ? 'web' : 'mobile';
   });
+
+  // Admin Tab Route Access Control Guard
+  useEffect(() => {
+    async function checkAdminAccess() {
+      if (activeTab === 'admin') {
+        const u = await dbService.getUserProfile();
+        const isAdmin = ['개발자', '관리자'].includes(u?.role) || u?.username === 'admin';
+        if (!isAdmin) {
+          setActiveTab('entryCheck');
+          showToast('Admin 메뉴는 개발자/관리자 계정만 접근 가능합니다.');
+        }
+      }
+    }
+    checkAdminAccess();
+  }, [activeTab]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -113,9 +128,8 @@ export default function App() {
             setIsLocked={setIsLocked}
           >
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
-            {activeTab === 'access' && <AccessPassTab onTriggerToast={showToast} />}
-            {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={showToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
+            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} />}
             {activeTab === 'incident' && <IncidentReportTab onTriggerToast={showToast} />}
           </MobileContainer>
         </div>

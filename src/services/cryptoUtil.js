@@ -71,3 +71,18 @@ export async function decryptData(cipherText) {
     return cipherText;
   }
 }
+
+// SHA-256 One-Way Password Hashing Helper
+export async function hashPassword(plainPassword) {
+  try {
+    if (!plainPassword) return '';
+    const enc = new TextEncoder();
+    const data = enc.encode(`WithSecurity_SALT_2026_${plainPassword}`);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (err) {
+    console.error('Password hash error:', err);
+    return plainPassword;
+  }
+}

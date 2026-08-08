@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   QrCode, 
@@ -17,13 +17,14 @@ import {
   Shield,
   CheckCircle2,
   Building2,
-  LockKeyhole
+  LockKeyhole,
+  Settings
 } from 'lucide-react';
-import AccessPassTab from '../tabs/AccessPassTab';
-import OtpAuthenticatorTab from '../tabs/OtpAuthenticatorTab';
 import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
 import IncidentReportTab from '../tabs/IncidentReportTab';
 import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
+import UserProfileTab from '../tabs/UserProfileTab';
+import { dbService } from '../../services/dbService';
 
 export default function WebDesktopLayout({ 
   activeTab, 
@@ -35,12 +36,22 @@ export default function WebDesktopLayout({
   viewMode
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeUser, setActiveUser] = useState(null);
+
+  useEffect(() => {
+    async function fetchUser() {
+      const u = await dbService.getUserProfile();
+      setActiveUser(u);
+    }
+    fetchUser();
+  }, [activeTab]);
+
+  const isAdmin = ['개발자', '관리자'].includes(activeUser?.role) || activeUser?.username === 'admin';
 
   const navItems = [
     { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
-    { id: 'access', label: '사내 모바일/웹 출입 QR', icon: QrCode, badge: 'Live' },
-    { id: 'otp', label: '2FA OTP 인증센터', icon: KeyRound, badge: '3' },
-    { id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' },
+    ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),
+    { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' },
     { id: 'incident', label: '보안관제(SOC) 위협신고', icon: AlertOctagon, badge: '신규' }
   ];
 
@@ -182,11 +193,26 @@ export default function WebDesktopLayout({
               alignItems: 'center',
               justifyContent: 'center'
             }}>
-              KB
+              {activeUser ? (activeUser.name ? activeUser.name.slice(0, 2) : 'US') : 'GUEST'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff' }}>김보안 수석연구원</span>
-              <span style={{ fontSize: '10px', color: '#64748b' }}>Cyber Defense Team</span>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {activeUser ? `${activeUser.name} ${activeUser.rank || ''}` : '미로그인 사용자'}
+                {activeUser && (
+                  <span style={{
+                    fontSize: '9px',
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: activeUser.role === '관리자' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(0, 242, 254, 0.15)',
+                    color: activeUser.role === '관리자' ? '#f59e0b' : '#00f2fe'
+                  }}>
+                    {activeUser.role || '일반'}
+                  </span>
+                )}
+              </span>
+              <span style={{ fontSize: '10px', color: '#64748b' }}>
+                {activeUser ? `${activeUser.division || ''} • ${activeUser.team || ''}` : '로그인 필요'}
+              </span>
             </div>
           </div>
 
@@ -288,9 +314,8 @@ export default function WebDesktopLayout({
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
           <div style={{ maxWidth: '800px', margin: '0 auto' }}>
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'access' && <AccessPassTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'incident' && <IncidentReportTab onTriggerToast={onTriggerToast} />}
           </div>
         </main>

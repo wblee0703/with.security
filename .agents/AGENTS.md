@@ -22,3 +22,7 @@
 - **Services & Logic (`src/services/`)**: Business logic, Web Crypto encryption (`cryptoUtil.js`), and IndexedDB persistence (`dbService.js`).
 - **Entry HTML & CSS (`index.html` & `src/index.css`)**: Root HTML entry (`index.html`) and single application stylesheet (`src/index.css`).
 - **Relative Path Consistency**: Maintain relative path integrity across imports (`../layout/`, `../tabs/`, `../common/`, `../services/`).
+
+## 5. Primary Ground-Truth Data Rules (`src/data/*.json`)
+- **Primary Data Baseline (`src/data/*.json`)**: All core application data (users, sites, pledges) MUST treat `src/data/*.json` files (`users.json`, `sites.json`, `pledges.json`) as the primary ground-truth source.
+- **Prevent Cookie / Cache Overwriting**: Browser cookies, local storage, and IndexedDB caches MUST NEVER overwrite or supersede edits made to `src/data/*.json`. Data fetching logic MUST always prioritize and merge `src/data/*.json` contents on top of cached state.

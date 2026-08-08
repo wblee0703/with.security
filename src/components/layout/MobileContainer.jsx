@@ -11,8 +11,10 @@ import {
   Signal, 
   LockKeyhole,
   Building2,
-  Settings
+  Settings,
+  UserCheck
 } from 'lucide-react';
+import { dbService } from '../../services/dbService';
 
 export default function MobileContainer({ 
   children, 
@@ -24,6 +26,17 @@ export default function MobileContainer({
   setIsLocked 
 }) {
   const [time, setTime] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      const u = await dbService.getUserProfile();
+      setCurrentUser(u);
+    }
+    loadUser();
+  }, [activeTab]);
+
+  const isAdmin = ['개발자', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
 
   useEffect(() => {
     const updateClock = () => {
@@ -153,28 +166,22 @@ export default function MobileContainer({
           <span>보안 서약</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('access')}
-          className={`nav-item ${activeTab === 'access' ? 'active' : ''}`}
-        >
-          <QrCode size={18} />
-          <span>출입 QR</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+          >
+            <Settings size={18} />
+            <span>Admin</span>
+          </button>
+        )}
 
         <button
-          onClick={() => setActiveTab('otp')}
-          className={`nav-item ${activeTab === 'otp' ? 'active' : ''}`}
+          onClick={() => setActiveTab('userProfile')}
+          className={`nav-item ${activeTab === 'userProfile' ? 'active' : ''}`}
         >
-          <KeyRound size={18} />
-          <span>OTP</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('admin')}
-          className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
-        >
-          <Settings size={18} />
-          <span>Admin</span>
+          <UserCheck size={18} />
+          <span>사용자</span>
         </button>
       </nav>
 

@@ -30,10 +30,10 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     const fullSiteName = siteLocation.includes(companyName) ? siteLocation : `${companyName} ${siteLocation}`;
 
     const newSite = {
-      id: `SITE-${Date.now()}`,
+      id: `SITE-${companyName.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
       name: fullSiteName,
       category: companyName,
-      note: newSiteForm.note.trim() || '관리자 등록 사업장'
+      securityLevel: 'Level-MAX (반도체 핵심보안)'
     };
     await dbService.saveSite(newSite);
     await loadSites();
@@ -139,28 +139,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
             </div>
           </div>
 
-          <div>
-            <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-              비고 / 관리 메모 (선택)
-            </label>
-            <input
-              type="text"
-              placeholder="예: 반도체 FAB 신규 증설 라인 전용 출입 게이트"
-              value={newSiteForm.note}
-              onChange={(e) => setNewSiteForm({ ...newSiteForm, note: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: '12px',
-                background: '#0a0f1d',
-                border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
-                fontSize: '13px',
-                outline: 'none'
-              }}
-            />
-          </div>
-
           <button
             type="submit"
             className="glass-button-primary"
@@ -221,9 +199,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 <div>
                   <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
                     {s.name}
-                  </div>
-                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-                    {s.note || '관리자 등록 사업장'}
                   </div>
                 </div>
               </div>

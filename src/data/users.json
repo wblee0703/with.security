@@ -1,0 +1,25 @@
+[
+  {
+    "username": "admin",
+    "passwordHash": "d68e2e25808044e471e01da6bf4ef8dc8fd56de3c4fa590b34b86b7c86fef899",
+    "role": "개발자",
+    "division": "운영 영업 사업부",
+    "team": "운영1팀",
+    "rank": "대리",
+    "name": "이원배",
+    "phone": "010-9885-0393",
+    "email": "wblee@withtech.co.kr",
+    "password": "withtech123!"
+  },
+  {
+    "username": "wblee",
+    "passwordHash": "036dacb7833fde57db4d3a12647290a42a09cd98e729853451f037d795707309",
+    "division": "운영사업부",
+    "team": "운영1팀",
+    "rank": "대리",
+    "name": "이원배",
+    "phone": "010-9885-0393",
+    "email": "wblee@withtech.co.kr",
+    "role": "일반"
+  }
+]
