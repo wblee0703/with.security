@@ -1,14 +1,21 @@
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
 const DB_NAME = 'WithSecurity_DB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 class SecurityDatabase {
   constructor() {
     this.db = null;
   }
 
-  async initDB() {
-    if (this.db) return this.db;
+  async initDB(requiredStore = null) {
+    if (this.db) {
+      if (requiredStore && !this.db.objectStoreNames.contains(requiredStore)) {
+        this.db.close();
+        this.db = null;
+      } else {
+        return this.db;
+      }
+    }
 
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -40,6 +47,12 @@ class SecurityDatabase {
           const incidentStore = db.createObjectStore('incidents', { keyPath: 'id' });
           incidentStore.createIndex('reportedAt', 'reportedAt', { unique: false });
         }
+
+        // 5. Target Entrance Sites Store (Admin Management)
+        if (!db.objectStoreNames.contains('sites')) {
+          const siteStore = db.createObjectStore('sites', { keyPath: 'id' });
+          siteStore.createIndex('category', 'category', { unique: false });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -56,7 +69,7 @@ class SecurityDatabase {
 
   // Generic Get All Items
   async getAll(storeName) {
-    const db = await this.initDB();
+    const db = await this.initDB(storeName);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readonly');
       const store = tx.objectStore(storeName);
@@ -69,7 +82,7 @@ class SecurityDatabase {
 
   // Generic Save or Update Item
   async putItem(storeName, item) {
-    const db = await this.initDB();
+    const db = await this.initDB(storeName);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
@@ -82,7 +95,7 @@ class SecurityDatabase {
 
   // Generic Delete Item
   async deleteItem(storeName, id) {
-    const db = await this.initDB();
+    const db = await this.initDB(storeName);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
@@ -95,13 +108,42 @@ class SecurityDatabase {
 
   // --- Specific Domain Helpers ---
 
-  // Checklists
+  // Checklists (Dual IndexedDB + localStorage fallback)
   async getChecklists() {
-    return this.getAll('checklists');
+    try {
+      const items = await this.getAll('checklists');
+      if (items && items.length > 0) {
+        localStorage.setItem('with_security_checklists_backup', JSON.stringify(items));
+        return items;
+      }
+    } catch (e) {
+      console.warn('IndexedDB getChecklists error, reading from localStorage:', e);
+    }
+    const backup = localStorage.getItem('with_security_checklists_backup');
+    return backup ? JSON.parse(backup) : [];
   }
 
   async saveChecklist(checklist) {
-    return this.putItem('checklists', checklist);
+    try {
+      await this.putItem('checklists', checklist);
+    } catch (e) {
+      console.warn('IndexedDB saveChecklist error, writing to localStorage:', e);
+    }
+    try {
+      const existing = await this.getChecklists();
+      const index = existing.findIndex(item => item.id === checklist.id);
+      let updated;
+      if (index >= 0) {
+        updated = [...existing];
+        updated[index] = checklist;
+      } else {
+        updated = [checklist, ...existing];
+      }
+      localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
+    } catch (err) {
+      console.error('Failed to update localStorage backup for checklist:', err);
+    }
+    return checklist;
   }
 
   // Vault Items
@@ -129,6 +171,61 @@ class SecurityDatabase {
 
   async saveIncident(incident) {
     return this.putItem('incidents', incident);
+  }
+
+  // Entrance Sites (Admin Managed with dual IndexedDB + LocalStorage fallback)
+  async getSites() {
+    try {
+      const sites = await this.getAll('sites');
+      if (sites && sites.length > 0) {
+        localStorage.setItem('with_security_sites_backup', JSON.stringify(sites));
+        return sites;
+      }
+    } catch (e) {
+      console.warn('IndexedDB getSites fallback:', e);
+    }
+    const backup = localStorage.getItem('with_security_sites_backup');
+    if (backup) {
+      try { return JSON.parse(backup); } catch (err) {}
+    }
+    return [];
+  }
+
+  async saveSite(site) {
+    let success = false;
+    try {
+      await this.putItem('sites', site);
+      success = true;
+    } catch (e) {
+      console.warn('IndexedDB saveSite fallback:', e);
+    }
+    const current = await this.getSites();
+    const existingIndex = current.findIndex(s => s.id === site.id);
+    let updated;
+    if (existingIndex >= 0) {
+      updated = [...current];
+      updated[existingIndex] = site;
+    } else {
+      updated = [site, ...current];
+    }
+    localStorage.setItem('with_security_sites_backup', JSON.stringify(updated));
+    return site;
+  }
+
+  async deleteSite(id) {
+    try {
+      await this.deleteItem('sites', id);
+    } catch (e) {
+      console.warn('IndexedDB deleteSite fallback:', e);
+    }
+    const current = await this.getSites();
+    const updated = current.filter(s => s.id !== id);
+    localStorage.setItem('with_security_sites_backup', JSON.stringify(updated));
+    return id;
+  }
+
+  async initDefaultSites() {
+    return this.getSites();
   }
 }
 

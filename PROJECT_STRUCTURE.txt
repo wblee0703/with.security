@@ -23,10 +23,10 @@ with.security/
 │   │       ├── EncryptedVaultTab.jsx      : 암호화 기밀 보관함 (AES-256)
 │   │       ├── IncidentReportTab.jsx      : 보안관제(SOC) 위협 신고 탭
 │   │       ├── OtpAuthenticatorTab.jsx    : 2FA OTP 인증센터 탭
-│   │       └── SiteSecurityChecklistTab.jsx: 삼성·하이닉스 보안 서약 탭
+│   │       └── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (삼성 MDM & SK하이닉스 SSM 어플 감지 검수 + Admin 사업장 관리 모달)
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
 │   │   ├── cryptoUtil.js         : Web Crypto API (AES-256-GCM) 암호화 함수
-│   │   └── dbService.js          : IndexedDB 데이터 영속성 처리 서비스
+│   │   └── dbService.js          : IndexedDB 영속성 서비스 (체크리스트, 보안 vault, OTP, 출입 대상 사업장 DB)
 │   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트
 │   ├── index.css                 : 통합 디자인 토큰 & 애니메이션 CSS
 │   └── main.jsx                  : React DOM 렌더링 진입점 (Entry Point)

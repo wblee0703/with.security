@@ -1,223 +1,255 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Eye, EyeOff, Copy, Plus, ShieldCheck, Key, FileText, Check } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Shield } from 'lucide-react';
 import { dbService } from '../../services/dbService';
-import { encryptData, decryptData } from '../../services/cryptoUtil';
 
 export default function EncryptedVaultTab({ onTriggerToast }) {
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [copiedIndex, setCopiedIndex] = useState(null);
-  const [revealedIds, setRevealedIds] = useState({});
+  const [sites, setSites] = useState([]);
+  const [newSiteForm, setNewSiteForm] = useState({ name: '', category: '삼성전자', note: '' });
 
-  const initialMock = [
-    {
-      id: '1',
-      title: '사내 보안 Wi-Fi WPA3 암호',
-      category: 'Network',
-      secret: 'Secured_Corp_2026!#Key',
-      lastModified: '2026-08-01'
-    },
-    {
-      id: '2',
-      title: 'AWS Cloud Admin API Token',
-      category: 'API Key',
-      secret: 'ak_live_89a3f2e109bc48d7a1e',
-      lastModified: '2026-07-28'
-    },
-    {
-      id: '3',
-      title: '긴급 시스템 복구 마스터 PGP 키',
-      category: 'Master Key',
-      secret: 'PGP-KEY-9021-X992-SECURE-ALPHA',
-      lastModified: '2026-08-05'
+  const loadSites = async () => {
+    try {
+      const siteList = await dbService.getSites();
+      setSites(siteList);
+    } catch (err) {
+      console.error('Failed to load entrance sites:', err);
     }
-  ];
-
-  const [vaultItems, setVaultItems] = useState(initialMock);
+  };
 
   useEffect(() => {
-    async function loadVault() {
-      try {
-        const dbItems = await dbService.getVaultItems();
-        if (dbItems && dbItems.length > 0) {
-          setVaultItems(dbItems);
-        } else {
-          for (const item of initialMock) {
-            const encryptedSecret = await encryptData(item.secret);
-            await dbService.saveVaultItem({ ...item, secret: encryptedSecret });
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load vault from DB:', err);
-      }
-    }
-    loadVault();
+    loadSites();
   }, []);
 
-
-  const toggleReveal = (id) => {
-    if (!isUnlocked) {
-      onTriggerToast('기밀 정보를 보려면 먼저 마스터 해제(생체 인증)를 진행하세요.');
+  const handleAddSite = async (e) => {
+    e.preventDefault();
+    if (!newSiteForm.name.trim()) {
+      if (onTriggerToast) onTriggerToast('사업장 위치를 입력해 주세요.', 'warning');
       return;
     }
-    setRevealedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+    const companyName = newSiteForm.category.trim() || '기타';
+    const siteLocation = newSiteForm.name.trim();
+    const fullSiteName = siteLocation.includes(companyName) ? siteLocation : `${companyName} ${siteLocation}`;
+
+    const newSite = {
+      id: `SITE-${Date.now()}`,
+      name: fullSiteName,
+      category: companyName,
+      note: newSiteForm.note.trim() || '관리자 등록 사업장'
+    };
+    await dbService.saveSite(newSite);
+    await loadSites();
+    setNewSiteForm({ name: '', category: '삼성전자', note: '' });
+    if (onTriggerToast) onTriggerToast(`'${newSite.name}' 사업장이 등록되었습니다.`, 'success');
   };
 
-  const handleCopy = (index, secret) => {
-    if (!isUnlocked) {
-      onTriggerToast('마스터 인증 후 복사가 가능합니다.');
+  const handleDeleteSite = async (siteId, siteName) => {
+    if (sites.length <= 1) {
+      if (onTriggerToast) onTriggerToast('최소 1개 이상의 출입 사업장이 등록되어 있어야 합니다.', 'warning');
       return;
     }
-    navigator.clipboard?.writeText(secret);
-    setCopiedIndex(index);
-    onTriggerToast('암호화 키가 복사되었습니다.');
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
-
-  const handleMasterAuth = () => {
-    setIsUnlocked(true);
-    onTriggerToast('마스터 생체 인증 성공: 암호화 보관함이 해제되었습니다.');
+    await dbService.deleteSite(siteId);
+    await loadSites();
+    if (onTriggerToast) onTriggerToast(`'${siteName}' 사업장이 삭제되었습니다.`, 'info');
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
-      {/* Vault Master Lock Status Banner */}
-      <div className={isUnlocked ? 'glass-panel-cyan' : 'glass-panel'} style={{
-        padding: '16px 20px',
-        borderRadius: '18px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: isUnlocked ? 'rgba(0, 242, 254, 0.15)' : 'rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <Lock size={20} color={isUnlocked ? '#00f2fe' : '#94a3b8'} />
-          </div>
-          <div>
-            <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>
-              {isUnlocked ? '보관함 잠금 해제됨 (AES-256)' : '암호화 보관함 잠김'}
+      {/* Header Banner */}
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid rgba(0, 242, 254, 0.4)'
+            }}>
+              <Settings size={24} color="#00f2fe" />
             </div>
-            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-              {isUnlocked ? '마스터 키로 인메모리 복호화 실행 중' : '기밀 노출 방지를 위해 잠금 상태 유지 중'}
+            <div>
+              <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
+                출입 대상 사업장 통합 관리 (Admin)
+              </div>
+              <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                보안 서약 신청 및 출입 수속 시 선택할 수 있는 사업장을 등록/삭제합니다.
+              </div>
             </div>
           </div>
+          <span className="badge-secure" style={{ fontSize: '11px' }}>
+            <Shield size={13} /> ADMIN CONSOLE
+          </span>
+        </div>
+      </div>
+
+      {/* Add New Site Card Form */}
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px' }}>
+        <div style={{ fontSize: '14px', fontWeight: '700', color: '#00f2fe', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Plus size={16} /> 신규 출입 사업장 등록
         </div>
 
-        <button
-          onClick={() => {
-            if (isUnlocked) {
-              setIsUnlocked(false);
-              setRevealedIds({});
-              onTriggerToast('보관함이 안전하게 다시 잠겼습니다.');
-            } else {
-              handleMasterAuth();
-            }
-          }}
-          className={isUnlocked ? 'glass-button' : 'glass-button-primary'}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '12px',
-            fontSize: '11px'
-          }}
-        >
-          {isUnlocked ? '다시 잠그기' : '마스터 해제'}
-        </button>
+        <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* 1:1 ratio Grid for Company Name and Site Location */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                분류 / 회사명 *
+              </label>
+              <input
+                type="text"
+                placeholder="예: 삼성전자, SK하이닉스, 위드보안"
+                value={newSiteForm.category}
+                onChange={(e) => setNewSiteForm({ ...newSiteForm, category: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: '#0a0f1d',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                사업장 위치 *
+              </label>
+              <input
+                type="text"
+                placeholder="예: 평택캠퍼스 P4 라인, 이천 M16 라인"
+                value={newSiteForm.name}
+                onChange={(e) => setNewSiteForm({ ...newSiteForm, name: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: '#0a0f1d',
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+              비고 / 관리 메모 (선택)
+            </label>
+            <input
+              type="text"
+              placeholder="예: 반도체 FAB 신규 증설 라인 전용 출입 게이트"
+              value={newSiteForm.note}
+              onChange={(e) => setNewSiteForm({ ...newSiteForm, note: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '12px',
+                background: '#0a0f1d',
+                border: '1px solid rgba(255,255,255,0.15)',
+                color: '#fff',
+                fontSize: '13px',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="glass-button-primary"
+            style={{
+              padding: '12px',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '700',
+              fontSize: '13px'
+            }}
+          >
+            <Plus size={16} /> 신규 사업장 추가 저장
+          </button>
+        </form>
       </div>
 
-      {/* Vault List */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#cbd5e1' }}>저장된 기밀 자산 ({vaultItems.length})</h3>
-        <button
-          onClick={async () => {
-            if (!isUnlocked) {
-              onTriggerToast('마스터 인증 후 새 항목을 추가할 수 있습니다.');
-              return;
-            }
-            const rawSecret = 'db_pass_2026_x88912';
-            const encryptedSecret = await encryptData(rawSecret);
-            const newItem = {
-              id: Date.now().toString(),
-              title: '신규 DB 접근 세션 토큰',
-              category: 'Database',
-              secret: encryptedSecret,
-              lastModified: '오늘'
-            };
-            try {
-              await dbService.saveVaultItem(newItem);
-            } catch (err) {
-              console.error('Failed to save vault item to DB:', err);
-            }
-            setVaultItems([...vaultItems, newItem]);
-            onTriggerToast('새 암호화 기밀 항목이 DB에 저장되었습니다.');
-          }}
-          className="glass-button"
-          style={{ padding: '6px 12px', borderRadius: '10px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
-        >
-          <Plus size={14} /> 추가
-        </button>
-      </div>
+      {/* Registered Sites List */}
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Building2 size={16} color="#00f2fe" /> 등록된 출입 사업장 목록 ({sites.length}개)
+          </div>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+            보안 서약 드롭다운에 자동 반영됩니다.
+          </span>
+        </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {vaultItems.map((item, idx) => {
-          const isRevealed = revealedIds[item.id];
-          const isCopied = copiedIndex === idx;
-
-          return (
-            <div key={item.id} className="glass-panel" style={{ padding: '16px', borderRadius: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '10px', fontWeight: '700', color: '#00f2fe', background: 'rgba(0,242,254,0.1)', padding: '2px 8px', borderRadius: '6px' }}>
-                  {item.category}
-                </span>
-                <span style={{ fontSize: '10px', color: '#64748b' }}>수정일: {item.lastModified}</span>
-              </div>
-
-              <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff', marginBottom: '8px' }}>
-                {item.title}
-              </div>
-
-              {/* Masked / Unmasked Password Display */}
-              <div style={{
-                background: 'rgba(5, 8, 16, 0.7)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '10px',
-                padding: '10px 12px',
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {sites.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                padding: '14px 16px',
+                borderRadius: '14px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between'
-              }}>
-                <span className="mono-font" style={{ fontSize: '13px', color: isUnlocked && isRevealed ? '#10b981' : '#64748b', letterSpacing: '1px' }}>
-                  {isUnlocked && isRevealed ? item.secret : '••••••••••••••••••••'}
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  background: s.category?.includes('삼성') ? 'rgba(0, 242, 254, 0.15)' : s.category?.includes('SK') ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255, 255, 255, 0.1)',
+                  color: s.category?.includes('삼성') ? '#00f2fe' : s.category?.includes('SK') ? '#a78bfa' : '#cbd5e1',
+                  border: `1px solid ${s.category?.includes('삼성') ? '#00f2fe40' : s.category?.includes('SK') ? '#a78bfa40' : 'rgba(255,255,255,0.2)'}`
+                }}>
+                  {s.category || '일반'}
                 </span>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button
-                    onClick={() => toggleReveal(item.id)}
-                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-                    title={isRevealed ? '숨기기' : '보기'}
-                  >
-                    {isRevealed ? <EyeOff size={16} color="#00f2fe" /> : <Eye size={16} />}
-                  </button>
-
-                  <button
-                    onClick={() => handleCopy(idx, item.secret)}
-                    style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
-                    title="복사"
-                  >
-                    {isCopied ? <Check size={16} color="#10b981" /> : <Copy size={16} />}
-                  </button>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
+                    {s.name}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                    {s.note || '관리자 등록 사업장'}
+                  </div>
                 </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => handleDeleteSite(s.id, s.name)}
+                style={{
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.3)',
+                  color: '#f43f5e',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <Trash2 size={13} /> 삭제
+              </button>
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
 
     </div>

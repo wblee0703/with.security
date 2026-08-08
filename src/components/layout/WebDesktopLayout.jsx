@@ -37,10 +37,10 @@ export default function WebDesktopLayout({
   const [searchQuery, setSearchQuery] = useState('');
 
   const navItems = [
-    { id: 'entryCheck', label: '삼성·하이닉스 보안 서약', icon: Building2, badge: 'HOT' },
+    { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
     { id: 'access', label: '사내 모바일/웹 출입 QR', icon: QrCode, badge: 'Live' },
     { id: 'otp', label: '2FA OTP 인증센터', icon: KeyRound, badge: '3' },
-    { id: 'vault', label: '암호화 기밀 보관함', icon: Lock, badge: 'AES' },
+    { id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' },
     { id: 'incident', label: '보안관제(SOC) 위협신고', icon: AlertOctagon, badge: '신규' }
   ];
 
@@ -290,7 +290,7 @@ export default function WebDesktopLayout({
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'access' && <AccessPassTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'vault' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'incident' && <IncidentReportTab onTriggerToast={onTriggerToast} />}
           </div>
         </main>

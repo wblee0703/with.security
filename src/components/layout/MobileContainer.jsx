@@ -10,7 +10,8 @@ import {
   Battery, 
   Signal, 
   LockKeyhole,
-  Building2
+  Building2,
+  Settings
 } from 'lucide-react';
 
 export default function MobileContainer({ 
@@ -169,11 +170,11 @@ export default function MobileContainer({
         </button>
 
         <button
-          onClick={() => setActiveTab('vault')}
-          className={`nav-item ${activeTab === 'vault' ? 'active' : ''}`}
+          onClick={() => setActiveTab('admin')}
+          className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
         >
-          <Lock size={18} />
-          <span>기밀함</span>
+          <Settings size={18} />
+          <span>Admin</span>
         </button>
       </nav>
 

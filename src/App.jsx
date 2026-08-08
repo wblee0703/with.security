@@ -115,7 +115,7 @@ export default function App() {
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
             {activeTab === 'access' && <AccessPassTab onTriggerToast={showToast} />}
             {activeTab === 'otp' && <OtpAuthenticatorTab onTriggerToast={showToast} />}
-            {activeTab === 'vault' && <EncryptedVaultTab onTriggerToast={showToast} />}
+            {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
             {activeTab === 'incident' && <IncidentReportTab onTriggerToast={showToast} />}
           </MobileContainer>
         </div>
