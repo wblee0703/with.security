@@ -1,0 +1,8 @@
+{
+  "appId": "com.company.withsecurity",
+  "appName": "WithSecurity",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

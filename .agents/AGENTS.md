@@ -17,6 +17,6 @@
 ## 4. Directory Structure & File Organization Rules
 - **HTML Templates (`template/`)**: All `.html` files MUST be created and managed under the `template/` directory (e.g. `template/home.html`, `template/demo.html`).
 - **Stylesheets (`stylesheet/`)**: All `.css` files MUST be created and managed under the `stylesheet/` directory (e.g. `stylesheet/home.css`).
-- **JavaScript Files (`javascript/`)**: All `.js` files MUST be created and managed under the `javascript/` directory (e.g. `javascript/home.js`, `javascript/dbService.js`, `javascript/cryptoUtil.js`).
+- **JavaScript Files (`javascript/`)**: All `.js` and `.jsx` files MUST be created and managed under the `javascript/` directory (e.g. `javascript/home.jsx`, `javascript/dbService.js`, `javascript/cryptoUtil.js`).
 - **Relative Path Consistency**: All HTML templates must reference stylesheets via `../stylesheet/` and JavaScript files via `../javascript/`.
 

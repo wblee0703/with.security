@@ -48,31 +48,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       signature: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="40"><path d="M 10 25 Q 30 5 50 25 T 90 25" stroke="%2300f2fe" stroke-width="2" fill="none"/></svg>',
       status: '승인완료',
       createdAt: '2026-08-07 09:15'
-    }
-  ];
-
-  const [checklistList, setChecklistList] = useState(initialMock);
-
-  // Load from IndexedDB on component mount
-  useEffect(() => {
-    async function loadFromDB() {
-      try {
-        const dbItems = await dbService.getChecklists();
-        if (dbItems && dbItems.length > 0) {
-          setChecklistList(dbItems);
-        } else {
-          // Initialize DB with initial records
-          for (const item of initialMock) {
-            await dbService.saveChecklist(item);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load checklists from DB:', err);
-      }
-    }
-    loadFromDB();
-  }, []);
-,
+    },
     {
       id: 'SEC-PASS-2026-002',
       site: 'SK하이닉스 이천캠퍼스 (M16 라인)',
@@ -112,7 +88,28 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       status: '결재대기',
       createdAt: '2026-08-07 15:40'
     }
-  ]);
+  ];
+
+  const [checklistList, setChecklistList] = useState(initialMock);
+
+  // Load from IndexedDB on component mount
+  useEffect(() => {
+    async function loadFromDB() {
+      try {
+        const dbItems = await dbService.getChecklists();
+        if (dbItems && dbItems.length > 0) {
+          setChecklistList(dbItems);
+        } else {
+          for (const item of initialMock) {
+            await dbService.saveChecklist(item);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load checklists from DB:', err);
+      }
+    }
+    loadFromDB();
+  }, []);
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');

@@ -1,0 +1,56 @@
+======================================================================
+ WithSecurity - 프로젝트 시스템 & 소프트웨어 설치 요구사항 (Requirements)
+======================================================================
+
+1. 필수 개발 시스템 환경 (System Prerequisites)
+----------------------------------------------------------------------
+- Node.js : v18.0.0 이상 (권장 LTS 버전)
+- npm     : v9.0.0 이상 (Node.js 설치 시 자동 포함)
+- Git     : 최신 버전 (GitHub 배포 및 CI/CD 워크플로우용)
+
+
+2. 모바일 앱 빌드용 필수 소프트웨어 (Mobile App Build Tools)
+----------------------------------------------------------------------
+- JDK (Java Development Kit) : JDK 17 이상 (Android 빌드 필수)
+- Android Studio             : 최신 버전 (Android SDK 34+, Android Build Tools)
+- Xcode (Mac OS 전용)        : Xcode 15 이상 (iOS 앱 빌드 및 App Store 제출용)
+
+
+3. Node.js 패키지 의존성 목록 (Package Dependencies)
+----------------------------------------------------------------------
+[Core Dependencies]
+- react               ^18.3.1
+- react-dom           ^18.3.1
+- lucide-react        ^0.380.0
+- @capacitor/core     ^6.0.0
+- @capacitor/android  ^6.0.0
+- @capacitor/ios      ^6.0.0
+
+[Dev Dependencies]
+- vite                ^5.2.11
+- @vitejs/plugin-react ^4.3.0
+- @capacitor/cli      ^6.0.0
+
+
+4. 터미널 패키지 설치 명령어 (Installation Commands)
+----------------------------------------------------------------------
+# 1) 전체 프로젝트 패키지 복구 설치
+npm.cmd install
+
+# 2) 모바일 네이티브 앱 코어 라이브러리 설치
+npm.cmd install @capacitor/core @capacitor/android @capacitor/ios
+
+# 3) Capacitor CLI 도구 설치 (개발용)
+npm.cmd install -D @capacitor/cli
+
+
+5. 모바일 앱 빌드 및 실행 명령어 (Mobile Developer Workflow)
+----------------------------------------------------------------------
+# 1) 안드로이드 플랫폼 최초 추가
+npx.cmd cap add android
+
+# 2) 웹 소스 빌드 및 안드로이드 프로젝트 동기화
+npm.cmd run cap:sync
+
+# 3) Android Studio 앱 프로젝트 열기
+npx.cmd cap open android
