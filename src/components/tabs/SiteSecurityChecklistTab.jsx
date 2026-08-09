@@ -1005,10 +1005,36 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 </div>
               )}
 
-              {/* Bottom Tags */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#64748b' }}>
-                <div>방문목적: {item.purpose}</div>
-                <div className="mono-font">등록일: {item.createdAt}</div>
+              {/* Bottom Tags: High Visibility Visit Purpose Badge */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>방문목적:</span>
+                  <span style={{
+                    padding: '3px 10px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    background: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                      ? 'rgba(245, 158, 11, 0.22)'
+                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                      ? 'rgba(0, 242, 254, 0.22)'
+                      : 'rgba(139, 92, 246, 0.22)',
+                    color: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                      ? '#f59e0b'
+                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                      ? '#00f2fe'
+                      : '#a78bfa',
+                    border: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                      ? '1px solid rgba(245, 158, 11, 0.55)'
+                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                      ? '1px solid rgba(0, 242, 254, 0.55)'
+                      : '1px solid rgba(139, 92, 246, 0.55)',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                  }}>
+                    📌 {item.purpose || '작업'}
+                  </span>
+                </div>
+                <div className="mono-font" style={{ fontSize: '11px', color: '#64748b' }}>등록일: {item.createdAt}</div>
               </div>
             </div>
           ))

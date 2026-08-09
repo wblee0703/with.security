@@ -27,14 +27,6 @@ jobs:
       - name: Build Project
         run: npm run build
 
-      - name: Copy template, stylesheet, javascript to Build Output
-        run: |
-          mkdir -p dist/template dist/stylesheet dist/javascript
-          cp -r template/* dist/template/
-          cp -r stylesheet/* dist/stylesheet/
-          cp -r javascript/* dist/javascript/
-          cp index.html dist/
-
       - name: Deploy to GitHub Pages
         uses: PeaceIris/actions-gh-pages@v3
         with:
