@@ -3,16 +3,36 @@ import initialSitesData from '../data/sites.json';
 import initialUsersData from '../data/users.json';
 import initialPledgesData from '../data/pledges.json';
 
-// Disk File Real-time Sync Helper (Writes JSON edits directly to src/data/*.json on disk)
+// Server Base URL Management Helper
+export function getServerUrl() {
+  return localStorage.getItem('with_security_server_url') || '';
+}
+
+export function setServerUrl(url) {
+  if (!url || !url.trim()) {
+    localStorage.removeItem('with_security_server_url');
+  } else {
+    let formatted = url.trim();
+    if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
+      formatted = 'http://' + formatted;
+    }
+    formatted = formatted.replace(/\/+$/, '');
+    localStorage.setItem('with_security_server_url', formatted);
+  }
+}
+
+// Disk File Real-time Sync Helper (Writes JSON edits directly to src/data/*.json on disk or remote server)
 async function syncJsonToDisk(filename, data) {
   try {
-    await fetch('/api/sync-json', {
+    const serverUrl = getServerUrl();
+    const endpoint = serverUrl ? `${serverUrl}/api/sync-json` : '/api/sync-json';
+    await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, data })
     });
   } catch (err) {
-    // Disk sync active via Vite dev server middleware
+    // Disk sync active via Vite dev server middleware / remote endpoint
   }
 }
 
@@ -135,6 +155,24 @@ class SecurityDatabase {
   // Checklists (Dual IndexedDB + localStorage fallback)
   // Checklists (Prioritizing src/data/pledges.json & Dual IndexedDB + localStorage sync)
   async getChecklists() {
+    const serverUrl = getServerUrl();
+    if (serverUrl) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/checklists`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remoteData = json.data || json;
+          if (Array.isArray(remoteData) && remoteData.length > 0) {
+            localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
+            return remoteData;
+          }
+        }
+      } catch (e) {}
+    }
+
     let jsonPledges = initialPledgesData || [];
     let dbPledges = [];
     try {
@@ -228,8 +266,25 @@ class SecurityDatabase {
     return this.putItem('incidents', incident);
   }
 
-  // Entrance Sites (Strict Ground-Truth by src/data/sites.json & Dual IndexedDB + LocalStorage sync)
   async getSites() {
+    const serverUrl = getServerUrl();
+    if (serverUrl) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/sites`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remoteData = json.data || json;
+          if (Array.isArray(remoteData) && remoteData.length > 0) {
+            localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
+            return remoteData;
+          }
+        }
+      } catch (e) {}
+    }
+
     let jsonSites = initialSitesData || [];
     const deletedIdsRaw = localStorage.getItem('with_security_deleted_site_ids');
     let deletedIds = [];
@@ -394,6 +449,23 @@ class SecurityDatabase {
   }
 
   async getRegisteredUsers() {
+    const serverUrl = getServerUrl();
+    if (serverUrl) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/users`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remoteData = json.data || json;
+          if (Array.isArray(remoteData) && remoteData.length > 0) {
+            localStorage.setItem('with_security_users_json_store', JSON.stringify(remoteData));
+          }
+        }
+      } catch (e) {}
+    }
+
     let jsonUsers = initialUsersData || [];
 
     // Strictly exclude deleted usernames
@@ -489,6 +561,48 @@ class SecurityDatabase {
 
   async logoutUser() {
     localStorage.removeItem('with_security_active_user');
+  }
+
+  getServerUrl() {
+    return getServerUrl();
+  }
+
+  setServerUrl(url) {
+    setServerUrl(url);
+  }
+
+  async testServerConnection(url) {
+    if (!url || !url.trim()) {
+      return { success: false, message: '서버 URL을 입력해 주세요.' };
+    }
+    let target = url.trim();
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+      target = 'http://' + target;
+    }
+    target = target.replace(/\/+$/, '');
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const res = await fetch(`${target}/api/checklists`, {
+        method: 'GET',
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        return { success: true, message: `서버 통신 및 데이터 연결 성공! (${target})` };
+      } else {
+        return { success: true, message: `서버 응답 확인됨 [상태코드: ${res.status}] (${target})` };
+      }
+    } catch (err) {
+      try {
+        await fetch(target, { method: 'HEAD', mode: 'no-cors' });
+        return { success: true, message: `서버 호스트 응답 확인됨 (${target})` };
+      } catch (e) {
+        return { success: false, message: `서버에 연결할 수 없습니다. URL 및 네트워크 상태를 확인해 주세요.` };
+      }
+    }
   }
 }
 

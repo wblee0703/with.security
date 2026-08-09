@@ -215,26 +215,6 @@ export default function WebDesktopLayout({
               </span>
             </div>
           </div>
-
-          {/* Lock App Button */}
-          <button
-            onClick={onLockApp}
-            className="glass-button"
-            style={{
-              padding: '6px 12px',
-              borderRadius: '10px',
-              fontSize: '11px',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              color: '#f43f5e',
-              borderColor: 'rgba(244, 63, 94, 0.3)',
-              background: 'rgba(244, 63, 94, 0.1)'
-            }}
-          >
-            <LockKeyhole size={14} /> 화면 잠금
-          </button>
         </div>
       </header>
 

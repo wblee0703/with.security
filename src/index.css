@@ -136,37 +136,14 @@ body {
   .mobile-shell-wrapper {
     max-width: 100%;
     height: 100vh;
+    height: -webkit-fill-available;
     max-height: 100vh;
     border-radius: 0;
     border: none;
     box-shadow: none;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
-}
-
-/* Status Bar & Dynamic Island Notch */
-.status-bar {
-  height: 48px;
-  padding: 0 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  z-index: 50;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
-}
-
-.dynamic-island {
-  width: 110px;
-  height: 28px;
-  background: #000000;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.8);
-  border: 1px solid rgba(255,255,255,0.05);
 }
 
 /* App Header */

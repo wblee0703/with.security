@@ -449,6 +449,37 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
+    const userName = (activeUser.name || '').trim();
+    const userPhone = (activeUser.phone || '').trim();
+    const userAccount = (activeUser.username || '').trim();
+
+    // 1) 최초 작성자(대표 등록자) 중복 검사
+    const isPrimaryVisitor =
+      targetItem.visitorName?.trim() === userName ||
+      (userAccount && targetItem.username === userAccount) ||
+      (userPhone && targetItem.phone === userPhone);
+
+    if (isPrimaryVisitor) {
+      if (onTriggerToast) {
+        onTriggerToast(`'${userName || '본인'}'님은 해당 서약서의 최초 작성자(대표 등록자)입니다. 동행자로 중복 등록할 수 없습니다.`, 'warning');
+      }
+      return;
+    }
+
+    // 2) 이미 등록된 동행인 목록 중복 검사
+    const isAlreadyCompanion = targetItem.companions?.some(c =>
+      c.visitorName?.trim() === userName ||
+      (userAccount && c.username && c.username === userAccount) ||
+      (userPhone && c.phone && c.phone === userPhone)
+    );
+
+    if (isAlreadyCompanion) {
+      if (onTriggerToast) {
+        onTriggerToast(`'${userName || '본인'}'님은 이미 해당 서약서에 동행자로 등록되어 있습니다. (중복 등록 불가)`, 'warning');
+      }
+      return;
+    }
+
     const userTeam = activeUser.team || activeUser.department || '';
     setFormData({
       site: targetItem.site,
@@ -563,6 +594,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const handleSubmitForm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
 
+    const activeUser = await dbService.getUserProfile();
+
     if (!formData.visitorName || !formData.visitorName.trim()) {
       if (onTriggerToast) onTriggerToast('방문자 성명을 입력해 주세요.', 'warning');
       return;
@@ -587,13 +620,45 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     if (wasCompanion && formData.parentPledgeId) {
       const targetPledge = checklistList.find(item => item.id === formData.parentPledgeId);
       if (targetPledge) {
+        const inputVisitorName = formData.visitorName.trim();
+        const inputPhone = (formData.phone || '').trim();
+        const inputUsername = activeUser?.username || '';
+
+        // 1) 최초 작성자(대표 등록자) 중복 체크
+        const isPrimaryVisitor =
+          targetPledge.visitorName?.trim() === inputVisitorName ||
+          (inputUsername && targetPledge.username === inputUsername) ||
+          (inputPhone && targetPledge.phone === inputPhone);
+
+        if (isPrimaryVisitor) {
+          if (onTriggerToast) {
+            onTriggerToast(`'${inputVisitorName}'님은 이미 해당 서약서의 최초 작성자(대표 등록자)입니다. 중복 동행 등록할 수 없습니다.`, 'warning');
+          }
+          return;
+        }
+
+        // 2) 이미 등록된 동행인 목록 중복 체크
+        const isAlreadyCompanion = targetPledge.companions?.some(c =>
+          c.visitorName?.trim() === inputVisitorName ||
+          (inputUsername && c.username && c.username === inputUsername) ||
+          (inputPhone && c.phone && c.phone === inputPhone)
+        );
+
+        if (isAlreadyCompanion) {
+          if (onTriggerToast) {
+            onTriggerToast(`'${inputVisitorName}'님은 이미 해당 서약서에 동행자로 등록되어 있습니다. (중복 등록 불가)`, 'warning');
+          }
+          return;
+        }
+
         const newCompanion = {
           id: `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-          visitorName: formData.visitorName.trim(),
+          visitorName: inputVisitorName,
+          username: inputUsername,
           team: userTeam,
           department: userTeam,
           rank: formData.rank?.trim() || '대리',
-          phone: formData.phone || '010-0000-0000',
+          phone: inputPhone || '010-0000-0000',
           signature: formData.signatureDataUrl,
           createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
         };
@@ -614,7 +679,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         setActiveStep(1);
 
         // Reset Form
-        const activeUser = await dbService.getUserProfile();
         const activeTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
         setFormData({
           site: sites.length > 0 ? sites[0].name : '',
@@ -681,7 +745,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     setActiveStep(1);
 
     // Reset Form
-    const activeUser = await dbService.getUserProfile();
     const activeTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
     setFormData({
       site: sites.length > 0 ? sites[0].name : '',
