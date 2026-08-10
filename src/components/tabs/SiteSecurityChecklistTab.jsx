@@ -239,7 +239,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         shortName: '삼성보안어플',
         packageName: 'com.samsung.knox.mdm',
         scheme: 'sec-mdm://',
-        intentUri: 'intent://#Intent;scheme=sec-mdm;package=com.samsung.knox.mdm;end',
+        intentUri: 'intent://#Intent;scheme=sec-mdm;end',
         tokenPrefix: 'MDM-SAM-',
         company: '삼성전자',
         color: '#00f2fe',
@@ -253,7 +253,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         shortName: 'SK하이닉스 SSM 어플',
         packageName: 'com.skhynix.ssm',
         scheme: 'ssm-hynix://',
-        intentUri: 'intent://#Intent;scheme=ssm-hynix;package=com.skhynix.ssm;end',
+        intentUri: 'intent://#Intent;scheme=ssm-hynix;end',
         tokenPrefix: 'SSM-SKH-',
         company: 'SK하이닉스',
         color: '#a78bfa',
@@ -318,8 +318,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     setIsModalOpen(false);
   };
 
-  // 1) Real Security App Scheme & Installation Detection (Button 1)
-  const handleCheckAppInstallation = () => {
+  // Unified Mobile Security App Execution Verification (Camera Hardware Block Verification)
+  const handleCheckAppExecutionStatus = async () => {
     if (!formData.site || !formData.site.trim()) {
       if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
       setActiveStep(1);
@@ -328,98 +328,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     const targetApp = getTargetSecurityAppInfo(formData.site);
 
     setAppCheckState({ isChecking: true, isVerified: false });
-    setAppScanState(prev => ({ ...prev, isScanning: true, status: 'CHECKING' }));
-
-    let appOpened = false;
-    const handleBlur = () => {
-      appOpened = true;
-    };
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('pagehide', handleBlur);
-
-    // Deep link Intent/Scheme trigger for Android & iOS mobile browsers
-    const isAndroid = /Android/i.test(navigator.userAgent);
-    const linkUrl = (isAndroid && targetApp.intentUri) ? targetApp.intentUri : targetApp.scheme;
-
-    // Direct anchor navigation trigger for modern browsers
-    try {
-      const a = document.createElement('a');
-      a.href = linkUrl;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-      }, 500);
-    } catch (e) {
-      console.warn('Direct scheme link click failed:', e);
-    }
-
-    // Hidden iframe fallback
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = targetApp.scheme;
-    document.body.appendChild(iframe);
-
-    setTimeout(() => {
-      if (document.body.contains(iframe)) {
-        document.body.removeChild(iframe);
-      }
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('pagehide', handleBlur);
-
-      // STRICT CHECK: Did the browser lose focus to native MDM/SSM app?
-      if (appOpened || document.hidden) {
-        // App is installed and responded to URL Scheme!
-        setAppCheckState({ isChecking: false, isVerified: true });
-        if (cameraCheckState.isVerified) {
-          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-          if (onTriggerToast) onTriggerToast(`✓ ${targetApp.appName} 실행 확인 및 카메라 차단 검수가 모두 완료되었습니다!`, 'success');
-        } else {
-          setFormData(prev => ({ ...prev, mdmVerified: false }));
-          setAppScanState({ isScanning: false, status: 'CAMERA_CHECK_NEEDED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-          if (onTriggerToast) onTriggerToast(`✓ '${targetApp.shortName}' 설치/실행 확인 완료! 하단 [카메라 사용제한 검증] 버튼을 눌러 카메라 검증을 진행해 주세요.`, 'info');
-        }
-      } else {
-        // Fallback: If camera hardware check is ALREADY verified (Camera hardware blocked by Knox/SSM policy)
-        if (cameraCheckState.isVerified || cameraCheckState.result === 'LOCKED') {
-          setAppCheckState({ isChecking: false, isVerified: true });
-          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-          if (onTriggerToast) onTriggerToast(`✓ [하드웨어 차단 확인] 모바일 카메라 차단 정책이 활성화되어 '${targetApp.appName}' 가동 상태가 최종 검증되었습니다!`, 'success');
-        } else {
-          // Web browser security policy blocked app scheme detection
-          setAppCheckState({ isChecking: false, isVerified: false });
-          setFormData(prev => ({ ...prev, mdmVerified: false }));
-          setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-          if (onTriggerToast) {
-            onTriggerToast(`⚠️ [실행 상태 확인 필요] 브라우저 보안 정책으로 스키마 자동 감지가 취소되었습니다. 하단 '카메라 사용제한 검증' 버튼을 눌러 카메라 하드웨어 차단을 검수해 주세요.`, 'warning');
-          }
-        }
-      }
-    }, 1500);
-  };
-
-  // 2) Real Hardware Camera Stream Test (Button 2)
-  const handleVerifyCameraLock = async () => {
-    if (!formData.site || !formData.site.trim()) {
-      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
-      setActiveStep(1);
-      return;
-    }
-    const targetApp = getTargetSecurityAppInfo(formData.site);
-
-    // Sequence Check: App Installation & Execution MUST be verified FIRST!
-    if (!appCheckState.isVerified) {
-      if (onTriggerToast) {
-        onTriggerToast(`[순서 확인] 상단 [보안 어플 설치/실행 확인] 검수를 먼저 진행해 주십시오.`, 'warning');
-      }
-      return;
-    }
-
     setCameraCheckState(prev => ({ ...prev, isTesting: true, message: '' }));
-    setAppScanState(prev => ({ ...prev, isScanning: true }));
+    setAppScanState(prev => ({ ...prev, isScanning: true, status: 'CHECKING' }));
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -429,59 +339,54 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       // ACTUALLY ATTEMPT TO EXECUTE / OPEN CAMERA STREAM
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 
-      // IF CAMERA STREAMS OPENS -> CAMERA IS WORKING & NOT BLOCKED BY MDM POLICY!
+      // IF CAMERA STREAM OPENS -> CAMERA IS WORKING & NOT BLOCKED BY MDM POLICY!
       stream.getTracks().forEach(track => track.stop());
 
-      // STRICT FAIL! Camera restriction is NOT active!
-      setCameraCheckState({
-        isTesting: false,
-        isVerified: false,
-        result: 'UNLOCKED',
-        message: ''
-      });
-
-      setFormData(prev => ({ ...prev, mdmVerified: false }));
+      // STRICT FAIL! Security app is NOT RUNNING / Camera restriction is NOT active!
+      setAppCheckState({ isChecking: false, isVerified: false });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
         isScanning: false,
-        status: 'CAMERA_UNLOCKED',
-        lastScannedAt: null,
+        status: 'NOT_RUNNING',
+        lastScannedAt: new Date().toLocaleTimeString(),
         scanLog: []
       });
 
       if (onTriggerToast) {
-        onTriggerToast('❌ [검증 실패] 카메라가 정상 작동 중입니다! 보안 어플(MDM)에서 카메라 사용 제한(잠금)을 실행해 주세요.', 'warning');
+        onTriggerToast(`⚠️ [실행 상태 확인 필요] '${targetApp.shortName}' 보안 어플이 실행되지 않았거나 보안 정책(카메라 차단)이 비활성화되어 있습니다. 어플을 실행해 주세요.`, 'warning');
       }
     } catch (err) {
       // IF CAMERA HARDWARE ACCESS IS DENIED/BLOCKED BY KNOX/MDM POLICY (NotAllowedError / SecurityError / NotReadableError)
       if (err.name === 'NotAllowedError' || err.name === 'SecurityError' || err.name === 'NotReadableError') {
         // STRICT SUCCESS! Hardware camera access was blocked by MDM policy!
-        setCameraCheckState({
-          isTesting: false,
-          isVerified: true,
-          result: 'LOCKED',
-          message: ''
+        setAppCheckState({ isChecking: false, isVerified: true });
+        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '' });
+        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+        setAppScanState({
+          isScanning: false,
+          status: 'VERIFIED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
         });
 
-        if (appCheckState.isVerified) {
-          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-          if (onTriggerToast) onTriggerToast('✓ 카메라 차단 확인 완료! 모바일 보안 어플 검수가 완료되었습니다.', 'success');
-        } else {
-          if (onTriggerToast) onTriggerToast('✓ 카메라 차단 확인 완료! 상단 [보안 어플 설치/실행 확인] 버튼도 확인해 주세요.', 'info');
+        if (onTriggerToast) {
+          onTriggerToast(`✓ [검수 완료] '${targetApp.appName}' 가동 및 보안 정책이 정상 확인되었습니다!`, 'success');
         }
       } else {
         // PC Browser environment or no camera device error -> STRICT FAIL!
-        setCameraCheckState({
-          isTesting: false,
-          isVerified: false,
-          result: 'UNLOCKED',
-          message: ''
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'NOT_RUNNING',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
         });
-        setFormData(prev => ({ ...prev, mdmVerified: false }));
-        setAppScanState({ isScanning: false, status: 'CAMERA_UNLOCKED', lastScannedAt: null, scanLog: [] });
 
         if (onTriggerToast) {
-          onTriggerToast('⚠️ [검증 실패] 모바일 단말기 차단 정책이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.', 'warning');
+          onTriggerToast(`⚠️ [실행 상태 확인 필요] 모바일 보안 정책이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.`, 'warning');
         }
       }
     }
@@ -490,21 +395,11 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   // Helper for manual simulation state switch (For Dev/Demo testing on PC)
   const handleSetSimulatedStatus = (statusType) => {
     const targetApp = getTargetSecurityAppInfo(formData.site);
-    if (statusType === 'NOT_INSTALLED') {
-      setAppCheckState({ isChecking: false, isVerified: false });
-      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
-      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
-      setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
-    } else if (statusType === 'NOT_RUNNING') {
+    if (statusType === 'NOT_RUNNING' || statusType === 'NOT_INSTALLED') {
       setAppCheckState({ isChecking: false, isVerified: false });
       setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: null, scanLog: [] });
-    } else if (statusType === 'CAMERA_UNLOCKED' || statusType === 'CAMERA_CHECK_NEEDED') {
-      setAppCheckState({ isChecking: false, isVerified: true });
-      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
-      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
-      setAppScanState({ isScanning: false, status: 'CAMERA_CHECK_NEEDED', lastScannedAt: null, scanLog: [] });
     } else if (statusType === 'VERIFIED') {
       setAppCheckState({ isChecking: false, isVerified: true });
       setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '' });
@@ -1811,73 +1706,38 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                             <button
                               type="button"
-                              onClick={handleCheckAppInstallation}
-                              disabled={appScanState.isScanning || appCheckState.isChecking}
+                              onClick={handleCheckAppExecutionStatus}
+                              disabled={appScanState.isScanning || cameraCheckState.isTesting}
                               style={{
                                 width: '100%',
-                                padding: '12px 14px',
-                                borderRadius: '10px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                background: appCheckState.isVerified
+                                padding: '14px 16px',
+                                borderRadius: '12px',
+                                fontSize: '13px',
+                                fontWeight: '800',
+                                background: appScanState.status === 'VERIFIED'
                                   ? 'rgba(16, 185, 129, 0.2)'
                                   : `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
-                                color: appCheckState.isVerified ? '#10b981' : '#000',
-                                border: appCheckState.isVerified
+                                color: appScanState.status === 'VERIFIED' ? '#10b981' : '#000',
+                                border: appScanState.status === 'VERIFIED'
                                   ? '1px solid rgba(16, 185, 129, 0.5)'
                                   : 'none',
-                                boxShadow: appCheckState.isVerified
+                                boxShadow: appScanState.status === 'VERIFIED'
                                   ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                  : '0 4px 12px rgba(0, 242, 254, 0.25)',
-                                cursor: 'pointer',
+                                  : '0 4px 14px rgba(0, 242, 254, 0.25)',
+                                cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '6px',
+                                gap: '8px',
                                 transition: 'all 0.25s ease'
                               }}
                             >
-                              {appCheckState.isVerified ? (
-                                <><CheckCircle2 size={15} color="#10b981" /> ✓ 보안 어플 설치/실행 검수 완료</>
+                              {appScanState.isScanning || cameraCheckState.isTesting ? (
+                                <><ShieldCheck size={18} className="animate-spin" /> 보안 어플 실행 상태 검수 중...</>
+                              ) : appScanState.status === 'VERIFIED' ? (
+                                <><CheckCircle2 size={18} color="#10b981" /> ✓ 보안 어플 실행 상태 확인 완료</>
                               ) : (
-                                <><Smartphone size={14} /> 보안 어플 설치/실행 확인</>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleVerifyCameraLock}
-                              disabled={cameraCheckState.isTesting}
-                              style={{
-                                width: '100%',
-                                padding: '12px 14px',
-                                borderRadius: '10px',
-                                fontSize: '12px',
-                                fontWeight: '700',
-                                background: cameraCheckState.isVerified
-                                  ? 'rgba(16, 185, 129, 0.2)'
-                                  : 'rgba(0, 242, 254, 0.12)',
-                                color: cameraCheckState.isVerified ? '#10b981' : '#00f2fe',
-                                border: cameraCheckState.isVerified
-                                  ? '1px solid rgba(16, 185, 129, 0.5)'
-                                  : '1px solid rgba(0, 242, 254, 0.35)',
-                                boxShadow: cameraCheckState.isVerified
-                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                  : 'none',
-                                cursor: cameraCheckState.isTesting ? 'wait' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px',
-                                transition: 'all 0.25s ease'
-                              }}
-                            >
-                              {cameraCheckState.isTesting ? (
-                                <>📷 카메라 어플 실행 및 차단 상태 테스트 중...</>
-                              ) : cameraCheckState.isVerified ? (
-                                <><CheckCircle2 size={15} color="#10b981" /> ✓ 카메라 사용제한 검수 완료 (하드웨어 차단 확인됨)</>
-                              ) : (
-                                <><Camera size={14} /> 카메라 사용제한 검증</>
+                                <><ShieldCheck size={18} /> 보안 어플 실행 상태 확인</>
                               )}
                             </button>
                           </div>
@@ -1901,25 +1761,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <button
                               type="button"
-                              onClick={() => handleSetSimulatedStatus('NOT_INSTALLED')}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                textAlign: 'left',
-                                background: 'rgba(239, 68, 68, 0.15)',
-                                color: '#ef4444',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              🔴 1. 어플 미설치 상태로 설정
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => handleSetSimulatedStatus('NOT_RUNNING')}
                               style={{
                                 width: '100%',
@@ -1935,26 +1776,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                              ⚠️ 2. 어플 설치됨 / 미실행 (실행 상태 확인 필요)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSetSimulatedStatus('CAMERA_UNLOCKED')}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                textAlign: 'left',
-                                background: 'rgba(59, 130, 246, 0.15)',
-                                color: '#3b82f6',
-                                border: '1px solid rgba(59, 130, 246, 0.3)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              🟡 3. 어플 설치/실행 완료 (카메라 사용제한 검증 필요 상태로 설정)
+                              ⚠️ 1. 보안 어플 상태 확인 필요
                             </button>
                             <button
                               type="button"
@@ -1973,7 +1795,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                              🟢 4. 보안 어플 정상 가동 완료 상태로 설정
+                              🟢 2. 보안 어플 정상 가동중
                             </button>
                           </div>
                         </div>
@@ -2267,7 +2089,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             {isStep1Valid ? '✓' : '❌'} 1. 방문자 및 사업장 선택 {!isSiteValid ? '(사업장 미선택)' : ''}
                           </div>
                           <div style={{ color: isMdmValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {isMdmValid ? '✓' : '❌'} 2. 보안 어플/카메라 검증
+                            {isMdmValid ? '✓' : '❌'} 2. 보안 어플 실행 상태 확인
                           </div>
                           <div style={{ color: isDocValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             {isDocValid ? '✓' : '❌'} 3. 자재&문서 체크리스트
