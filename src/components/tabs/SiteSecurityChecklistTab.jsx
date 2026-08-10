@@ -69,6 +69,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   // Current Logged in User State (For Team-Level Security Isolation)
   const [currentUser, setCurrentUser] = useState(null);
 
+  // Companion Multi-Select Suggestion Modal State
+  const [isCompanionModalOpen, setIsCompanionModalOpen] = useState(false);
+  const [targetPledgeForCompanion, setTargetPledgeForCompanion] = useState(null);
+  const [allSystemUsers, setAllSystemUsers] = useState([]);
+  const [companionSearchTerm, setCompanionSearchTerm] = useState('');
+  const [selectedCompanionUsernames, setSelectedCompanionUsernames] = useState([]);
+
   useEffect(() => {
     async function loadSitesAndUser() {
       try {
@@ -523,57 +530,131 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     materials: [],
     agreedToTerms: false,
     isCompanionMode: false,
-    parentPledgeId: null
+    parentPledgeId: null,
+    companionId: null
   });
 
-  // Handle Open Companion Pledge Modal (Register Companion for Existing Pledge)
-  const handleOpenCompanionPledgeModal = async (targetItem) => {
+  // Handle Open Companion Selection Modal (App Users Suggestion Box & Multi-Select)
+  const handleOpenCompanionRegisterModal = async (targetItem) => {
     const activeUser = await dbService.getUserProfile();
     if (!activeUser) {
-      if (onTriggerToast) onTriggerToast('동행 보안 서약을 작성하려면 로그인이 필요합니다.', 'warning');
+      if (onTriggerToast) onTriggerToast('동행 등록을 진행하려면 로그인이 필요합니다.', 'warning');
       setIsLoginModalOpen(true);
       return;
     }
 
-    const userName = (activeUser.name || '').trim();
-    const userPhone = (activeUser.phone || '').trim();
-    const userAccount = (activeUser.username || '').trim();
+    try {
+      const regUsers = await dbService.getRegisteredUsers();
+      setAllSystemUsers(regUsers || []);
+    } catch (e) {
+      console.warn('Failed to load registered users:', e);
+      setAllSystemUsers([]);
+    }
 
-    // 1) 최초 작성자(대표 등록자) 중복 검사
-    const isPrimaryVisitor =
-      targetItem.visitorName?.trim() === userName ||
-      (userAccount && targetItem.username === userAccount) ||
-      (userPhone && targetItem.phone === userPhone);
+    setTargetPledgeForCompanion(targetItem);
+    setCompanionSearchTerm('');
+    setSelectedCompanionUsernames([]);
+    setIsCompanionModalOpen(true);
+  };
 
-    if (isPrimaryVisitor) {
-      if (onTriggerToast) {
-        onTriggerToast(`'${userName || '본인'}'님은 해당 서약서의 최초 작성자(대표 등록자)입니다. 동행자로 중복 등록할 수 없습니다.`, 'warning');
+  // Handle Toggle Companion Select Checkbox
+  const handleToggleCompanionSelect = (username) => {
+    setSelectedCompanionUsernames(prev => {
+      if (prev.includes(username)) {
+        return prev.filter(u => u !== username);
+      } else {
+        return [...prev, username];
       }
+    });
+  };
+
+  // Handle Confirm Add Selected Companions to Pledge
+  const handleConfirmAddCompanions = async () => {
+    if (!targetPledgeForCompanion || selectedCompanionUsernames.length === 0) {
+      if (onTriggerToast) onTriggerToast('등록할 동행자를 1명 이상 선택해 주세요.', 'warning');
       return;
     }
 
-    // 2) 이미 등록된 동행인 목록 중복 검사
-    const isAlreadyCompanion = targetItem.companions?.some(c =>
-      c.visitorName?.trim() === userName ||
-      (userAccount && c.username && c.username === userAccount) ||
-      (userPhone && c.phone && c.phone === userPhone)
-    );
+    const selectedUsers = allSystemUsers.filter(u => selectedCompanionUsernames.includes(u.username));
+    if (selectedUsers.length === 0) return;
 
-    if (isAlreadyCompanion) {
-      if (onTriggerToast) {
-        onTriggerToast(`'${userName || '본인'}'님은 이미 해당 서약서에 동행자로 등록되어 있습니다. (중복 등록 불가)`, 'warning');
+    let updatedCompanions = [...(targetPledgeForCompanion.companions || [])];
+    const addedNames = [];
+
+    for (const u of selectedUsers) {
+      const uName = (u.name || '').trim();
+      const uTeam = (u.team || u.department || u.division || targetPledgeForCompanion.department || '보안관제팀').trim();
+
+      const isPrimary = targetPledgeForCompanion.visitorName?.trim() === uName ||
+        (u.username && targetPledgeForCompanion.username === u.username) ||
+        (u.phone && targetPledgeForCompanion.phone === u.phone);
+
+      const isAlreadyCompanion = updatedCompanions.some(c =>
+        c.visitorName?.trim() === uName ||
+        (u.username && c.username && c.username === u.username) ||
+        (u.phone && c.phone && c.phone === u.phone)
+      );
+
+      if (!isPrimary && !isAlreadyCompanion) {
+        updatedCompanions.push({
+          id: `COMP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          visitorName: uName,
+          username: u.username || '',
+          team: uTeam,
+          department: uTeam,
+          rank: u.rank || '대리',
+          phone: u.phone || '010-0000-0000',
+          status: '서약 대기',
+          mdmVerified: false,
+          pledgedAt: null,
+          createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
+        });
+        addedNames.push(uName);
       }
+    }
+
+    if (addedNames.length === 0) {
+      if (onTriggerToast) onTriggerToast('선택한 인원이 이미 해당 서약서에 모두 추가되어 있습니다.', 'warning');
+      setIsCompanionModalOpen(false);
       return;
     }
 
-    const userTeam = activeUser.team || activeUser.department || '';
+    const updatedPledge = {
+      ...targetPledgeForCompanion,
+      companions: updatedCompanions
+    };
+
+    try {
+      await dbService.saveChecklist(updatedPledge);
+    } catch (err) {
+      console.error('Failed to register companions in DB:', err);
+    }
+
+    setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+    setIsCompanionModalOpen(false);
+
+    if (onTriggerToast) {
+      onTriggerToast(`✓ '${addedNames.join(', ')}' 등 총 ${addedNames.length}명이 동행자로 추가 등록되었습니다. (서약 대기 상태로 공유됨)`, 'success');
+    }
+  };
+
+  // Handle Perform Companion Pledge (Companion performs security pledge for shared pledge)
+  const handlePerformCompanionPledge = async (targetItem, companion) => {
+    const activeUser = await dbService.getUserProfile();
+    if (!activeUser) {
+      if (onTriggerToast) onTriggerToast('동행 보안 서약을 진행하려면 로그인이 필요합니다.', 'warning');
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    const userTeam = activeUser.team || activeUser.department || companion.team || '보안관제팀';
     setFormData({
       site: targetItem.site,
-      visitorName: activeUser.name || '',
-      phone: activeUser.phone || '010-0000-0000',
+      visitorName: companion.visitorName || activeUser.name || '',
+      phone: activeUser.phone || companion.phone || '010-0000-0000',
       team: userTeam,
       department: userTeam,
-      rank: activeUser.rank || '대리',
+      rank: activeUser.rank || companion.rank || '대리',
       company: userTeam,
       hostName: targetItem.hostName || '사업장 보안관제센터',
       purposeType: targetItem.purpose || '작업',
@@ -589,31 +670,65 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       materials: [],
       agreedToTerms: false,
       isCompanionMode: true,
-      parentPledgeId: targetItem.id
+      parentPledgeId: targetItem.id,
+      companionId: companion.id
     });
 
     setActiveStep(1);
     setIsModalOpen(true);
-    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${activeUser.name}'님 동행 등록 모드가 시작되었습니다.`, 'info');
+    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${companion.visitorName}'님 동행 보안 서약 모드가 시작되었습니다. 2단계 앱 검수 및 서약을 완료해 주세요.`, 'info');
   };
 
   // Selected Detail Modal State
   const [selectedPass, setSelectedPass] = useState(null);
 
-  // Filtered List (Enforcing Team-Level Security Isolation & Date Navigation)
+  // Filtered List (Enforcing Role-Based & Team-Level Security Isolation & Date Navigation)
   const filteredList = checklistList.filter(item => {
-    // 1. Team-Level Security Isolation Rule
-    const isAdmin = currentUser?.role === '관리자' || currentUser?.role === '개발자' || currentUser?.username === 'admin';
-    if (!isAdmin) {
-      const userTeam = (currentUser?.team || currentUser?.department || '').trim();
-      if (userTeam) {
-        const itemTeam = (item.team || item.department || '').trim();
-        const matchesMainTeam = itemTeam.includes(userTeam) || userTeam.includes(itemTeam);
-        const matchesCompanionTeam = item.companions?.some(c => {
-          const cTeam = (c.team || c.department || '').trim();
-          return cTeam.includes(userTeam) || userTeam.includes(cTeam);
-        });
-        if (!matchesMainTeam && !matchesCompanionTeam) {
+    // 1. Role-Based Access Control & Security Isolation Rule
+    // - 개발자 (Developer): 전체 서약 내역 조회 가능
+    // - 관리자 (Admin): 같은 소속(팀/부서/회사) 인원의 서약 내역 전체 조회 가능
+    // - 일반 (General): 본인이 작성했거나 본인이 동행자로 포함된 서약 내역만 조회 가능
+    const isDev = currentUser?.role === '개발자' || currentUser?.username === 'admin';
+    const isManager = currentUser?.role === '관리자';
+
+    if (!isDev) {
+      const userName = (currentUser?.name || '').trim();
+      const userPhone = (currentUser?.phone || '').trim();
+      const userAccount = (currentUser?.username || '').trim();
+      const userTeam = (currentUser?.team || currentUser?.department || currentUser?.division || currentUser?.company || '').trim();
+
+      // Check if current user is primary visitor or companion in this item
+      const isPrimaryVisitor =
+        (userName && item.visitorName === userName) ||
+        (userPhone && item.phone === userPhone) ||
+        (userAccount && item.username === userAccount);
+
+      const isCompanionVisitor = item.companions?.some(c =>
+        (userName && c.visitorName === userName) ||
+        (userPhone && c.phone === userPhone) ||
+        (userAccount && c.username === userAccount)
+      );
+
+      const isSelfPledge = isPrimaryVisitor || isCompanionVisitor;
+
+      if (isManager) {
+        // 관리자 계정: 같은 소속(팀/부서/회사) 인원의 모든 서약 내역 조회
+        if (userTeam) {
+          const itemTeam = (item.team || item.department || item.company || '').trim();
+          const matchesMainTeam = itemTeam.includes(userTeam) || userTeam.includes(itemTeam);
+          const matchesCompanionTeam = item.companions?.some(c => {
+            const cTeam = (c.team || c.department || c.company || '').trim();
+            return cTeam.includes(userTeam) || userTeam.includes(cTeam);
+          });
+          if (!matchesMainTeam && !matchesCompanionTeam && !isSelfPledge) {
+            return false;
+          }
+        } else if (!isSelfPledge) {
+          return false;
+        }
+      } else {
+        // 일반 계정: 본인 서약 내역만 조회 가능
+        if (!isSelfPledge) {
           return false;
         }
       }
@@ -724,57 +839,53 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       : formData.purposeType;
 
     const wasCompanion = formData.isCompanionMode;
-    const userTeam = (formData.team || formData.department)?.trim() || '보안관제팀';
-
-    // If Companion Registration Mode: Append companion info directly to existing pledge item!
+    // If Companion Registration/Pledge Mode: Append or Update companion info directly on target pledge!
     if (wasCompanion && formData.parentPledgeId) {
       const targetPledge = checklistList.find(item => item.id === formData.parentPledgeId);
       if (targetPledge) {
         const inputVisitorName = formData.visitorName.trim();
         const inputPhone = (formData.phone || '').trim();
         const inputUsername = activeUser?.username || '';
+        const compId = formData.companionId;
 
-        // 1) 최초 작성자(대표 등록자) 중복 체크
-        const isPrimaryVisitor =
-          targetPledge.visitorName?.trim() === inputVisitorName ||
-          (inputUsername && targetPledge.username === inputUsername) ||
-          (inputPhone && targetPledge.phone === inputPhone);
+        let updatedCompanions = [...(targetPledge.companions || [])];
 
-        if (isPrimaryVisitor) {
-          if (onTriggerToast) {
-            onTriggerToast(`'${inputVisitorName}'님은 이미 해당 서약서의 최초 작성자(대표 등록자)입니다. 중복 동행 등록할 수 없습니다.`, 'warning');
-          }
-          return;
-        }
-
-        // 2) 이미 등록된 동행인 목록 중복 체크
-        const isAlreadyCompanion = targetPledge.companions?.some(c =>
-          c.visitorName?.trim() === inputVisitorName ||
-          (inputUsername && c.username && c.username === inputUsername) ||
-          (inputPhone && c.phone && c.phone === inputPhone)
+        const existingIndex = updatedCompanions.findIndex(c =>
+          (compId && c.id === compId) ||
+          (c.visitorName?.trim() === inputVisitorName && (c.phone === inputPhone || c.username === inputUsername))
         );
 
-        if (isAlreadyCompanion) {
-          if (onTriggerToast) {
-            onTriggerToast(`'${inputVisitorName}'님은 이미 해당 서약서에 동행자로 등록되어 있습니다. (중복 등록 불가)`, 'warning');
-          }
-          return;
+        if (existingIndex >= 0) {
+          // Update existing companion record to "서약 완료"
+          updatedCompanions[existingIndex] = {
+            ...updatedCompanions[existingIndex],
+            status: '서약 완료',
+            mdmVerified: true,
+            phone: inputPhone || updatedCompanions[existingIndex].phone,
+            username: inputUsername || updatedCompanions[existingIndex].username,
+            pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false })
+          };
+        } else {
+          // Add new companion with "서약 완료"
+          const newCompanion = {
+            id: compId || `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+            visitorName: inputVisitorName,
+            username: inputUsername,
+            team: userTeam,
+            department: userTeam,
+            rank: formData.rank?.trim() || '대리',
+            phone: inputPhone || '010-0000-0000',
+            status: '서약 완료',
+            mdmVerified: true,
+            pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false }),
+            createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
+          };
+          updatedCompanions.push(newCompanion);
         }
-
-        const newCompanion = {
-          id: `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-          visitorName: inputVisitorName,
-          username: inputUsername,
-          team: userTeam,
-          department: userTeam,
-          rank: formData.rank?.trim() || '대리',
-          phone: inputPhone || '010-0000-0000',
-          createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
-        };
 
         const updatedPledge = {
           ...targetPledge,
-          companions: [...(targetPledge.companions || []), newCompanion]
+          companions: updatedCompanions
         };
 
         try {
@@ -962,6 +1073,34 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           <span style={{ fontSize: '14px', fontWeight: '700', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '4px' }}>
             해당 날짜 서약: <strong style={{ color: '#00f2fe', fontSize: '16px', fontWeight: '800' }}>{filteredList.length}건</strong>
           </span>
+          <span style={{
+            fontSize: '11px',
+            fontWeight: '700',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            marginTop: '2px',
+            background: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
+              ? 'rgba(0, 242, 254, 0.15)'
+              : currentUser?.role === '관리자'
+                ? 'rgba(245, 158, 11, 0.15)'
+                : 'rgba(16, 185, 129, 0.15)',
+            color: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
+              ? '#00f2fe'
+              : currentUser?.role === '관리자'
+                ? '#f59e0b'
+                : '#10b981',
+            border: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
+              ? '1px solid rgba(0, 242, 254, 0.3)'
+              : currentUser?.role === '관리자'
+                ? '1px solid rgba(245, 158, 11, 0.3)'
+                : '1px solid rgba(16, 185, 129, 0.3)'
+          }}>
+            {(currentUser?.role === '개발자' || currentUser?.username === 'admin')
+              ? '🌐 전체 서약 목록 (개발자)'
+              : currentUser?.role === '관리자'
+                ? `🏢 소속팀(${currentUser?.team || currentUser?.department || '소속'}) 서약 목록`
+                : `👤 본인(${currentUser?.name || '작성자'}) 서약 목록만 표시`}
+          </span>
         </div>
 
         <button
@@ -1085,7 +1224,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button
                     type="button"
-                    onClick={() => handleOpenCompanionPledgeModal(item)}
+                    onClick={() => handleOpenCompanionRegisterModal(item)}
                     style={{
                       background: 'rgba(0, 242, 254, 0.12)',
                       border: '1px solid rgba(0, 242, 254, 0.35)',
@@ -1135,72 +1274,140 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              {/* Single Line Info Row: 소속팀 | 직급 | 이름 | 연락처 순 (사업부 제외 & 라벨 없이 표출) */}
+              {/* Single Line Info Row: 소속팀 | 직급 | 이름 | 연락처 + 서약 상태 */}
               <div style={{
                 background: 'rgba(255, 255, 255, 0.03)',
                 border: '1px solid rgba(255, 255, 255, 0.06)',
-                padding: '10px 14px',
+                padding: '8px 12px',
                 borderRadius: '10px',
-                fontSize: '13px',
+                fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '8px',
+                gap: '6px',
                 color: '#cbd5e1'
               }}>
-                <span style={{ color: '#00f2fe', fontWeight: '700' }}>
-                  {item.team || (item.department ? (item.department.includes(' ') ? item.department.split(' ').slice(1).join(' ') : item.department) : '') || '소속팀 미지정'}
-                </span>
-                <span style={{ color: '#475569' }}>|</span>
-                <span style={{ color: '#fff', fontWeight: '700' }}>
-                  {item.rank || '대리'}
-                </span>
-                <span style={{ color: '#475569' }}>|</span>
-                <span style={{ color: '#fff', fontWeight: '800' }}>
-                  {item.visitorName}
-                </span>
-                <span style={{ color: '#475569' }}>|</span>
-                <span className="mono-font" style={{ color: '#94a3b8' }}>
-                  {item.phone || '010-0000-0000'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
+                    {item.team || (item.department ? (item.department.includes(' ') ? item.department.split(' ').slice(1).join(' ') : item.department) : '') || '소속팀 미지정'}
+                  </span>
+                  <span style={{ color: '#475569' }}>|</span>
+                  <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
+                    {item.rank || '대리'}
+                  </span>
+                  <span style={{ color: '#475569' }}>|</span>
+                  <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
+                    {item.visitorName}
+                  </span>
+                  <span style={{ color: '#475569' }}>|</span>
+                  <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
+                    {item.phone || '010-0000-0000'}
+                  </span>
+                </div>
+
+                <span style={{
+                  fontSize: '10.5px',
+                  fontWeight: '800',
+                  padding: '2px 7px',
+                  borderRadius: '5px',
+                  background: 'rgba(16, 185, 129, 0.18)',
+                  color: '#10b981',
+                  border: '1px solid rgba(16, 185, 129, 0.4)'
+                }}>
+                  ✓ 서약 완료
                 </span>
               </div>
 
-              {/* Additional Registrations / Companions Rows (Identical formatting to initial applicant) */}
+              {/* Additional Registrations / Companions Rows */}
               {item.companions && item.companions.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {item.companions.map((comp, idx) => (
-                    <div
-                      key={comp.id || idx}
-                      style={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        border: '1px solid rgba(255, 255, 255, 0.06)',
-                        padding: '10px 14px',
-                        borderRadius: '10px',
-                        fontSize: '13px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '8px',
-                        color: '#cbd5e1'
-                      }}
-                    >
-                      <span style={{ color: '#00f2fe', fontWeight: '700' }}>
-                        {comp.team || comp.department || '소속팀 미지정'}
-                      </span>
-                      <span style={{ color: '#475569' }}>|</span>
-                      <span style={{ color: '#fff', fontWeight: '700' }}>
-                        {comp.rank || '대리'}
-                      </span>
-                      <span style={{ color: '#475569' }}>|</span>
-                      <span style={{ color: '#fff', fontWeight: '800' }}>
-                        {comp.visitorName}
-                      </span>
-                      <span style={{ color: '#475569' }}>|</span>
-                      <span className="mono-font" style={{ color: '#94a3b8' }}>
-                        {comp.phone || '010-0000-0000'}
-                      </span>
-                    </div>
-                  ))}
+                  {item.companions.map((comp, idx) => {
+                    const isCompleted = comp.status === '서약 완료';
+                    const userName = (currentUser?.name || '').trim();
+                    const userPhone = (currentUser?.phone || '').trim();
+                    const userAccount = (currentUser?.username || '').trim();
+
+                    const isCurrentCompanion =
+                      (userName && comp.visitorName?.trim() === userName) ||
+                      (userPhone && comp.phone === userPhone) ||
+                      (userAccount && comp.username === userAccount);
+
+                    return (
+                      <div
+                        key={comp.id || idx}
+                        style={{
+                          background: isCurrentCompanion ? 'rgba(0, 242, 254, 0.06)' : 'rgba(255, 255, 255, 0.03)',
+                          border: isCurrentCompanion ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
+                          padding: '8px 12px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '6px',
+                          color: '#cbd5e1'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
+                            {comp.team || comp.department || '소속팀 미지정'}
+                          </span>
+                          <span style={{ color: '#475569' }}>|</span>
+                          <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
+                            {comp.rank || '대리'}
+                          </span>
+                          <span style={{ color: '#475569' }}>|</span>
+                          <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
+                            {comp.visitorName} {isCurrentCompanion ? '(본인)' : ''}
+                          </span>
+                          <span style={{ color: '#475569' }}>|</span>
+                          <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
+                            {comp.phone || '010-0000-0000'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '10.5px',
+                            fontWeight: '800',
+                            padding: '2px 7px',
+                            borderRadius: '5px',
+                            background: isCompleted ? 'rgba(16, 185, 129, 0.18)' : 'rgba(245, 158, 11, 0.18)',
+                            color: isCompleted ? '#10b981' : '#f59e0b',
+                            border: isCompleted ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                          }}>
+                            {isCompleted ? '✓ 서약 완료' : '🟡 서약 대기'}
+                          </span>
+
+                          {isCurrentCompanion && !isCompleted && (
+                            <button
+                              type="button"
+                              onClick={() => handlePerformCompanionPledge(item, comp)}
+                              style={{
+                                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                                color: '#000',
+                                border: 'none',
+                                padding: '4px 10px',
+                                borderRadius: '7px',
+                                fontSize: '10.5px',
+                                fontWeight: '800',
+                                cursor: 'pointer',
+                                boxShadow: '0 2px 8px rgba(0, 242, 254, 0.3)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              ✍️ 동행 서약 하기
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -2320,6 +2527,232 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               </button>
             </div>
 
+      {/* Companion User Multi-Select Suggestion Modal Overlay */}
+      {isCompanionModalOpen && targetPledgeForCompanion && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 300,
+          background: 'rgba(3, 6, 13, 0.85)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            borderRadius: '24px',
+            border: '1px solid rgba(0, 242, 254, 0.4)',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            boxShadow: '0 0 40px rgba(0, 242, 254, 0.2)'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <UserPlus size={22} color="#00f2fe" />
+                <div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>
+                    동행인 서약 등록 (사용자 검색 & 다중 선택)
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    [사업장: {targetPledgeForCompanion.site}] 등록할 동행 인원을 선택해 주세요
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsCompanionModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Search Filter Box */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(0, 242, 254, 0.3)',
+              borderRadius: '12px',
+              padding: '10px 14px'
+            }}>
+              <Search size={16} color="#00f2fe" />
+              <input
+                type="text"
+                placeholder="성명, 소속팀, 직급, 연락처로 사용자 검색..."
+                value={companionSearchTerm}
+                onChange={(e) => setCompanionSearchTerm(e.target.value)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none',
+                  width: '100%'
+                }}
+              />
+              {companionSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setCompanionSearchTerm('')}
+                  style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '12px' }}
+                >
+                  초기화
+                </button>
+              )}
+            </div>
+
+            {/* Select All Toggle Bar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '0 4px' }}>
+              <span style={{ color: '#94a3b8' }}>
+                전체 사용자: <strong style={{ color: '#00f2fe' }}>{allSystemUsers.length}명</strong> (선택됨: <strong style={{ color: '#10b981' }}>{selectedCompanionUsernames.length}명</strong>)
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const filtered = allSystemUsers.filter(u => {
+                    const term = companionSearchTerm.toLowerCase();
+                    return !term ||
+                      (u.name && u.name.toLowerCase().includes(term)) ||
+                      (u.team && u.team.toLowerCase().includes(term)) ||
+                      (u.department && u.department.toLowerCase().includes(term)) ||
+                      (u.rank && u.rank.toLowerCase().includes(term)) ||
+                      (u.phone && u.phone.includes(term));
+                  });
+                  if (selectedCompanionUsernames.length === filtered.length) {
+                    setSelectedCompanionUsernames([]);
+                  } else {
+                    setSelectedCompanionUsernames(filtered.map(u => u.username));
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#00f2fe',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                {selectedCompanionUsernames.length > 0 ? '전체 해제' : '검색결과 전체 선택'}
+              </button>
+            </div>
+
+            {/* Users Suggestion List */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              maxHeight: '340px',
+              overflowY: 'auto',
+              paddingRight: '4px'
+            }}>
+              {allSystemUsers
+                .filter(u => {
+                  const term = companionSearchTerm.toLowerCase();
+                  if (!term) return true;
+                  return (u.name && u.name.toLowerCase().includes(term)) ||
+                    (u.team && u.team.toLowerCase().includes(term)) ||
+                    (u.department && u.department.toLowerCase().includes(term)) ||
+                    (u.rank && u.rank.toLowerCase().includes(term)) ||
+                    (u.phone && u.phone.includes(term));
+                })
+                .map(u => {
+                  const isPrimary = targetPledgeForCompanion.visitorName?.trim() === u.name?.trim() ||
+                    (u.username && targetPledgeForCompanion.username === u.username);
+
+                  const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c =>
+                    c.visitorName?.trim() === u.name?.trim() ||
+                    (u.username && c.username && c.username === u.username)
+                  );
+
+                  const isChecked = selectedCompanionUsernames.includes(u.username);
+                  const isDisabled = isPrimary || isAlreadyCompanion;
+
+                  return (
+                    <div
+                      key={u.username}
+                      onClick={() => {
+                        if (!isDisabled) handleToggleCompanionSelect(u.username);
+                      }}
+                      style={{
+                        background: isChecked ? 'rgba(0, 242, 254, 0.12)' : isDisabled ? 'rgba(255,255,255,0.02)' : 'rgba(255, 255, 255, 0.04)',
+                        border: isChecked ? '1px solid rgba(0, 242, 254, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '12px',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        opacity: isDisabled ? 0.55 : 1,
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked || isDisabled}
+                          disabled={isDisabled}
+                          onChange={() => {}}
+                          style={{ width: '16px', height: '16px', accentColor: '#00f2fe', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {u.name}
+                            <span style={{ fontSize: '11px', color: '#00f2fe', fontWeight: '600' }}>({u.rank || '대리'})</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {u.team || u.department || '소속팀'} | <span className="mono-font">{u.phone || '연락처 미등록'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {isDisabled && (
+                        <span style={{ fontSize: '10px', color: '#f59e0b', fontWeight: '700', background: 'rgba(245, 158, 11, 0.15)', padding: '2px 6px', borderRadius: '4px' }}>
+                          {isPrimary ? '대표 작성자' : '이미 등록됨'}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Modal Bottom Buttons */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setIsCompanionModalOpen(false)}
+                className="glass-button"
+                style={{ flex: 1, padding: '12px', borderRadius: '12px', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAddCompanions}
+                style={{
+                  flex: 2,
+                  padding: '12px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                  color: '#000',
+                  border: 'none',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 15px rgba(0, 242, 254, 0.3)'
+                }}
+              >
+                선택한 {selectedCompanionUsernames.length}명 동행 등록
+              </button>
+            </div>
           </div>
         </div>
       )}
