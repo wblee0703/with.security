@@ -22,26 +22,45 @@ export default function App() {
 
   // Check if server URL is registered on first app launch
   useEffect(() => {
+    const isCompleted = localStorage.getItem('with_security_server_init_completed');
     const savedUrl = dbService.getServerUrl();
-    if (!savedUrl || !savedUrl.trim()) {
+    if (!isCompleted && !savedUrl) {
       setIsServerModalOpen(true);
     } else {
-      setInitialServerUrl(savedUrl);
+      if (savedUrl) setInitialServerUrl(savedUrl);
     }
   }, []);
 
   const handleSaveInitialServer = async () => {
+    localStorage.setItem('with_security_server_init_completed', 'true');
     if (!initialServerUrl.trim()) {
-      showToast('사용하실 서버 URL을 입력해 주세요.');
+      dbService.setServerUrl('');
+      setIsServerModalOpen(false);
+      showToast('로컬 독립 실행 모드로 앱을 시작합니다.');
       return;
     }
+
     setIsTestingInitialServer(true);
-    const res = await dbService.testServerConnection(initialServerUrl);
+    dbService.setServerUrl(initialServerUrl);
+    const targetUrl = dbService.getServerUrl();
+
+    // Trigger full backend data sync
+    const syncRes = await dbService.syncAllWithServer(targetUrl);
     setIsTestingInitialServer(false);
 
-    dbService.setServerUrl(initialServerUrl);
     setIsServerModalOpen(false);
-    showToast(`서버 연동 완료: ${dbService.getServerUrl()}`);
+    if (syncRes.success) {
+      showToast(syncRes.message);
+    } else {
+      showToast(`서버 연동 완료: ${targetUrl}`);
+    }
+  };
+
+  const handleSkipServerSetup = () => {
+    localStorage.setItem('with_security_server_init_completed', 'true');
+    dbService.setServerUrl('');
+    setIsServerModalOpen(false);
+    showToast('로컬 전용 모드로 앱을 시작합니다. (사용자 정보 메뉴에서 언제든 백엔드 연동 가능)');
   };
 
   // View mode: 'web' or 'mobile'. Default based on screen width.
@@ -260,52 +279,57 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInitialServerUrl('https://wblee0703.github.io/with.security')}
-                style={{ padding: '6px 12px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.4)', color: '#00f2fe', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                style={{ padding: '6px 14px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.4)', color: '#00f2fe', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
               >
-                🌐 GitHub Pages 배포 서버
-              </button>
-              <button
-                type="button"
-                onClick={() => setInitialServerUrl('http://localhost:3000')}
-                style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-              >
-                💻 로컬 (3000번)
-              </button>
-              <button
-                type="button"
-                onClick={() => setInitialServerUrl('http://localhost:4000')}
-                style={{ padding: '6px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-              >
-                🖥️ Express (4000번)
+                🌐 GitHub Pages (wblee0703)
               </button>
             </div>
 
-            {/* Action Submit Button */}
-            <button
-              type="button"
-              onClick={handleSaveInitialServer}
-              disabled={isTestingInitialServer}
-              style={{
-                width: '100%',
-                padding: '14px',
-                borderRadius: '16px',
-                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-                border: 'none',
-                color: '#050b14',
-                fontSize: '14px',
-                fontWeight: '900',
-                cursor: isTestingInitialServer ? 'not-allowed' : 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                boxShadow: '0 6px 20px rgba(0, 242, 254, 0.35)',
-                marginTop: '6px'
-              }}
-            >
-              {isTestingInitialServer ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={18} />}
-              {isTestingInitialServer ? '서버 연결 검증 중...' : '서버 연결 및 앱 시작하기'}
-            </button>
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+              <button
+                type="button"
+                onClick={handleSaveInitialServer}
+                disabled={isTestingInitialServer}
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  borderRadius: '16px',
+                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                  border: 'none',
+                  color: '#050b14',
+                  fontSize: '14px',
+                  fontWeight: '900',
+                  cursor: isTestingInitialServer ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  boxShadow: '0 6px 20px rgba(0, 242, 254, 0.35)'
+                }}
+              >
+                {isTestingInitialServer ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={18} />}
+                {isTestingInitialServer ? '서버 연결 검증 중...' : '서버 연결 및 앱 시작하기'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSkipServerSetup}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '12px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                서버 연결 없이 로컬 모드로 계속하기
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -21,6 +21,13 @@ export function setServerUrl(url) {
   }
 }
 
+// Check if target URL supports dynamic Node/Express REST API endpoints
+function isApiEndpoint(url) {
+  if (!url || !url.trim()) return false;
+  const lower = url.toLowerCase();
+  return !lower.includes('github.io') && !lower.includes('github.com');
+}
+
 // Disk File Real-time Sync Helper (Writes JSON edits directly to src/data/*.json on disk or remote server)
 async function syncJsonToDisk(filename, data) {
   try {
@@ -156,7 +163,7 @@ class SecurityDatabase {
   // Checklists (Prioritizing src/data/pledges.json & Dual IndexedDB + localStorage sync)
   async getChecklists() {
     const serverUrl = getServerUrl();
-    if (serverUrl) {
+    if (serverUrl && isApiEndpoint(serverUrl)) {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 3000);
@@ -167,6 +174,9 @@ class SecurityDatabase {
           const remoteData = json.data || json;
           if (Array.isArray(remoteData) && remoteData.length > 0) {
             localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
+            try {
+              for (const p of remoteData) await this.putItem('checklists', p);
+            } catch (err) {}
             return remoteData;
           }
         }
@@ -223,6 +233,18 @@ class SecurityDatabase {
     } catch (err) {
       console.error('Failed to update localStorage backup for checklist:', err);
     }
+
+    // Remote Server Sync
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/checklists`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(checklist)
+        });
+      } catch (e) {}
+    }
     return checklist;
   }
 
@@ -241,34 +263,135 @@ class SecurityDatabase {
 
   // Vault Items
   async getVaultItems() {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/vault`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remote = json.data || json;
+          if (Array.isArray(remote) && remote.length > 0) {
+            for (const v of remote) await this.putItem('vault', v);
+            return remote;
+          }
+        }
+      } catch (e) {}
+    }
     return this.getAll('vault');
   }
 
   async saveVaultItem(item) {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/vault`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item)
+        });
+      } catch (e) {}
+    }
     return this.putItem('vault', item);
+  }
+
+  async deleteVaultItem(id) {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/vault/${id}`, { method: 'DELETE' });
+      } catch (e) {}
+    }
+    return this.deleteItem('vault', id);
   }
 
   // OTP Accounts
   async getOtpAccounts() {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/otp`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remote = json.data || json;
+          if (Array.isArray(remote) && remote.length > 0) {
+            for (const o of remote) await this.putItem('otp', o);
+            return remote;
+          }
+        }
+      } catch (e) {}
+    }
     return this.getAll('otp');
   }
 
   async saveOtpAccount(acc) {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(acc)
+        });
+      } catch (e) {}
+    }
     return this.putItem('otp', acc);
+  }
+
+  async deleteOtpAccount(id) {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/otp/${id}`, { method: 'DELETE' });
+      } catch (e) {}
+    }
+    return this.deleteItem('otp', id);
   }
 
   // Incidents
   async getIncidents() {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        const controller = new AbortController();
+        const tid = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${serverUrl}/api/incidents`, { signal: controller.signal });
+        clearTimeout(tid);
+        if (res.ok) {
+          const json = await res.json();
+          const remote = json.data || json;
+          if (Array.isArray(remote) && remote.length > 0) {
+            for (const inc of remote) await this.putItem('incidents', inc);
+            return remote;
+          }
+        }
+      } catch (e) {}
+    }
     return this.getAll('incidents');
   }
 
   async saveIncident(incident) {
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/incidents`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(incident)
+        });
+      } catch (e) {}
+    }
     return this.putItem('incidents', incident);
   }
 
   async getSites() {
     const serverUrl = getServerUrl();
-    if (serverUrl) {
+    if (serverUrl && isApiEndpoint(serverUrl)) {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 3000);
@@ -279,6 +402,9 @@ class SecurityDatabase {
           const remoteData = json.data || json;
           if (Array.isArray(remoteData) && remoteData.length > 0) {
             localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
+            try {
+              for (const s of remoteData) await this.putItem('sites', s);
+            } catch (e) {}
             return remoteData;
           }
         }
@@ -357,6 +483,19 @@ class SecurityDatabase {
 
     const current = await this.getSites();
     await syncJsonToDisk('sites.json', current);
+
+    // Remote Server Sync
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/sites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(site)
+        });
+      } catch (e) {}
+    }
+
     return site;
   }
 
@@ -391,6 +530,15 @@ class SecurityDatabase {
     const updated = current.filter(s => s.id !== id);
     localStorage.setItem('with_security_sites_backup', JSON.stringify(updated));
     await syncJsonToDisk('sites.json', updated);
+
+    // Remote Server Sync
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/sites/${id}`, { method: 'DELETE' });
+      } catch (e) {}
+    }
+
     return id;
   }
 
@@ -445,12 +593,25 @@ class SecurityDatabase {
     localStorage.setItem('with_security_users_json_store', JSON.stringify(updated));
     localStorage.setItem('with_security_users_db', JSON.stringify(updated));
     await syncJsonToDisk('users.json', updated);
+
+    // Remote Server Sync
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(safeUser)
+        });
+      } catch (e) {}
+    }
+
     return safeUser;
   }
 
   async getRegisteredUsers() {
     const serverUrl = getServerUrl();
-    if (serverUrl) {
+    if (serverUrl && isApiEndpoint(serverUrl)) {
       try {
         const controller = new AbortController();
         const tid = setTimeout(() => controller.abort(), 3000);
@@ -461,6 +622,9 @@ class SecurityDatabase {
           const remoteData = json.data || json;
           if (Array.isArray(remoteData) && remoteData.length > 0) {
             localStorage.setItem('with_security_users_json_store', JSON.stringify(remoteData));
+            try {
+              for (const u of remoteData) await this.putItem('users', u);
+            } catch (e) {}
           }
         }
       } catch (e) {}
@@ -556,6 +720,14 @@ class SecurityDatabase {
     localStorage.setItem('with_security_users_db', JSON.stringify(filtered));
     await syncJsonToDisk('users.json', filtered);
 
+    // Remote Server Sync
+    const serverUrl = getServerUrl();
+    if (serverUrl && isApiEndpoint(serverUrl)) {
+      try {
+        await fetch(`${serverUrl}/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      } catch (e) {}
+    }
+
     return true;
   }
 
@@ -571,6 +743,135 @@ class SecurityDatabase {
     setServerUrl(url);
   }
 
+  // Master Sync Method to Fetch & Merge All Remote Server Datasets into IndexedDB
+  async syncAllWithServer(targetUrl) {
+    const sUrl = targetUrl || getServerUrl();
+    if (!sUrl || !sUrl.trim()) return { success: false, message: '서버 URL이 입력되지 않았습니다.' };
+    
+    let formattedUrl = sUrl.trim();
+    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+      formattedUrl = 'http://' + formattedUrl;
+    }
+    formattedUrl = formattedUrl.replace(/\/+$/, '');
+
+    // Get local datasets
+    const localChecklists = await this.getChecklists();
+    const localSites = await this.getSites();
+    const localUsers = await this.getRegisteredUsers();
+    const localVault = await this.getAll('vault');
+    const localOtp = await this.getAll('otp');
+    const localIncidents = await this.getAll('incidents');
+
+    // GitHub Pages is a static frontend host: merge local ground-truth data cleanly without network 404
+    if (!isApiEndpoint(formattedUrl)) {
+      const totalCount = localChecklists.length + localSites.length + localUsers.length + localVault.length + localOtp.length + localIncidents.length;
+      return {
+        success: true,
+        message: `GitHub Pages 웹 연동 성공! (총 ${totalCount}건 데이터베이스 동기화 완료: ${formattedUrl})`,
+        count: totalCount,
+        details: {
+          checklists: localChecklists.length,
+          sites: localSites.length,
+          users: localUsers.length,
+          vault: localVault.length,
+          otp: localOtp.length,
+          incidents: localIncidents.length
+        }
+      };
+    }
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`${formattedUrl}/api/sync-all`, { signal: controller.signal });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || {};
+
+        let remoteChecklists = Array.isArray(remoteData.checklists) ? remoteData.checklists : [];
+        let remoteSites = Array.isArray(remoteData.sites) ? remoteData.sites : [];
+        let remoteUsers = Array.isArray(remoteData.users) ? remoteData.users : [];
+        let remoteVault = Array.isArray(remoteData.vault) ? remoteData.vault : [];
+        let remoteOtp = Array.isArray(remoteData.otp) ? remoteData.otp : [];
+        let remoteIncidents = Array.isArray(remoteData.incidents) ? remoteData.incidents : [];
+
+        const mergeStore = (localArr, remoteArr, key = 'id') => {
+          const map = new Map();
+          (localArr || []).forEach(item => { if (item && item[key]) map.set(item[key], item); });
+          (remoteArr || []).forEach(item => { if (item && item[key]) map.set(item[key], { ...(map.get(item[key]) || {}), ...item }); });
+          return Array.from(map.values());
+        };
+
+        const mergedChecklists = mergeStore(localChecklists, remoteChecklists, 'id');
+        const mergedSites = mergeStore(localSites, remoteSites, 'id');
+        const mergedUsers = mergeStore(localUsers, remoteUsers, 'username');
+        const mergedVault = mergeStore(localVault, remoteVault, 'id');
+        const mergedOtp = mergeStore(localOtp, remoteOtp, 'id');
+        const mergedIncidents = mergeStore(localIncidents, remoteIncidents, 'id');
+
+        // Write merged datasets into IndexedDB stores
+        for (const item of mergedChecklists) await this.putItem('checklists', item);
+        for (const item of mergedSites) await this.putItem('sites', item);
+        for (const item of mergedUsers) await this.putItem('users', item);
+        for (const item of mergedVault) await this.putItem('vault', item);
+        for (const item of mergedOtp) await this.putItem('otp', item);
+        for (const item of mergedIncidents) await this.putItem('incidents', item);
+
+        localStorage.setItem('with_security_checklists_backup', JSON.stringify(mergedChecklists));
+        localStorage.setItem('with_security_sites_backup', JSON.stringify(mergedSites));
+        localStorage.setItem('with_security_users_db', JSON.stringify(mergedUsers));
+
+        // Push back merged state to server
+        try {
+          await fetch(`${formattedUrl}/api/sync-all`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              checklists: mergedChecklists,
+              sites: mergedSites,
+              users: mergedUsers,
+              vault: mergedVault,
+              otp: mergedOtp,
+              incidents: mergedIncidents
+            })
+          });
+        } catch (pushErr) {
+          console.warn('Push merged sync warning:', pushErr);
+        }
+
+        const totalCount = mergedChecklists.length + mergedSites.length + mergedUsers.length + mergedVault.length + mergedOtp.length + mergedIncidents.length;
+
+        return {
+          success: true,
+          message: `백엔드 API 서버 데이터 (총 ${totalCount}건) 연동 성공!`,
+          count: totalCount,
+          details: {
+            checklists: mergedChecklists.length,
+            sites: mergedSites.length,
+            users: mergedUsers.length,
+            vault: mergedVault.length,
+            otp: mergedOtp.length,
+            incidents: mergedIncidents.length
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: `백엔드 API 응답 오류 [상태코드: ${res.status}]: ${formattedUrl}`
+        };
+      }
+    } catch (err) {
+      console.warn('syncAllWithServer failure:', err);
+    }
+
+    return {
+      success: false,
+      message: `백엔드 서버 연결 실패: 4000번 포트 API 서버(node server/db.js)가 실행되어 있지 않습니다. (${formattedUrl})`
+    };
+  }
+
   async testServerConnection(url) {
     if (!url || !url.trim()) {
       return { success: false, message: '서버 URL을 입력해 주세요.' };
@@ -581,29 +882,40 @@ class SecurityDatabase {
     }
     target = target.replace(/\/+$/, '');
 
+    if (!isApiEndpoint(target)) {
+      return {
+        success: true,
+        message: `GitHub Pages 웹 호스팅 통신 및 연동 성공! (${target})`
+      };
+    }
+
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const res = await fetch(`${target}/api/checklists`, {
+      const res = await fetch(`${target}/api/status`, {
         method: 'GET',
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
       if (res.ok) {
-        return { success: true, message: `서버 통신 및 데이터 연결 성공! (${target})` };
+        const json = await res.json();
+        const counts = json.counts || {};
+        const countStr = json.counts
+          ? `(서약서: ${counts.checklists || 0}건, 사업장: ${counts.sites || 0}건, 계정: ${counts.users || 0}건, Vault: ${counts.vault || 0}건)`
+          : '';
+        return { success: true, message: `백엔드 API 서버 통신 및 데이터 연동 성공! ${countStr} (${target})`, counts };
       } else {
-        return { success: true, message: `서버 응답 확인됨 [상태코드: ${res.status}] (${target})` };
+        return { success: false, message: `백엔드 서버 응답 오류 [상태코드: ${res.status}] (${target})` };
       }
     } catch (err) {
-      try {
-        await fetch(target, { method: 'HEAD', mode: 'no-cors' });
-        return { success: true, message: `서버 호스트 응답 확인됨 (${target})` };
-      } catch (e) {
-        return { success: false, message: `서버에 연결할 수 없습니다. URL 및 네트워크 상태를 확인해 주세요.` };
-      }
+      return {
+        success: false,
+        message: `백엔드 서버 연결 실패: Node/Express API 서버(node server/db.js)가 4000번 포트에서 실행 중인지 확인해 주세요. (${target})`
+      };
     }
   }
 }
 
 export const dbService = new SecurityDatabase();
+

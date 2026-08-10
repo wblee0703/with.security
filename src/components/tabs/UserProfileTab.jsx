@@ -74,16 +74,42 @@ export default function UserProfileTab({ onTriggerToast }) {
     }
   };
 
-  // Save Server URL
+  // Save Server URL & Sync Data
   const handleSaveServerUrl = async () => {
+    if (!serverUrlInput.trim()) {
+      handleResetServerUrl();
+      return;
+    }
+    setIsTestingServer(true);
+    setServerConnectionStatus(null);
     dbService.setServerUrl(serverUrlInput);
     const updated = dbService.getServerUrl();
     setActiveServerUrl(updated);
-    if (onTriggerToast) {
-      if (updated) {
-        onTriggerToast(`호스팅 백엔드 서버 URL이 '${updated}'(으)로 등록되었습니다.`, 'success');
-      } else {
-        onTriggerToast('서버 URL 설정이 초기화되었습니다. (로컬 모드)', 'info');
+
+    // Perform live remote server data sync & merge
+    const syncRes = await dbService.syncAllWithServer(updated);
+    setIsTestingServer(false);
+
+    if (syncRes.success) {
+      setServerConnectionStatus({
+        type: 'success',
+        message: syncRes.message
+      });
+      if (onTriggerToast) {
+        onTriggerToast(syncRes.message, 'success');
+      }
+      const active = await dbService.getUserProfile();
+      if (active) setCurrentUser(active);
+      if (typeof loadUserMgmtList === 'function') {
+        await loadUserMgmtList();
+      }
+    } else {
+      setServerConnectionStatus({
+        type: 'warning',
+        message: syncRes.message || '서버 등록 완료 (로컬 백업 모드 유지)'
+      });
+      if (onTriggerToast) {
+        onTriggerToast(`서버 URL이 등록되었으나 일부 데이터 연동을 완료하지 못했습니다.`, 'warning');
       }
     }
   };
@@ -427,174 +453,6 @@ export default function UserProfileTab({ onTriggerToast }) {
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      {/* Remote Backend Server Configuration Card */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)', background: 'rgba(5, 11, 20, 0.6)', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ fontSize: '15px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Globe size={18} /> 호스팅 백엔드 서버 연동 설정 (Remote Server Config)
-          </div>
-          <span style={{
-            padding: '4px 10px',
-            borderRadius: '20px',
-            fontSize: '11px',
-            fontWeight: '700',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            background: activeServerUrl ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
-            color: activeServerUrl ? '#10b981' : '#94a3b8',
-            border: activeServerUrl ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(148, 163, 184, 0.3)'
-          }}>
-            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: activeServerUrl ? '#10b981' : '#94a3b8' }}></span>
-            {activeServerUrl ? `연동됨 (${activeServerUrl})` : '로컬 독립 실행 모드'}
-          </span>
-        </div>
-
-        <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '14px', lineHeight: '1.5' }}>
-          외부 호스팅 서버(Vercel, ngrok, 독립 서버 등)의 URL을 등록하면 앱 데이터가 해당 백엔드 서버와 실시간으로 연동 및 공유됩니다.
-        </p>
-
-        {/* URL Input */}
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>
-            백엔드 서버 URL (API Base URL)
-          </label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#00f2fe' }} />
-              <input
-                type="text"
-                placeholder="예: http://192.168.0.15:4000 또는 https://your-server.vercel.app"
-                value={serverUrlInput}
-                onChange={(e) => setServerUrlInput(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px 10px 38px',
-                  borderRadius: '12px',
-                  background: '#0a0f1d',
-                  border: '1px solid rgba(0, 242, 254, 0.3)',
-                  color: '#fff',
-                  fontSize: '13px',
-                  outline: 'none'
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Presets */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
-          <button
-            type="button"
-            onClick={() => setServerUrlInput('http://localhost:3000')}
-            style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-          >
-            💻 로컬 3000번
-          </button>
-          <button
-            type="button"
-            onClick={() => setServerUrlInput('http://localhost:4000')}
-            style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-          >
-            🖥️ Express 4000번
-          </button>
-          <button
-            type="button"
-            onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
-            style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.1)', border: '1px solid rgba(0, 242, 254, 0.3)', color: '#00f2fe', fontSize: '11px', cursor: 'pointer' }}
-          >
-            🌐 GitHub Pages
-          </button>
-        </div>
-
-        {/* Connection Test Result Feedback */}
-        {serverConnectionStatus && (
-          <div style={{
-            padding: '10px 14px',
-            borderRadius: '10px',
-            marginBottom: '14px',
-            fontSize: '12px',
-            fontWeight: '600',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: serverConnectionStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
-            color: serverConnectionStatus.type === 'success' ? '#10b981' : '#f43f5e',
-            border: serverConnectionStatus.type === 'success' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(244, 63, 94, 0.3)'
-          }}>
-            {serverConnectionStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-            {serverConnectionStatus.message}
-          </div>
-        )}
-
-        {/* Buttons */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            onClick={handleTestServer}
-            disabled={isTestingServer}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '12px',
-              background: 'rgba(0, 242, 254, 0.15)',
-              border: '1px solid rgba(0, 242, 254, 0.4)',
-              color: '#00f2fe',
-              fontSize: '12px',
-              fontWeight: '700',
-              cursor: isTestingServer ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            {isTestingServer ? <RefreshCw size={14} className="spin" /> : <Link size={14} />}
-            {isTestingServer ? '연결 확인 중...' : '연결 테스트'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSaveServerUrl}
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-              border: 'none',
-              color: '#050b14',
-              fontSize: '12px',
-              fontWeight: '800',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 12px rgba(0, 242, 254, 0.25)'
-            }}
-          >
-            <Save size={14} /> 서버 URL 등록 / 저장
-          </button>
-
-          {activeServerUrl && (
-            <button
-              type="button"
-              onClick={handleResetServerUrl}
-              style={{
-                padding: '10px 14px',
-                borderRadius: '12px',
-                background: 'rgba(244, 63, 94, 0.15)',
-                border: '1px solid rgba(244, 63, 94, 0.4)',
-                color: '#f43f5e',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                marginLeft: 'auto'
-              }}
-            >
-              로컬 모드로 초기화
-            </button>
-          )}
         </div>
       </div>
 
@@ -1464,6 +1322,183 @@ export default function UserProfileTab({ onTriggerToast }) {
         </div>
       )}
 
+      {/* Remote Backend Server Configuration Card (Visible ONLY for Developer Role) */}
+      {currentUser?.role === '개발자' && (
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)', background: 'rgba(5, 11, 20, 0.6)', marginTop: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ fontSize: '15px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Globe size={18} /> 호스팅 백엔드 서버 연동 설정 (개발자 전용)
+            </div>
+            <span style={{
+              padding: '4px 10px',
+              borderRadius: '20px',
+              fontSize: '11px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: activeServerUrl ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)',
+              color: activeServerUrl ? '#10b981' : '#94a3b8',
+              border: activeServerUrl ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(148, 163, 184, 0.3)'
+            }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: activeServerUrl ? '#10b981' : '#94a3b8' }}></span>
+              {activeServerUrl ? `연동됨 (${activeServerUrl})` : '로컬 독립 실행 모드'}
+            </span>
+          </div>
+
+          <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '14px', lineHeight: '1.5' }}>
+            독립 백엔드 API 서버(<strong style={{ color: '#00f2fe' }}>node server/db.js</strong> 실행 주소: <code style={{ color: '#00f2fe' }}>http://localhost:4000</code>) 또는 원격 API 호스팅 주소를 등록하여 데이터를 실시간 연동합니다.
+          </p>
+
+          {/* URL Input */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>
+              백엔드 서버 URL (API Base URL)
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#00f2fe' }} />
+                <input
+                  type="text"
+                  placeholder="예: http://localhost:4000 또는 https://wblee0703.github.io/with.security"
+                  value={serverUrlInput}
+                  onChange={(e) => setServerUrlInput(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px 10px 38px',
+                    borderRadius: '12px',
+                    background: '#0a0f1d',
+                    border: '1px solid rgba(0, 242, 254, 0.3)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Presets */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
+            <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
+            <button
+              type="button"
+              onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
+              style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.4)', color: '#00f2fe', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+            >
+              🌐 GitHub Pages (wblee0703)
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerUrlInput('http://localhost:4000')}
+              style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
+            >
+              🖥️ 로컬 개발 (4000번)
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerUrlInput('http://localhost:3000')}
+              style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
+            >
+              💻 로컬 개발 (3000번)
+            </button>
+            <button
+              type="button"
+              onClick={() => setServerUrlInput('')}
+              style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
+            >
+              🏠 로컬 전용 모드 (기본)
+            </button>
+          </div>
+
+          {/* Connection Test Result Feedback */}
+          {serverConnectionStatus && (
+            <div style={{
+              padding: '10px 14px',
+              borderRadius: '10px',
+              marginBottom: '14px',
+              fontSize: '12px',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: serverConnectionStatus.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)',
+              color: serverConnectionStatus.type === 'success' ? '#10b981' : '#f43f5e',
+              border: serverConnectionStatus.type === 'success' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(244, 63, 94, 0.3)'
+            }}>
+              {serverConnectionStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              {serverConnectionStatus.message}
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleTestServer}
+              disabled={isTestingServer}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '12px',
+                background: 'rgba(0, 242, 254, 0.15)',
+                border: '1px solid rgba(0, 242, 254, 0.4)',
+                color: '#00f2fe',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: isTestingServer ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              {isTestingServer ? <RefreshCw size={14} className="spin" /> : <Link size={14} />}
+              {isTestingServer ? '연결 확인 중...' : '연결 테스트'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveServerUrl}
+              style={{
+                padding: '10px 18px',
+                borderRadius: '12px',
+                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                border: 'none',
+                color: '#050b14',
+                fontSize: '12px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 4px 12px rgba(0, 242, 254, 0.25)'
+              }}
+            >
+              <Save size={14} /> 서버 URL 등록 / 저장
+            </button>
+
+            {activeServerUrl && (
+              <button
+                type="button"
+                onClick={handleResetServerUrl}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: 'rgba(244, 63, 94, 0.15)',
+                  border: '1px solid rgba(244, 63, 94, 0.4)',
+                  color: '#f43f5e',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  marginLeft: 'auto'
+                }}
+              >
+                로컬 모드로 초기화
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Account Management Modal */}
       {isAccountMgmtModalOpen && (
         <div style={{
@@ -1582,7 +1617,7 @@ export default function UserProfileTab({ onTriggerToast }) {
                         borderRadius: '12px',
                         background: u.role === '개발자' ? 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)' :
                           u.role === '관리자' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' :
-                          'rgba(255, 255, 255, 0.1)',
+                            'rgba(255, 255, 255, 0.1)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',

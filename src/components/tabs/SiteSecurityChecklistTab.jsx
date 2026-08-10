@@ -28,7 +28,7 @@ import {
   Award,
   Settings
 } from 'lucide-react';
-import SignatureCanvas from '../common/SignatureCanvas';
+
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 
@@ -79,7 +79,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         const userTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
         setFormData(prev => ({
           ...prev,
-          site: siteList.length > 0 ? siteList[0].name : prev.site,
+          site: '',
           visitorName: activeUser ? activeUser.name : prev.visitorName,
           phone: activeUser ? activeUser.phone : prev.phone,
           team: userTeam || prev.team,
@@ -102,6 +102,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       setIsLoginModalOpen(true);
       return;
     }
+    resetAppVerificationState();
     const userTeam = active ? (active.team || active.department || '') : '';
     setFormData(prev => ({
       ...prev,
@@ -217,6 +218,20 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
   // Mobile Security App Detection Helper (Samsung MDM vs SK Hynix SSM vs General)
   const getTargetSecurityAppInfo = (siteName = '') => {
+    if (!siteName || !siteName.trim()) {
+      return {
+        appName: '출입 대상 사업장 미선택',
+        appCode: 'NO_SITE_SELECTED',
+        shortName: '사업장 미선택',
+        packageName: 'none',
+        scheme: '',
+        tokenPrefix: 'NONE-',
+        company: '사업장 미선택',
+        color: '#ef4444',
+        badgeBg: 'rgba(239, 68, 68, 0.15)',
+        desc: '⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.'
+      };
+    }
     if (siteName.includes('삼성')) {
       return {
         appName: '삼성 보안 어플 (MDM)',
@@ -228,6 +243,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         company: '삼성전자',
         color: '#00f2fe',
         badgeBg: 'rgba(0, 242, 254, 0.15)',
+        desc: '삼성전자 사업장 출입 전용 모바일 보안 어플 가동 필수'
       };
     } else if (siteName.includes('SK') || siteName.includes('하이닉스')) {
       return {
@@ -240,6 +256,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         company: 'SK하이닉스',
         color: '#a78bfa',
         badgeBg: 'rgba(139, 92, 246, 0.15)',
+        desc: 'SK하이닉스 사업장 출입 전용 모바일 보안 어플 가동 필수'
       };
     } else {
       return {
@@ -257,72 +274,206 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     }
   };
 
+  // Mobile Device Detector Helper
+  const isMobileDevice = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
   // App Scan & Verification State
   const [appScanState, setAppScanState] = useState({
     isScanning: false,
-    status: 'VERIFIED', // 'VERIFIED' | 'NOT_RUNNING'
-    lastScannedAt: new Date().toLocaleTimeString(),
+    status: 'NOT_INSTALLED', // 'VERIFIED' | 'NOT_RUNNING' | 'NOT_INSTALLED' | 'CAMERA_UNLOCKED'
+    lastScannedAt: null,
     scanLog: []
   });
 
-  const handleScanSecurityApp = () => {
+  // App Installation Check Verified State
+  const [appCheckState, setAppCheckState] = useState({
+    isChecking: false,
+    isVerified: false
+  });
+
+  // Camera Restriction Live Test State
+  const [cameraCheckState, setCameraCheckState] = useState({
+    isTesting: false,
+    isVerified: false,
+    result: null, // 'LOCKED' | 'UNLOCKED'
+    message: ''
+  });
+
+  // Reset Security App & Camera Verification States (Mandatory Re-verification on modal open/close)
+  const resetAppVerificationState = () => {
+    setAppCheckState({ isChecking: false, isVerified: false });
+    setCameraCheckState({ isTesting: false, isVerified: false, result: null, message: '' });
+    setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
+    setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+  };
+
+  // Close Security Pledge Modal & Force Security App Re-verification
+  const handleCloseModal = () => {
+    resetAppVerificationState();
+    setIsModalOpen(false);
+  };
+
+  // 1) Real Security App Scheme & Installation Detection (Button 1)
+  const handleCheckAppInstallation = () => {
+    if (!formData.site || !formData.site.trim()) {
+      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
+      setActiveStep(1);
+      return;
+    }
     const targetApp = getTargetSecurityAppInfo(formData.site);
-    setAppScanState({
-      isScanning: true,
-      status: 'UNCHECKED',
-      lastScannedAt: null,
-      scanLog: [
-        `[1/2] 단말기 디바이스 프로세스 스캔 중...`,
-        `[2/2] 패키지 '${targetApp.packageName}' 감지 중...`
-      ]
-    });
+
+    setAppCheckState({ isChecking: true, isVerified: false });
+    setAppScanState(prev => ({ ...prev, isScanning: true, status: 'CHECKING' }));
+
+    let appOpened = false;
+    const handleBlur = () => {
+      appOpened = true;
+    };
+    window.addEventListener('blur', handleBlur);
+
+    // Deep link iframe trigger
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = targetApp.scheme;
+    document.body.appendChild(iframe);
 
     setTimeout(() => {
-      setFormData(prev => ({
-        ...prev,
-        mdmVerified: true,
-        cameraLocked: true,
-        audioLocked: true,
-        tetheringDisabled: true
-      }));
-      setAppScanState({
-        isScanning: false,
-        status: 'VERIFIED',
-        lastScannedAt: new Date().toLocaleTimeString(),
-        scanLog: [
-          `[✓ 완료] '${targetApp.appName}' 백그라운드 서비스 실행 확인 완료`,
-          `[✓ 완료] 단말기 보안 기능(카메라/마이크/테더링 차단) 적용됨`
-        ]
-      });
-      if (onTriggerToast) {
-        onTriggerToast(`'${targetApp.shortName}' 어플 실행 상태 확인 완료!`, 'success');
+      if (document.body.contains(iframe)) {
+        document.body.removeChild(iframe);
+      }
+      window.removeEventListener('blur', handleBlur);
+
+      // STRICT CHECK: Did the browser lose focus to native MDM/SSM app?
+      if (appOpened || document.hidden) {
+        // App is installed and responded to URL Scheme!
+        setAppCheckState({ isChecking: false, isVerified: true });
+        if (cameraCheckState.isVerified) {
+          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+          if (onTriggerToast) onTriggerToast(`✓ ${targetApp.appName} 실행 확인 및 카메라 차단 검수가 모두 완료되었습니다!`, 'success');
+        } else {
+          setFormData(prev => ({ ...prev, mdmVerified: false }));
+          setAppScanState({ isScanning: false, status: 'CAMERA_CHECK_NEEDED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+          if (onTriggerToast) onTriggerToast(`✓ '${targetApp.shortName}' 설치/실행 확인 완료! 하단 [카메라 사용제한 검증] 버튼을 눌러 카메라 검증을 진행해 주세요.`, 'info');
+        }
+      } else {
+        // App is NOT INSTALLED or scheme failed! STRICT FAIL!
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setFormData(prev => ({ ...prev, mdmVerified: false }));
+        setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+        if (onTriggerToast) {
+          onTriggerToast(`❌ [검증 실패] 핸드폰에 '${targetApp.appName}' 보안 어플이 설치되어 있지 않거나 반응하지 않습니다.`, 'warning');
+        }
       }
     }, 1200);
   };
 
-  const handleOpenSecurityApp = () => {
+  // 2) Real Hardware Camera Stream Test (Button 2)
+  const handleVerifyCameraLock = async () => {
+    if (!formData.site || !formData.site.trim()) {
+      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
+      setActiveStep(1);
+      return;
+    }
     const targetApp = getTargetSecurityAppInfo(formData.site);
 
-    // Deep Link / Scheme execution
-    try {
-      window.location.href = targetApp.scheme;
-    } catch (err) {
-      console.warn('App scheme launch attempt:', err);
+    // Sequence Check: App Installation & Execution MUST be verified FIRST!
+    if (!appCheckState.isVerified) {
+      if (onTriggerToast) {
+        onTriggerToast(`[순서 확인] 상단 [보안 어플 설치/실행 확인] 검수를 먼저 진행해 주십시오.`, 'warning');
+      }
+      return;
     }
 
-    setFormData(prev => ({ ...prev, mdmVerified: true }));
-    setAppScanState({
-      isScanning: false,
-      status: 'VERIFIED',
-      lastScannedAt: new Date().toLocaleTimeString(),
-      scanLog: [
-        `[📱 어플 이동] '${targetApp.shortName}' 호출 중 (${targetApp.scheme})...`,
-        `[✓ 완료] 어플 세션 및 백그라운드 활성화 확인`
-      ]
-    });
+    setCameraCheckState(prev => ({ ...prev, isTesting: true, message: '' }));
+    setAppScanState(prev => ({ ...prev, isScanning: true }));
 
-    if (onTriggerToast) {
-      onTriggerToast(`'${targetApp.shortName}' 어플로 이동을 시도하며 실행 상태가 확인되었습니다.`, 'success');
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('NOT_SUPPORTED');
+      }
+
+      // ACTUALLY ATTEMPT TO EXECUTE / OPEN CAMERA STREAM
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+      // IF CAMERA STREAMS OPENS -> CAMERA IS WORKING & NOT BLOCKED BY MDM POLICY!
+      stream.getTracks().forEach(track => track.stop());
+
+      // STRICT FAIL! Camera restriction is NOT active!
+      setCameraCheckState({
+        isTesting: false,
+        isVerified: false,
+        result: 'UNLOCKED',
+        message: ''
+      });
+
+      setFormData(prev => ({ ...prev, mdmVerified: false }));
+      setAppScanState({
+        isScanning: false,
+        status: 'CAMERA_UNLOCKED',
+        lastScannedAt: null,
+        scanLog: []
+      });
+
+      if (onTriggerToast) {
+        onTriggerToast('❌ [검증 실패] 카메라가 정상 작동 중입니다! 보안 어플(MDM)에서 카메라 사용 제한(잠금)을 실행해 주세요.', 'warning');
+      }
+    } catch (err) {
+      // IF CAMERA HARDWARE ACCESS IS DENIED/BLOCKED BY KNOX/MDM POLICY (NotAllowedError / SecurityError / NotReadableError)
+      if (err.name === 'NotAllowedError' || err.name === 'SecurityError' || err.name === 'NotReadableError') {
+        // STRICT SUCCESS! Hardware camera access was blocked by MDM policy!
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: true,
+          result: 'LOCKED',
+          message: ''
+        });
+
+        if (appCheckState.isVerified) {
+          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+          if (onTriggerToast) onTriggerToast('✓ 카메라 차단 확인 완료! 모바일 보안 어플 검수가 완료되었습니다.', 'success');
+        } else {
+          if (onTriggerToast) onTriggerToast('✓ 카메라 차단 확인 완료! 상단 [보안 어플 설치/실행 확인] 버튼도 확인해 주세요.', 'info');
+        }
+      } else {
+        // PC Browser environment or no camera device error -> STRICT FAIL!
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: false,
+          result: 'UNLOCKED',
+          message: ''
+        });
+        setFormData(prev => ({ ...prev, mdmVerified: false }));
+        setAppScanState({ isScanning: false, status: 'CAMERA_UNLOCKED', lastScannedAt: null, scanLog: [] });
+
+        if (onTriggerToast) {
+          onTriggerToast('⚠️ [검증 실패] 모바일 단말기 차단 정책이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.', 'warning');
+        }
+      }
+    }
+  };
+
+  // Helper for manual simulation state switch (For Dev/Demo testing on PC)
+  const handleSetSimulatedStatus = (statusType) => {
+    const targetApp = getTargetSecurityAppInfo(formData.site);
+    if (statusType === 'NOT_INSTALLED') {
+      setAppCheckState({ isChecking: false, isVerified: false });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+      setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
+    } else if (statusType === 'CAMERA_UNLOCKED' || statusType === 'CAMERA_CHECK_NEEDED') {
+      setAppCheckState({ isChecking: false, isVerified: true });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+      setAppScanState({ isScanning: false, status: 'CAMERA_CHECK_NEEDED', lastScannedAt: null, scanLog: [] });
+    } else if (statusType === 'VERIFIED') {
+      setAppCheckState({ isChecking: false, isVerified: true });
+      setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '' });
+      setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+      setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: null, scanLog: [] });
     }
   };
 
@@ -414,6 +565,11 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
 
+  // Step Navigation Handler (Allows free step navigation)
+  const handleStepHeaderClick = (targetStep) => {
+    setActiveStep(targetStep);
+  };
+
   // Form State for New Entry Pass
   const [formData, setFormData] = useState({
     site: '',
@@ -427,7 +583,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     customPurpose: '',
     purpose: '작업',
     visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
-    mdmVerified: true,
+    mdmVerified: false,
     docChecklist: {
       gateApproved: false,
       docSecVerified: false,
@@ -435,7 +591,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     },
     materials: [],
     agreedToTerms: false,
-    signatureDataUrl: '',
     isCompanionMode: false,
     parentPledgeId: null
   });
@@ -494,7 +649,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       customPurpose: '',
       purpose: targetItem.purpose || '작업',
       visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
-      mdmVerified: true,
+      mdmVerified: false,
       docChecklist: {
         gateApproved: false,
         docSecVerified: false,
@@ -502,7 +657,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       },
       materials: [],
       agreedToTerms: false,
-      signatureDataUrl: '',
       isCompanionMode: true,
       parentPledgeId: targetItem.id
     });
@@ -595,17 +749,42 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     if (e && e.preventDefault) e.preventDefault();
 
     const activeUser = await dbService.getUserProfile();
+    const targetApp = getTargetSecurityAppInfo(formData.site);
 
+    // 1) Step 1 Validation: Site Selection & Visitor Name
+    if (!formData.site || !formData.site.trim()) {
+      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 선택해 주세요.', 'warning');
+      setActiveStep(1);
+      return;
+    }
     if (!formData.visitorName || !formData.visitorName.trim()) {
-      if (onTriggerToast) onTriggerToast('방문자 성명을 입력해 주세요.', 'warning');
+      if (onTriggerToast) onTriggerToast('1단계: 방문자 성명을 입력해 주세요.', 'warning');
+      setActiveStep(1);
       return;
     }
+
+    // 2) Step 2 Validation: Security App & Camera Lock Verification
+    if (!formData.mdmVerified && appScanState.status !== 'VERIFIED') {
+      if (onTriggerToast) {
+        onTriggerToast(`[승인 제출 거부] 2단계 모바일 보안 어플('${targetApp.shortName}') 가동 및 카메라 사용제한 검수가 완료되지 않았습니다. 2단계로 이동하여 검증해 주세요.`, 'warning');
+      }
+      setActiveStep(2);
+      return;
+    }
+
+    // 3) Step 3 Validation: Material & Document Security Checklist
+    const docCheck = formData.docChecklist || {};
+    if (!docCheck.gateApproved || !docCheck.docSecVerified || !docCheck.preCheckVerified) {
+      if (onTriggerToast) {
+        onTriggerToast('[승인 제출 거부] 3단계 자재&문서 확인 체크리스트 3개 항목을 모두 확인해 주세요.', 'warning');
+      }
+      setActiveStep(3);
+      return;
+    }
+
+    // 4) Step 4 Validation: Terms Agreement
     if (!formData.agreedToTerms) {
-      if (onTriggerToast) onTriggerToast('보안 준수 서약서에 동의하여 주십시오.', 'warning');
-      return;
-    }
-    if (!formData.signatureDataUrl) {
-      if (onTriggerToast) onTriggerToast('전자 서명을 작성해 주십시오.', 'warning');
+      if (onTriggerToast) onTriggerToast('4단계: 보안 준수 서약 동의 항목에 체크해 주십시오.', 'warning');
       return;
     }
 
@@ -659,7 +838,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           department: userTeam,
           rank: formData.rank?.trim() || '대리',
           phone: inputPhone || '010-0000-0000',
-          signature: formData.signatureDataUrl,
           createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
         };
 
@@ -675,13 +853,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         }
 
         setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
-        setIsModalOpen(false);
+        handleCloseModal();
         setActiveStep(1);
 
         // Reset Form
         const activeTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
         setFormData({
-          site: sites.length > 0 ? sites[0].name : '',
+          site: '',
           visitorName: activeUser ? activeUser.name : '',
           team: activeTeam,
           department: activeTeam,
@@ -693,7 +871,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           customPurpose: '',
           purpose: '작업',
           visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
-          mdmVerified: true,
+          mdmVerified: false,
           docChecklist: {
             gateApproved: false,
             docSecVerified: false,
@@ -701,7 +879,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           },
           materials: [],
           agreedToTerms: false,
-          signatureDataUrl: '',
           isCompanionMode: false,
           parentPledgeId: null
         });
@@ -728,7 +905,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       mdmVerified: formData.mdmVerified,
       docChecklist: formData.docChecklist || { gateApproved: false, docSecVerified: false, preCheckVerified: false },
       materials: [],
-      signature: formData.signatureDataUrl,
       status: '승인완료',
       companions: [],
       createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
@@ -741,13 +917,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     }
 
     setChecklistList([newPass, ...checklistList]);
-    setIsModalOpen(false);
+    handleCloseModal();
     setActiveStep(1);
 
     // Reset Form
     const activeTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
     setFormData({
-      site: sites.length > 0 ? sites[0].name : '',
+      site: '',
       visitorName: activeUser ? activeUser.name : '',
       team: activeTeam,
       department: activeTeam,
@@ -759,7 +935,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       customPurpose: '',
       purpose: '작업',
       visitDate: `${new Date().toISOString().split('T')[0]} ~ ${new Date().toISOString().split('T')[0]}`,
-      mdmVerified: true,
+      mdmVerified: false,
       docChecklist: {
         gateApproved: false,
         docSecVerified: false,
@@ -767,7 +943,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       },
       materials: [],
       agreedToTerms: false,
-      signatureDataUrl: '',
       isCompanionMode: false,
       parentPledgeId: null
     });
@@ -976,27 +1151,57 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenCompanionPledgeModal(item)}
-                  style={{
-                    background: 'rgba(0, 242, 254, 0.12)',
-                    border: '1px solid rgba(0, 242, 254, 0.35)',
-                    color: '#00f2fe',
-                    padding: '5px 12px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <UserPlus size={13} /> 동행 등록
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenCompanionPledgeModal(item)}
+                    style={{
+                      background: 'rgba(0, 242, 254, 0.12)',
+                      border: '1px solid rgba(0, 242, 254, 0.35)',
+                      color: '#00f2fe',
+                      padding: '5px 12px',
+                      borderRadius: '10px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <UserPlus size={13} /> 동행 등록
+                  </button>
+
+                  {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`'${item.visitorName}'님의 [${item.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
+                          handleDeletePledge(item.id, item.site);
+                        }
+                      }}
+                      title="개발자 전용: 서약 내역 삭제"
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.35)',
+                        color: '#ef4444',
+                        padding: '5px 10px',
+                        borderRadius: '10px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Trash2 size={13} /> 삭제
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Single Line Info Row: 소속팀 | 직급 | 이름 | 연락처 순 (사업부 제외 & 라벨 없이 표출) */}
@@ -1080,18 +1285,18 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     background: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                       ? 'rgba(245, 158, 11, 0.22)'
                       : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                      ? 'rgba(0, 242, 254, 0.22)'
-                      : 'rgba(139, 92, 246, 0.22)',
+                        ? 'rgba(0, 242, 254, 0.22)'
+                        : 'rgba(139, 92, 246, 0.22)',
                     color: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                       ? '#f59e0b'
                       : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                      ? '#00f2fe'
-                      : '#a78bfa',
+                        ? '#00f2fe'
+                        : '#a78bfa',
                     border: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                       ? '1px solid rgba(245, 158, 11, 0.55)'
                       : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                      ? '1px solid rgba(0, 242, 254, 0.55)'
-                      : '1px solid rgba(139, 92, 246, 0.55)',
+                        ? '1px solid rgba(0, 242, 254, 0.55)'
+                        : '1px solid rgba(139, 92, 246, 0.55)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
                   }}>
                     📌 {item.purpose || '작업'}
@@ -1151,7 +1356,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               </div>
 
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={handleCloseModal}
                 style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
               >
                 <X size={20} />
@@ -1175,7 +1380,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               ].map(s => (
                 <div
                   key={s.step}
-                  onClick={() => setActiveStep(s.step)}
+                  onClick={() => handleStepHeaderClick(s.step)}
                   style={{
                     padding: '8px 4px',
                     textAlign: 'center',
@@ -1245,6 +1450,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                         cursor: formData.isCompanionMode ? 'not-allowed' : 'pointer'
                       }}
                     >
+                      <option value="" disabled hidden={formData.isCompanionMode}>-- 출입 사업장을 선택해 주세요 --</option>
                       {sites.map((s) => (
                         <option key={s.id} value={s.name}>
                           [{s.category}] {s.name}
@@ -1464,6 +1670,40 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     </div>
 
                     {/* Target Security App Card */}
+                    {!formData.site && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        padding: '12px 16px',
+                        borderRadius: '12px',
+                        color: '#fca5a5',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '10px'
+                      }}>
+                        <span>⚠️ 출입 대상 사업장이 선택되지 않았습니다! 1단계에서 사업장을 먼저 선택해 주세요.</span>
+                        <button
+                          type="button"
+                          onClick={() => setActiveStep(1)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            background: '#ef4444',
+                            color: '#fff',
+                            border: 'none',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          1단계로 이동
+                        </button>
+                      </div>
+                    )}
+
                     <div style={{
                       background: 'rgba(10, 15, 29, 0.8)',
                       border: `1px solid ${targetApp.color}35`,
@@ -1496,27 +1736,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             </div>
                           </div>
                         </div>
-
-                        {appScanState.status === 'VERIFIED' && formData.mdmVerified ? (
-                          <span className="badge-secure" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}>
-                            <CheckCircle2 size={13} /> 어플 실행 확인됨
-                          </span>
-                        ) : (
-                          <span style={{
-                            padding: '4px 10px',
-                            borderRadius: '8px',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            color: '#ef4444',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            <AlertTriangle size={13} /> 어플 미실행
-                          </span>
-                        )}
                       </div>
 
                       {/* Real-time Scan Action Banner */}
@@ -1530,99 +1749,177 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            어플 동작 상태: <strong style={{ color: appScanState.status === 'VERIFIED' ? '#10b981' : '#ef4444' }}>{appScanState.status === 'VERIFIED' ? '정상 실행 중' : '미실행'}</strong>
+                            어플 및 보안 상태: <strong style={{
+                              color: appScanState.status === 'VERIFIED'
+                                ? '#10b981'
+                                : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
+                                  ? '#ef4444'
+                                  : '#f59e0b'
+                            }}>
+                              {appScanState.status === 'VERIFIED'
+                                ? '✓ 정상 실행 및 카메라 사용제한 활성화됨'
+                                : appScanState.status === 'NOT_INSTALLED'
+                                  ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
+                                  : appScanState.status === 'CAMERA_UNLOCKED'
+                                    ? '❌ 카메라 사용 제한 검증 실패'
+                                    : appScanState.status === 'CAMERA_CHECK_NEEDED'
+                                      ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
+                                      : '검수 대기 중'}
+                            </strong>
                           </div>
 
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '4px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
                             <button
                               type="button"
-                              onClick={handleOpenSecurityApp}
+                              onClick={handleCheckAppInstallation}
+                              disabled={appScanState.isScanning || appCheckState.isChecking}
                               style={{
-                                padding: '10px 14px',
+                                width: '100%',
+                                padding: '12px 14px',
                                 borderRadius: '10px',
                                 fontSize: '12px',
                                 fontWeight: '700',
-                                background: `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
-                                color: '#000',
-                                border: 'none',
+                                background: appCheckState.isVerified
+                                  ? 'rgba(16, 185, 129, 0.2)'
+                                  : `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
+                                color: appCheckState.isVerified ? '#10b981' : '#000',
+                                border: appCheckState.isVerified
+                                  ? '1px solid rgba(16, 185, 129, 0.5)'
+                                  : 'none',
+                                boxShadow: appCheckState.isVerified
+                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
+                                  : '0 4px 12px rgba(0, 242, 254, 0.25)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 gap: '6px',
-                                boxShadow: '0 4px 12px rgba(0, 242, 254, 0.25)'
+                                transition: 'all 0.25s ease'
                               }}
                             >
-                              <ExternalLink size={14} /> {targetApp.shortName} 열기 / 이동
+                              {appCheckState.isVerified ? (
+                                <><CheckCircle2 size={15} color="#10b981" /> ✓ 보안 어플 설치/실행 검수 완료</>
+                              ) : (
+                                <><Smartphone size={14} /> 보안 어플 설치/실행 확인</>
+                              )}
                             </button>
 
                             <button
                               type="button"
-                              onClick={handleScanSecurityApp}
-                              disabled={appScanState.isScanning}
-                              className="glass-button"
+                              onClick={handleVerifyCameraLock}
+                              disabled={cameraCheckState.isTesting}
                               style={{
-                                padding: '10px 14px',
+                                width: '100%',
+                                padding: '12px 14px',
                                 borderRadius: '10px',
                                 fontSize: '12px',
                                 fontWeight: '700',
-                                color: '#00f2fe',
-                                cursor: appScanState.isScanning ? 'not-allowed' : 'pointer',
+                                background: cameraCheckState.isVerified
+                                  ? 'rgba(16, 185, 129, 0.2)'
+                                  : 'rgba(0, 242, 254, 0.12)',
+                                color: cameraCheckState.isVerified ? '#10b981' : '#00f2fe',
+                                border: cameraCheckState.isVerified
+                                  ? '1px solid rgba(16, 185, 129, 0.5)'
+                                  : '1px solid rgba(0, 242, 254, 0.35)',
+                                boxShadow: cameraCheckState.isVerified
+                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
+                                  : 'none',
+                                cursor: cameraCheckState.isTesting ? 'wait' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '6px'
+                                gap: '6px',
+                                transition: 'all 0.25s ease'
                               }}
                             >
-                              {appScanState.isScanning ? (
-                                <>🔍 확인 중...</>
+                              {cameraCheckState.isTesting ? (
+                                <>📷 카메라 어플 실행 및 차단 상태 테스트 중...</>
+                              ) : cameraCheckState.isVerified ? (
+                                <><CheckCircle2 size={15} color="#10b981" /> ✓ 카메라 사용제한 검수 완료 (하드웨어 차단 확인됨)</>
                               ) : (
-                                <>🔍 실행 상태 재확인</>
+                                <><Camera size={14} /> 카메라 사용제한 검증</>
                               )}
                             </button>
                           </div>
                         </div>
+                      </div>
 
-                        {/* App Scan Live Logs */}
-                        {appScanState.scanLog.length > 0 && (
-                          <div style={{
-                            background: '#050811',
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            fontFamily: 'monospace',
-                            fontSize: '10px',
-                            color: '#00f2fe',
-                            border: '1px solid rgba(0, 242, 254, 0.2)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px'
-                          }}>
-                            {appScanState.scanLog.map((log, i) => (
-                              <div key={i}>{log}</div>
-                            ))}
+                      {/* Manual Simulation Controls (Visible ONLY for Developer / admin account) */}
+                      {(currentUser?.role === '개발자' || currentUser?.username === 'admin') && (
+                        <div style={{
+                          background: 'rgba(15, 23, 42, 0.85)',
+                          border: '1px dashed rgba(0, 242, 254, 0.4)',
+                          borderRadius: '12px',
+                          padding: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            🧪 [개발자 전용] 보안 상태 테스트 수동 전환
                           </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Warning Box if App NOT Running */}
-                    {appScanState.status === 'NOT_RUNNING' && (
-                      <div style={{
-                        background: 'rgba(239, 68, 68, 0.1)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px'
-                      }}>
-                        <AlertTriangle size={20} color="#ef4444" />
-                        <div style={{ fontSize: '12px', color: '#fca5a5' }}>
-                          <strong>[경고] 필수 보안 어플이 실행되어 있지 않습니다!</strong><br />
-                          {targetApp.company} 사업장에 출입하려면 핸드폰에서 <strong>{targetApp.appName}</strong>을 미리 실행한 후 다시 [실행 여부 확인] 버튼을 눌러주세요.
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSetSimulatedStatus('NOT_INSTALLED')}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textAlign: 'left',
+                                background: 'rgba(239, 68, 68, 0.15)',
+                                color: '#ef4444',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              🔴 1. 어플 미설치 상태로 설정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetSimulatedStatus('CAMERA_UNLOCKED')}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textAlign: 'left',
+                                background: 'rgba(245, 158, 11, 0.15)',
+                                color: '#f59e0b',
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              🟡 2. 어플 설치 완료 (카메라 사용제한 검증 필요 상태로 설정)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetSimulatedStatus('VERIFIED')}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textAlign: 'left',
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                color: '#10b981',
+                                border: '1px solid rgba(16, 185, 129, 0.3)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              🟢 3. 보안 어플 정상 가동 완료 상태로 설정
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                       <button
@@ -1804,13 +2101,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (!docChecklist.gateApproved || !docChecklist.docSecVerified || !docChecklist.preCheckVerified) {
-                            if (onTriggerToast) onTriggerToast('자재&문서 확인 체크리스트 3개 항목을 모두 확인해 주세요.', 'warning');
-                            return;
-                          }
-                          setActiveStep(4);
-                        }}
+                        onClick={() => setActiveStep(4)}
                         className="glass-button-primary"
                         style={{ padding: '12px', borderRadius: '12px', flex: 2, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
                       >
@@ -1885,11 +2176,50 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     )}
                   </div>
 
-                  {/* Digital Signature Canvas */}
-                  <SignatureCanvas
-                    onSave={(dataUrl) => setFormData({ ...formData, signatureDataUrl: dataUrl })}
-                    onClear={() => setFormData({ ...formData, signatureDataUrl: '' })}
-                  />
+                  {/* Submission Readiness Checklist Banner */}
+                  {(() => {
+                    const isSiteValid = !!formData.site?.trim();
+                    const isNameValid = !!formData.visitorName?.trim();
+                    const isStep1Valid = isSiteValid && isNameValid;
+                    const isMdmValid = !!formData.mdmVerified || appScanState.status === 'VERIFIED';
+                    const isDocValid = !!formData.docChecklist?.gateApproved && !!formData.docChecklist?.docSecVerified && !!formData.docChecklist?.preCheckVerified;
+                    const isTermsValid = !!formData.agreedToTerms;
+                    const isReadyToSubmit = isStep1Valid && isMdmValid && isDocValid && isTermsValid;
+
+                    return (
+                      <div style={{
+                        background: 'rgba(10, 15, 29, 0.9)',
+                        border: isReadyToSubmit ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)',
+                        padding: '12px 16px',
+                        borderRadius: '14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: isReadyToSubmit ? '#10b981' : '#f59e0b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>📋 보안 서약 승인 제출 필수 요건 검수:</span>
+                          <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: isReadyToSubmit ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)', color: isReadyToSubmit ? '#10b981' : '#ef4444' }}>
+                            {isReadyToSubmit ? '✓ 제출 승인 가능' : '⚠️ 제출 필수 항목 확인 필요'}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px' }}>
+                          <div style={{ color: isStep1Valid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isStep1Valid ? '✓' : '❌'} 1. 방문자 및 사업장 선택 {!isSiteValid ? '(사업장 미선택)' : ''}
+                          </div>
+                          <div style={{ color: isMdmValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isMdmValid ? '✓' : '❌'} 2. 보안 어플/카메라 검증
+                          </div>
+                          <div style={{ color: isDocValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isDocValid ? '✓' : '❌'} 3. 자재&문서 체크리스트
+                          </div>
+                          <div style={{ color: isTermsValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {isTermsValid ? '✓' : '❌'} 4. 보안 서약 동의
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                     <button
@@ -2041,16 +2371,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                   <div>✓ 3. 보안 물품 반입 전 확인 완료</div>
                 </div>
               </div>
-
-              {/* Electronic Signature Box */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '10px' }}>
-                <span style={{ fontSize: '10px', color: '#64748b' }}>서약자 전자 서명:</span>
-                <img
-                  src={selectedPass.signature}
-                  alt="전자 서명"
-                  style={{ height: '30px', filter: 'brightness(1.5)' }}
-                />
-              </div>
             </div>
 
             {/* Action Buttons */}
@@ -2075,6 +2395,33 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               >
                 <Printer size={16} /> 승인증 인쇄 / PDF 저장
               </button>
+              {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`'${selectedPass.visitorName}'님의 [${selectedPass.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
+                      handleDeletePledge(selectedPass.id, selectedPass.site);
+                      setSelectedPass(null);
+                    }
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Trash2 size={16} /> 서약 삭제
+                </button>
+              )}
               <button
                 onClick={() => setSelectedPass(null)}
                 className="glass-button-primary"
