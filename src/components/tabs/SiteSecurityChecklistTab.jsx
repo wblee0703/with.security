@@ -1306,7 +1306,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               {[
                 { step: 1, label: '1. 사업장 정보' },
                 { step: 2, label: '2. 보안 앱 검수' },
-                { step: 3, label: '3. 자재&문서 확인' },
+                { step: 3, label: '3. 자재&문서' },
                 { step: 4, label: '4. 전자 서약서' }
               ].map(s => (
                 <div
@@ -2008,16 +2008,17 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     borderRadius: '12px',
                     maxHeight: '160px',
                     overflowY: 'auto',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     color: '#94a3b8',
                     lineHeight: '1.6'
                   }}>
                     <div style={{ fontWeight: '700', color: '#fff', marginBottom: '6px' }}>
                       [사업장 정보보안 및 영업비밀 보호 서약서]
                     </div>
-                    1. 본인은 당사 사업장 출입 시 지정된 구역 외 무단 이동을 금지하며, 사업장 내부 제반 시설 및 설비의 촬영, 음성 녹음을 엄격히 금지합니다.<br />
-                    2. 반입 승인되지 않은 스마트 기기, 촬영 장비, 미인증 USB 수용매체의 반입을 금지하며, 반입 시 사전에 시리얼 번호 등록 및 보안 봉인 스티커를 부착합니다.<br />
-                    3. 퇴장 시 보안 서약 검수 및 반입 자재 반출 상태를 필수적으로 확인받으며, 기밀 유출 시 관계 법령에 따라 형사 처벌 조치를 받는 것에 동의합니다.
+                    1. 본인은 당사 사업장 출입 시 지정된 구역 외 무단 이동을 금지<br />
+                    2. 사업장 내부 제반 시설 및 설비의 촬영을 엄격히 금지합니다.<br />
+                    3. 반입 승인되지 않은 스마트 기기, 촬영 장비, 미인증 USB 수용매체의 반입을 금지합니다.<br />
+                    4. 퇴장 시 보안 서약 검수 및 반입 자재 반출 상태를 필수적으로 확인받으며, 기밀 유출 시 관계 법령에 따라 형사 처벌 조치를 받는 것에 동의합니다.
                   </div>
 
                   {/* Agreement Checkbox with Red Alert Box when Unchecked */}
@@ -2045,7 +2046,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                         onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: '#00f2fe', cursor: 'pointer' }}
                       />
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: formData.agreedToTerms ? '#fff' : '#fca5a5' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: formData.agreedToTerms ? '#fff' : '#fca5a5' }}>
                         위 보안 준수 사항을 숙지하였으며 성실히 이행할 것을 서약합니다.
                       </span>
                     </label>
@@ -2086,13 +2087,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px' }}>
                           <div style={{ color: isStep1Valid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {isStep1Valid ? '✓' : '❌'} 1. 방문자 및 사업장 선택 {!isSiteValid ? '(사업장 미선택)' : ''}
+                            {isStep1Valid ? '✓' : '❌'} 1. 사업장 선택
                           </div>
                           <div style={{ color: isMdmValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {isMdmValid ? '✓' : '❌'} 2. 보안 어플 실행 상태 확인
+                            {isMdmValid ? '✓' : '❌'} 2. 보안 어플 상태
                           </div>
                           <div style={{ color: isDocValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            {isDocValid ? '✓' : '❌'} 3. 자재&문서 체크리스트
+                            {isDocValid ? '✓' : '❌'} 3. 자재&문서 확인
                           </div>
                           <div style={{ color: isTermsValid ? '#10b981' : '#ef4444', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             {isTermsValid ? '✓' : '❌'} 4. 보안 서약 동의
