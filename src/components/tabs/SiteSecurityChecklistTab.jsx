@@ -31,6 +31,7 @@ import {
 
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
+import { isSamePerson } from '../../services/userMatcher';
 
 export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const [checklistList, setChecklistList] = useState([]);
@@ -585,24 +586,21 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       const uName = (u.name || '').trim();
       const uTeam = (u.team || u.department || u.division || targetPledgeForCompanion.department || '보안관제팀').trim();
 
-      const isPrimary = targetPledgeForCompanion.visitorName?.trim() === uName ||
-        (u.username && targetPledgeForCompanion.username === u.username) ||
-        (u.phone && targetPledgeForCompanion.phone === u.phone);
+      const isPrimary = isSamePerson(u, targetPledgeForCompanion);
 
-      const isAlreadyCompanion = updatedCompanions.some(c =>
-        c.visitorName?.trim() === uName ||
-        (u.username && c.username && c.username === u.username) ||
-        (u.phone && c.phone && c.phone === u.phone)
-      );
+      const isAlreadyCompanion = updatedCompanions.some(c => isSamePerson(u, c));
 
       if (!isPrimary && !isAlreadyCompanion) {
         updatedCompanions.push({
           id: `COMP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
           visitorName: uName,
+          name: uName,
           username: u.username || '',
+          division: u.division || targetPledgeForCompanion.division || '사업부 미지정',
           team: uTeam,
           department: uTeam,
           rank: u.rank || '대리',
+          role: u.role || '일반',
           phone: u.phone || '010-0000-0000',
           status: '서약 대기',
           mdmVerified: false,
@@ -697,17 +695,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       const userAccount = (currentUser?.username || '').trim();
       const userTeam = (currentUser?.team || currentUser?.department || currentUser?.division || currentUser?.company || '').trim();
 
-      // Check if current user is primary visitor or companion in this item
-      const isPrimaryVisitor =
-        (userName && item.visitorName === userName) ||
-        (userPhone && item.phone === userPhone) ||
-        (userAccount && item.username === userAccount);
+      // Strict person identity matching (If division, team, rank, phone, name, role, username differs -> different person)
+      const isPrimaryVisitor = isSamePerson(currentUser, item);
 
-      const isCompanionVisitor = item.companions?.some(c =>
-        (userName && c.visitorName === userName) ||
-        (userPhone && c.phone === userPhone) ||
-        (userAccount && c.username === userAccount)
-      );
+      const isCompanionVisitor = item.companions?.some(c => isSamePerson(currentUser, c));
 
       const isSelfPledge = isPrimaryVisitor || isCompanionVisitor;
 
@@ -852,7 +843,17 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
         const existingIndex = updatedCompanions.findIndex(c =>
           (compId && c.id === compId) ||
-          (c.visitorName?.trim() === inputVisitorName && (c.phone === inputPhone || c.username === inputUsername))
+          isSamePerson(c, {
+            visitorName: inputVisitorName,
+            name: inputVisitorName,
+            phone: inputPhone,
+            username: inputUsername,
+            rank: formData.rank?.trim() || '대리',
+            team: userTeam,
+            department: userTeam,
+            division: currentUser?.division,
+            role: currentUser?.role
+          })
         );
 
         if (existingIndex >= 0) {
@@ -863,6 +864,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
             mdmVerified: true,
             phone: inputPhone || updatedCompanions[existingIndex].phone,
             username: inputUsername || updatedCompanions[existingIndex].username,
+            division: currentUser?.division || updatedCompanions[existingIndex].division || '사업부 미지정',
+            rank: formData.rank?.trim() || updatedCompanions[existingIndex].rank || '대리',
+            role: currentUser?.role || updatedCompanions[existingIndex].role || '일반',
             pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false })
           };
         } else {
@@ -870,10 +874,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           const newCompanion = {
             id: compId || `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
             visitorName: inputVisitorName,
+            name: inputVisitorName,
             username: inputUsername,
+            division: currentUser?.division || '사업부 미지정',
             team: userTeam,
             department: userTeam,
             rank: formData.rank?.trim() || '대리',
+            role: currentUser?.role || '일반',
             phone: inputPhone || '010-0000-0000',
             status: '서약 완료',
             mdmVerified: true,
@@ -1324,14 +1331,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {item.companions.map((comp, idx) => {
                     const isCompleted = comp.status === '서약 완료';
-                    const userName = (currentUser?.name || '').trim();
-                    const userPhone = (currentUser?.phone || '').trim();
-                    const userAccount = (currentUser?.username || '').trim();
-
-                    const isCurrentCompanion =
-                      (userName && comp.visitorName?.trim() === userName) ||
-                      (userPhone && comp.phone === userPhone) ||
-                      (userAccount && comp.username === userAccount);
+                    const isCurrentCompanion = isSamePerson(currentUser, comp);
 
                     return (
                       <div
@@ -2321,6 +2321,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     </button>
                     <button
                       type="submit"
+                      onClick={handleSubmitForm}
                       className="glass-button-primary"
                       style={{ padding: '12px', borderRadius: '12px', flex: 2, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}
                     >
@@ -2669,13 +2670,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     (u.phone && u.phone.includes(term));
                 })
                 .map(u => {
-                  const isPrimary = targetPledgeForCompanion.visitorName?.trim() === u.name?.trim() ||
-                    (u.username && targetPledgeForCompanion.username === u.username);
+                  const isPrimary = isSamePerson(u, targetPledgeForCompanion);
 
-                  const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c =>
-                    c.visitorName?.trim() === u.name?.trim() ||
-                    (u.username && c.username && c.username === u.username)
-                  );
+                  const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c => isSamePerson(u, c));
 
                   const isChecked = selectedCompanionUsernames.includes(u.username);
                   const isDisabled = isPrimary || isAlreadyCompanion;
@@ -2707,13 +2704,22 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           onChange={() => {}}
                           style={{ width: '16px', height: '16px', accentColor: '#00f2fe', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
                         />
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                          <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             {u.name}
                             <span style={{ fontSize: '11px', color: '#00f2fe', fontWeight: '600' }}>({u.rank || '대리'})</span>
+                            <span style={{ fontSize: '10px', color: '#a7f3d0', background: 'rgba(16,185,129,0.15)', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(16,185,129,0.3)' }}>
+                              {u.role || '일반'}
+                            </span>
                           </div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                            {u.team || u.department || '소속팀'} | <span className="mono-font">{u.phone || '연락처 미등록'}</span>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ color: '#e2e8f0', fontWeight: '600' }}>{u.division || '사업부 미지정'}</span>
+                            <span>•</span>
+                            <span>{u.team || u.department || '소속팀'}</span>
+                            <span>•</span>
+                            <span className="mono-font">{u.phone || '연락처 미등록'}</span>
+                            <span>•</span>
+                            <span className="mono-font" style={{ color: '#00f2fe' }}>@{u.username}</span>
                           </div>
                         </div>
                       </div>

@@ -1666,8 +1666,14 @@ export default function UserProfileTab({ onTriggerToast }) {
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px' }}>
-                          {u.division} • {u.team} | ID: <strong style={{ color: '#00f2fe' }}>{u.username}</strong>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '3px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ color: '#e2e8f0', fontWeight: '600' }}>{u.division || '사업부 미지정'}</span>
+                          <span>•</span>
+                          <span>{u.team || '소속팀'}</span>
+                          <span>•</span>
+                          <span className="mono-font">{u.phone || '연락처 미등록'}</span>
+                          <span>•</span>
+                          <span>ID: <strong style={{ color: '#00f2fe' }}>{u.username}</strong></span>
                         </div>
                       </div>
                     </div>
