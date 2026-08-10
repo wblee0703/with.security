@@ -239,6 +239,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         shortName: '삼성보안어플',
         packageName: 'com.samsung.knox.mdm',
         scheme: 'sec-mdm://',
+        intentUri: 'intent://#Intent;scheme=sec-mdm;package=com.samsung.knox.mdm;end',
         tokenPrefix: 'MDM-SAM-',
         company: '삼성전자',
         color: '#00f2fe',
@@ -252,6 +253,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         shortName: 'SK하이닉스 SSM 어플',
         packageName: 'com.skhynix.ssm',
         scheme: 'ssm-hynix://',
+        intentUri: 'intent://#Intent;scheme=ssm-hynix;package=com.skhynix.ssm;end',
         tokenPrefix: 'SSM-SKH-',
         company: 'SK하이닉스',
         color: '#a78bfa',
@@ -265,6 +267,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         shortName: '일반 보안 가이드',
         packageName: 'com.security.general',
         scheme: 'security://',
+        intentUri: '',
         tokenPrefix: 'GEN-SEC-',
         company: '기타 사업장',
         color: '#fbbf24',
@@ -332,8 +335,27 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       appOpened = true;
     };
     window.addEventListener('blur', handleBlur);
+    window.addEventListener('pagehide', handleBlur);
 
-    // Deep link iframe trigger
+    // Deep link Intent/Scheme trigger for Android & iOS mobile browsers
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const linkUrl = (isAndroid && targetApp.intentUri) ? targetApp.intentUri : targetApp.scheme;
+
+    // Direct anchor navigation trigger for modern browsers
+    try {
+      const a = document.createElement('a');
+      a.href = linkUrl;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (document.body.contains(a)) document.body.removeChild(a);
+      }, 500);
+    } catch (e) {
+      console.warn('Direct scheme link click failed:', e);
+    }
+
+    // Hidden iframe fallback
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = targetApp.scheme;
@@ -344,6 +366,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         document.body.removeChild(iframe);
       }
       window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('pagehide', handleBlur);
 
       // STRICT CHECK: Did the browser lose focus to native MDM/SSM app?
       if (appOpened || document.hidden) {
@@ -359,15 +382,23 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           if (onTriggerToast) onTriggerToast(`✓ '${targetApp.shortName}' 설치/실행 확인 완료! 하단 [카메라 사용제한 검증] 버튼을 눌러 카메라 검증을 진행해 주세요.`, 'info');
         }
       } else {
-        // App is NOT INSTALLED or scheme failed! STRICT FAIL!
-        setAppCheckState({ isChecking: false, isVerified: false });
-        setFormData(prev => ({ ...prev, mdmVerified: false }));
-        setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
-        if (onTriggerToast) {
-          onTriggerToast(`❌ [검증 실패] 핸드폰에 '${targetApp.appName}' 보안 어플이 설치되어 있지 않거나 반응하지 않습니다.`, 'warning');
+        // Fallback: If camera hardware check is ALREADY verified (Camera hardware blocked by Knox/SSM policy)
+        if (cameraCheckState.isVerified || cameraCheckState.result === 'LOCKED') {
+          setAppCheckState({ isChecking: false, isVerified: true });
+          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+          if (onTriggerToast) onTriggerToast(`✓ [하드웨어 차단 확인] 모바일 카메라 차단 정책이 활성화되어 '${targetApp.appName}' 가동 상태가 최종 검증되었습니다!`, 'success');
+        } else {
+          // Web browser security policy blocked app scheme detection
+          setAppCheckState({ isChecking: false, isVerified: false });
+          setFormData(prev => ({ ...prev, mdmVerified: false }));
+          setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: new Date().toLocaleTimeString(), scanLog: [] });
+          if (onTriggerToast) {
+            onTriggerToast(`⚠️ [실행 상태 확인 필요] 브라우저 보안 정책으로 스키마 자동 감지가 취소되었습니다. 하단 '카메라 사용제한 검증' 버튼을 눌러 카메라 하드웨어 차단을 검수해 주세요.`, 'warning');
+          }
         }
       }
-    }, 1200);
+    }, 1500);
   };
 
   // 2) Real Hardware Camera Stream Test (Button 2)
