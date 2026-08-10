@@ -464,6 +464,11 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
+    } else if (statusType === 'NOT_RUNNING') {
+      setAppCheckState({ isChecking: false, isVerified: false });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+      setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: null, scanLog: [] });
     } else if (statusType === 'CAMERA_UNLOCKED' || statusType === 'CAMERA_CHECK_NEEDED') {
       setAppCheckState({ isChecking: false, isVerified: true });
       setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
@@ -1752,19 +1757,23 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             어플 및 보안 상태: <strong style={{
                               color: appScanState.status === 'VERIFIED'
                                 ? '#10b981'
-                                : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
-                                  ? '#ef4444'
-                                  : '#f59e0b'
+                                : appScanState.status === 'NOT_RUNNING'
+                                  ? '#f59e0b'
+                                  : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
+                                    ? '#ef4444'
+                                    : '#f59e0b'
                             }}>
                               {appScanState.status === 'VERIFIED'
                                 ? '✓ 정상 실행 및 카메라 사용제한 활성화됨'
-                                : appScanState.status === 'NOT_INSTALLED'
-                                  ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
-                                  : appScanState.status === 'CAMERA_UNLOCKED'
-                                    ? '❌ 카메라 사용 제한 검증 실패'
-                                    : appScanState.status === 'CAMERA_CHECK_NEEDED'
-                                      ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
-                                      : '검수 대기 중'}
+                                : appScanState.status === 'NOT_RUNNING'
+                                  ? '⚠️ 실행 상태 확인 필요'
+                                  : appScanState.status === 'NOT_INSTALLED'
+                                    ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
+                                    : appScanState.status === 'CAMERA_UNLOCKED'
+                                      ? '❌ 카메라 사용 제한 검증 실패'
+                                      : appScanState.status === 'CAMERA_CHECK_NEEDED'
+                                        ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
+                                        : '검수 대기 중'}
                             </strong>
                           </div>
 
@@ -1880,7 +1889,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleSetSimulatedStatus('CAMERA_UNLOCKED')}
+                              onClick={() => handleSetSimulatedStatus('NOT_RUNNING')}
                               style={{
                                 width: '100%',
                                 padding: '8px 12px',
@@ -1895,7 +1904,26 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                              🟡 2. 어플 설치 완료 (카메라 사용제한 검증 필요 상태로 설정)
+                              ⚠️ 2. 어플 설치됨 / 미실행 (실행 상태 확인 필요)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSetSimulatedStatus('CAMERA_UNLOCKED')}
+                              style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                textAlign: 'left',
+                                background: 'rgba(59, 130, 246, 0.15)',
+                                color: '#3b82f6',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              🟡 3. 어플 설치/실행 완료 (카메라 사용제한 검증 필요 상태로 설정)
                             </button>
                             <button
                               type="button"
@@ -1914,7 +1942,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                              🟢 3. 보안 어플 정상 가동 완료 상태로 설정
+                              🟢 4. 보안 어플 정상 가동 완료 상태로 설정
                             </button>
                           </div>
                         </div>
