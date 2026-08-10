@@ -2527,6 +2527,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
       {/* Companion User Multi-Select Suggestion Modal Overlay */}
       {isCompanionModalOpen && targetPledgeForCompanion && (
         <div style={{
