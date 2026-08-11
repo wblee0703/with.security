@@ -68,6 +68,11 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   useEffect(() => {
     loadData();
+    const handleDataChange = () => {
+      loadData();
+    };
+    window.addEventListener('with_security_data_changed', handleDataChange);
+    return () => window.removeEventListener('with_security_data_changed', handleDataChange);
   }, []);
 
   // Helper for Korean Date Formatting (e.g. 2026년 08월 11일 (화요일))

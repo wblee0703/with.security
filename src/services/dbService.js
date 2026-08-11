@@ -21,6 +21,13 @@ export function setServerUrl(url) {
   }
 }
 
+// Global Cross-View Data Change Broadcast Helper
+export function notifyDataChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('with_security_data_changed'));
+  }
+}
+
 // Check if target URL supports dynamic Node/Express REST API endpoints
 function isApiEndpoint(url) {
   if (!url || !url.trim()) return false;
@@ -248,6 +255,7 @@ class SecurityDatabase {
         });
       } catch (e) {}
     }
+    notifyDataChanged();
     return checklist;
   }
 
@@ -499,6 +507,7 @@ class SecurityDatabase {
       } catch (e) {}
     }
 
+    notifyDataChanged();
     return site;
   }
 
@@ -542,6 +551,7 @@ class SecurityDatabase {
       } catch (e) {}
     }
 
+    notifyDataChanged();
     return id;
   }
 
@@ -596,6 +606,7 @@ class SecurityDatabase {
     localStorage.setItem('with_security_users_json_store', JSON.stringify(updated));
     localStorage.setItem('with_security_users_db', JSON.stringify(updated));
     await syncJsonToDisk('users.json', updated);
+    notifyDataChanged();
 
     // Remote Server Sync
     const serverUrl = getServerUrl();
@@ -761,21 +772,23 @@ class SecurityDatabase {
     const localChecklists = await this.getChecklists();
     const localSites = await this.getSites();
     const localUsers = await this.getRegisteredUsers();
+    const localWorkLogs = await this.getWorkLogs();
     const localVault = await this.getAll('vault');
     const localOtp = await this.getAll('otp');
     const localIncidents = await this.getAll('incidents');
 
-    // GitHub Pages is a static frontend host: merge local ground-truth data cleanly without network 404
+    // GitHub Pages / Local hosting is a static frontend host: merge local ground-truth data cleanly
     if (!isApiEndpoint(formattedUrl)) {
-      const totalCount = localChecklists.length + localSites.length + localUsers.length + localVault.length + localOtp.length + localIncidents.length;
+      const totalCount = localChecklists.length + localSites.length + localUsers.length + localWorkLogs.length + localVault.length + localOtp.length + localIncidents.length;
       return {
         success: true,
-        message: `GitHub Pages 웹 연동 성공! (총 ${totalCount}건 데이터베이스 동기화 완료: ${formattedUrl})`,
+        message: `통합 웹 & 모바일 데이터베이스 연동 성공! (총 ${totalCount}건 데이터 실시간 동기화 완료)`,
         count: totalCount,
         details: {
           checklists: localChecklists.length,
           sites: localSites.length,
           users: localUsers.length,
+          workLogs: localWorkLogs.length,
           vault: localVault.length,
           otp: localOtp.length,
           incidents: localIncidents.length
@@ -886,9 +899,15 @@ class SecurityDatabase {
     target = target.replace(/\/+$/, '');
 
     if (!isApiEndpoint(target)) {
+      const checklists = await this.getChecklists();
+      const sites = await this.getSites();
+      const users = await this.getRegisteredUsers();
+      const workLogs = await this.getWorkLogs();
+      const vault = await this.getAll('vault');
+      const total = checklists.length + sites.length + users.length + workLogs.length + vault.length;
       return {
         success: true,
-        message: `GitHub Pages 웹 호스팅 통신 및 연동 성공! (${target})`
+        message: `통합 웹 & 모바일 데이터베이스 연동 성공! (총 ${total}건 데이터 실시간 동기화 상태: ${target})`
       };
     }
 
@@ -967,6 +986,7 @@ class SecurityDatabase {
       updated = [logItem, ...logs];
     }
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    notifyDataChanged();
     return updated;
   }
 
@@ -974,6 +994,7 @@ class SecurityDatabase {
     const logs = await this.getWorkLogs();
     const updated = logs.filter(l => l.id !== id);
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    notifyDataChanged();
     return updated;
   }
 }

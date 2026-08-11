@@ -99,6 +99,11 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       }
     }
     loadSitesAndUser();
+    const handleDataChange = () => {
+      loadSitesAndUser();
+    };
+    window.addEventListener('with_security_data_changed', handleDataChange);
+    return () => window.removeEventListener('with_security_data_changed', handleDataChange);
   }, []);
 
   // Handle Open Pledge Form Button Click (Login Enforcement)

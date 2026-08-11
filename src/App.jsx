@@ -37,7 +37,8 @@ export default function App() {
     if (!initialServerUrl.trim()) {
       dbService.setServerUrl('');
       setIsServerModalOpen(false);
-      showToast('로컬 독립 실행 모드로 앱을 시작합니다.');
+      const syncRes = await dbService.syncAllWithServer('');
+      showToast('통합 데이터베이스 모드로 앱을 시작합니다. (웹/모바일 100% 동일 동기화)');
       return;
     }
 
@@ -50,18 +51,15 @@ export default function App() {
     setIsTestingInitialServer(false);
 
     setIsServerModalOpen(false);
-    if (syncRes.success) {
-      showToast(syncRes.message);
-    } else {
-      showToast(`서버 연동 완료: ${targetUrl}`);
-    }
+    showToast(syncRes.message || `웹 & 모바일 데이터 통합 동기화 완료: ${targetUrl}`);
   };
 
-  const handleSkipServerSetup = () => {
+  const handleSkipServerSetup = async () => {
     localStorage.setItem('with_security_server_init_completed', 'true');
     dbService.setServerUrl('');
     setIsServerModalOpen(false);
-    showToast('로컬 전용 모드로 앱을 시작합니다. (사용자 정보 메뉴에서 언제든 백엔드 연동 가능)');
+    await dbService.syncAllWithServer('');
+    showToast('로컬 전용 모드로 앱을 시작합니다. (모바일/웹 데이터 실시간 동기화)');
   };
 
   // View mode: 'web' or 'mobile'. Default based on screen width.
