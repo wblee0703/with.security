@@ -1,0 +1,19 @@
+{
+  "short_name": "WithSecurity",
+  "name": "WithSecurity - 사업장 출입 보안 & 업무일지 관리 앱",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512' fill='%2300f2fe'><path d='M256 32L64 96v128c0 118.4 81.92 229.12 192 256 110.08-26.88 192-137.6 192-256V96L256 32zm0 234.4h149.33c-11.31 87.89-69.97 166.19-149.33 190.72V266.4H106.67V134.4L256 68.05v198.35z'/></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#03060d",
+  "theme_color": "#0b0f19",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "description": "회사 사업장 출입 보안 서약, 서명 검증, 업무 일지 기록 및 2FA 보안 관리 앱"
+}
