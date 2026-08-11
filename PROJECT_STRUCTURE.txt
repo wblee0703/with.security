@@ -66,3 +66,15 @@ with.security/
    npm run cap:sync
 
 ======================================================================
+
+[4. Android 앱 관련]
+1) 앱 동기화
+ - 수정된 사항 commit 진행
+ - PowerShell에 npm run cap:sync 입력
+
+2) 앱 만들기
+ - android studio > Build > Build Bundle(s) / APK(s) > Build APK(s)
+
+
+3) 앱 설치 파일 위치
+ - C:\Users\USER\Desktop\with.security\android\app\build\outputs\apk\debug
