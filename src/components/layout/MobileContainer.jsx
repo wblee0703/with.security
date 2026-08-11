@@ -4,7 +4,8 @@ import {
   LockKeyhole,
   Building2,
   Settings,
-  UserCheck
+  UserCheck,
+  ClipboardList
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 
@@ -98,6 +99,14 @@ export default function MobileContainer({
         >
           <Building2 size={18} />
           <span>보안 서약</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('workLog')}
+          className={`nav-item ${activeTab === 'workLog' ? 'active' : ''}`}
+        >
+          <ClipboardList size={18} />
+          <span>업무 일지</span>
         </button>
 
         {isAdmin && (

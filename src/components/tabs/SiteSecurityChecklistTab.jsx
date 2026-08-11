@@ -31,7 +31,7 @@ import {
 
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
-import { isSamePerson } from '../../services/userMatcher';
+import { isSamePerson, DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
 export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const [checklistList, setChecklistList] = useState([]);
@@ -59,9 +59,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const [inlineSignup, setInlineSignup] = useState({
     username: '',
     password: '',
-    division: 'DS부문 (반도체)',
+    division: '영업/운영사업부',
     team: '보안관제팀',
-    rank: '책임',
+    rank: '대리',
     name: '',
     phone: '',
     email: ''
@@ -201,9 +201,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     setInlineSignup({
       username: '',
       password: '',
-      division: 'DS부문 (반도체)',
+      division: '영업/운영사업부',
       team: '보안관제팀',
-      rank: '책임',
+      rank: '대리',
       name: '',
       phone: '',
       email: ''
@@ -252,7 +252,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         company: '삼성전자',
         color: '#00f2fe',
         badgeBg: 'rgba(0, 242, 254, 0.15)',
-        desc: '삼성전자 사업장 출입 전용 모바일 보안 어플 가동 필수'
+        desc: '삼성전자 사업장 출입 전용 모바일 보안 어플 가동 필수',
+        isChecklistMode: false
       };
     } else if (siteName.includes('SK') || siteName.includes('하이닉스')) {
       return {
@@ -266,21 +267,30 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         company: 'SK하이닉스',
         color: '#a78bfa',
         badgeBg: 'rgba(139, 92, 246, 0.15)',
-        desc: 'SK하이닉스 사업장 출입 전용 모바일 보안 어플 가동 필수'
+        desc: 'SK하이닉스 사업장 출입 전용 모바일 보안 어플 가동 필수',
+        isChecklistMode: false
+      };
+    } else if (siteName.includes('LG') || siteName.includes('디스플레이')) {
+      return {
+        appName: 'LG디스플레이 카메라 보안 체크리스트',
+        appCode: 'LGD_CHECKLIST',
+        shortName: 'LG디스플레이 카메라 보안',
+        company: 'LG디스플레이',
+        color: '#f472b6',
+        badgeBg: 'rgba(236, 72, 153, 0.15)',
+        desc: 'LG디스플레이 사업장 카메라 보안 상태 및 체크리스트 검수',
+        isChecklistMode: true
       };
     } else {
       return {
-        appName: '일반 사업장 출입 보안 (카메라 봉인 스티커)',
-        appCode: 'GENERAL_SECURITY',
-        shortName: '일반 보안 가이드',
-        packageName: 'com.security.general',
-        scheme: 'security://',
-        intentUri: '',
-        tokenPrefix: 'GEN-SEC-',
+        appName: '카메라 보안 상태 확인 체크리스트 (기타 사업장)',
+        appCode: 'GENERAL_CHECKLIST',
+        shortName: '기타 사업장 카메라 보안',
         company: '기타 사업장',
         color: '#fbbf24',
         badgeBg: 'rgba(245, 158, 11, 0.15)',
-        desc: '카메라 렌즈 봉인 스티커 부착 및 기본 사업장 보안 준수'
+        desc: '기타 사업장 카메라 봉인 스티커 및 보안 상태 확인 체크리스트',
+        isChecklistMode: true
       };
     }
   };
@@ -312,11 +322,18 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     message: ''
   });
 
+  // Camera Security Self-Checklist State for LG Display & General Sites
+  const [cameraSelfChecklist, setCameraSelfChecklist] = useState({
+    stickerAttached: false,
+    noPhotoAgreed: false
+  });
+
   // Reset Security App & Camera Verification States (Mandatory Re-verification on modal open/close)
   const resetAppVerificationState = () => {
     setAppCheckState({ isChecking: false, isVerified: false });
     setCameraCheckState({ isTesting: false, isVerified: false, result: null, message: '' });
     setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
+    setCameraSelfChecklist({ stickerAttached: false, noPhotoAgreed: false });
     setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
   };
 
@@ -347,42 +364,26 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       // ACTUALLY ATTEMPT TO EXECUTE / OPEN CAMERA STREAM
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 
-      // IF CAMERA STREAM OPENS -> CAMERA IS WORKING & NOT BLOCKED BY MDM POLICY!
+      // IF CAMERA STREAM OPENS -> CAMERA IS ACTIVE & UNLOCKED!
+      // SECURITY APP MDM POLICY IS NOT RESTRICTING CAMERA!
       stream.getTracks().forEach(track => track.stop());
 
-      // STRICT FAIL! Security app is NOT RUNNING / Camera restriction is NOT active!
+      // STRICT FAIL! Camera is ACTIVE / Unlocked!
       setAppCheckState({ isChecking: false, isVerified: false });
-      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 활성화 감지 (카메라 차단 필요)' });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
         isScanning: false,
-        status: 'NOT_RUNNING',
+        status: 'CAMERA_UNLOCKED',
         lastScannedAt: new Date().toLocaleTimeString(),
         scanLog: []
       });
 
       if (onTriggerToast) {
-        onTriggerToast(`⚠️ [실행 상태 확인 필요] '${targetApp.shortName}' 보안 어플이 실행되지 않았거나 보안 정책(카메라 차단)이 비활성화되어 있습니다. 어플을 실행해 주세요.`, 'warning');
+        onTriggerToast(`❌ [검수 실패] 카메라가 활성화되어 있습니다. '${targetApp.shortName}' 보안 어플을 실행하여 카메라 사용제한(차단)을 먼저 활성화해 주세요.`, 'error');
       }
     } catch (err) {
-      // IF CAMERA HARDWARE ACCESS IS DENIED/BLOCKED BY KNOX/MDM POLICY (NotAllowedError / SecurityError / NotReadableError)
-      if (err.name === 'NotAllowedError' || err.name === 'SecurityError' || err.name === 'NotReadableError') {
-        // STRICT SUCCESS! Hardware camera access was blocked by MDM policy!
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '' });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        setAppScanState({
-          isScanning: false,
-          status: 'VERIFIED',
-          lastScannedAt: new Date().toLocaleTimeString(),
-          scanLog: []
-        });
-
-        if (onTriggerToast) {
-          onTriggerToast(`✓ [검수 완료] '${targetApp.appName}' 가동 및 보안 정책이 정상 확인되었습니다!`, 'success');
-        }
-      } else {
-        // PC Browser environment or no camera device error -> STRICT FAIL!
+      if (err.message === 'NOT_SUPPORTED') {
         setAppCheckState({ isChecking: false, isVerified: false });
         setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
         setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
@@ -394,7 +395,41 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`⚠️ [실행 상태 확인 필요] 모바일 보안 정책이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.`, 'warning');
+          onTriggerToast(`⚠️ [실행 상태 확인 필요] 모바일 보안 어플 카메라 제한이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.`, 'warning');
+        }
+        return;
+      }
+
+      // IF CAMERA HARDWARE ACCESS IS STRICTLY BLOCKED BY KNOX/MDM SECURITY POLICY (NotReadableError / SecurityError / TrackStartError)
+      if (err.name === 'NotReadableError' || err.name === 'SecurityError' || err.name === 'TrackStartError') {
+        // STRICT SUCCESS! Camera hardware access was completely blocked by Knox/MDM policy!
+        setAppCheckState({ isChecking: false, isVerified: true });
+        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '카메라 비활성화(차단) 확인됨' });
+        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+        setAppScanState({
+          isScanning: false,
+          status: 'VERIFIED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast(`✓ [검수 완료] '${targetApp.appName}' 가동 및 카메라 비활성화(차단) 상태가 정상 확인되었습니다!`, 'success');
+        }
+      } else {
+        // Camera is active or permission was denied -> STRICT FAIL!
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 비활성화 상태 확인 필요' });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'CAMERA_UNLOCKED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast(`⚠️ [검수 실패] 카메라가 차단되지 않았거나 보안 어플 정책이 감지되지 않았습니다. 어플 실행 후 카메라 차단을 완료해 주세요.`, 'warning');
         }
       }
     }
@@ -586,7 +621,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       const uName = (u.name || '').trim();
       const uTeam = (u.team || u.department || u.division || targetPledgeForCompanion.department || '보안관제팀').trim();
 
-      const isPrimary = isSamePerson(u, targetPledgeForCompanion);
+      const isPrimary = isSamePerson(u, targetPledgeForCompanion) ||
+        (u.username && targetPledgeForCompanion.username && u.username === targetPledgeForCompanion.username) ||
+        (u.name?.trim() === targetPledgeForCompanion.visitorName?.trim() &&
+          (u.phone === targetPledgeForCompanion.phone || u.team === targetPledgeForCompanion.team || u.department === targetPledgeForCompanion.department));
 
       const isAlreadyCompanion = updatedCompanions.some(c => isSamePerson(u, c));
 
@@ -602,7 +640,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           rank: u.rank || '대리',
           role: u.role || '일반',
           phone: u.phone || '010-0000-0000',
-          status: '서약 대기',
+          status: '대기',
           mdmVerified: false,
           pledgedAt: null,
           createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
@@ -672,9 +710,85 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       companionId: companion.id
     });
 
+    setAppScanState({ isScanning: false, status: 'IDLE', lastScannedAt: null, scanLog: [] });
+    setAppCheckState({ isChecking: false, isVerified: false });
+    setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
     setActiveStep(1);
     setIsModalOpen(true);
     if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${companion.visitorName}'님 동행 보안 서약 모드가 시작되었습니다. 2단계 앱 검수 및 서약을 완료해 주세요.`, 'info');
+  };
+
+  // Handle Primary Creator Re-Signing Pledge
+  const handlePerformPrimaryResign = async (targetItem) => {
+    const activeUser = await dbService.getUserProfile();
+    if (!activeUser) {
+      if (onTriggerToast) onTriggerToast('보안 서약을 재작성하려면 로그인이 필요합니다.', 'warning');
+      setIsLoginModalOpen(true);
+      return;
+    }
+
+    const userTeam = activeUser.team || activeUser.department || targetItem.team || '보안관제팀';
+    setFormData({
+      site: targetItem.site,
+      visitorName: targetItem.visitorName || activeUser.name || '',
+      phone: activeUser.phone || targetItem.phone || '010-0000-0000',
+      team: userTeam,
+      department: userTeam,
+      rank: activeUser.rank || targetItem.rank || '대리',
+      company: userTeam,
+      hostName: targetItem.hostName || '사업장 보안관제센터',
+      purposeType: targetItem.purpose || '작업',
+      customPurpose: '',
+      purpose: targetItem.purpose || '작업',
+      visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+      mdmVerified: false,
+      docChecklist: targetItem.docChecklist || {
+        gateApproved: false,
+        docSecVerified: false,
+        preCheckVerified: false
+      },
+      materials: targetItem.materials || [],
+      agreedToTerms: false,
+      isCompanionMode: false,
+      parentPledgeId: null,
+      companionId: null,
+      isEditMode: true,
+      editingPledgeId: targetItem.id
+    });
+
+    setAppScanState({ isScanning: false, status: 'IDLE', lastScannedAt: null, scanLog: [] });
+    setAppCheckState({ isChecking: false, isVerified: false });
+    setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+    setActiveStep(1);
+    setIsModalOpen(true);
+    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${targetItem.visitorName}'님 서약 재작성 모드가 시작되었습니다. 4단계까지 확인 후 다시 서명을 완료해 주세요.`, 'info');
+  };
+
+  // Handle Delete Companion Entry from Pledge
+  const handleDeleteCompanion = async (pledgeId, companionId, companionName) => {
+    if (!window.confirm(`'${companionName}' 동행자의 서약 내역을 삭제하시겠습니까?`)) {
+      return;
+    }
+
+    const targetPledge = checklistList.find(item => item.id === pledgeId);
+    if (!targetPledge) return;
+
+    const updatedCompanions = (targetPledge.companions || []).filter(c => c.id !== companionId);
+    const updatedPledge = {
+      ...targetPledge,
+      companions: updatedCompanions
+    };
+
+    try {
+      await dbService.saveChecklist(updatedPledge);
+    } catch (err) {
+      console.error('Failed to delete companion from DB:', err);
+    }
+
+    setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+    if (onTriggerToast) {
+      onTriggerToast(`'${companionName}' 동행자 서약 내역이 성공적으로 삭제되었습니다.`, 'success');
+    }
   };
 
   // Selected Detail Modal State
@@ -787,6 +901,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
     const activeUser = await dbService.getUserProfile();
     const targetApp = getTargetSecurityAppInfo(formData.site);
+    const userTeam = (formData.team || formData.department || activeUser?.team || activeUser?.department || currentUser?.team || currentUser?.department || '보안관제팀').trim();
+    const userDivision = (activeUser?.division || currentUser?.division || '사업부 미지정').trim();
 
     // 1) Step 1 Validation: Site Selection & Visitor Name
     if (!formData.site || !formData.site.trim()) {
@@ -801,12 +917,23 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     }
 
     // 2) Step 2 Validation: Security App & Camera Lock Verification
-    if (!formData.mdmVerified && appScanState.status !== 'VERIFIED') {
-      if (onTriggerToast) {
-        onTriggerToast(`[승인 제출 거부] 2단계 모바일 보안 어플('${targetApp.shortName}') 가동 및 카메라 사용제한 검수가 완료되지 않았습니다. 2단계로 이동하여 검증해 주세요.`, 'warning');
+    if (targetApp.isChecklistMode) {
+      const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed;
+      if (!isAll && !formData.mdmVerified) {
+        if (onTriggerToast) {
+          onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 2개 항목 검수가 완료되지 않았습니다. 2단계로 이동하여 확인해 주세요.', 'warning');
+        }
+        setActiveStep(2);
+        return;
       }
-      setActiveStep(2);
-      return;
+    } else {
+      if (appScanState.status !== 'VERIFIED' && !formData.mdmVerified) {
+        if (onTriggerToast) {
+          onTriggerToast(`❌ [승인 제출 거부] 2단계 모바일 보안 어플('${targetApp.shortName}') 카메라 비활성화(차단) 검수가 완료되지 않았습니다. 2단계로 이동하여 검증해 주세요.`, 'warning');
+        }
+        setActiveStep(2);
+        return;
+      }
     }
 
     // 3) Step 3 Validation: Material & Document Security Checklist
@@ -857,10 +984,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         );
 
         if (existingIndex >= 0) {
-          // Update existing companion record to "서약 완료"
+          // Update existing companion record to "완료"
           updatedCompanions[existingIndex] = {
             ...updatedCompanions[existingIndex],
-            status: '서약 완료',
+            status: '완료',
             mdmVerified: true,
             phone: inputPhone || updatedCompanions[existingIndex].phone,
             username: inputUsername || updatedCompanions[existingIndex].username,
@@ -870,7 +997,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
             pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false })
           };
         } else {
-          // Add new companion with "서약 완료"
+          // Add new companion with "완료"
           const newCompanion = {
             id: compId || `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
             visitorName: inputVisitorName,
@@ -882,7 +1009,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
             rank: formData.rank?.trim() || '대리',
             role: currentUser?.role || '일반',
             phone: inputPhone || '010-0000-0000',
-            status: '서약 완료',
+            status: '완료',
             mdmVerified: true,
             pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false }),
             createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
@@ -933,7 +1060,75 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`[${updatedPledge.site}] '${newCompanion.visitorName}' 동행 서약 정보가 해당 내역에 추가되었습니다.`, 'success');
+          onTriggerToast(`[${updatedPledge.site}] '${inputVisitorName}' 동행 서약 정보가 해당 내역에 반영되었습니다.`, 'success');
+        }
+        return;
+      }
+    }
+
+    // Handle Primary Creator Re-Signing Submission
+    const wasEditMode = formData.isEditMode;
+    if (wasEditMode && formData.editingPledgeId) {
+      const targetPledge = checklistList.find(item => item.id === formData.editingPledgeId);
+      if (targetPledge) {
+        const updatedPledge = {
+          ...targetPledge,
+          site: formData.site,
+          visitorName: formData.visitorName.trim(),
+          team: userTeam,
+          department: userTeam,
+          rank: formData.rank?.trim() || targetPledge.rank || '대리',
+          company: userTeam,
+          phone: formData.phone || targetPledge.phone || '010-0000-0000',
+          purpose: finalPurpose,
+          visitDate: formData.visitDate,
+          mdmVerified: formData.mdmVerified,
+          docChecklist: formData.docChecklist || targetPledge.docChecklist,
+          materials: formData.materials || [],
+          status: '승인완료',
+          updatedAt: new Date().toLocaleString('ko-KR', { hour12: false })
+        };
+
+        try {
+          await dbService.saveChecklist(updatedPledge);
+        } catch (err) {
+          console.error('Failed to update pass in DB:', err);
+        }
+
+        setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+        handleCloseModal();
+        setActiveStep(1);
+
+        const activeTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
+        setFormData({
+          site: '',
+          visitorName: activeUser ? activeUser.name : '',
+          team: activeTeam,
+          department: activeTeam,
+          rank: activeUser ? activeUser.rank : '',
+          company: '',
+          phone: activeUser ? activeUser.phone : '',
+          hostName: '',
+          purposeType: '작업',
+          customPurpose: '',
+          purpose: '작업',
+          visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+          mdmVerified: false,
+          docChecklist: {
+            gateApproved: false,
+            docSecVerified: false,
+            preCheckVerified: false
+          },
+          materials: [],
+          agreedToTerms: false,
+          isCompanionMode: false,
+          parentPledgeId: null,
+          isEditMode: false,
+          editingPledgeId: null
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast(`[${updatedPledge.site}] '${updatedPledge.visitorName}'님의 보안 서약이 성공적으로 다시 서명(재작성)되었습니다.`, 'success');
         }
         return;
       }
@@ -943,6 +1138,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       id: `SEC-PASS-2026-${String(Math.floor(100 + Math.random() * 900)).padStart(3, '0')}`,
       site: formData.site,
       visitorName: formData.visitorName.trim(),
+      name: formData.visitorName.trim(),
+      username: activeUser?.username || currentUser?.username || '',
+      division: userDivision || activeUser?.division || currentUser?.division || '사업부 미지정',
+      role: activeUser?.role || currentUser?.role || '일반',
       team: userTeam,
       department: userTeam,
       rank: formData.rank?.trim() || '대리',
@@ -1205,199 +1404,268 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
             검색 결과에 해당하는 보안서약 및 출입 내역이 없습니다.
           </div>
         ) : (
-          filteredList.map((item) => (
-            <div
-              key={item.id}
-              className="glass-panel"
-              style={{
-                padding: '16px 20px',
-                borderRadius: '16px',
-                borderLeft: item.site.includes('삼성전자') ? '4px solid #00f2fe' : '4px solid #8b5cf6',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {/* Row Header: Site Title & Companion Register Button */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Building2 size={16} color={item.site.includes('삼성전자') ? '#00f2fe' : '#8b5cf6'} />
-                  <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
-                    {item.site}
-                  </span>
-                </div>
+          filteredList.map((item) => {
+            const isPrimaryVisitor = isSamePerson(currentUser, item);
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleOpenCompanionRegisterModal(item)}
-                    style={{
-                      background: 'rgba(0, 242, 254, 0.12)',
-                      border: '1px solid rgba(0, 242, 254, 0.35)',
-                      color: '#00f2fe',
-                      padding: '5px 12px',
-                      borderRadius: '10px',
-                      fontSize: '11px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <UserPlus size={13} /> 동행 등록
-                  </button>
+            return (
+              <div
+                key={item.id}
+                className="glass-panel"
+                style={{
+                  padding: '16px 20px',
+                  borderRadius: '16px',
+                  borderLeft: item.site.includes('삼성전자') ? '4px solid #00f2fe' : '4px solid #8b5cf6',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {/* Row Header: Site Title & Companion Register Button */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Building2 size={16} color={item.site.includes('삼성전자') ? '#00f2fe' : '#8b5cf6'} />
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+                      {item.site}
+                    </span>
+                  </div>
 
-                  {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (window.confirm(`'${item.visitorName}'님의 [${item.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
-                          handleDeletePledge(item.id, item.site);
-                        }
-                      }}
-                      title="개발자 전용: 서약 내역 삭제"
+                      onClick={() => handleOpenCompanionRegisterModal(item)}
                       style={{
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        border: '1px solid rgba(239, 68, 68, 0.35)',
-                        color: '#ef4444',
-                        padding: '5px 10px',
+                        background: 'rgba(0, 242, 254, 0.12)',
+                        border: '1px solid rgba(0, 242, 254, 0.35)',
+                        color: '#00f2fe',
+                        padding: '5px 12px',
                         borderRadius: '10px',
                         fontSize: '11px',
                         fontWeight: '700',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
+                        gap: '5px',
+                        boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)',
                         transition: 'all 0.2s ease'
                       }}
                     >
-                      <Trash2 size={13} /> 삭제
+                      <UserPlus size={13} /> 동행 등록
+                    </button>
+
+                    {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`'${item.visitorName}'님의 [${item.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
+                            handleDeletePledge(item.id, item.site);
+                          }
+                        }}
+                        title="개발자 전용: 서약 내역 삭제"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.35)',
+                          color: '#ef4444',
+                          padding: '5px 10px',
+                          borderRadius: '10px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        <Trash2 size={13} /> 삭제
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Primary Visitor Info Row: 소속팀 | 직급 | 이름 | 연락처 + 서약 상태 & 다시 서명하기 버튼 */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  fontSize: '11px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  color: '#cbd5e1'
+                }}>
+                  {/* Top Line: Primary Visitor Info & Status Badge */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
+                        {item.team || (item.department ? (item.department.includes(' ') ? item.department.split(' ').slice(1).join(' ') : item.department) : '') || '소속팀 미지정'}
+                      </span>
+                      <span style={{ color: '#475569' }}>|</span>
+                      <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
+                        {item.rank || '대리'}
+                      </span>
+                      <span style={{ color: '#475569' }}>|</span>
+                      <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
+                        {item.visitorName}
+                      </span>
+                      <span style={{ color: '#475569' }}>|</span>
+                      <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
+                        {item.phone || '010-0000-0000'}
+                      </span>
+                    </div>
+
+                    <span style={{
+                      fontSize: '10.5px',
+                      fontWeight: '800',
+                      padding: '2px 7px',
+                      borderRadius: '5px',
+                      background: 'rgba(16, 185, 129, 0.18)',
+                      color: '#10b981',
+                      border: '1px solid rgba(16, 185, 129, 0.4)'
+                    }}>
+                      완료
+                    </span>
+                  </div>
+
+                  {/* Bottom Full-Width Line: Primary Creator Re-Sign Action Button */}
+                  {isPrimaryVisitor && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePerformPrimaryResign(item);
+                      }}
+                      style={{
+                        width: '100%',
+                        marginTop: '2px',
+                        padding: '10px 14px',
+                        background: 'rgba(0, 242, 254, 0.12)',
+                        color: '#00f2fe',
+                        border: '1px solid rgba(0, 242, 254, 0.4)',
+                        borderRadius: '10px',
+                        fontSize: '13.5px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        boxShadow: '0 4px 14px rgba(0, 242, 254, 0.25)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      ✍️ 다시 서명하기
                     </button>
                   )}
                 </div>
-              </div>
 
-              {/* Single Line Info Row: 소속팀 | 직급 | 이름 | 연락처 + 서약 상태 */}
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                padding: '8px 12px',
-                borderRadius: '10px',
-                fontSize: '11px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '6px',
-                color: '#cbd5e1'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
-                    {item.team || (item.department ? (item.department.includes(' ') ? item.department.split(' ').slice(1).join(' ') : item.department) : '') || '소속팀 미지정'}
-                  </span>
-                  <span style={{ color: '#475569' }}>|</span>
-                  <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
-                    {item.rank || '대리'}
-                  </span>
-                  <span style={{ color: '#475569' }}>|</span>
-                  <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
-                    {item.visitorName}
-                  </span>
-                  <span style={{ color: '#475569' }}>|</span>
-                  <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
-                    {item.phone || '010-0000-0000'}
-                  </span>
-                </div>
+                {/* Additional Registrations / Companions Rows */}
+                {item.companions && item.companions.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {item.companions.map((comp, idx) => {
+                      const isCompleted = comp.status === '완료' || comp.status === '서약 완료' || comp.status === '승인완료';
+                      const isCurrentCompanion = isSamePerson(currentUser, comp);
+                      const isDev = currentUser?.role === '개발자' || currentUser?.username === 'admin';
+                      const canDeleteCompanion = isDev || isPrimaryVisitor || isCurrentCompanion;
 
-                <span style={{
-                  fontSize: '10.5px',
-                  fontWeight: '800',
-                  padding: '2px 7px',
-                  borderRadius: '5px',
-                  background: 'rgba(16, 185, 129, 0.18)',
-                  color: '#10b981',
-                  border: '1px solid rgba(16, 185, 129, 0.4)'
-                }}>
-                  ✓ 서약 완료
-                </span>
-              </div>
+                      return (
+                        <div
+                          key={comp.id || idx}
+                          style={{
+                            background: isCurrentCompanion ? 'rgba(0, 242, 254, 0.06)' : 'rgba(255, 255, 255, 0.03)',
+                            border: isCurrentCompanion ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            fontSize: '11px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            color: '#cbd5e1'
+                          }}
+                        >
+                          {/* Top Line: Companion Info & Status Badge & Delete Button */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
+                                {comp.team || comp.department || '소속팀 미지정'}
+                              </span>
+                              <span style={{ color: '#475569' }}>|</span>
+                              <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
+                                {comp.rank || '대리'}
+                              </span>
+                              <span style={{ color: '#475569' }}>|</span>
+                              <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
+                                {comp.visitorName}
+                              </span>
+                              <span style={{ color: '#475569' }}>|</span>
+                              <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
+                                {comp.phone || '010-0000-0000'}
+                              </span>
+                            </div>
 
-              {/* Additional Registrations / Companions Rows */}
-              {item.companions && item.companions.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {item.companions.map((comp, idx) => {
-                    const isCompleted = comp.status === '서약 완료';
-                    const isCurrentCompanion = isSamePerson(currentUser, comp);
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{
+                                fontSize: '10.5px',
+                                fontWeight: '800',
+                                padding: '2px 7px',
+                                borderRadius: '5px',
+                                background: isCompleted ? 'rgba(16, 185, 129, 0.18)' : 'rgba(245, 158, 11, 0.18)',
+                                color: isCompleted ? '#10b981' : '#f59e0b',
+                                border: isCompleted ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
+                              }}>
+                                {isCompleted ? '완료' : '대기'}
+                              </span>
 
-                    return (
-                      <div
-                        key={comp.id || idx}
-                        style={{
-                          background: isCurrentCompanion ? 'rgba(0, 242, 254, 0.06)' : 'rgba(255, 255, 255, 0.03)',
-                          border: isCurrentCompanion ? '1px solid rgba(0, 242, 254, 0.3)' : '1px solid rgba(255, 255, 255, 0.06)',
-                          padding: '8px 12px',
-                          borderRadius: '10px',
-                          fontSize: '11px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          flexWrap: 'wrap',
-                          gap: '6px',
-                          color: '#cbd5e1'
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#00f2fe', fontWeight: '700', fontSize: '11px' }}>
-                            {comp.team || comp.department || '소속팀 미지정'}
-                          </span>
-                          <span style={{ color: '#475569' }}>|</span>
-                          <span style={{ color: '#fff', fontWeight: '700', fontSize: '11px' }}>
-                            {comp.rank || '대리'}
-                          </span>
-                          <span style={{ color: '#475569' }}>|</span>
-                          <span style={{ color: '#fff', fontWeight: '800', fontSize: '11.5px' }}>
-                            {comp.visitorName} {isCurrentCompanion ? '(본인)' : ''}
-                          </span>
-                          <span style={{ color: '#475569' }}>|</span>
-                          <span className="mono-font" style={{ color: '#94a3b8', fontSize: '11px' }}>
-                            {comp.phone || '010-0000-0000'}
-                          </span>
-                        </div>
+                              {canDeleteCompanion && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCompanion(item.id, comp.id, comp.visitorName);
+                                  }}
+                                  title={isCurrentCompanion ? "본인 동행 서약 삭제" : isPrimaryVisitor ? "최초 등록자 권한: 동행자 삭제" : "개발자 권한: 동행자 삭제"}
+                                  style={{
+                                    background: 'rgba(239, 68, 68, 0.12)',
+                                    border: '1px solid rgba(239, 68, 68, 0.35)',
+                                    color: '#ef4444',
+                                    padding: '2px 7px',
+                                    borderRadius: '5px',
+                                    fontSize: '10.5px',
+                                    fontWeight: '800',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    transition: 'all 0.2s ease'
+                                  }}
+                                >
+                                  삭제
+                                </button>
+                              )}
+                            </div>
+                          </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{
-                            fontSize: '10.5px',
-                            fontWeight: '800',
-                            padding: '2px 7px',
-                            borderRadius: '5px',
-                            background: isCompleted ? 'rgba(16, 185, 129, 0.18)' : 'rgba(245, 158, 11, 0.18)',
-                            color: isCompleted ? '#10b981' : '#f59e0b',
-                            border: isCompleted ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(245, 158, 11, 0.4)'
-                          }}>
-                            {isCompleted ? '✓ 서약 완료' : '🟡 서약 대기'}
-                          </span>
-
+                          {/* Bottom Full-Width Line: Companion Action Button */}
                           {isCurrentCompanion && !isCompleted && (
                             <button
                               type="button"
                               onClick={() => handlePerformCompanionPledge(item, comp)}
                               style={{
+                                width: '100%',
+                                marginTop: '2px',
+                                padding: '10px 14px',
                                 background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-                                color: '#000',
+                                color: '#050b14',
                                 border: 'none',
-                                padding: '4px 10px',
-                                borderRadius: '7px',
-                                fontSize: '10.5px',
+                                borderRadius: '10px',
+                                fontSize: '13.5px',
                                 fontWeight: '800',
                                 cursor: 'pointer',
-                                boxShadow: '0 2px 8px rgba(0, 242, 254, 0.3)',
+                                boxShadow: '0 4px 14px rgba(0, 242, 254, 0.35)',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px',
+                                justifyContent: 'center',
+                                gap: '6px',
                                 transition: 'all 0.2s ease'
                               }}
                             >
@@ -1405,45 +1673,45 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             </button>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
 
-              {/* Bottom Tags: High Visibility Visit Purpose Badge */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>방문목적:</span>
-                  <span style={{
-                    padding: '3px 10px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    background: item.purpose?.includes('작업') || item.purpose?.includes('공사')
-                      ? 'rgba(245, 158, 11, 0.22)'
-                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                        ? 'rgba(0, 242, 254, 0.22)'
-                        : 'rgba(139, 92, 246, 0.22)',
-                    color: item.purpose?.includes('작업') || item.purpose?.includes('공사')
-                      ? '#f59e0b'
-                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                        ? '#00f2fe'
-                        : '#a78bfa',
-                    border: item.purpose?.includes('작업') || item.purpose?.includes('공사')
-                      ? '1px solid rgba(245, 158, 11, 0.55)'
-                      : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
-                        ? '1px solid rgba(0, 242, 254, 0.55)'
-                        : '1px solid rgba(139, 92, 246, 0.55)',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                  }}>
-                    📌 {item.purpose || '작업'}
-                  </span>
+                {/* Bottom Tags: High Visibility Visit Purpose Badge */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', flexWrap: 'wrap', gap: '8px', marginTop: '2px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>방문목적:</span>
+                    <span style={{
+                      padding: '3px 10px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      background: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                        ? 'rgba(245, 158, 11, 0.22)'
+                        : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                          ? 'rgba(0, 242, 254, 0.22)'
+                          : 'rgba(139, 92, 246, 0.22)',
+                      color: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                        ? '#f59e0b'
+                        : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                          ? '#00f2fe'
+                          : '#a78bfa',
+                      border: item.purpose?.includes('작업') || item.purpose?.includes('공사')
+                        ? '1px solid rgba(245, 158, 11, 0.55)'
+                        : item.purpose?.includes('미팅') || item.purpose?.includes('방문')
+                          ? '1px solid rgba(0, 242, 254, 0.55)'
+                          : '1px solid rgba(139, 92, 246, 0.55)',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    }}>
+                      📌 {item.purpose || '작업'}
+                    </span>
+                  </div>
+                  <div className="mono-font" style={{ fontSize: '11px', color: '#64748b' }}>등록일: {item.createdAt}</div>
                 </div>
-                <div className="mono-font" style={{ fontSize: '11px', color: '#64748b' }}>등록일: {item.createdAt}</div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -1627,11 +1895,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                         직급
                       </label>
-                      <input
-                        type="text"
+                      <select
                         disabled={formData.isCompanionMode}
-                        placeholder="예: 책임 / 수석"
-                        value={formData.rank}
+                        value={formData.rank || '대리'}
                         onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
                         style={{
                           width: '100%',
@@ -1642,9 +1908,16 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           color: '#fff',
                           fontSize: '13px',
                           outline: 'none',
-                          cursor: formData.isCompanionMode ? 'not-allowed' : 'text'
+                          cursor: formData.isCompanionMode ? 'not-allowed' : 'pointer'
                         }}
-                      />
+                      >
+                        <option value="" disabled>-- 직급 선택 --</option>
+                        {RANK_LIST.map(rk => (
+                          <option key={rk} value={rk} style={{ background: '#0f172a', color: '#fff' }}>
+                            {rk}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
 
@@ -1842,16 +2115,17 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       </div>
                     )}
 
-                    <div style={{
-                      background: 'rgba(10, 15, 29, 0.8)',
-                      border: `1px solid ${targetApp.color}35`,
-                      padding: '16px',
-                      borderRadius: '16px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {/* Step 2 Content: Checklist Mode (LG Display / General) vs MDM Scan Mode (Samsung / SK Hynix) */}
+                    {targetApp.isChecklistMode ? (
+                      <div style={{
+                        background: 'rgba(10, 15, 29, 0.8)',
+                        border: `1px solid ${targetApp.color}35`,
+                        padding: '18px',
+                        borderRadius: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '14px'
+                      }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{
                             width: '42px',
@@ -1861,9 +2135,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            border: `1px solid ${targetApp.color}50`
+                            border: `1px solid ${targetApp.color}50`,
+                            flexShrink: 0
                           }}>
-                            <Smartphone size={22} color={targetApp.color} />
+                            <Camera size={22} color={targetApp.color} />
                           </div>
                           <div>
                             <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
@@ -1874,140 +2149,249 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Real-time Scan Action Banner */}
-                      <div style={{
-                        background: 'rgba(255, 255, 255, 0.03)',
-                        padding: '12px',
-                        borderRadius: '12px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '10px'
-                      }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                            어플 및 보안 상태: <strong style={{
-                              color: appScanState.status === 'VERIFIED'
-                                ? '#10b981'
-                                : appScanState.status === 'NOT_RUNNING'
-                                  ? '#f59e0b'
-                                  : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
-                                    ? '#ef4444'
-                                    : '#f59e0b'
-                            }}>
-                              {appScanState.status === 'VERIFIED'
-                                ? '✓ 정상 실행 및 카메라 사용제한 활성화됨'
-                                : appScanState.status === 'NOT_RUNNING'
-                                  ? '⚠️ 실행 상태 확인 필요'
-                                  : appScanState.status === 'NOT_INSTALLED'
-                                    ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
-                                    : appScanState.status === 'CAMERA_UNLOCKED'
-                                      ? '❌ 카메라 사용 제한 검증 실패'
-                                      : appScanState.status === 'CAMERA_CHECK_NEEDED'
-                                        ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
-                                        : '검수 대기 중'}
-                            </strong>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                            <button
-                              type="button"
-                              onClick={handleCheckAppExecutionStatus}
-                              disabled={appScanState.isScanning || cameraCheckState.isTesting}
-                              style={{
-                                width: '100%',
-                                padding: '14px 16px',
-                                borderRadius: '12px',
-                                fontSize: '13px',
-                                fontWeight: '800',
-                                background: appScanState.status === 'VERIFIED'
-                                  ? 'rgba(16, 185, 129, 0.2)'
-                                  : `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
-                                color: appScanState.status === 'VERIFIED' ? '#10b981' : '#000',
-                                border: appScanState.status === 'VERIFIED'
-                                  ? '1px solid rgba(16, 185, 129, 0.5)'
-                                  : 'none',
-                                boxShadow: appScanState.status === 'VERIFIED'
-                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                  : '0 4px 14px rgba(0, 242, 254, 0.25)',
-                                cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '8px',
-                                transition: 'all 0.25s ease'
-                              }}
-                            >
-                              {appScanState.isScanning || cameraCheckState.isTesting ? (
-                                <><ShieldCheck size={18} className="animate-spin" /> 보안 어플 실행 상태 검수 중...</>
-                              ) : appScanState.status === 'VERIFIED' ? (
-                                <><CheckCircle2 size={18} color="#10b981" /> ✓ 보안 어플 실행 상태 확인 완료</>
-                              ) : (
-                                <><ShieldCheck size={18} /> 보안 어플 실행 상태 확인</>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Manual Simulation Controls (Visible ONLY for Developer / admin account) */}
-                      {(currentUser?.role === '개발자' || currentUser?.username === 'admin') && (
                         <div style={{
-                          background: 'rgba(15, 23, 42, 0.85)',
-                          border: '1px dashed rgba(0, 242, 254, 0.4)',
-                          borderRadius: '12px',
-                          padding: '12px',
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid rgba(255, 255, 255, 0.08)',
+                          padding: '14px',
+                          borderRadius: '14px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '8px'
+                          gap: '12px'
                         }}>
-                          <div style={{ fontSize: '11px', fontWeight: '700', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            🧪 [개발자 전용] 보안 상태 테스트 수동 전환
+                          <div style={{ fontSize: '12px', fontWeight: '700', color: '#00f2fe', marginBottom: '2px' }}>
+                            📋 카메라 보안 상태 셀프 체크리스트
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleSetSimulatedStatus('NOT_RUNNING')}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                textAlign: 'left',
-                                background: 'rgba(245, 158, 11, 0.15)',
-                                color: '#f59e0b',
-                                border: '1px solid rgba(245, 158, 11, 0.3)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
+
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12px', color: '#fff', cursor: 'pointer', lineHeight: '1.4' }}>
+                            <input
+                              type="checkbox"
+                              checked={cameraSelfChecklist.stickerAttached}
+                              onChange={(e) => {
+                                const nextVal = e.target.checked;
+                                const updated = { ...cameraSelfChecklist, stickerAttached: nextVal };
+                                setCameraSelfChecklist(updated);
+                                const isAll = updated.stickerAttached && updated.noPhotoAgreed;
+                                setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
+                                setAppScanState(prev => ({ ...prev, status: isAll ? 'VERIFIED' : 'CAMERA_CHECK_NEEDED' }));
                               }}
-                            >
-                              ⚠️ 1. 보안 어플 상태 확인 필요
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSetSimulatedStatus('VERIFIED')}
-                              style={{
-                                width: '100%',
-                                padding: '8px 12px',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                textAlign: 'left',
-                                background: 'rgba(16, 185, 129, 0.15)',
-                                color: '#10b981',
-                                border: '1px solid rgba(16, 185, 129, 0.3)',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
+                              style={{ width: '16px', height: '16px', accentColor: '#00f2fe', marginTop: '2px' }}
+                            />
+                            <span>[필수] 스마트폰 카메라 렌즈에 보안 스티커 부착 </span>
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12px', color: '#fff', cursor: 'pointer', lineHeight: '1.4' }}>
+                            <input
+                              type="checkbox"
+                              checked={cameraSelfChecklist.noPhotoAgreed}
+                              onChange={(e) => {
+                                const nextVal = e.target.checked;
+                                const updated = { ...cameraSelfChecklist, noPhotoAgreed: nextVal };
+                                setCameraSelfChecklist(updated);
+                                const isAll = updated.stickerAttached && updated.noPhotoAgreed;
+                                setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
+                                setAppScanState(prev => ({ ...prev, status: isAll ? 'VERIFIED' : 'CAMERA_CHECK_NEEDED' }));
                               }}
-                            >
-                              🟢 2. 보안 어플 정상 가동중
-                            </button>
+                              style={{ width: '16px', height: '16px', accentColor: '#00f2fe', marginTop: '2px' }}
+                            />
+                            <span>[필수] 사업장 내 사진 및 동영상 무단 촬영 금지</span>
+                          </label>
+                        </div>
+
+                        {/* Real-time Checklist Verification Indicator */}
+                        <div style={{
+                          padding: '12px 14px',
+                          borderRadius: '10px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          background: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed)
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : 'rgba(245, 158, 11, 0.15)',
+                          color: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed)
+                            ? '#10b981'
+                            : '#f59e0b',
+                          border: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed)
+                            ? '1px solid rgba(16, 185, 129, 0.4)'
+                            : '1px solid rgba(245, 158, 11, 0.4)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          {(cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed) ? (
+                            <><CheckCircle2 size={16} color="#10b981" /> ✓ 카메라 보안 상태 체크리스트 확인 완료</>
+                          ) : (
+                            <><ShieldCheck size={16} color="#f59e0b" /> ⚠️ 카메라 보안 항목을 모두 체크해 주세요.</>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{
+                        background: 'rgba(10, 15, 29, 0.8)',
+                        border: `1px solid ${targetApp.color}35`,
+                        padding: '16px',
+                        borderRadius: '16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                              width: '42px',
+                              height: '42px',
+                              borderRadius: '12px',
+                              background: targetApp.badgeBg,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              border: `1px solid ${targetApp.color}50`
+                            }}>
+                              <Smartphone size={22} color={targetApp.color} />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
+                                {targetApp.appName}
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                                {targetApp.desc}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      )}
-                    </div>
+
+                        {/* Real-time Scan Action Banner */}
+                        <div style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          padding: '12px',
+                          borderRadius: '12px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '10px'
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                              어플 및 보안 상태: <strong style={{
+                                color: appScanState.status === 'VERIFIED'
+                                  ? '#10b981'
+                                  : appScanState.status === 'NOT_RUNNING'
+                                    ? '#f59e0b'
+                                    : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
+                                      ? '#ef4444'
+                                      : '#f59e0b'
+                              }}>
+                                {appScanState.status === 'VERIFIED'
+                                  ? '✓ 정상 실행 및 카메라 사용제한 활성화됨'
+                                  : appScanState.status === 'NOT_RUNNING'
+                                    ? '⚠️ 실행 상태 확인 필요'
+                                    : appScanState.status === 'NOT_INSTALLED'
+                                      ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
+                                      : appScanState.status === 'CAMERA_UNLOCKED'
+                                        ? '❌ 카메라 사용 제한 검증 실패'
+                                        : appScanState.status === 'CAMERA_CHECK_NEEDED'
+                                          ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
+                                          : '검수 대기 중'}
+                              </strong>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+                              <button
+                                type="button"
+                                onClick={handleCheckAppExecutionStatus}
+                                disabled={appScanState.isScanning || cameraCheckState.isTesting}
+                                style={{
+                                  width: '100%',
+                                  padding: '14px 16px',
+                                  borderRadius: '12px',
+                                  fontSize: '13px',
+                                  fontWeight: '800',
+                                  background: appScanState.status === 'VERIFIED'
+                                    ? 'rgba(16, 185, 129, 0.2)'
+                                    : `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
+                                  color: appScanState.status === 'VERIFIED' ? '#10b981' : '#000',
+                                  border: appScanState.status === 'VERIFIED'
+                                    ? '1px solid rgba(16, 185, 129, 0.5)'
+                                    : 'none',
+                                  boxShadow: appScanState.status === 'VERIFIED'
+                                    ? '0 0 14px rgba(16, 185, 129, 0.35)'
+                                    : '0 4px 14px rgba(0, 242, 254, 0.25)',
+                                  cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: '8px',
+                                  transition: 'all 0.25s ease'
+                                }}
+                              >
+                                {appScanState.isScanning || cameraCheckState.isTesting ? (
+                                  <><ShieldCheck size={18} className="animate-spin" /> 보안 어플 실행 상태 검수 중...</>
+                                ) : appScanState.status === 'VERIFIED' ? (
+                                  <><CheckCircle2 size={18} color="#10b981" /> ✓ 보안 어플 실행 상태 확인 완료</>
+                                ) : (
+                                  <><ShieldCheck size={18} /> 보안 어플 실행 상태 확인</>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Manual Simulation Controls (Visible ONLY for Developer / admin account) */}
+                        {(currentUser?.role === '개발자' || currentUser?.username === 'admin') && (
+                          <div style={{
+                            background: 'rgba(15, 23, 42, 0.85)',
+                            border: '1px dashed rgba(0, 242, 254, 0.4)',
+                            borderRadius: '12px',
+                            padding: '12px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                          }}>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              🧪 [개발자 전용] 보안 상태 테스트 수동 전환
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <button
+                                type="button"
+                                onClick={() => handleSetSimulatedStatus('NOT_RUNNING')}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  textAlign: 'left',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  color: '#f59e0b',
+                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease'
+                                }}
+                              >
+                                ⚠️ 1. 보안 어플 상태 확인 필요
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSetSimulatedStatus('VERIFIED')}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px 12px',
+                                  borderRadius: '8px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  textAlign: 'left',
+                                  background: 'rgba(16, 185, 129, 0.15)',
+                                  color: '#10b981',
+                                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s ease'
+                                }}
+                              >
+                                🟢 2. 보안 어플 정상 가동중
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>
                       <button
@@ -2026,9 +2410,21 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       <button
                         type="button"
                         onClick={() => {
-                          if (!formData.mdmVerified && appScanState.status === 'NOT_RUNNING') {
-                            if (onTriggerToast) onTriggerToast(`필수 보안 어플('${targetApp.shortName}')을 실행해 주세요.`, 'warning');
-                            return;
+                          if (targetApp.isChecklistMode) {
+                            const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed;
+                            if (!isAll) {
+                              if (onTriggerToast) {
+                                onTriggerToast('❌ [검수 미완료] 카메라 보안 체크리스트 2개 항목을 모두 체크해 주세요.', 'warning');
+                              }
+                              return;
+                            }
+                          } else {
+                            if (appScanState.status !== 'VERIFIED' && !formData.mdmVerified) {
+                              if (onTriggerToast) {
+                                onTriggerToast(`❌ [검수 미완료] 카메라가 활성화 상태이거나 보안 어플('${targetApp.shortName}') 검수가 완료되지 않았습니다. [보안 어플 실행 상태 확인] 버튼을 눌러 카메라 차단을 완료해 주세요.`, 'warning');
+                              }
+                              return;
+                            }
                           }
                           setActiveStep(3);
                         }}
@@ -2624,12 +3020,21 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 onClick={() => {
                   const filtered = allSystemUsers.filter(u => {
                     const term = companionSearchTerm.toLowerCase();
-                    return !term ||
+                    const matchesTerm = !term ||
                       (u.name && u.name.toLowerCase().includes(term)) ||
                       (u.team && u.team.toLowerCase().includes(term)) ||
                       (u.department && u.department.toLowerCase().includes(term)) ||
                       (u.rank && u.rank.toLowerCase().includes(term)) ||
                       (u.phone && u.phone.includes(term));
+
+                    const isPrimary = isSamePerson(u, targetPledgeForCompanion) ||
+                      (u.username && targetPledgeForCompanion.username && u.username === targetPledgeForCompanion.username) ||
+                      (u.name?.trim() === targetPledgeForCompanion.visitorName?.trim() &&
+                        (u.phone === targetPledgeForCompanion.phone || u.team === targetPledgeForCompanion.team || u.department === targetPledgeForCompanion.department));
+
+                    const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c => isSamePerson(u, c));
+
+                    return matchesTerm && !isPrimary && !isAlreadyCompanion;
                   });
                   if (selectedCompanionUsernames.length === filtered.length) {
                     setSelectedCompanionUsernames([]);
@@ -2670,7 +3075,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     (u.phone && u.phone.includes(term));
                 })
                 .map(u => {
-                  const isPrimary = isSamePerson(u, targetPledgeForCompanion);
+                  const isPrimary = isSamePerson(u, targetPledgeForCompanion) ||
+                    (u.username && targetPledgeForCompanion.username && u.username === targetPledgeForCompanion.username) ||
+                    (u.name?.trim() === targetPledgeForCompanion.visitorName?.trim() &&
+                      (u.phone === targetPledgeForCompanion.phone || u.team === targetPledgeForCompanion.team || u.department === targetPledgeForCompanion.department));
 
                   const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c => isSamePerson(u, c));
 
@@ -2701,7 +3109,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           type="checkbox"
                           checked={isChecked || isDisabled}
                           disabled={isDisabled}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           style={{ width: '16px', height: '16px', accentColor: '#00f2fe', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
                         />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
@@ -2961,36 +3369,89 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>사업부 *</label>
-                    <input
-                      type="text"
-                      placeholder="DS부문"
+                    <select
                       value={inlineSignup.division}
-                      onChange={(e) => setInlineSignup({ ...inlineSignup, division: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', background: '#0a0f1d', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', outline: 'none' }}
-                    />
+                      onChange={(e) => {
+                        const newDiv = e.target.value;
+                        const teams = getTeamsForDivision(newDiv);
+                        setInlineSignup({
+                          ...inlineSignup,
+                          division: newDiv,
+                          team: teams.length > 0 ? teams[0] : inlineSignup.team
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: '#0a0f1d',
+                        border: '1px solid rgba(0, 242, 254, 0.4)',
+                        color: inlineSignup.division ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 사업부 선택 --</option>
+                      {DIVISION_LIST.map(div => (
+                        <option key={div} value={div} style={{ background: '#0f172a', color: '#fff' }}>
+                          {div}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>소속팀 *</label>
-                    <input
-                      type="text"
-                      placeholder="보안관제팀"
+                    <select
                       value={inlineSignup.team}
                       onChange={(e) => setInlineSignup({ ...inlineSignup, team: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', background: '#0a0f1d', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', outline: 'none' }}
-                    />
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: '#0a0f1d',
+                        border: '1px solid rgba(0, 242, 254, 0.4)',
+                        color: inlineSignup.team ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 소속팀 선택 --</option>
+                      {getTeamsForDivision(inlineSignup.division).map(tm => (
+                        <option key={tm} value={tm} style={{ background: '#0f172a', color: '#fff' }}>
+                          {tm}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>직급 *</label>
-                    <input
-                      type="text"
-                      placeholder="책임"
+                    <select
                       value={inlineSignup.rank}
                       onChange={(e) => setInlineSignup({ ...inlineSignup, rank: e.target.value })}
-                      style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', background: '#0a0f1d', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', outline: 'none' }}
-                    />
+                      style={{
+                        width: '100%',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        background: '#0a0f1d',
+                        border: '1px solid rgba(0, 242, 254, 0.4)',
+                        color: inlineSignup.rank ? '#fff' : '#94a3b8',
+                        fontSize: '12px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 직급 선택 --</option>
+                      {RANK_LIST.map(rk => (
+                        <option key={rk} value={rk} style={{ background: '#0f172a', color: '#fff' }}>
+                          {rk}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>이름 *</label>

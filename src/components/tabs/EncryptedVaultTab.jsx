@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Plus, Trash2, Shield } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Shield, Lock, X } from 'lucide-react';
 import { dbService } from '../../services/dbService';
+import { hashPassword } from '../../services/cryptoUtil';
 
 export default function EncryptedVaultTab({ onTriggerToast }) {
   const [sites, setSites] = useState([]);
-  const [newSiteForm, setNewSiteForm] = useState({ name: '', category: '삼성전자', note: '' });
+  const [newSiteForm, setNewSiteForm] = useState({ category: '삼성전자', company: '삼성전자', location: '' });
 
   const loadSites = async () => {
     try {
@@ -21,34 +22,88 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
 
   const handleAddSite = async (e) => {
     e.preventDefault();
-    if (!newSiteForm.name.trim()) {
+    const category = newSiteForm.category.trim() || '기타';
+    const company = newSiteForm.company.trim() || category;
+    const location = newSiteForm.location.trim();
+
+    if (!location) {
       if (onTriggerToast) onTriggerToast('사업장 위치를 입력해 주세요.', 'warning');
       return;
     }
-    const companyName = newSiteForm.category.trim() || '기타';
-    const siteLocation = newSiteForm.name.trim();
-    const fullSiteName = siteLocation.includes(companyName) ? siteLocation : `${companyName} ${siteLocation}`;
+
+    const fullSiteName = location.startsWith(company) ? location : `${company} ${location}`;
 
     const newSite = {
-      id: `SITE-${companyName.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
+      id: `SITE-${company.slice(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`,
       name: fullSiteName,
-      category: companyName,
-      securityLevel: 'Level-MAX (반도체 핵심보안)'
+      category: category,
+      company: company,
+      location: location,
+      securityLevel: 'Level-MAX (반도체/디스플레이 핵심보안)'
     };
     await dbService.saveSite(newSite);
     await loadSites();
-    setNewSiteForm({ name: '', category: '삼성전자', note: '' });
-    if (onTriggerToast) onTriggerToast(`'${newSite.name}' 사업장이 등록되었습니다.`, 'success');
+    setNewSiteForm({ category: '삼성전자', company: '삼성전자', location: '' });
+    if (onTriggerToast) onTriggerToast(`'${newSite.name}' 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
-  const handleDeleteSite = async (siteId, siteName) => {
+  const [deleteTargetSite, setDeleteTargetSite] = useState(null);
+  const [devPasswordInput, setDevPasswordInput] = useState('');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteErrorMsg, setDeleteErrorMsg] = useState('');
+
+  const handleInitiateDeleteSite = (siteId, siteName) => {
     if (sites.length <= 1) {
       if (onTriggerToast) onTriggerToast('최소 1개 이상의 출입 사업장이 등록되어 있어야 합니다.', 'warning');
       return;
     }
-    await dbService.deleteSite(siteId);
+    setDeleteTargetSite({ id: siteId, name: siteName });
+    setDevPasswordInput('');
+    setDeleteErrorMsg('');
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteSite = async (e) => {
+    if (e) e.preventDefault();
+    if (!deleteTargetSite) return;
+
+    if (!devPasswordInput || !devPasswordInput.trim()) {
+      setDeleteErrorMsg('개발자 비밀번호를 입력해 주세요.');
+      return;
+    }
+
+    const inputPass = devPasswordInput.trim();
+    const hashedInput = await hashPassword(inputPass);
+    const users = await dbService.getUsers();
+    const devUsers = users.filter(u => u.role === '개발자' || u.username === 'admin');
+
+    let isValidDevPass = false;
+    if (inputPass === 'withtech123!') {
+      isValidDevPass = true;
+    } else {
+      for (const devUser of devUsers) {
+        if (
+          (devUser.password && inputPass === devUser.password) ||
+          (devUser.passwordHash && hashedInput === devUser.passwordHash)
+        ) {
+          isValidDevPass = true;
+          break;
+        }
+      }
+    }
+
+    if (!isValidDevPass) {
+      setDeleteErrorMsg('개발자 비밀번호가 일치하지 않습니다.');
+      if (onTriggerToast) onTriggerToast('❌ 개발자 비밀번호 인증에 실패했습니다.', 'error');
+      return;
+    }
+
+    await dbService.deleteSite(deleteTargetSite.id);
     await loadSites();
-    if (onTriggerToast) onTriggerToast(`'${siteName}' 사업장이 삭제되었습니다.`, 'info');
+    setIsDeleteModalOpen(false);
+    setDeleteTargetSite(null);
+    setDevPasswordInput('');
+    if (onTriggerToast) onTriggerToast(`'${deleteTargetSite.name}' 출입 사업장이 성공적으로 삭제되었습니다.`, 'info');
   };
 
   return (
@@ -92,17 +147,50 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
         </div>
 
         <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* 1:1 ratio Grid for Company Name and Site Location */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          {/* 3-Column Grid for 분류, 회사명, 사업장 위치 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
-                분류 / 회사명 *
+                분류 *
+              </label>
+              <select
+                value={newSiteForm.category}
+                onChange={(e) => {
+                  const selectedCat = e.target.value;
+                  setNewSiteForm(prev => ({
+                    ...prev,
+                    category: selectedCat,
+                    company: selectedCat !== '기타' ? selectedCat : prev.company
+                  }));
+                }}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  borderRadius: '12px',
+                  background: '#0a0f1d',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="삼성전자">삼성전자</option>
+                <option value="SK하이닉스">SK하이닉스</option>
+                <option value="LG 디스플레이">LG 디스플레이</option>
+                <option value="기타">기타</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                회사명 *
               </label>
               <input
                 type="text"
-                placeholder="예: 삼성전자, SK하이닉스, 위드보안"
-                value={newSiteForm.category}
-                onChange={(e) => setNewSiteForm({ ...newSiteForm, category: e.target.value })}
+                placeholder="예: 삼성전자, SK하이닉스, LG 디스플레이"
+                value={newSiteForm.company}
+                onChange={(e) => setNewSiteForm({ ...newSiteForm, company: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -122,9 +210,9 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </label>
               <input
                 type="text"
-                placeholder="예: 평택캠퍼스 P4 라인, 이천 M16 라인"
-                value={newSiteForm.name}
-                onChange={(e) => setNewSiteForm({ ...newSiteForm, name: e.target.value })}
+                placeholder="예: 평택캠퍼스 P4 라인, 파주 P10 라인"
+                value={newSiteForm.location}
+                onChange={(e) => setNewSiteForm({ ...newSiteForm, location: e.target.value })}
                 style={{
                   width: '100%',
                   padding: '10px 14px',
@@ -184,28 +272,26 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 justifyContent: 'space-between'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <span style={{
                   padding: '4px 10px',
                   borderRadius: '8px',
                   fontSize: '11px',
                   fontWeight: '700',
-                  background: s.category?.includes('삼성') ? 'rgba(0, 242, 254, 0.15)' : s.category?.includes('SK') ? 'rgba(139, 92, 246, 0.15)' : 'rgba(255, 255, 255, 0.1)',
-                  color: s.category?.includes('삼성') ? '#00f2fe' : s.category?.includes('SK') ? '#a78bfa' : '#cbd5e1',
-                  border: `1px solid ${s.category?.includes('삼성') ? '#00f2fe40' : s.category?.includes('SK') ? '#a78bfa40' : 'rgba(255,255,255,0.2)'}`
+                  background: s.category?.includes('삼성') ? 'rgba(0, 242, 254, 0.15)' : s.category?.includes('SK') ? 'rgba(139, 92, 246, 0.15)' : s.category?.includes('LG') ? 'rgba(236, 72, 153, 0.15)' : 'rgba(255, 255, 255, 0.1)',
+                  color: s.category?.includes('삼성') ? '#00f2fe' : s.category?.includes('SK') ? '#a78bfa' : s.category?.includes('LG') ? '#f472b6' : '#cbd5e1',
+                  border: `1px solid ${s.category?.includes('삼성') ? '#00f2fe40' : s.category?.includes('SK') ? '#a78bfa40' : s.category?.includes('LG') ? '#f472b640' : 'rgba(255,255,255,0.2)'}`
                 }}>
                   {s.category || '일반'}
                 </span>
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>
-                    {s.name}
-                  </div>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>
+                  {s.name}
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => handleDeleteSite(s.id, s.name)}
+                onClick={() => handleInitiateDeleteSite(s.id, s.name)}
                 style={{
                   background: 'rgba(244, 63, 94, 0.1)',
                   border: '1px solid rgba(244, 63, 94, 0.3)',
@@ -226,6 +312,135 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
           ))}
         </div>
       </div>
+
+      {/* Modal: Developer Password Verification for Site Deletion */}
+      {isDeleteModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 200,
+          background: 'rgba(3, 6, 13, 0.85)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '420px',
+            borderRadius: '24px',
+            padding: '24px',
+            border: '1px solid rgba(244, 63, 94, 0.4)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(244, 63, 94, 0.2)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  background: 'rgba(244, 63, 94, 0.15)',
+                  border: '1px solid rgba(244, 63, 94, 0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Lock size={20} color="#f43f5e" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>
+                    사업장 삭제 인증
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#f43f5e', fontWeight: '700' }}>
+                    🔒 개발자 비밀번호 확인 필요
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: '1.5' }}>
+              삭제 대상 사업장: <strong style={{ color: '#00f2fe' }}>{deleteTargetSite?.name}</strong><br />
+              사업장을 영구 삭제하려면 **개발자 비밀번호**를 입력해 주세요.
+            </div>
+
+            <form onSubmit={handleConfirmDeleteSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  개발자 비밀번호 *
+                </label>
+                <input
+                  type="password"
+                  autoFocus
+                  placeholder="개발자 비밀번호 입력"
+                  value={devPasswordInput}
+                  onChange={(e) => {
+                    setDevPasswordInput(e.target.value);
+                    setDeleteErrorMsg('');
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    background: '#0a0f1d',
+                    border: deleteErrorMsg ? '1px solid #f43f5e' : '1px solid rgba(0, 242, 254, 0.4)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none'
+                  }}
+                />
+                {deleteErrorMsg && (
+                  <div style={{ fontSize: '11px', color: '#f43f5e', marginTop: '6px', fontWeight: '700' }}>
+                    ⚠️ {deleteErrorMsg}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteModalOpen(false)}
+                  className="glass-button"
+                  style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer' }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1.5,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)',
+                    color: '#fff',
+                    fontWeight: '800',
+                    fontSize: '13px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(244, 63, 94, 0.4)'
+                  }}
+                >
+                  인증 및 삭제 진행
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

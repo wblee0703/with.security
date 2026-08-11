@@ -32,12 +32,15 @@ function isApiEndpoint(url) {
 async function syncJsonToDisk(filename, data) {
   try {
     const serverUrl = getServerUrl();
+    if (serverUrl && !isApiEndpoint(serverUrl)) {
+      return;
+    }
     const endpoint = serverUrl ? `${serverUrl}/api/sync-json` : '/api/sync-json';
     await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, data })
-    });
+    }).catch(() => {});
   } catch (err) {
     // Disk sync active via Vite dev server middleware / remote endpoint
   }
@@ -914,6 +917,64 @@ class SecurityDatabase {
         message: `백엔드 서버 연결 실패: Node/Express API 서버(node server/db.js)가 4000번 포트에서 실행 중인지 확인해 주세요. (${target})`
       };
     }
+  }
+
+  // -------------------------------------------------------------
+  // Work Log Persistence Methods (업무 일지)
+  // -------------------------------------------------------------
+  async getWorkLogs() {
+    try {
+      const raw = localStorage.getItem('with_security_work_logs');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {
+      console.error('Failed to parse work logs from storage:', e);
+    }
+    // Default baseline work logs
+    return [
+      {
+        id: 'LOG-20260811-001',
+        category: '사내 업무',
+        title: '통합 보안 관제 시스템 모듈 점검 및 UI 개선',
+        details: '1. 출입 보안 서약 모듈 사업부/소속팀/직급 동적 제안 드롭다운 적용\n2. 출입 사업장 등록 관리 3개 필드(분류, 회사명, 사업장 위치) 규격화\n3. 2단계 카메라 비활성화 차단 정밀 검수 로직 보완 완료',
+        date: '2026-08-11',
+        authorName: '이원배',
+        authorTeam: '영업/운영사업부 운영1팀',
+        authorRank: '대리',
+        createdAt: '2026-08-11 08:30'
+      },
+      {
+        id: 'LOG-20260810-002',
+        category: '출장 업무',
+        title: '삼성전자 평택캠퍼스 P4 라인 보안 장비 기술 지원',
+        details: '1. P4 라인 반도체 핵심보안통제구역 보안 게이트 장비 시운전\n2. 모바일 보안 어플(MDM) 카메라 사용 제한 연동 테스트 완료\n3. 현장 보안 담당자 미팅 진행 및 출속 절차 확인',
+        date: '2026-08-10',
+        authorName: '이원배',
+        authorTeam: '영업/운영사업부 운영1팀',
+        authorRank: '대리',
+        createdAt: '2026-08-10 17:40'
+      }
+    ];
+  }
+
+  async saveWorkLog(logItem) {
+    const logs = await this.getWorkLogs();
+    const existingIndex = logs.findIndex(l => l.id === logItem.id);
+    let updated;
+    if (existingIndex >= 0) {
+      updated = [...logs];
+      updated[existingIndex] = { ...updated[existingIndex], ...logItem };
+    } else {
+      updated = [logItem, ...logs];
+    }
+    localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    return updated;
+  }
+
+  async deleteWorkLog(id) {
+    const logs = await this.getWorkLogs();
+    const updated = logs.filter(l => l.id !== id);
+    localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    return updated;
   }
 }
 

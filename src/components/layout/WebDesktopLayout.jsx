@@ -24,7 +24,9 @@ import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
 import IncidentReportTab from '../tabs/IncidentReportTab';
 import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
 import UserProfileTab from '../tabs/UserProfileTab';
+import WorkLogTab from '../tabs/WorkLogTab';
 import { dbService } from '../../services/dbService';
+import { ClipboardList } from 'lucide-react';
 
 export default function WebDesktopLayout({ 
   activeTab, 
@@ -50,6 +52,7 @@ export default function WebDesktopLayout({
 
   const navItems = [
     { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
+    { id: 'workLog', label: '업무 일지', icon: ClipboardList, badge: '신규' },
     ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),
     { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' },
     { id: 'incident', label: '보안관제(SOC) 위협신고', icon: AlertOctagon, badge: '신규' }
@@ -294,6 +297,7 @@ export default function WebDesktopLayout({
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
           <div style={{ maxWidth: '800px', margin: '0 auto' }}>
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'incident' && <IncidentReportTab onTriggerToast={onTriggerToast} />}

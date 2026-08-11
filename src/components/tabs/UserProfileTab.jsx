@@ -3,6 +3,7 @@ import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileC
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
 import { hashPassword } from '../../services/cryptoUtil';
+import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
 export default function UserProfileTab({ onTriggerToast }) {
   const [currentUser, setCurrentUser] = useState(null);
@@ -14,9 +15,9 @@ export default function UserProfileTab({ onTriggerToast }) {
     username: '',
     password: '',
     role: '일반',
-    division: 'DS부문 (반도체)',
-    team: '보안관제팀',
-    rank: '책임',
+    division: '영업/운영사업부',
+    team: '영업팀',
+    rank: '대리',
     name: '',
     phone: '',
     email: ''
@@ -198,9 +199,9 @@ export default function UserProfileTab({ onTriggerToast }) {
       username: '',
       password: '',
       role: '일반',
-      division: 'DS부문 (반도체)',
-      team: '보안관제팀',
-      rank: '책임',
+      division: '영업/운영사업부',
+      team: '영업팀',
+      rank: '대리',
       name: '',
       phone: '',
       email: ''
@@ -613,12 +614,18 @@ export default function UserProfileTab({ onTriggerToast }) {
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     사업부 *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     disabled={!isEditUnlocked}
-                    placeholder="예: DS부문 (반도체), DX부문"
                     value={editForm?.division || ''}
-                    onChange={(e) => setEditForm({ ...editForm, division: e.target.value })}
+                    onChange={(e) => {
+                      const newDiv = e.target.value;
+                      const teams = getTeamsForDivision(newDiv);
+                      setEditForm({
+                        ...editForm,
+                        division: newDiv,
+                        team: teams.length > 0 ? (teams.includes(editForm?.team) ? editForm.team : teams[0]) : editForm?.team || ''
+                      });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
@@ -628,19 +635,24 @@ export default function UserProfileTab({ onTriggerToast }) {
                       color: isEditUnlocked ? '#fff' : '#94a3b8',
                       fontSize: '13px',
                       outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 사업부 선택 --</option>
+                    {DIVISION_LIST.map(div => (
+                      <option key={div} value={div} style={{ background: '#0f172a', color: '#fff' }}>
+                        {div}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     소속팀 *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     disabled={!isEditUnlocked}
-                    placeholder="예: 보안관제팀, EUV설비팀"
                     value={editForm?.team || ''}
                     onChange={(e) => setEditForm({ ...editForm, team: e.target.value })}
                     style={{
@@ -652,9 +664,16 @@ export default function UserProfileTab({ onTriggerToast }) {
                       color: isEditUnlocked ? '#fff' : '#94a3b8',
                       fontSize: '13px',
                       outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 소속팀 선택 --</option>
+                    {getTeamsForDivision(editForm?.division).map(tm => (
+                      <option key={tm} value={tm} style={{ background: '#0f172a', color: '#fff' }}>
+                        {tm}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -663,10 +682,8 @@ export default function UserProfileTab({ onTriggerToast }) {
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     직급 *
                   </label>
-                  <input
-                    type="text"
+                  <select
                     disabled={!isEditUnlocked}
-                    placeholder="예: 책임, 수석, 선임, 수석연구원"
                     value={editForm?.rank || ''}
                     onChange={(e) => setEditForm({ ...editForm, rank: e.target.value })}
                     style={{
@@ -678,9 +695,16 @@ export default function UserProfileTab({ onTriggerToast }) {
                       color: isEditUnlocked ? '#fff' : '#94a3b8',
                       fontSize: '13px',
                       outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 직급 선택 --</option>
+                    {RANK_LIST.map(rk => (
+                      <option key={rk} value={rk} style={{ background: '#0f172a', color: '#fff' }}>
+                        {rk}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -1165,31 +1189,43 @@ export default function UserProfileTab({ onTriggerToast }) {
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     사업부 *
                   </label>
-                  <input
-                    type="text"
-                    placeholder="예: DS부문 (반도체), DX부문"
+                  <select
                     value={signupForm.division}
-                    onChange={(e) => setSignupForm({ ...signupForm, division: e.target.value })}
+                    onChange={(e) => {
+                      const newDiv = e.target.value;
+                      const teams = getTeamsForDivision(newDiv);
+                      setSignupForm({
+                        ...signupForm,
+                        division: newDiv,
+                        team: teams.length > 0 ? teams[0] : signupForm.team
+                      });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: '#0a0f1d',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      color: '#fff',
+                      border: '1px solid rgba(0, 242, 254, 0.4)',
+                      color: signupForm.division ? '#fff' : '#94a3b8',
                       fontSize: '13px',
-                      outline: 'none'
+                      outline: 'none',
+                      cursor: 'pointer'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 사업부 선택 --</option>
+                    {DIVISION_LIST.map(div => (
+                      <option key={div} value={div} style={{ background: '#0f172a', color: '#fff' }}>
+                        {div}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     소속팀 *
                   </label>
-                  <input
-                    type="text"
-                    placeholder="예: 보안관제팀, EUV설비팀"
+                  <select
                     value={signupForm.team}
                     onChange={(e) => setSignupForm({ ...signupForm, team: e.target.value })}
                     style={{
@@ -1197,12 +1233,20 @@ export default function UserProfileTab({ onTriggerToast }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: '#0a0f1d',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      color: '#fff',
+                      border: '1px solid rgba(0, 242, 254, 0.4)',
+                      color: signupForm.team ? '#fff' : '#94a3b8',
                       fontSize: '13px',
-                      outline: 'none'
+                      outline: 'none',
+                      cursor: 'pointer'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 소속팀 선택 --</option>
+                    {getTeamsForDivision(signupForm.division).map(tm => (
+                      <option key={tm} value={tm} style={{ background: '#0f172a', color: '#fff' }}>
+                        {tm}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1211,9 +1255,7 @@ export default function UserProfileTab({ onTriggerToast }) {
                   <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                     직급 *
                   </label>
-                  <input
-                    type="text"
-                    placeholder="예: 책임, 수석, 선임"
+                  <select
                     value={signupForm.rank}
                     onChange={(e) => setSignupForm({ ...signupForm, rank: e.target.value })}
                     style={{
@@ -1221,12 +1263,20 @@ export default function UserProfileTab({ onTriggerToast }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: '#0a0f1d',
-                      border: '1px solid rgba(255,255,255,0.15)',
-                      color: '#fff',
+                      border: '1px solid rgba(0, 242, 254, 0.4)',
+                      color: signupForm.rank ? '#fff' : '#94a3b8',
                       fontSize: '13px',
-                      outline: 'none'
+                      outline: 'none',
+                      cursor: 'pointer'
                     }}
-                  />
+                  >
+                    <option value="" disabled>-- 직급 선택 --</option>
+                    {RANK_LIST.map(rk => (
+                      <option key={rk} value={rk} style={{ background: '#0f172a', color: '#fff' }}>
+                        {rk}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
