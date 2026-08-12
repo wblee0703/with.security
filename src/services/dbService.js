@@ -2,8 +2,9 @@ import { hashPassword } from './cryptoUtil';
 
 // Server Base URL Management Helper
 export function getServerUrl() {
-  const url = localStorage.getItem('with_security_server_url') || localStorage.getItem('with_security_hosted_app_url') || '';
-  return url;
+  const url = localStorage.getItem('with_security_server_url');
+  if (url) return url;
+  return 'http://localhost:4000';
 }
 
 export function setServerUrl(url) {
@@ -13,7 +14,7 @@ export function setServerUrl(url) {
   } else {
     let formatted = url.trim();
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
-      formatted = 'https://' + formatted;
+      formatted = 'http://' + formatted;
     }
     formatted = formatted.replace(/\/+$/, '');
     localStorage.setItem('with_security_server_url', formatted);
@@ -35,9 +36,9 @@ export function isApiEndpoint(url) {
   return !lower.includes('github.io') && !lower.includes('github.com');
 }
 
-// Get REST API Base URL helper (returns null on static hosts like GitHub Pages unless explicit API server is set)
+// Get REST API Base URL helper (defaults to http://localhost:4000 for PC Web Browser)
 export function getApiServerUrl() {
-  const url = localStorage.getItem('with_security_server_url') || '';
+  const url = localStorage.getItem('with_security_server_url');
   if (url && isApiEndpoint(url)) {
     return url.replace(/\/+$/, '');
   }
@@ -47,7 +48,7 @@ export function getApiServerUrl() {
       return '';
     }
   }
-  return null;
+  return 'http://localhost:4000';
 }
 
 async function safeFetchApi(endpoint, options = {}) {
