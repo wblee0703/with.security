@@ -43,6 +43,14 @@ export default function MobileContainer({
     return () => clearInterval(interval);
   }, []);
 
+  const handleNavClick = (targetTabId) => {
+    if (!currentUser) {
+      setActiveTab('userProfile');
+      return;
+    }
+    setActiveTab(targetTabId);
+  };
+
   return (
     <div className="mobile-shell-wrapper">
       
@@ -79,10 +87,15 @@ export default function MobileContainer({
             <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', letterSpacing: '0.3px', lineHeight: 1.2 }}>
               WithSecurity
             </div>
-            <div style={{ fontSize: '10px', color: '#00f2fe', fontWeight: '700' }}>
-              통합 보안 관제
+            <div style={{ fontSize: '10px', color: '#64748b' }}>
+              통합 보안 솔루션
             </div>
           </div>
+        </div>
+
+        {/* Right Status Badge */}
+        <div className="badge-secure">
+          Strict Mode
         </div>
       </div>
 
@@ -94,7 +107,7 @@ export default function MobileContainer({
       {/* Bottom Mobile Navigation Bar */}
       <nav className="bottom-nav">
         <button
-          onClick={() => setActiveTab('entryCheck')}
+          onClick={() => handleNavClick('entryCheck')}
           className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
         >
           <Building2 size={18} />
@@ -102,7 +115,7 @@ export default function MobileContainer({
         </button>
 
         <button
-          onClick={() => setActiveTab('workLog')}
+          onClick={() => handleNavClick('workLog')}
           className={`nav-item ${activeTab === 'workLog' ? 'active' : ''}`}
         >
           <ClipboardList size={18} />
@@ -111,7 +124,7 @@ export default function MobileContainer({
 
         {isAdmin && (
           <button
-            onClick={() => setActiveTab('admin')}
+            onClick={() => handleNavClick('admin')}
             className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
           >
             <Settings size={18} />
@@ -120,7 +133,7 @@ export default function MobileContainer({
         )}
 
         <button
-          onClick={() => setActiveTab('userProfile')}
+          onClick={() => handleNavClick('userProfile')}
           className={`nav-item ${activeTab === 'userProfile' ? 'active' : ''}`}
         >
           <UserCheck size={18} />

@@ -3,8 +3,23 @@ import { query } from '../mysql.js';
 let logColumnsEnsured = false;
 
 /**
+ * SEC 평택사업장 형태로 사업장명 포맷팅
+ */
+function formatSecLogSiteName(rawSite) {
+  if (!rawSite) return 'SEC 평택사업장';
+  let str = String(rawSite).trim();
+  if (str.includes('삼성전자')) {
+    str = str.replace(/삼성전자\s*/g, 'SEC ');
+  } else if (!str.startsWith('SEC') && !str.startsWith('SK') && !str.includes('본사') && !str.includes('관제')) {
+    str = `SEC ${str}`;
+  }
+  return str.trim();
+}
+
+/**
  * security_log 테이블 컬럼 자동 변경 / 삭제 마이그레이션
- * MySQL 예약어 (`rank`, `name`, `role`, `team` 등) 백틱 이스케이프 및 중복/부재 컬럼 안전 보완
+ * 1. site -> site_name 컬럼명 변경 및 SEC 평택사업장 포맷 적용
+ * MySQL 예약어 (`rank`, `name`, `role`, `team` 등) 백틱 이스케이프 적용
  */
 async function ensureLogColumns() {
   if (logColumnsEnsured) return;
@@ -30,7 +45,12 @@ async function ensureLogColumns() {
       try { await query("ALTER TABLE security_log CHANGE COLUMN `signature_data` `signature_date` VARCHAR(100) DEFAULT '' COMMENT '서명 완료 날짜시간'"); } catch (e) {}
     }
 
-    // 2. 불필요 컬럼 삭제 (target_company 포함)
+    // site -> site_name 컬럼명 변경
+    if (colNames.includes('site') && !colNames.includes('site_name')) {
+      try { await query("ALTER TABLE security_log CHANGE COLUMN `site` `site_name` VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명'"); } catch (e) {}
+    }
+
+    // 2. 불필요 컬럼 삭제
     const dropCols = ['target_company', 'ip_address', 'pledge_content', 'pledge_title', 'visit_date', 'materials_json', 'companions_json', 'agreed_terms', 'user_id', 'host_name', 'agreed_at', 'created_at'];
     for (const col of dropCols) {
       if (colNames.includes(col)) {
@@ -50,7 +70,7 @@ async function ensureLogColumns() {
     if (!freshColNames.includes('name')) try { await query("ALTER TABLE security_log ADD COLUMN `name` VARCHAR(100) NOT NULL DEFAULT '서약자' COMMENT '서약자 성명'"); } catch (e) {}
     if (!freshColNames.includes('division')) try { await query("ALTER TABLE security_log ADD COLUMN `division` VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부'"); } catch (e) {}
     if (!freshColNames.includes('role')) try { await query("ALTER TABLE security_log ADD COLUMN `role` VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할'"); } catch (e) {}
-    if (!freshColNames.includes('site')) try { await query("ALTER TABLE security_log ADD COLUMN `site` VARCHAR(200) DEFAULT '' COMMENT '출입 현장명'"); } catch (e) {}
+    if (!freshColNames.includes('site_name')) try { await query("ALTER TABLE security_log ADD COLUMN `site_name` VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명'"); } catch (e) {}
     if (!freshColNames.includes('purpose')) try { await query("ALTER TABLE security_log ADD COLUMN `purpose` VARCHAR(255) DEFAULT '' COMMENT '방문/출입 목적'"); } catch (e) {}
     if (!freshColNames.includes('visitor_phone')) try { await query("ALTER TABLE security_log ADD COLUMN `visitor_phone` VARCHAR(50) DEFAULT '' COMMENT '방문자 연락처'"); } catch (e) {}
     if (!freshColNames.includes('team')) try { await query("ALTER TABLE security_log ADD COLUMN `team` VARCHAR(100) DEFAULT '' COMMENT '방문자 소속팀'"); } catch (e) {}
@@ -62,14 +82,19 @@ async function ensureLogColumns() {
     if (!freshColNames.includes('pledge_terms')) try { await query("ALTER TABLE security_log ADD COLUMN `pledge_terms` TEXT COMMENT '보안서약 준수 약관 전문'"); } catch (e) {}
     if (!freshColNames.includes('signature_date')) try { await query("ALTER TABLE security_log ADD COLUMN `signature_date` VARCHAR(100) DEFAULT '' COMMENT '서명 완료 날짜시간'"); } catch (e) {}
     if (!freshColNames.includes('status')) try { await query("ALTER TABLE security_log ADD COLUMN `status` VARCHAR(50) DEFAULT '승인완료' COMMENT '서약 처리 상태'"); } catch (e) {}
+
+    // 기존 데이터 마이그레이션: site_name이 비어있거나 '삼성전자'가 포함되어있을 경우 'SEC ...'로 업데이트
+    try {
+      await query("UPDATE security_log SET site_name = 'SEC 평택사업장' WHERE site_name IS NULL OR site_name = '' OR site_name = ' '");
+      await query("UPDATE security_log SET site_name = REPLACE(site_name, '삼성전자', 'SEC') WHERE site_name LIKE '%삼성전자%'");
+    } catch (e) {}
   } catch (e) {}
   logColumnsEnsured = true;
 }
 
 /**
  * 보안서약(security_log) 생성 / 저장
- * - log_id: PASS-YYYY-000 형식 지원 (예: PASS-2026-001)
- * - signature_date: 서명 완료 날짜시간 문자열만 저장
+ * - site_name 컬럼에 SEC 평택사업장 형태로 기록
  */
 export async function createSecurityLog(data = {}) {
   await ensureLogColumns();
@@ -91,7 +116,7 @@ export async function createSecurityLog(data = {}) {
   const name = String(data.name || data.user_name || data.visitorName || data.userName || '서약자');
   const division = String(data.division || '');
   const role = String(data.role || '일반');
-  const site = String(data.site || data.siteName || '');
+  const siteName = formatSecLogSiteName(data.site_name || data.siteName || data.site);
   const purpose = String(data.purpose || data.purposeType || data.customPurpose || '');
   const visitorPhone = String(data.visitor_phone || data.phone || data.visitorPhone || '');
   const team = String(data.team || data.visitor_team || data.visitorTeam || data.department || '');
@@ -117,13 +142,13 @@ export async function createSecurityLog(data = {}) {
   try {
     const sql = `
       INSERT INTO security_log 
-      (\`log_id\`, \`name\`, \`division\`, \`role\`, \`site\`, \`purpose\`, \`visitor_phone\`, \`team\`, \`rank\`, \`mdm_verified\`, \`gate_approved\`, \`doc_sec_verified\`, \`pre_check_verified\`, \`pledge_terms\`, \`signature_date\`, \`status\`)
+      (\`log_id\`, \`name\`, \`division\`, \`role\`, \`site_name\`, \`purpose\`, \`visitor_phone\`, \`team\`, \`rank\`, \`mdm_verified\`, \`gate_approved\`, \`doc_sec_verified\`, \`pre_check_verified\`, \`pledge_terms\`, \`signature_date\`, \`status\`)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`name\` = VALUES(\`name\`),
         \`division\` = VALUES(\`division\`),
         \`role\` = VALUES(\`role\`),
-        \`site\` = VALUES(\`site\`),
+        \`site_name\` = VALUES(\`site_name\`),
         \`purpose\` = VALUES(\`purpose\`),
         \`visitor_phone\` = VALUES(\`visitor_phone\`),
         \`team\` = VALUES(\`team\`),
@@ -138,7 +163,7 @@ export async function createSecurityLog(data = {}) {
     `;
 
     await query(sql, [
-      logId, name, division, role, site, purpose, visitorPhone, team, rank,
+      logId, name, division, role, siteName, purpose, visitorPhone, team, rank,
       mdmVerified, gateApproved, docSecVerified, preCheckVerified, pledgeTerms, signatureDate, status
     ]);
   } catch (err) {
@@ -146,26 +171,26 @@ export async function createSecurityLog(data = {}) {
     try {
       const fallbackSql = `
         INSERT INTO security_log 
-        (\`log_id\`, \`site\`, \`status\`)
+        (\`log_id\`, \`site_name\`, \`status\`)
         VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE \`site\` = VALUES(\`site\`)
+        ON DUPLICATE KEY UPDATE \`site_name\` = VALUES(\`site_name\`)
       `;
-      await query(fallbackSql, [logId, site, status]);
+      await query(fallbackSql, [logId, siteName, status]);
     } catch (e) {}
   }
 
-  return { id: logId, log_id: logId, name, site, status: 'SUCCESS' };
+  return { id: logId, log_id: logId, name, site_name: siteName, site: siteName, status: 'SUCCESS' };
 }
 
 /**
- * 보안서약 전체 / 검색 목록 조회 (모든 예약어 백틱 및 조회 예외 안전 처리)
+ * 보안서약 전체 / 검색 목록 조회 (site_name 및 백워드 호환 site 함께 매핑)
  */
 export async function getSecurityLogs(searchParams = {}) {
   await ensureLogColumns();
   let rows = [];
 
   try {
-    let sql = 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log';
+    let sql = 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site_name`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log';
     const params = [];
 
     if (searchParams.userName || searchParams.name) {
@@ -190,6 +215,7 @@ export async function getSecurityLogs(searchParams = {}) {
     const sTeam = row.team || row.visitor_team || row.department || '';
     const sRank = row.rank || row.visitor_rank || '';
     const sSigDate = row.signature_date || row.signature_data || row.signedAt || row.agreed_at || row.created_at || '';
+    const sSiteName = formatSecLogSiteName(row.site_name || row.site);
 
     return {
       id: row.log_id || row.id,
@@ -199,7 +225,9 @@ export async function getSecurityLogs(searchParams = {}) {
       userName: sName,
       division: row.division || '',
       role: row.role || '일반',
-      site: row.site || '',
+      site_name: sSiteName,
+      siteName: sSiteName,
+      site: sSiteName,
       purpose: row.purpose || '',
       phone: row.visitor_phone || row.phone || '',
       visitorPhone: row.visitor_phone || row.phone || '',
@@ -236,8 +264,8 @@ export async function getSecurityLogById(logId) {
 
   try {
     const sql = isPureNumber
-      ? 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log WHERE `log_id` = ? OR `id` = ? LIMIT 1'
-      : 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log WHERE `log_id` = ? LIMIT 1';
+      ? 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site_name`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log WHERE `log_id` = ? OR `id` = ? LIMIT 1'
+      : 'SELECT `id`, `log_id`, `name`, `division`, `role`, `site_name`, `purpose`, `visitor_phone`, `team`, `rank`, `mdm_verified`, `gate_approved`, `doc_sec_verified`, `pre_check_verified`, `pledge_terms`, `signature_date`, `status` FROM security_log WHERE `log_id` = ? LIMIT 1';
 
     const params = isPureNumber ? [targetId, parseInt(targetId, 10)] : [targetId];
     const results = await query(sql, params);
@@ -255,18 +283,24 @@ export async function getSecurityLogById(logId) {
   const sTeam = row.team || row.visitor_team || row.department || '';
   const sRank = row.rank || row.visitor_rank || '';
   const sSigDate = row.signature_date || row.signature_data || row.signedAt || row.agreed_at || row.created_at || '';
+  const sSiteName = formatSecLogSiteName(row.site_name || row.site);
 
   return {
     id: row.log_id || row.id,
-    log_id: row.log_id,
+    log_id: row.log_id || row.id,
     name: sName,
     visitorName: sName,
-    division: row.division,
-    role: row.role,
-    site: row.site,
-    purpose: row.purpose,
-    phone: row.visitor_phone || row.phone,
+    userName: sName,
+    division: row.division || '',
+    role: row.role || '일반',
+    site_name: sSiteName,
+    siteName: sSiteName,
+    site: sSiteName,
+    purpose: row.purpose || '',
+    phone: row.visitor_phone || row.phone || '',
+    visitorPhone: row.visitor_phone || row.phone || '',
     team: sTeam,
+    department: sTeam,
     rank: sRank,
     mdmVerified: Boolean(row.mdm_verified),
     docChecklist: {
@@ -274,16 +308,45 @@ export async function getSecurityLogById(logId) {
       docSecVerified: Boolean(row.doc_sec_verified),
       preCheckVerified: Boolean(row.pre_check_verified)
     },
-    pledgeTerms: row.pledge_terms,
+    pledgeTerms: row.pledge_terms || '',
     signature_date: sSigDate,
     signatureDate: sSigDate,
     signedAt: sSigDate,
-    status: row.status
+    agreed_at: sSigDate,
+    createdAt: sSigDate,
+    status: row.status || '승인완료'
   };
 }
 
 /**
- * 보안서약 삭제 (문자열 log_id는 `log_id` = ? 조건으로만 조회하여 INT 캐스팅 에러 예방)
+ * 보안서약 수정
+ */
+export async function updateSecurityLog(logId, data) {
+  await ensureLogColumns();
+  const targetId = String(logId || '').trim();
+  if (!targetId) return false;
+
+  const isPureNumber = /^\d+$/.test(targetId);
+  const siteName = formatSecLogSiteName(data.site_name || data.siteName || data.site);
+
+  const sql = isPureNumber
+    ? 'UPDATE security_log SET `site_name` = COALESCE(?, `site_name`), `purpose` = COALESCE(?, `purpose`), `status` = COALESCE(?, `status`) WHERE `log_id` = ? OR `id` = ?'
+    : 'UPDATE security_log SET `site_name` = COALESCE(?, `site_name`), `purpose` = COALESCE(?, `purpose`), `status` = COALESCE(?, `status`) WHERE `log_id` = ?';
+
+  const params = isPureNumber 
+    ? [siteName || null, data.purpose || null, data.status || null, targetId, parseInt(targetId, 10)]
+    : [siteName || null, data.purpose || null, data.status || null, targetId];
+
+  try {
+    const result = await query(sql, params);
+    return (result && result.affectedRows > 0);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * 보안서약 삭제
  */
 export async function deleteSecurityLog(logId) {
   await ensureLogColumns();
@@ -300,12 +363,11 @@ export async function deleteSecurityLog(logId) {
   try {
     const result = await query(sql, params);
     return (result && result.affectedRows > 0);
-  } catch (err) {
-    console.warn('Primary delete error, fallback log_id DELETE:', err.message);
+  } catch (e) {
     try {
       const result = await query('DELETE FROM security_log WHERE `log_id` = ?', [targetId]);
       return (result && result.affectedRows > 0);
-    } catch (e) {
+    } catch (err) {
       return false;
     }
   }

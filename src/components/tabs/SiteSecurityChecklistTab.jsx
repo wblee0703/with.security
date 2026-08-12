@@ -36,7 +36,7 @@ import { isSamePerson, DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../
 export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   const [checklistList, setChecklistList] = useState([]);
 
-  // Load from IndexedDB on component mount
+  // Load from IndexedDB on component mount & listen for real-time DB changes
   useEffect(() => {
     async function loadFromDB() {
       try {
@@ -47,6 +47,16 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       }
     }
     loadFromDB();
+
+    const handleDataChanged = async () => {
+      try {
+        const freshItems = await dbService.getChecklists();
+        setChecklistList(freshItems || []);
+      } catch (e) {}
+    };
+
+    window.addEventListener('with_security_data_changed', handleDataChanged);
+    return () => window.removeEventListener('with_security_data_changed', handleDataChanged);
   }, []);
 
   // Admin Managed Entrance Sites State
@@ -626,12 +636,47 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           rank: u.rank || '대리',
           role: u.role || '일반',
           phone: u.phone || '010-0000-0000',
-          status: '대기',
+          status: '서약전',
           mdmVerified: false,
           pledgedAt: null,
           createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
         });
         addedNames.push(uName);
+
+        // 데이터 베이스 security_log에 동행 계정 정보로 서약전 상태 레코드 즉시 기입
+        try {
+          const compLogId = `PASS-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+          await dbService.saveChecklist({
+            id: compLogId,
+            log_id: compLogId,
+            name: uName,
+            user_name: uName,
+            visitorName: uName,
+            userName: uName,
+            username: u.username || '',
+            division: u.division || targetPledgeForCompanion.division || '',
+            role: u.role || '일반',
+            site: targetPledgeForCompanion.site || '',
+            purpose: targetPledgeForCompanion.purpose || targetPledgeForCompanion.purposeType || '',
+            phone: u.phone || '',
+            visitor_phone: u.phone || '',
+            visitorPhone: u.phone || '',
+            team: uTeam,
+            visitor_team: uTeam,
+            department: uTeam,
+            rank: u.rank || '대리',
+            visitor_rank: u.rank || '대리',
+            mdmVerified: false,
+            docChecklist: { gateApproved: false, docSecVerified: false, preCheckVerified: false },
+            pledgeTerms: targetPledgeForCompanion.pledgeTerms || '',
+            signature_date: '',
+            signatureDate: '',
+            signedAt: '',
+            status: '서약전'
+          });
+        } catch (compErr) {
+          console.warn('Companion security_log save warning:', compErr);
+        }
       }
     }
 
@@ -881,6 +926,50 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     });
   };
 
+  // Helper: 사업장(사업장명 + 위치 조합) 및 사용자(ID, 소속, 직급, 이름) 기준 오늘 서약 완료 여부 엄격 체크
+  const isSiteAlreadyPledgedToday = (siteObj, visitorName, phone, username, team, rank) => {
+    if (!siteObj) return false;
+    const todayIso = getTodayLocalIsoDate();
+    const siteNameStr = String(siteObj.name || '').trim().toLowerCase();
+    const siteAddrStr = String(siteObj.address || '').trim().toLowerCase();
+
+    return (checklistList || []).some(item => {
+      // 1. 오늘 날짜 체크
+      const itemDate = item.signature_date || item.signatureDate || item.signedAt || item.createdAt || '';
+      const itemVisitDate = item.visitDate || '';
+      const isToday = itemDate.includes(todayIso) || itemVisitDate.includes(todayIso) || matchesSelectedDate(item, todayIso);
+      if (!isToday) return false;
+
+      // 2. 사업장 구분: 사업장명 AND 사업장 위치 조합 확인 (1개라도 다르면 다른 사업장으로 판단)
+      const itemSite = String(item.site_name || item.siteName || item.site || '').trim().toLowerCase();
+      let nameMatches = siteNameStr ? itemSite.includes(siteNameStr) : false;
+      let addrMatches = siteAddrStr ? itemSite.includes(siteAddrStr) : true; // 위치 미지정 시 사업장명만 검증
+
+      if (!nameMatches || !addrMatches) return false;
+
+      // 3. 사용자 식별: ID, 소속(team), 직급(rank), 이름(name) 기준 동일인 판단 (1개라도 다르면 다른 사람으로 판단)
+      const targetUserObj = {
+        username: username || currentUser?.username || '',
+        name: visitorName || currentUser?.name || '',
+        visitorName: visitorName || currentUser?.name || '',
+        team: team || currentUser?.team || currentUser?.department || '',
+        department: team || currentUser?.team || currentUser?.department || '',
+        rank: rank || currentUser?.rank || '',
+        phone: phone || currentUser?.phone || ''
+      };
+
+      const isPrimary = isSamePerson(targetUserObj, item);
+      if (isPrimary && item.status !== '서약전') return true;
+
+      if (Array.isArray(item.companions)) {
+        const compMatch = item.companions.some(c => isSamePerson(targetUserObj, c) && c.status !== '서약전');
+        if (compMatch) return true;
+      }
+
+      return false;
+    });
+  };
+
   // Submit Form
   const handleSubmitForm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -900,6 +989,28 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       if (onTriggerToast) onTriggerToast('1단계: 방문자 성명을 입력해 주세요.', 'warning');
       setActiveStep(1);
       return;
+    }
+
+    // 중복 서약 방지 검증: 오늘 동일 사업장에 이미 서약이 완료된 경우 방지
+    if (!formData.isEditMode && !formData.isCompanionMode && formData.site) {
+      const selectedSiteObj = sites.find(s => {
+        const dName = s.address ? `${s.name} (${s.address})` : s.name;
+        return dName === formData.site || s.name === formData.site || formData.site.includes(s.name);
+      });
+
+      const targetName = formData.visitorName || currentUser?.name || '';
+      const targetPhone = formData.phone || currentUser?.phone || '';
+      const targetUsername = activeUser?.username || currentUser?.username || '';
+      const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+      const targetRank = formData.rank || currentUser?.rank || '';
+
+      if (selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
+        if (onTriggerToast) {
+          onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 동일 사업장에 중복 서명은 제한됩니다.`, 'warning');
+        }
+        setActiveStep(1);
+        return;
+      }
     }
 
     // 2) Step 2 Validation: Security App & Camera Lock Verification
@@ -1124,10 +1235,20 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     const nextNum = checklistList.length + 1;
     const newPassId = `PASS-${currentYear}-${String(nextNum).padStart(3, '0')}`;
 
+    const rawSiteStr = String(formData.site || '').trim();
+    let formattedSiteName = rawSiteStr;
+    if (rawSiteStr.includes('삼성전자')) {
+      formattedSiteName = rawSiteStr.replace(/삼성전자\s*/g, 'SEC ');
+    } else if (rawSiteStr && !rawSiteStr.startsWith('SEC') && !rawSiteStr.startsWith('SK') && !rawSiteStr.includes('본사')) {
+      formattedSiteName = `SEC ${rawSiteStr}`;
+    }
+
     const newPass = {
       id: newPassId,
       log_id: newPassId,
-      site: formData.site,
+      site_name: formattedSiteName || 'SEC 평택사업장',
+      siteName: formattedSiteName || 'SEC 평택사업장',
+      site: formattedSiteName || 'SEC 평택사업장',
       visitorName: formData.visitorName.trim(),
       name: formData.visitorName.trim(),
       username: activeUser?.username || currentUser?.username || '',
@@ -1148,11 +1269,12 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
     try {
       await dbService.saveChecklist(newPass);
+      const freshList = await dbService.getChecklists();
+      setChecklistList(freshList || []);
     } catch (err) {
       console.error('Failed to save pass to DB:', err);
+      setChecklistList([newPass, ...checklistList]);
     }
-
-    setChecklistList([newPass, ...checklistList]);
     handleCloseModal();
     setActiveStep(1);
 
@@ -1830,7 +1952,28 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                     <select
                       disabled={formData.isCompanionMode}
                       value={formData.site}
-                      onChange={(e) => setFormData({ ...formData, site: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const selectedSiteObj = sites.find(s => {
+                          const dName = s.address ? `${s.name} (${s.address})` : s.name;
+                          return dName === val || s.name === val;
+                        });
+
+                        const targetName = formData.visitorName || currentUser?.name || '';
+                        const targetPhone = formData.phone || currentUser?.phone || '';
+                        const targetUsername = currentUser?.username || '';
+                        const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                        const targetRank = formData.rank || currentUser?.rank || '';
+
+                        if (!formData.isEditMode && !formData.isCompanionMode && selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
+                          if (onTriggerToast) {
+                            onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 다른 사업장을 선택해 주세요.`, 'warning');
+                          }
+                          return;
+                        }
+
+                        setFormData({ ...formData, site: val });
+                      }}
                       style={{
                         width: '100%',
                         padding: '10px 14px',
@@ -1847,9 +1990,25 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       <option value="" disabled hidden={formData.isCompanionMode}>-- 출입 사업장을 선택해 주세요 --</option>
                       {sites.map((s) => {
                         const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+                        const targetName = formData.visitorName || currentUser?.name || '';
+                        const targetPhone = formData.phone || currentUser?.phone || '';
+                        const targetUsername = currentUser?.username || '';
+                        const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                        const targetRank = formData.rank || currentUser?.rank || '';
+
+                        const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+
                         return (
-                          <option key={s.id} value={displayName}>
-                            [{s.type || s.category || '보안어플O'}] {displayName}
+                          <option
+                            key={s.id}
+                            value={displayName}
+                            disabled={isPledged}
+                            style={{
+                              background: isPledged ? '#1e293b' : '#0f172a',
+                              color: isPledged ? '#64748b' : '#fff'
+                            }}
+                          >
+                            [{s.type || s.category || '보안어플O'}] {displayName} {isPledged ? '⛔ (오늘 서약 완료됨)' : ''}
                           </option>
                         );
                       })}

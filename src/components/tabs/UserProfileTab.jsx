@@ -5,7 +5,7 @@ import { dbMigrationService } from '../../services/dbMigrationService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
-export default function UserProfileTab({ onTriggerToast }) {
+export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
 
@@ -163,6 +163,7 @@ export default function UserProfileTab({ onTriggerToast }) {
       setEditForm(activeUser);
       setLoginForm({ username: '', password: '' });
       if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [구분: ${activeUser.role}]`, 'success');
+      if (setActiveTab) setActiveTab('entryCheck');
     } else {
       if (onTriggerToast) onTriggerToast('아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
     }
@@ -214,6 +215,7 @@ export default function UserProfileTab({ onTriggerToast }) {
     });
 
     if (onTriggerToast) onTriggerToast(`'${newUser.name}'님 계정이 정상 생성되고 로그인 되었습니다. [구분: 일반]`, 'success');
+    if (setActiveTab) setActiveTab('entryCheck');
   };
 
   // Handle Opening Password Verification Modal / Cancel Edit

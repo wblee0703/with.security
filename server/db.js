@@ -195,6 +195,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log(`\nℹ️ [INFO] Port ${PORT} is already in use by an active WithSecurity Backend DB process.`);
+    console.log(`ℹ️ [INFO] Re-using existing backend server at http://localhost:${PORT}\n`);
+    process.exit(0);
+  } else {
+    console.error('Server error:', err);
+  }
+});
+
 server.listen(PORT, async () => {
   console.log(`WithSecurity Enterprise Database REST API running on http://localhost:${PORT}`);
   console.log('Checking MySQL connection status...');

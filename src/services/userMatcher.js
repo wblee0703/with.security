@@ -53,63 +53,52 @@ export const RANK_LIST = [
 
 /**
  * Returns true if personA and personB represent the EXACT SAME person.
- * Returns false if ANY of the non-empty fields (name, phone, division, team, rank, role, username) differ.
+ * Evaluates ID (username), 소속 (team/department), 직급 (rank), and 이름 (name).
+ * If ANY single field differs when present, treats them as DIFFERENT persons.
  */
 export function isSamePerson(personA, personB) {
   if (!personA || !personB) return false;
 
-  const nameA = (personA.name || personA.visitorName || '').trim();
-  const nameB = (personB.name || personB.visitorName || '').trim();
+  const usernameA = (personA.username || personA.userId || personA.writer_id || '').trim().toLowerCase();
+  const usernameB = (personB.username || personB.userId || personB.writer_id || '').trim().toLowerCase();
 
-  const phoneA = (personA.phone || '').trim().replace(/[-_\s]/g, '');
-  const phoneB = (personB.phone || '').trim().replace(/[-_\s]/g, '');
+  const nameA = (personA.name || personA.visitorName || personA.userName || '').trim().toLowerCase();
+  const nameB = (personB.name || personB.visitorName || personB.userName || '').trim().toLowerCase();
 
-  const divisionA = (personA.division || personA.businessUnit || personA.divisionName || '').trim();
-  const divisionB = (personB.division || personB.businessUnit || personB.divisionName || '').trim();
+  const teamA = (personA.team || personA.department || personA.visitor_team || personA.belonging || '').trim().replace(/\s+/g, '').toLowerCase();
+  const teamB = (personB.team || personB.department || personB.visitor_team || personB.belonging || '').trim().replace(/\s+/g, '').toLowerCase();
 
-  const teamA = (personA.team || personA.department || personA.belonging || '').trim();
-  const teamB = (personB.team || personB.department || personB.belonging || '').trim();
+  const rankA = (personA.rank || personA.title || personA.visitor_rank || '').trim().toLowerCase();
+  const rankB = (personB.rank || personB.title || personB.visitor_rank || '').trim().toLowerCase();
 
-  const rankA = (personA.rank || personA.title || '').trim();
-  const rankB = (personB.rank || personB.title || '').trim();
+  const divisionA = (personA.division || personA.businessUnit || '').trim().replace(/\s+/g, '').toLowerCase();
+  const divisionB = (personB.division || personB.businessUnit || '').trim().replace(/\s+/g, '').toLowerCase();
 
-  const roleA = (personA.role || personA.accountType || personA.category || '').trim();
-  const roleB = (personB.role || personB.accountType || personB.category || '').trim();
+  const phoneA = (personA.phone || personA.visitorPhone || personA.visitor_phone || '').trim().replace(/[-_\s]/g, '');
+  const phoneB = (personB.phone || personB.visitorPhone || personB.visitor_phone || '').trim().replace(/[-_\s]/g, '');
 
-  const usernameA = (personA.username || personA.userId || '').trim();
-  const usernameB = (personB.username || personB.userId || '').trim();
-
-  // Normalize whitespace for robust identity checking
-  const normDivA = divisionA.replace(/\s+/g, '');
-  const normDivB = divisionB.replace(/\s+/g, '');
-
-  const normTeamA = teamA.replace(/\s+/g, '');
-  const normTeamB = teamB.replace(/\s+/g, '');
-
-  // 1. If usernames are present on both and differ -> DIFFERENT PERSON
+  // 1. ID (username)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
   if (usernameA && usernameB && usernameA !== usernameB) return false;
 
-  // 2. If names are present on both and differ -> DIFFERENT PERSON
+  // 2. 이름 (name)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
   if (nameA && nameB && nameA !== nameB) return false;
 
-  // 3. CRITICAL: If divisions (사업부) are present on both and differ -> DIFFERENT PERSON
-  if (normDivA && normDivB && normDivA !== normDivB) return false;
+  // 3. 소속 (team/department)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  if (teamA && teamB && teamA !== teamB) return false;
 
-  // 4. If teams (소속/팀) are present on both and differ -> DIFFERENT PERSON
-  if (normTeamA && normTeamB && normTeamA !== normTeamB) return false;
-
-  // 5. If phones are present on both and differ -> DIFFERENT PERSON
-  if (phoneA && phoneB && phoneA !== phoneB) return false;
-
-  // 6. If ranks are present on both and differ -> DIFFERENT PERSON
+  // 4. 직급 (rank)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
   if (rankA && rankB && rankA !== rankB) return false;
 
-  // 7. If roles are present on both and differ -> DIFFERENT PERSON
-  if (roleA && roleB && roleA !== roleB) return false;
+  // 5. 사업부 (division)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  if (divisionA && divisionB && divisionA !== divisionB) return false;
 
-  // Minimum identity requirement: must match on username OR name
-  if (usernameA && usernameB && usernameA === usernameB) return true;
-  if (nameA && nameB && nameA === nameB) return true;
+  // 6. 연락처 (phone)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  if (phoneA && phoneB && phoneA !== phoneB) return false;
+
+  // ID 또는 이름 중 최소 1개는 일치해야 동일인으로 판단
+  if ((usernameA && usernameB && usernameA === usernameB) || (nameA && nameB && nameA === nameB)) {
+    return true;
+  }
 
   return false;
 }

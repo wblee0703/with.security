@@ -197,7 +197,8 @@ class SecurityDatabase {
         name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
         division: checklist.division || '',
         role: checklist.role || '일반',
-        site: checklist.site || '',
+        site_name: checklist.site_name || checklist.siteName || checklist.site || 'SEC 평택사업장',
+        site: checklist.site_name || checklist.siteName || checklist.site || 'SEC 평택사업장',
         purpose: checklist.purpose || checklist.purposeType || checklist.customPurpose || '',
         visitor_phone: checklist.phone || checklist.visitorPhone || checklist.visitor_phone || '',
         team: checklist.team || checklist.department || checklist.visitor_team || '',
@@ -812,11 +813,17 @@ class SecurityDatabase {
               category: item.category || '사내 업무',
               title: item.title || '',
               details: item.tasks_done || item.details || '',
+              siteName: item.site_name || item.siteName || '',
+              site_name: item.site_name || item.siteName || '',
               date: cleanDate,
-              authorName: item.writer_name || item.authorName || '작성자',
-              authorTeam: item.writer_team || item.writerTeam || item.authorTeam || item.team || item.department || '영업/운영사업부 운영1팀',
-              authorRank: item.writer_rank || item.writerRank || item.authorRank || item.rank || '대리',
-              status: item.status || 'SUBMITTED',
+              name: item.name || item.writer_name || item.authorName || '작성자',
+              authorName: item.name || item.writer_name || item.authorName || '작성자',
+              division: item.division || '',
+              team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+              authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+              rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+              authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+              role: item.role || '일반',
               createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
             };
           });
@@ -839,8 +846,10 @@ class SecurityDatabase {
         details: '1. 출입 보안 서약 모듈 사업부/소속팀/직급 동적 제안 드롭다운 적용\n2. 출입 사업장 등록 관리 3개 필드(분류, 회사명, 사업장 위치) 규격화\n3. 2단계 카메라 비활성화 차단 정밀 검수 로직 보완 완료',
         date: '2026-08-11',
         authorName: '이원배',
-        authorTeam: '영업/운영사업부 운영1팀',
+        authorTeam: '운영1팀',
         authorRank: '대리',
+        division: '영업/운영사업부',
+        role: '일반',
         createdAt: '2026-08-11 08:30'
       }
     ];
@@ -854,18 +863,17 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           logId: logItem.id,
-          writerName: logItem.authorName || logItem.writerName || '작성자',
+          name: logItem.authorName || logItem.name || logItem.writerName || '작성자',
           writerId: logItem.authorUsername || logItem.writerId || '',
-          writerTeam: logItem.authorTeam || logItem.writerTeam || logItem.team || logItem.department || '영업/운영사업부 운영1팀',
-          writerRank: logItem.authorRank || logItem.writerRank || logItem.rank || '대리',
+          division: logItem.authorDivision || logItem.division || '',
+          team: logItem.authorTeam || logItem.team || logItem.writerTeam || logItem.department || '보안관제팀',
+          rank: logItem.authorRank || logItem.rank || logItem.writerRank || '대리',
+          role: logItem.authorRole || logItem.role || '일반',
           category: logItem.category || '사내 업무',
-          siteName: logItem.siteName || '',
+          siteName: logItem.siteName || logItem.site_name || logItem.site || '',
           logDate: logItem.date || new Date().toISOString().split('T')[0],
           title: logItem.title,
-          tasksDone: logItem.details || logItem.tasksDone || '',
-          issuesFound: logItem.issuesFound || '',
-          weather: logItem.weather || '맑음',
-          status: logItem.status || 'SUBMITTED'
+          tasksDone: logItem.details || logItem.tasksDone || ''
         })
       });
     } catch (e) {}

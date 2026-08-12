@@ -66,11 +66,15 @@ export default function App() {
     return window.innerWidth > 768 ? 'web' : 'mobile';
   });
 
-  // Admin Tab Route Access Control Guard
+  // Default login guard: if not logged in, force userProfile (Login screen)
   useEffect(() => {
-    async function checkAdminAccess() {
-      if (activeTab === 'admin') {
-        const u = await dbService.getUserProfile();
+    async function enforceLoginGuard() {
+      const u = await dbService.getUserProfile();
+      if (!u || !u.username) {
+        if (activeTab !== 'userProfile') {
+          setActiveTab('userProfile');
+        }
+      } else if (activeTab === 'admin') {
         const isAdmin = ['개발자', '관리자'].includes(u?.role) || u?.username === 'admin';
         if (!isAdmin) {
           setActiveTab('entryCheck');
@@ -78,7 +82,7 @@ export default function App() {
         }
       }
     }
-    checkAdminAccess();
+    enforceLoginGuard();
   }, [activeTab]);
 
   useEffect(() => {
@@ -176,7 +180,7 @@ export default function App() {
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
-            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} />}
+            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} setActiveTab={setActiveTab} />}
           </MobileContainer>
         </div>
       )}

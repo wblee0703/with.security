@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Plus, Trash2, Shield, Lock, X } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 
 export default function EncryptedVaultTab({ onTriggerToast }) {
   const [sites, setSites] = useState([]);
   const [newSiteForm, setNewSiteForm] = useState({ type: '보안어플O', name: '', address: '' });
+
+  // Edit Site Modal State
+  const [editingSite, setEditingSite] = useState(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const loadSites = async () => {
     try {
@@ -34,7 +38,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     // 이름과 위치가 모두 일치하는 경우만 중복으로 체크
     const existingDuplicate = sites.find(
       s => String(s.name || '').trim().toLowerCase() === name.toLowerCase() &&
-           String(s.address || '').trim().toLowerCase() === address.toLowerCase()
+        String(s.address || '').trim().toLowerCase() === address.toLowerCase()
     );
 
     if (existingDuplicate) {
@@ -57,6 +61,40 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     if (onTriggerToast) onTriggerToast(`'${newSite.name}' (${newSite.address || '위치 미지정'}) 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
+  // Open Edit Site Modal
+  const handleOpenEditModal = (site) => {
+    setEditingSite({
+      id: site.id,
+      type: site.type || '보안어플O',
+      name: site.name || '',
+      address: site.address || ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  // Save Edited Site
+  const handleSaveEditSite = async (e) => {
+    if (e) e.preventDefault();
+    if (!editingSite || !editingSite.name.trim()) {
+      if (onTriggerToast) onTriggerToast('사업장명을 입력해 주세요.', 'warning');
+      return;
+    }
+
+    const updatedSite = {
+      id: editingSite.id,
+      type: editingSite.type.trim() || '보안어플O',
+      name: editingSite.name.trim(),
+      address: editingSite.address.trim()
+    };
+
+    await dbService.saveSite(updatedSite);
+    await loadSites();
+    setIsEditModalOpen(false);
+    setEditingSite(null);
+    if (onTriggerToast) onTriggerToast(`'${updatedSite.name}' 출입 사업장 정보가 성공적으로 수정되었습니다.`, 'success');
+  };
+
+  // Delete Site Modal States
   const [deleteTargetSite, setDeleteTargetSite] = useState(null);
   const [devPasswordInput, setDevPasswordInput] = useState('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -133,7 +171,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
             </div>
             <div>
               <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                출입 대상 사업장 통합 관리 (Admin)
+                출입 대상 사업장 통합 관리
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
                 security_site DB 테이블 기반으로 사업장 목록(type, name, address, id: site-000)을 관리합니다.
@@ -272,8 +310,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                {/* Type Badge (분류) */}
-
                 {/* Type Badge */}
                 <span style={{
                   padding: '3px 8px',
@@ -287,7 +323,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   {s.type || '보안어플O'}
                 </span>
 
-                {/* Name & Address (Same line, no icon) */}
+                {/* Name & Address */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>
                     {s.name}
@@ -300,29 +336,189 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => handleInitiateDeleteSite(s.id, s.name)}
-                style={{
-                  background: 'rgba(244, 63, 94, 0.1)',
-                  border: '1px solid rgba(244, 63, 94, 0.3)',
-                  color: '#f43f5e',
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}
-              >
-                <Trash2 size={13} /> 삭제
-              </button>
+              {/* Action Buttons: 수정 & 삭제 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => handleOpenEditModal(s)}
+                  style={{
+                    background: 'rgba(0, 242, 254, 0.1)',
+                    border: '1px solid rgba(0, 242, 254, 0.3)',
+                    color: '#00f2fe',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Edit3 size={13} /> 수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleInitiateDeleteSite(s.id, s.name)}
+                  style={{
+                    background: 'rgba(244, 63, 94, 0.1)',
+                    border: '1px solid rgba(244, 63, 94, 0.3)',
+                    color: '#f43f5e',
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Trash2 size={13} /> 삭제
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+
+      {/* Modal: Edit Site Information */}
+      {isEditModalOpen && editingSite && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 200,
+          background: 'rgba(3, 6, 13, 0.85)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '24px', borderRadius: '24px', border: '1px solid rgba(0, 242, 254, 0.4)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit3 size={18} /> 출입 사업장 정보 수정
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  분류 *
+                </label>
+                <select
+                  value={editingSite.type}
+                  onChange={(e) => setEditingSite({ ...editingSite, type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: '#0a0f1d',
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <option value="보안어플O">보안어플O</option>
+                  <option value="보안어플X">보안어플X</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  사업장명 *
+                </label>
+                <input
+                  type="text"
+                  value={editingSite.name}
+                  onChange={(e) => setEditingSite({ ...editingSite, name: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: '#0a0f1d',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  사업장 위치
+                </label>
+                <input
+                  type="text"
+                  value={editingSite.address}
+                  onChange={(e) => setEditingSite({ ...editingSite, address: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: '#0a0f1d',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    color: '#cbd5e1',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1,
+                    padding: '12px',
+                    borderRadius: '12px',
+                    background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                    border: 'none',
+                    color: '#050b14',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    cursor: 'pointer'
+                  }}
+                >
+                  수정 완료 저장
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Developer Password Verification for Site Deletion */}
       {isDeleteModalOpen && (

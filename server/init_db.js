@@ -75,20 +75,15 @@ async function initDatabase() {
       try { await connection.query("ALTER TABLE security_log CHANGE COLUMN `user_name` `name` VARCHAR(100) NOT NULL COMMENT '서약자 성명'"); } catch (err) {}
       try { await connection.query("ALTER TABLE security_log CHANGE COLUMN `visitor_team` `team` VARCHAR(100) DEFAULT '' COMMENT '방문자 소속팀'"); } catch (err) {}
       try { await connection.query("ALTER TABLE security_log CHANGE COLUMN `visitor_rank` `rank` VARCHAR(50) DEFAULT '' COMMENT '방문자 직급'"); } catch (err) {}
-      try { await connection.query("ALTER TABLE security_log CHANGE COLUMN `signature_data` `signature_date` VARCHAR(100) DEFAULT '' COMMENT '서명 완료 날짜시간'"); } catch (err) {}
-
-      // Drop deleted columns
-      const dropCols = ['target_company', 'ip_address', 'pledge_content', 'pledge_title', 'visit_date', 'materials_json', 'companions_json', 'agreed_terms', 'user_id', 'host_name', 'agreed_at', 'created_at'];
-      for (const col of dropCols) {
-        try { await connection.query(`ALTER TABLE security_log DROP COLUMN \`${col}\``); } catch (err) {}
-      }
+      // site -> site_name 컬럼명 변경
+      try { await connection.query("ALTER TABLE security_log CHANGE COLUMN `site` `site_name` VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명'"); } catch (err) {}
 
       await connection.query(`
         ALTER TABLE security_log
         ADD COLUMN IF NOT EXISTS \`name\` VARCHAR(100) NOT NULL DEFAULT '서약자' COMMENT '서약자 성명',
         ADD COLUMN IF NOT EXISTS division VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부',
         ADD COLUMN IF NOT EXISTS role VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할',
-        ADD COLUMN IF NOT EXISTS site VARCHAR(200) DEFAULT '' COMMENT '출입 현장명',
+        ADD COLUMN IF NOT EXISTS site_name VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명',
         ADD COLUMN IF NOT EXISTS purpose VARCHAR(255) DEFAULT '' COMMENT '방문/출입 목적',
         ADD COLUMN IF NOT EXISTS visitor_phone VARCHAR(50) DEFAULT '' COMMENT '방문자 연락처',
         ADD COLUMN IF NOT EXISTS \`team\` VARCHAR(100) DEFAULT '' COMMENT '방문자 소속팀',
@@ -105,7 +100,7 @@ async function initDatabase() {
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN \`name\` VARCHAR(100) DEFAULT '서약자' COMMENT '서약자 성명'`); } catch (err) {}
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN division VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부'`); } catch (err) {}
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN role VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할'`); } catch (err) {}
-      try { await connection.query(`ALTER TABLE security_log ADD COLUMN site VARCHAR(200) DEFAULT '' COMMENT '출입 현장명'`); } catch (err) {}
+      try { await connection.query(`ALTER TABLE security_log ADD COLUMN site_name VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명'`); } catch (err) {}
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN purpose VARCHAR(255) DEFAULT '' COMMENT '방문/출입 목적'`); } catch (err) {}
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN visitor_phone VARCHAR(50) DEFAULT '' COMMENT '방문자 연락처'`); } catch (err) {}
       try { await connection.query(`ALTER TABLE security_log ADD COLUMN \`team\` VARCHAR(100) DEFAULT '' COMMENT '방문자 소속팀'`); } catch (err) {}

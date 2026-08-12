@@ -54,16 +54,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     return trimmed;
   };
 
-  // Date Navigation State & Ref
   const [selectedDate, setSelectedDate] = useState(getTodayIsoDate());
   const [viewAllDates, setViewAllDates] = useState(false); // false = filter by selectedDate, true = show all dates
+  const [siteOptions, setSiteOptions] = useState([]);
   const datePickerRef = useRef(null);
 
   const [form, setForm] = useState({
     category: '사내 업무',
     date: getTodayIsoDate(),
     title: '',
-    details: ''
+    details: '',
+    siteName: ''
   });
 
   const loadData = async () => {
@@ -72,6 +73,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       setCurrentUser(u);
       const logs = await dbService.getWorkLogs();
       setWorkLogs(logs);
+      const sites = await dbService.getSites();
+      setSiteOptions(sites || []);
     } catch (err) {
       console.error('Failed to load work logs:', err);
     }
@@ -148,7 +151,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       category: '사내 업무',
       date: getTodayIsoDate(),
       title: '',
-      details: ''
+      details: '',
+      siteName: ''
     });
     setIsModalOpen(true);
   };
@@ -159,7 +163,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       category: logItem.category || '사내 업무',
       date: logItem.date || getTodayIsoDate(),
       title: logItem.title || '',
-      details: logItem.details || ''
+      details: logItem.details || '',
+      siteName: logItem.siteName || logItem.site_name || ''
     });
     setIsModalOpen(true);
   };
@@ -178,6 +183,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
     const authorRank = currentUser?.rank || '대리';
     const authorUsername = currentUser?.username || '';
+    const authorDivision = currentUser?.division || '';
+    const authorRole = currentUser?.role || '일반';
 
     const newLogItem = {
       id: editingLogId || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
@@ -185,10 +192,15 @@ export default function WorkLogTab({ onTriggerToast }) {
       date: form.date,
       title: form.title.trim(),
       details: form.details.trim(),
+      siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
       authorName,
       authorTeam,
       authorRank,
       authorUsername,
+      authorDivision,
+      authorRole,
+      division: authorDivision,
+      role: authorRole,
       createdAt: editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     };
 
@@ -251,8 +263,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       isValid = true;
     } else {
       const allUsers = await dbService.getUsers();
-      const matchedUser = allUsers.find(u => 
-        (currentUser?.username && u.username === currentUser.username) || 
+      const matchedUser = allUsers.find(u =>
+        (currentUser?.username && u.username === currentUser.username) ||
         (currentUser?.name && u.name === currentUser.name)
       );
       if (matchedUser && matchedUser.passwordHash === hashedInput) {
@@ -316,7 +328,7 @@ export default function WorkLogTab({ onTriggerToast }) {
             </div>
             <div>
               <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                업무 일지 관리 (Work Log)
+                업무 일지 관리
               </div>
             </div>
           </div>
@@ -612,19 +624,38 @@ export default function WorkLogTab({ onTriggerToast }) {
                       gap: '10px'
                     }}
                   >
-                    {/* Log Header Row 1: Category Badge + Action Buttons (Edit/Delete) */}
+                    {/* Log Header Row 1: Category Badge + Business Trip Site + Action Buttons */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
-                      <span style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: '800',
-                        background: log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(0, 242, 254, 0.18)',
-                        color: log.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
-                        border: `1px solid ${log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(0, 242, 254, 0.4)'}`
-                      }}>
-                        {log.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          background: log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(0, 242, 254, 0.18)',
+                          color: log.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
+                          border: `1px solid ${log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(0, 242, 254, 0.4)'}`
+                        }}>
+                          {log.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
+                        </span>
+
+                        {log.category === '출장 업무' && (log.siteName || log.site_name) && (
+                          <span style={{
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            background: 'rgba(167, 139, 250, 0.15)',
+                            color: '#c4b5fd',
+                            border: '1px solid rgba(167, 139, 250, 0.35)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            📍 {log.siteName || log.site_name}
+                          </span>
+                        )}
+                      </div>
 
                       {/* Action Buttons: Only visible if user is the author or admin/dev */}
                       {canModifyLog(log) && (
@@ -836,6 +867,40 @@ export default function WorkLogTab({ onTriggerToast }) {
                   />
                 </div>
               </div>
+
+              {/* Site Selection Field for Business Trip (출장 업무) */}
+              {form.category === '출장 업무' && (
+                <div>
+                  <label style={{ fontSize: '12px', color: '#a78bfa', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                    🚗 출장 방문 사업장 선택 *
+                  </label>
+                  <select
+                    value={form.siteName}
+                    onChange={(e) => setForm({ ...form, siteName: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '12px',
+                      background: '#0a0f1d',
+                      border: '1px solid rgba(167, 139, 250, 0.5)',
+                      color: '#fff',
+                      fontSize: '13px',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="">-- 출장 방문 사업장을 선택하세요 --</option>
+                    {siteOptions.map(site => {
+                      const siteFullName = site.site_name || site.siteName || (site.address ? `${site.name} ${site.address}` : site.name);
+                      return (
+                        <option key={site.id} value={siteFullName}>
+                          {siteFullName}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
 
               {/* Title Input */}
               <div>

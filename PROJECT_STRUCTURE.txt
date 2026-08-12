@@ -10,29 +10,42 @@ with.security/
 ├── android/                      : Android 네이티브 모바일 앱 프로젝트 (Capacitor)
 ├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
 ├── node_modules/                 : npm 의존성 라이브러리 폴더
+├── public/                       : Web & PWA 정적 자원 (manifest.json, 앱 아이콘 등)
+├── server/                       : 백엔드 Node.js & MySQL 연동 서버 (Port 4000)
+│   ├── db.js                     : REST API 라우팅 서버 메인 엔트리
+│   ├── mysql.js                  : MySQL 데이터베이스 커넥션 풀 (dateStrings 지원)
+│   ├── schema.sql                : MySQL 데이터베이스 테이블 DDL 스키마
+│   └── db_modules/               : 모듈별 DB 쿼리 서비스
+│       ├── securityLog.log.js    : 보안 서약(security_log) CRUD
+│       ├── securitySite.js       : 출입 사업장(security_site) CRUD
+│       ├── securityUser.js       : 사용자 계정(security_user) CRUD
+│       ├── workLog.js            : 업무 일지(work_log) CRUD
+│       └── vault.js              : 암호화 Vault CRUD
 ├── src/                          : [단일 소스 통합 폴더 (Single Source of Truth)]
 │   ├── components/               : React UI 컴포넌트 모음
 │   │   ├── common/               : 재사용 가능한 공통 UI 컴포넌트
 │   │   │   └── SignatureCanvas.jsx : 터치/마우스 전자 서명 캔버스 컴포넌트
 │   │   ├── layout/               : 메인 쉘 및 레이아웃 컴포넌트
-│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 하단 탭바 레이아웃 (권한별 메뉴 제어)
+│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 하단 탭바 레이아웃 (권한/로그인 제어)
 │   │   │   ├── PinLockModal.jsx     : PIN 번호 & 지문인증 잠금 화면 모달
-│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (권한별 메뉴 제어)
+│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (상단 로그아웃 버튼 포함)
 │   │   └── tabs/                 : 주요 보안 기능 탭 컴포넌트
 │   │       ├── EncryptedVaultTab.jsx      : 사업장 관리 (Admin) 탭 (사업장 신규 등록/삭제 관리)
-│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (삼성 MDM & SK하이닉스 SSM 검수, 방문목적)
-│   │       └── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
+│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (보안어플O/X 검수, 동반자 관리)
+│   │       ├── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
+│   │       └── WorkLogTab.jsx             : 업무 일지 탭 (사내/출장 업무 일지 기록 및 관리)
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
 │   │   ├── cryptoUtil.js         : Web Crypto API (SHA-256 / AES-256) 암호화 유틸리티
 │   │   ├── dbMigrationService.js : IndexedDB 데이터 마이그레이션 서비스
-│   │   └── dbService.js          : IndexedDB & JSON 영속성 통합 서비스 (POST /api/sync-json 디스크 저장 연동)
-│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (라우팅 및 권한 가드)
+│   │   ├── dbService.js          : MySQL API & IndexedDB 통합 데이터 영속성 서비스
+│   │   └── userMatcher.js        : 사용자 성명/소속 매칭 유틸리티
+│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (로그인 필수 가드 및 탭 제어)
 │   ├── index.css                 : 통합 디자인 토큰 & 애니메이션 CSS
+│   ├── index.html                : 앱 메인 HTML 엔트리 문서 (src 내부 통합 관리)
 │   └── main.jsx                  : React DOM 렌더링 진입점 (Entry Point)
 ├── capacitor.config.json         : Capacitor 모바일 앱 빌드 설정
-├── index.html                    : 루트 HTML 웹/모바일 엔트리 문서
 ├── package.json                  : 의존성 패키지 및 npm 스크립트 실행 명령어
-└── vite.config.js                : Vite 개발 서버 및 jsonDiskSyncPlugin 디스크 실시간 동기화 미들웨어 설정
+└── vite.config.js                : Vite 개발 서버 및 Node.js 백엔드 서버 자동 시작 미들웨어 설정
 
 ======================================================================
 [2. 주요 계정 체계 및 권한 구조]
@@ -49,12 +62,12 @@ with.security/
 ======================================================================
 [3. 주요 명령어 및 실행 가이드]
 
-1) 개발 서버 실행 (디스크 JSON 실시간 동기화 포함):
-   npm.cmd run dev
+1) 개발 서버 실행 (Vite 3000 포트 + Node.js API 4000 포트 동시 자동 실행):
+   npm run dev
    - 웹 접속 주소: http://localhost:3000/
 
 2) 생산용 번들 빌드:
-   npm run build (또는 npm.cmd run build)
+   npm run build
 
 3) 모바일 동기화 (Capacitor):
    npm run cap:sync
@@ -68,7 +81,6 @@ with.security/
 
 2) 앱 만들기
  - android studio > Build > Build Bundle(s) / APK(s) > Build APK(s)
-
 
 3) 앱 설치 파일 위치
  - C:\Users\USER\Desktop\with.security\android\app\build\outputs\apk\debug

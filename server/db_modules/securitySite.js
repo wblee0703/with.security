@@ -3,7 +3,7 @@ import { query } from '../mysql.js';
 let siteColumnsEnsured = false;
 
 /**
- * security_site 테이블 컬럼 자동 정리 및 마이그레이션 (id, type, name, address 컬럼 유지)
+ * security_site 테이블 컬럼 자동 정리 및 마이그레이션 (site_name 컬럼 추가: name address 형태)
  */
 async function ensureSiteColumns() {
   if (siteColumnsEnsured) return;
@@ -29,24 +29,35 @@ async function ensureSiteColumns() {
       try { await query("ALTER TABLE security_site DROP COLUMN created_at"); } catch (e) {}
     }
 
-    // type, address 컬럼이 없을 경우 생성 (기본값: 보안어플O)
+    // type, address, site_name 컬럼이 없을 경우 생성
     if (!colNames.includes('type')) {
-      await query("ALTER TABLE security_site ADD COLUMN type VARCHAR(100) DEFAULT '보안어플O' COMMENT '분류'");
+      try { await query("ALTER TABLE security_site ADD COLUMN type VARCHAR(100) DEFAULT '보안어플O' COMMENT '분류'"); } catch (e) {}
     }
     if (!colNames.includes('address')) {
-      await query("ALTER TABLE security_site ADD COLUMN address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치'");
+      try { await query("ALTER TABLE security_site ADD COLUMN address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치'"); } catch (e) {}
     }
+    if (!colNames.includes('site_name')) {
+      try { await query("ALTER TABLE security_site ADD COLUMN site_name VARCHAR(255) DEFAULT '' COMMENT '사업장 전체명 (이름 주소)'"); } catch (e) {}
+    }
+
+    // 기존 등록된 사업장 중 site_name이 비어있는 경우 'name address' 형태로 마이그레이션 일괄 업데이트
+    try {
+      await query(`
+        UPDATE security_site 
+        SET site_name = TRIM(CONCAT(COALESCE(name, ''), ' ', COALESCE(address, '')))
+        WHERE site_name IS NULL OR site_name = '' OR site_name = ' '
+      `);
+    } catch (e) {}
   } catch (e) {}
   siteColumnsEnsured = true;
 }
 
 /**
- * 현장 목록 조회 (security_site - id, type, name, address)
- * 비어있는 경우 site-000 형식 샘플 자동 생성 (보안어플O / 보안어플X)
+ * 현장 목록 조회 (security_site - id, type, name, address, site_name)
  */
 export async function getSecuritySites() {
   await ensureSiteColumns();
-  const sql = 'SELECT id, type, name, address FROM security_site ORDER BY id ASC';
+  const sql = 'SELECT id, type, name, address, site_name FROM security_site ORDER BY id ASC';
   let sites = await query(sql);
 
   if (!Array.isArray(sites) || sites.length === 0) {
@@ -60,12 +71,19 @@ export async function getSecuritySites() {
     }
   }
 
-  return (sites || []).map(s => ({
-    id: String(s.id || '').toLowerCase(),
-    type: s.type || '보안어플O',
-    name: s.name || '',
-    address: s.address || ''
-  }));
+  return (sites || []).map(s => {
+    const sName = String(s.name || '').trim();
+    const sAddr = String(s.address || '').trim();
+    const fullSiteName = s.site_name || (sAddr ? `${sName} ${sAddr}` : sName);
+    return {
+      id: String(s.id || '').toLowerCase(),
+      type: s.type || '보안어플O',
+      name: sName,
+      address: sAddr,
+      site_name: fullSiteName,
+      siteName: fullSiteName
+    };
+  });
 }
 
 /**
@@ -73,22 +91,27 @@ export async function getSecuritySites() {
  */
 export async function getSecuritySiteById(id) {
   await ensureSiteColumns();
-  const sql = 'SELECT id, type, name, address FROM security_site WHERE id = ? LIMIT 1';
+  const sql = 'SELECT id, type, name, address, site_name FROM security_site WHERE id = ? LIMIT 1';
   const results = await query(sql, [id]);
-  if (results.length > 0) {
+  if (results && results.length > 0) {
     const s = results[0];
+    const sName = String(s.name || '').trim();
+    const sAddr = String(s.address || '').trim();
+    const fullSiteName = s.site_name || (sAddr ? `${sName} ${sAddr}` : sName);
     return {
       id: String(s.id || '').toLowerCase(),
       type: s.type || '보안어플O',
-      name: s.name || '',
-      address: s.address || ''
+      name: sName,
+      address: sAddr,
+      site_name: fullSiteName,
+      siteName: fullSiteName
     };
   }
   return null;
 }
 
 /**
- * 현장 등록 / 수정 (site-000 형식 ID 지원, type: 보안어플O / 보안어플X)
+ * 현장 등록 / 수정 (site_name 컬럼에 'name address' 형태로 기록)
  */
 export async function createSecuritySite(data = {}) {
   await ensureSiteColumns();
@@ -105,18 +128,20 @@ export async function createSecuritySite(data = {}) {
   const type = String(data.type || '보안어플O').trim();
   const name = String(data.name || '').trim();
   const address = String(data.address || '').trim();
+  const siteName = String(data.site_name || data.siteName || (address ? `${name} ${address}` : name)).trim();
 
   const sql = `
-    INSERT INTO security_site (id, type, name, address)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO security_site (id, type, name, address, site_name)
+    VALUES (?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       type = VALUES(type),
       name = VALUES(name),
-      address = VALUES(address)
+      address = VALUES(address),
+      site_name = VALUES(site_name)
   `;
 
-  await query(sql, [siteId, type, name, address]);
-  return { id: siteId, type, name, address };
+  await query(sql, [siteId, type, name, address, siteName]);
+  return { id: siteId, type, name, address, site_name: siteName, siteName };
 }
 
 /**

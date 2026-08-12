@@ -46,6 +46,22 @@ export default function WebDesktopLayout({
     }
     fetchUser();
   }, [activeTab]);
+  const handleLogout = async () => {
+    localStorage.removeItem('with_security_active_user');
+    setActiveUser(null);
+    setActiveTab('userProfile');
+    if (onTriggerToast) onTriggerToast('로그아웃 되었습니다. 다시 로그인해 주세요.', 'info');
+    window.dispatchEvent(new Event('with_security_data_changed'));
+  };
+
+  const handleNavClick = (targetTabId) => {
+    if (!activeUser) {
+      setActiveTab('userProfile');
+      if (onTriggerToast) onTriggerToast('❌ 로그인이 필요합니다. 먼저 로그인해 주세요.', 'warning');
+      return;
+    }
+    setActiveTab(targetTabId);
+  };
 
   const isAdmin = ['개발자', '관리자'].includes(activeUser?.role) || activeUser?.username === 'admin';
 
@@ -216,6 +232,30 @@ export default function WebDesktopLayout({
               </span>
             </div>
           </div>
+
+          {/* Logout Button (Rendered on top-right to the right of User Profile) */}
+          {activeUser && (
+            <button
+              onClick={handleLogout}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#ef4444',
+                fontSize: '12px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                marginLeft: '4px'
+              }}
+            >
+              <LogOut size={14} /> 로그아웃
+            </button>
+          )}
         </div>
       </header>
 
@@ -242,7 +282,7 @@ export default function WebDesktopLayout({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => handleNavClick(item.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -275,20 +315,6 @@ export default function WebDesktopLayout({
               </button>
             );
           })}
-
-          {/* Web Desktop Live Security Status Card */}
-          <div className="glass-panel" style={{ marginTop: 'auto', padding: '16px', borderRadius: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <Activity size={16} color="#10b981" />
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff' }}>웹 세션 통합 보안</span>
-            </div>
-            <p style={{ fontSize: '11px', color: '#94a3b8', lineHeight: '1.4', marginBottom: '10px' }}>
-              Chrome / Edge W3C WebAuthn 기반 인메모리 암호화 보호 중입니다.
-            </p>
-            <div className="badge-secure" style={{ fontSize: '10px', padding: '2px 8px' }}>
-              Web TLS 1.3 Strict
-            </div>
-          </div>
         </aside>
 
         {/* Right Main Web Content Panel */}
@@ -297,7 +323,7 @@ export default function WebDesktopLayout({
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} setActiveTab={setActiveTab} />}
           </div>
         </main>
 
