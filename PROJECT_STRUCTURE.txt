@@ -20,14 +20,8 @@ with.security/
 │   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (권한별 메뉴 제어)
 │   │   └── tabs/                 : 주요 보안 기능 탭 컴포넌트
 │   │       ├── EncryptedVaultTab.jsx      : 사업장 관리 (Admin) 탭 (사업장 신규 등록/삭제 관리)
-│   │       ├── IncidentReportTab.jsx      : 보안관제(SOC) 위협 신고 탭
 │   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (삼성 MDM & SK하이닉스 SSM 검수, 방문목적)
 │   │       └── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
-│   ├── data/                     : 기준 데이터 baseline 및 스키마 (Ground-Truth Data)
-│   │   ├── db_schema.json        : IndexedDB 데이터베이스 테이블 스키마 정의
-│   │   ├── pledges.json          : 작성된 출입 보안 서약서 데이터
-│   │   ├── sites.json            : 등록/삭제 동기화되는 출입 사업장 목록 데이터
-│   │   └── users.json            : 개발자(admin)/관리자/일반 사용자 계정 데이터
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
 │   │   ├── cryptoUtil.js         : Web Crypto API (SHA-256 / AES-256) 암호화 유틸리티
 │   │   ├── dbMigrationService.js : IndexedDB 데이터 마이그레이션 서비스

@@ -219,17 +219,16 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
   // Delete Pledge Record Handler
   const handleDeletePledge = async (id, siteName) => {
     try {
-      await dbService.deleteItem('checklists', id);
-      const updated = checklistList.filter(item => item.id !== id);
+      await dbService.deleteChecklist(id);
+      const updated = checklistList.filter(item => item.id !== id && item.log_id !== id);
       setChecklistList(updated);
-      localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
-      if (onTriggerToast) onTriggerToast(`[${siteName}] 서약증 이력이 삭제되었습니다.`, 'info');
+      if (onTriggerToast) onTriggerToast(`[${siteName || '사업장'}] 서약증 이력이 삭제되었습니다.`, 'info');
     } catch (err) {
       console.error('Failed to delete checklist item:', err);
     }
   };
 
-  // Mobile Security App Detection Helper (Samsung MDM vs SK Hynix SSM vs General)
+  // Mobile Security App Detection Helper (보안어플O: 보안앱 검수, 보안어플X: 수동 체크리스트)
   const getTargetSecurityAppInfo = (siteName = '') => {
     if (!siteName || !siteName.trim()) {
       return {
@@ -245,56 +244,38 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         desc: '⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.'
       };
     }
-    if (siteName.includes('삼성')) {
+
+    const foundSite = sites.find(s => {
+      const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+      return displayName.trim() === siteName.trim() || s.name?.trim() === siteName.trim();
+    });
+
+    const isAppRequired = foundSite ? (foundSite.type === '보안어플O' || !foundSite.type) : true;
+
+    if (isAppRequired) {
       return {
-        appName: '삼성 보안 어플 (MDM)',
-        appCode: 'SAMSUNG_MDM',
-        shortName: '삼성보안어플',
-        packageName: 'com.samsung.knox.mdm',
-        scheme: 'sec-mdm://',
-        intentUri: 'intent://#Intent;scheme=sec-mdm;end',
-        tokenPrefix: 'MDM-SAM-',
-        company: '삼성전자',
-        color: '#00f2fe',
-        badgeBg: 'rgba(0, 242, 254, 0.15)',
-        desc: '삼성전자 사업장 출입 전용 모바일 보안 어플 가동 필수',
+        appName: '사내 모바일 보안 어플',
+        appCode: 'SECURITY_APP',
+        shortName: '보안어플O',
+        packageName: 'com.withsecurity.app',
+        scheme: 'sec-app://',
+        intentUri: 'intent://#Intent;scheme=sec-app;end',
+        tokenPrefix: 'SEC-APP-',
+        company: '보안어플O 사업장',
+        color: '#34d399',
+        badgeBg: 'rgba(16, 185, 129, 0.15)',
+        desc: '사업장 출입 전용 모바일 보안 어플 가동 필수 (카메라 차단 검수)',
         isChecklistMode: false
-      };
-    } else if (siteName.includes('SK') || siteName.includes('하이닉스')) {
-      return {
-        appName: 'SK하이닉스 보안 어플 (SSM)',
-        appCode: 'HYNIX_SSM',
-        shortName: 'SK하이닉스 SSM 어플',
-        packageName: 'com.skhynix.ssm',
-        scheme: 'ssm-hynix://',
-        intentUri: 'intent://#Intent;scheme=ssm-hynix;end',
-        tokenPrefix: 'SSM-SKH-',
-        company: 'SK하이닉스',
-        color: '#a78bfa',
-        badgeBg: 'rgba(139, 92, 246, 0.15)',
-        desc: 'SK하이닉스 사업장 출입 전용 모바일 보안 어플 가동 필수',
-        isChecklistMode: false
-      };
-    } else if (siteName.includes('LG') || siteName.includes('디스플레이')) {
-      return {
-        appName: 'LG디스플레이 카메라 보안 체크리스트',
-        appCode: 'LGD_CHECKLIST',
-        shortName: 'LG디스플레이 카메라 보안',
-        company: 'LG디스플레이',
-        color: '#f472b6',
-        badgeBg: 'rgba(236, 72, 153, 0.15)',
-        desc: 'LG디스플레이 사업장 카메라 보안 상태 및 체크리스트 검수',
-        isChecklistMode: true
       };
     } else {
       return {
-        appName: '카메라 보안 상태 확인 체크리스트 (기타 사업장)',
-        appCode: 'GENERAL_CHECKLIST',
-        shortName: '기타 사업장 카메라 보안',
-        company: '기타 사업장',
-        color: '#fbbf24',
-        badgeBg: 'rgba(245, 158, 11, 0.15)',
-        desc: '기타 사업장 카메라 봉인 스티커 및 보안 상태 확인 체크리스트',
+        appName: '보안 어플 예외 사업장 (수동 서약)',
+        appCode: 'NO_APP_REQUIRED',
+        shortName: '보안어플X',
+        company: '보안어플X 사업장',
+        color: '#f87171',
+        badgeBg: 'rgba(239, 68, 68, 0.15)',
+        desc: '본 사업장은 보안 어플 가동 예외 구역입니다. 수동 보안 체크리스트로 진행합니다.',
         isChecklistMode: true
       };
     }
@@ -1139,8 +1120,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       }
     }
 
+    const currentYear = new Date().getFullYear();
+    const nextNum = checklistList.length + 1;
+    const newPassId = `PASS-${currentYear}-${String(nextNum).padStart(3, '0')}`;
+
     const newPass = {
-      id: `SEC-PASS-2026-${String(Math.floor(100 + Math.random() * 900)).padStart(3, '0')}`,
+      id: newPassId,
+      log_id: newPassId,
       site: formData.site,
       visitorName: formData.visitorName.trim(),
       name: formData.visitorName.trim(),
@@ -1150,17 +1136,14 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       team: userTeam,
       department: userTeam,
       rank: formData.rank?.trim() || '대리',
-      company: userTeam,
       phone: formData.phone || '010-0000-0000',
-      hostName: '사업장 보안관제센터',
       purpose: finalPurpose,
-      visitDate: formData.visitDate,
       mdmVerified: formData.mdmVerified,
       docChecklist: formData.docChecklist || { gateApproved: false, docSecVerified: false, preCheckVerified: false },
-      materials: [],
       status: '승인완료',
-      companions: [],
-      createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
+      signature_date: new Date().toLocaleString('ko-KR', { hour12: false }),
+      signatureDate: new Date().toLocaleString('ko-KR', { hour12: false }),
+      signedAt: new Date().toLocaleString('ko-KR', { hour12: false })
     };
 
     try {
@@ -1862,11 +1845,14 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       }}
                     >
                       <option value="" disabled hidden={formData.isCompanionMode}>-- 출입 사업장을 선택해 주세요 --</option>
-                      {sites.map((s) => (
-                        <option key={s.id} value={s.name}>
-                          [{s.category}] {s.name}
-                        </option>
-                      ))}
+                      {sites.map((s) => {
+                        const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+                        return (
+                          <option key={s.id} value={displayName}>
+                            [{s.type || s.category || '보안어플O'}] {displayName}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 

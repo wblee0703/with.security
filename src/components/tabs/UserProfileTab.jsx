@@ -139,14 +139,19 @@ export default function UserProfileTab({ onTriggerToast }) {
     const inputHash = await hashPassword(inputPassword);
     const users = await dbService.getRegisteredUsers();
 
-    const match = users.find(u =>
-      u.username === inputUsername &&
-      (
-        u.passwordHash === inputHash ||
-        u.password === inputPassword ||
-        (inputUsername === 'admin' && inputPassword === 'withtech123!')
-      )
-    );
+    const match = users.find(u => {
+      const dbUsername = String(u?.username || '').trim().toLowerCase();
+      const targetUsername = inputUsername.toLowerCase();
+      if (dbUsername !== targetUsername) return false;
+
+      const dbPass = String(u?.password || '').trim();
+      const dbHash = String(u?.passwordHash || '').trim();
+
+      if (dbPass && (dbPass === inputHash || dbPass === inputPassword)) return true;
+      if (dbHash && (dbHash === inputHash || dbHash === inputPassword)) return true;
+
+      return false;
+    });
 
     if (match) {
       const activeUser = {
@@ -172,7 +177,7 @@ export default function UserProfileTab({ onTriggerToast }) {
     }
 
     const users = await dbService.getRegisteredUsers();
-    if (users.some(u => u.username === signupForm.username.trim())) {
+    if (users.some(u => u.username.trim().toLowerCase() === signupForm.username.trim().toLowerCase())) {
       if (onTriggerToast) onTriggerToast('이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요.', 'warning');
       return;
     }
@@ -182,6 +187,7 @@ export default function UserProfileTab({ onTriggerToast }) {
     // Initial signups are strictly created as regular user ('일반')
     const newUser = {
       username: signupForm.username.trim(),
+      password: signupForm.password.trim(),
       passwordHash: passwordHash,
       role: '일반',
       division: signupForm.division.trim() || '일반사업부',
@@ -226,14 +232,33 @@ export default function UserProfileTab({ onTriggerToast }) {
   // Handle Verify Password & Unlock Edit Mode
   const handleVerifyPasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!verifyPassword.trim()) {
+    const inputPass = verifyPassword.trim();
+    if (!inputPass) {
       if (onTriggerToast) onTriggerToast('현재 비밀번호를 입력해 주세요.', 'warning');
       return;
     }
 
-    const inputHash = await hashPassword(verifyPassword);
-    const isPasswordCorrect = (currentUser?.passwordHash && inputHash === currentUser.passwordHash) ||
-      (currentUser?.password && verifyPassword === currentUser.password);
+    const inputHash = await hashPassword(inputPass);
+    const dbPass = String(currentUser?.password || '').trim();
+    const dbHash = String(currentUser?.passwordHash || '').trim();
+
+    let isPasswordCorrect = false;
+    if (dbPass && (dbPass === inputPass || dbPass === inputHash)) isPasswordCorrect = true;
+    if (dbHash && (dbHash === inputHash || dbHash === inputPass)) isPasswordCorrect = true;
+
+    // Query latest DB if local currentUser cache lacks password properties
+    if (!isPasswordCorrect && currentUser?.username) {
+      try {
+        const latestUsers = await dbService.getRegisteredUsers();
+        const found = latestUsers.find(u => u.username?.toLowerCase() === currentUser.username.toLowerCase());
+        if (found) {
+          const fPass = String(found.password || '').trim();
+          const fHash = String(found.passwordHash || '').trim();
+          if (fPass && (fPass === inputPass || fPass === inputHash)) isPasswordCorrect = true;
+          if (fHash && (fHash === inputHash || fHash === inputPass)) isPasswordCorrect = true;
+        }
+      } catch (err) {}
+    }
 
     if (isPasswordCorrect) {
       setIsEditUnlocked(true);
@@ -272,9 +297,11 @@ export default function UserProfileTab({ onTriggerToast }) {
     }
 
     const isAdmin = currentUser?.role === '관리자' || currentUser?.username === 'admin';
+    const newPass = passwordForm.newPassword ? passwordForm.newPassword.trim() : '';
     const updatedUser = {
       ...editForm,
       role: isAdmin ? (editForm.role || '일반') : (currentUser?.role || '일반'),
+      password: newPass || currentUser?.password || editForm?.password || '',
       passwordHash: updatedPasswordHash
     };
 
@@ -304,7 +331,7 @@ export default function UserProfileTab({ onTriggerToast }) {
       if (onTriggerToast) onTriggerToast('현재 접속 중인 본인 계정은 삭제할 수 없습니다.', 'warning');
       return;
     }
-    if (!window.confirm(`정말로 '${targetUser.name}(${targetUser.username})' 사용자 계정을 삭제하시겠습니까?\n삭제 즉시 users.json 파일에 반영됩니다.`)) {
+    if (!window.confirm(`정말로 '${targetUser.name}(${targetUser.username})' 사용자 계정을 삭제하시겠습니까?\n삭제 즉시 데이터베이스에 반영됩니다.`)) {
       return;
     }
 

@@ -43,6 +43,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     return `${year}-${month}-${day}`;
   };
 
+  // Team Name Formatter: Strip "사업부" prefix and display only team (e.g. "영업/운영사업부 운영1팀" -> "운영1팀")
+  const formatOnlyTeam = (rawTeam) => {
+    if (!rawTeam || typeof rawTeam !== 'string') return '운영팀';
+    const trimmed = rawTeam.trim();
+    if (trimmed.includes(' ')) {
+      const parts = trimmed.split(/\s+/);
+      return parts[parts.length - 1];
+    }
+    return trimmed;
+  };
+
   // Date Navigation State & Ref
   const [selectedDate, setSelectedDate] = useState(getTodayIsoDate());
   const [viewAllDates, setViewAllDates] = useState(false); // false = filter by selectedDate, true = show all dates
@@ -135,7 +146,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: '사내 업무',
-      date: selectedDate || getTodayIsoDate(),
+      date: getTodayIsoDate(),
       title: '',
       details: ''
     });
@@ -682,10 +693,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                     {/* Author & Info Line */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8', flexWrap: 'wrap' }}>
                       <span style={{ color: '#fff', fontWeight: '700' }}>
-                        👤 {log.authorName} {log.authorRank}
+                        👤 {log.authorName} {log.authorRank || ''}
                       </span>
                       <span>|</span>
-                      <span>{log.authorTeam}</span>
+                      <span style={{ color: '#00f2fe', fontWeight: '600' }}>
+                        {formatOnlyTeam(log.authorTeam || log.writer_team || log.department || (currentUser?.name === log.authorName ? (currentUser.team || currentUser.department) : '') || '운영팀')}
+                      </span>
                       <span>|</span>
                       <span className="mono-font">🕒 {log.createdAt}</span>
                     </div>

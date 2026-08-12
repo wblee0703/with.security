@@ -152,30 +152,82 @@ class SecurityDatabase {
 
   // --- Specific Domain Helpers ---
 
-  // Checklists (Dual IndexedDB + localStorage fallback)
-  // Checklists (Prioritizing src/data/pledges.json & Dual IndexedDB + localStorage sync)
   async getChecklists() {
-    let dbPledges = [];
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      dbPledges = await this.getAll('checklists');
-    } catch (e) {
-      console.warn('IndexedDB getChecklists error:', e);
-    }
-    if (!dbPledges || dbPledges.length === 0) {
-      const backup = localStorage.getItem('with_security_checklists_backup');
-      if (backup) {
-        try { dbPledges = JSON.parse(backup); } catch (err) {}
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${serverUrl}/api/security-logs`, { signal: controller.signal })
+        .catch(() => fetch('/api/security-logs', { signal: controller.signal }))
+        .catch(() => fetch('/api/checklists', { signal: controller.signal }));
+      clearTimeout(tid);
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData)) {
+          localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
+          try {
+            for (const p of remoteData) await this.putItem('checklists', p);
+          } catch (e) {}
+          return remoteData;
+        }
       }
-    }
-    return dbPledges || [];
+    } catch (e) {}
+
+    try {
+      const dbPledges = await this.getAll('checklists');
+      if (dbPledges && dbPledges.length > 0) return dbPledges;
+    } catch (e) {}
+
+    try {
+      const backup = localStorage.getItem('with_security_checklists_backup');
+      if (backup) return JSON.parse(backup);
+    } catch (err) {}
+
+    return [];
   }
 
   async saveChecklist(checklist) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      const nowFormatted = new Date().toLocaleString('ko-KR', { hour12: false });
+
+      const payload = {
+        log_id: checklist.id || checklist.log_id,
+        name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
+        division: checklist.division || '',
+        role: checklist.role || '일반',
+        site: checklist.site || '',
+        purpose: checklist.purpose || checklist.purposeType || checklist.customPurpose || '',
+        visitor_phone: checklist.phone || checklist.visitorPhone || checklist.visitor_phone || '',
+        team: checklist.team || checklist.department || checklist.visitor_team || '',
+        rank: checklist.rank || checklist.visitorRank || checklist.visitor_rank || '',
+        mdm_verified: (checklist.mdmVerified || checklist.mdm_verified) ? 1 : 0,
+        gate_approved: (checklist.docChecklist?.gateApproved || checklist.gate_approved) ? 1 : 0,
+        doc_sec_verified: (checklist.docChecklist?.docSecVerified || checklist.doc_sec_verified) ? 1 : 0,
+        pre_check_verified: (checklist.docChecklist?.preCheckVerified || checklist.pre_check_verified) ? 1 : 0,
+        pledge_terms: checklist.pledgeTerms || checklist.pledge_terms || '',
+        signature_date: checklist.signatureDate || checklist.signature_date || checklist.signedAt || nowFormatted,
+        status: checklist.status || '승인완료'
+      };
+
+      await fetch(`${serverUrl}/api/security-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).catch(() => fetch('/api/security-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }));
+    } catch (e) {
+      console.warn('MySQL Security Log Sync Warning:', e);
+    }
+
     try {
       await this.putItem('checklists', checklist);
-    } catch (e) {
-      console.warn('IndexedDB saveChecklist error, writing to localStorage:', e);
-    }
+    } catch (e) {}
+
     try {
       const existing = await this.getChecklists();
       const index = existing.findIndex(item => item.id === checklist.id);
@@ -187,11 +239,37 @@ class SecurityDatabase {
         updated = [checklist, ...existing];
       }
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
-    } catch (err) {
-      console.error('Failed to update localStorage backup for checklist:', err);
-    }
+    } catch (err) {}
+
     notifyDataChanged();
     return checklist;
+  }
+
+  async deleteChecklist(id) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/security-logs/${id}`, { method: 'DELETE' })
+        .catch(() => fetch(`/api/security-logs/${id}`, { method: 'DELETE' }))
+        .catch(() => fetch(`/api/checklists/${id}`, { method: 'DELETE' }));
+    } catch (e) {
+      console.warn('MySQL deleteSecurityLog API call warning:', e);
+    }
+
+    try {
+      await this.deleteItem('checklists', id);
+    } catch (e) {}
+
+    try {
+      const backup = localStorage.getItem('with_security_checklists_backup');
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        const filtered = (parsed || []).filter(item => item.id !== id && item.log_id !== id);
+        localStorage.setItem('with_security_checklists_backup', JSON.stringify(filtered));
+      }
+    } catch (err) {}
+
+    notifyDataChanged();
+    return id;
   }
 
   async clearChecklists() {
@@ -204,7 +282,6 @@ class SecurityDatabase {
       console.warn('IndexedDB clearChecklists fallback:', e);
     }
     localStorage.removeItem('with_security_checklists_backup');
-    await syncJsonToDisk('pledges.json', []);
   }
 
   // Vault Items
@@ -341,7 +418,7 @@ class SecurityDatabase {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 3000);
       const res = await fetch(`${serverUrl}/api/security-sites`, { signal: controller.signal })
-        .catch(() => fetch(`${serverUrl}/api/sites`, { signal: controller.signal }))
+        .catch(() => fetch('/api/security-sites', { signal: controller.signal }))
         .catch(() => fetch('/api/sites', { signal: controller.signal }));
       clearTimeout(tid);
       if (res && res.ok) {
@@ -350,6 +427,9 @@ class SecurityDatabase {
         if (Array.isArray(remoteData)) {
           localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
           try {
+            const db = await this.initDB('sites');
+            const tx = db.transaction('sites', 'readwrite');
+            tx.objectStore('sites').clear();
             for (const s of remoteData) await this.putItem('sites', s);
           } catch (e) {}
           return remoteData;
@@ -362,6 +442,11 @@ class SecurityDatabase {
       if (dbSites && dbSites.length > 0) return dbSites;
     } catch (e) {}
 
+    try {
+      const backup = localStorage.getItem('with_security_sites_backup');
+      if (backup) return JSON.parse(backup);
+    } catch (e) {}
+
     return [];
   }
 
@@ -372,7 +457,7 @@ class SecurityDatabase {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(site)
-      }).catch(() => fetch(`${serverUrl}/api/sites`, {
+      }).catch(() => fetch('/api/security-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(site)
@@ -391,7 +476,7 @@ class SecurityDatabase {
     const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
       await fetch(`${serverUrl}/api/security-sites/${id}`, { method: 'DELETE' })
-        .catch(() => fetch(`${serverUrl}/api/sites/${id}`, { method: 'DELETE' }));
+        .catch(() => fetch(`/api/security-sites/${id}`, { method: 'DELETE' }));
     } catch (e) {}
 
     try {
@@ -426,7 +511,6 @@ class SecurityDatabase {
     let safeUser = { ...userProfile };
     if (safeUser.password && !safeUser.passwordHash) {
       safeUser.passwordHash = await hashPassword(safeUser.password);
-      delete safeUser.password;
     }
 
     localStorage.setItem('with_security_active_user', JSON.stringify(safeUser));
@@ -482,6 +566,10 @@ class SecurityDatabase {
     } catch (e) {}
 
     return [];
+  }
+
+  async getUsers() {
+    return this.getRegisteredUsers();
   }
 
   async deleteUser(username) {
@@ -708,18 +796,30 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
-          const mapped = remoteData.map(item => ({
-            id: item.log_id || item.id,
-            category: item.category || '사내 업무',
-            title: item.title || '',
-            details: item.tasks_done || item.details || '',
-            date: item.log_date ? String(item.log_date).split('T')[0] : (item.date || new Date().toISOString().split('T')[0]),
-            authorName: item.writer_name || item.authorName || '작성자',
-            authorTeam: item.authorTeam || '',
-            authorRank: item.authorRank || '',
-            status: item.status || 'SUBMITTED',
-            createdAt: item.created_at || item.createdAt || ''
-          }));
+          const mapped = remoteData.map(item => {
+            let cleanDate = '';
+            if (item.log_date) {
+              cleanDate = String(item.log_date).trim().slice(0, 10);
+            } else if (item.date) {
+              cleanDate = String(item.date).trim().slice(0, 10);
+            }
+            if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+              cleanDate = new Date().toLocaleDateString('sv-SE');
+            }
+
+            return {
+              id: item.log_id || item.id,
+              category: item.category || '사내 업무',
+              title: item.title || '',
+              details: item.tasks_done || item.details || '',
+              date: cleanDate,
+              authorName: item.writer_name || item.authorName || '작성자',
+              authorTeam: item.writer_team || item.writerTeam || item.authorTeam || item.team || item.department || '영업/운영사업부 운영1팀',
+              authorRank: item.writer_rank || item.writerRank || item.authorRank || item.rank || '대리',
+              status: item.status || 'SUBMITTED',
+              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
+            };
+          });
           localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
           return mapped;
         }
@@ -754,8 +854,11 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           logId: logItem.id,
-          writerName: logItem.authorName || logItem.writerName || '이원배',
-          writerId: logItem.writerId || '',
+          writerName: logItem.authorName || logItem.writerName || '작성자',
+          writerId: logItem.authorUsername || logItem.writerId || '',
+          writerTeam: logItem.authorTeam || logItem.writerTeam || logItem.team || logItem.department || '영업/운영사업부 운영1팀',
+          writerRank: logItem.authorRank || logItem.writerRank || logItem.rank || '대리',
+          category: logItem.category || '사내 업무',
           siteName: logItem.siteName || '',
           logDate: logItem.date || new Date().toISOString().split('T')[0],
           title: logItem.title,

@@ -21,7 +21,6 @@ import {
   Settings
 } from 'lucide-react';
 import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
-import IncidentReportTab from '../tabs/IncidentReportTab';
 import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
 import UserProfileTab from '../tabs/UserProfileTab';
 import WorkLogTab from '../tabs/WorkLogTab';
@@ -54,8 +53,7 @@ export default function WebDesktopLayout({
     { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList, badge: '신규' },
     ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),
-    { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' },
-    { id: 'incident', label: '보안관제(SOC) 위협신고', icon: AlertOctagon, badge: '신규' }
+    { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' }
   ];
 
   return (
@@ -300,7 +298,6 @@ export default function WebDesktopLayout({
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'incident' && <IncidentReportTab onTriggerToast={onTriggerToast} />}
           </div>
         </main>
 

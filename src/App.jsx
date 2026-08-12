@@ -3,7 +3,6 @@ import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
 import PinLockModal from './components/layout/PinLockModal';
 import EncryptedVaultTab from './components/tabs/EncryptedVaultTab';
-import IncidentReportTab from './components/tabs/IncidentReportTab';
 import SiteSecurityChecklistTab from './components/tabs/SiteSecurityChecklistTab';
 import UserProfileTab from './components/tabs/UserProfileTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
@@ -178,7 +177,6 @@ export default function App() {
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
             {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} />}
-            {activeTab === 'incident' && <IncidentReportTab onTriggerToast={showToast} />}
           </MobileContainer>
         </div>
       )}

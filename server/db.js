@@ -5,49 +5,13 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { testConnection, query } from './mysql.js';
+import { testConnection } from './mysql.js';
 import { createSecurityLog, getSecurityLogs, getSecurityLogById, deleteSecurityLog } from './db_modules/securityLog.js';
 import { createWorkLog, getWorkLogs, getWorkLogById, updateWorkLog, deleteWorkLog } from './db_modules/workLog.js';
 import { getSecurityUsers, createSecurityUser, deleteSecurityUser } from './db_modules/securityUser.js';
 import { getSecuritySites, createSecuritySite, deleteSecuritySite } from './db_modules/securitySite.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const PORT = process.env.PORT || 4000;
-const DB_FILE = path.join(__dirname, 'security_database.json');
-
-// In-Memory Fallback Data Store
-let dbData = {
-  sites: [],
-  users: []
-};
-
-// Initialize / Load Database
-function initDB() {
-  if (fs.existsSync(DB_FILE)) {
-    try {
-      const fileData = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      dbData = {
-        sites: Array.isArray(fileData.sites) ? fileData.sites : [],
-        users: Array.isArray(fileData.users) ? fileData.users : []
-      };
-    } catch (err) {
-      console.error('Error reading local DB file:', err);
-    }
-  }
-}
-
-function saveDB() {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(dbData, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Failed to save DB file:', err);
-  }
-}
-
-// Perform initial DB setup
-initDB();
 
 // Helper to set CORS and JSON Headers
 function sendJSON(res, statusCode, body) {
@@ -96,25 +60,31 @@ const server = http.createServer(async (req, res) => {
   try {
     // 0. Status & Health Check API
     if ((pathname === '/api/status' || pathname === '/api/health') && method === 'GET') {
-      let userCount = dbData.users.length;
-      let siteCount = dbData.sites.length;
+      let userCount = 0;
+      let siteCount = 0;
+      let logCount = 0;
+      let workCount = 0;
       try {
         const users = await getSecurityUsers();
         const sites = await getSecuritySites();
+        const logs = await getSecurityLogs();
+        const works = await getWorkLogs();
         userCount = users.length;
         siteCount = sites.length;
-      } catch (e) {
-        // Fallback to in-memory count if MySQL is offline
-      }
+        logCount = logs.length;
+        workCount = works.length;
+      } catch (e) {}
 
       return sendJSON(res, 200, {
         success: true,
-        message: 'WithSecurity Enterprise Backend REST Server Active',
+        message: 'WithSecurity Enterprise Backend REST Server Active (MySQL Pure)',
         timestamp: new Date().toISOString(),
         tables: ['security_user', 'security_site', 'security_log', 'work_log'],
         counts: {
           security_user: userCount,
-          security_site: siteCount
+          security_site: siteCount,
+          security_log: logCount,
+          work_log: workCount
         }
       });
     }
@@ -122,39 +92,21 @@ const server = http.createServer(async (req, res) => {
     // 1. Security Users API (/api/security-users or /api/users)
     if (pathname === '/api/security-users' || pathname === '/api/users') {
       if (method === 'GET') {
-        try {
-          const users = await getSecurityUsers();
-          return sendJSON(res, 200, { success: true, data: users });
-        } catch (e) {
-          return sendJSON(res, 200, { success: true, data: dbData.users });
-        }
+        const users = await getSecurityUsers();
+        return sendJSON(res, 200, { success: true, data: users });
       }
       if (method === 'POST') {
         const newItem = await parseRequestBody(req);
         if (newItem.username) {
-          try {
-            await createSecurityUser(newItem);
-          } catch (e) {
-            console.warn('MySQL User Sync Warning:', e.message);
-          }
-          const idx = dbData.users.findIndex(u => u.username === newItem.username);
-          if (idx >= 0) dbData.users[idx] = newItem;
-          else dbData.users.push(newItem);
-          saveDB();
-          return sendJSON(res, 201, { success: true, data: newItem });
+          const created = await createSecurityUser(newItem);
+          return sendJSON(res, 201, { success: true, data: created });
         }
       }
     }
     if ((pathname.startsWith('/api/security-users/') || pathname.startsWith('/api/users/')) && method === 'DELETE') {
       const username = decodeURIComponent(pathname.replace(/^\/api\/(security-users|users)\//, ''));
       if (username !== 'admin') {
-        try {
-          await deleteSecurityUser(username);
-        } catch (e) {
-          console.warn('MySQL User Delete Warning:', e.message);
-        }
-        dbData.users = dbData.users.filter(u => u.username !== username);
-        saveDB();
+        await deleteSecurityUser(username);
       }
       return sendJSON(res, 200, { success: true, deletedUsername: username });
     }
@@ -162,43 +114,25 @@ const server = http.createServer(async (req, res) => {
     // 2. Security Sites API (/api/security-sites or /api/sites)
     if (pathname === '/api/security-sites' || pathname === '/api/sites') {
       if (method === 'GET') {
-        try {
-          const sites = await getSecuritySites();
-          return sendJSON(res, 200, { success: true, data: sites });
-        } catch (e) {
-          return sendJSON(res, 200, { success: true, data: dbData.sites });
-        }
+        const sites = await getSecuritySites();
+        return sendJSON(res, 200, { success: true, data: sites });
       }
       if (method === 'POST') {
         const newItem = await parseRequestBody(req);
         if (newItem.id) {
-          try {
-            await createSecuritySite(newItem);
-          } catch (e) {
-            console.warn('MySQL Site Sync Warning:', e.message);
-          }
-          const idx = dbData.sites.findIndex(s => s.id === newItem.id);
-          if (idx >= 0) dbData.sites[idx] = newItem;
-          else dbData.sites.push(newItem);
-          saveDB();
-          return sendJSON(res, 201, { success: true, data: newItem });
+          const created = await createSecuritySite(newItem);
+          return sendJSON(res, 201, { success: true, data: created });
         }
       }
     }
     if ((pathname.startsWith('/api/security-sites/') || pathname.startsWith('/api/sites/')) && method === 'DELETE') {
       const id = pathname.replace(/^\/api\/(security-sites|sites)\//, '');
-      try {
-        await deleteSecuritySite(id);
-      } catch (e) {
-        console.warn('MySQL Site Delete Warning:', e.message);
-      }
-      dbData.sites = dbData.sites.filter(s => s.id !== id);
-      saveDB();
+      await deleteSecuritySite(id);
       return sendJSON(res, 200, { success: true, deletedId: id });
     }
 
-    // 3. Security Pledge Logs API (/api/security-logs)
-    if (pathname === '/api/security-logs') {
+    // 3. Security Pledge Logs API (/api/security-logs or /api/checklists or /api/pledges)
+    if (pathname === '/api/security-logs' || pathname === '/api/checklists' || pathname === '/api/pledges') {
       if (method === 'GET') {
         const userName = reqUrl.searchParams.get('userName');
         const logs = await getSecurityLogs({ userName });
@@ -210,13 +144,13 @@ const server = http.createServer(async (req, res) => {
         return sendJSON(res, 201, { success: true, data: result });
       }
     }
-    if (pathname.startsWith('/api/security-logs/') && method === 'GET') {
-      const logId = pathname.replace('/api/security-logs/', '');
+    if ((pathname.startsWith('/api/security-logs/') || pathname.startsWith('/api/checklists/') || pathname.startsWith('/api/pledges/')) && method === 'GET') {
+      const logId = pathname.replace(/^\/api\/(security-logs|checklists|pledges)\//, '');
       const log = await getSecurityLogById(logId);
       return sendJSON(res, log ? 200 : 404, { success: !!log, data: log });
     }
-    if (pathname.startsWith('/api/security-logs/') && method === 'DELETE') {
-      const logId = pathname.replace('/api/security-logs/', '');
+    if ((pathname.startsWith('/api/security-logs/') || pathname.startsWith('/api/checklists/') || pathname.startsWith('/api/pledges/')) && method === 'DELETE') {
+      const logId = pathname.replace(/^\/api\/(security-logs|checklists|pledges)\//, '');
       const deleted = await deleteSecurityLog(logId);
       return sendJSON(res, 200, { success: deleted });
     }

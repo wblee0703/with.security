@@ -29,6 +29,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10, // 동시에 유지할 최대 커넥션 수
   queueLimit: 0,
+  dateStrings: true, // DATE, DATETIME 타입 시차 변환 없는 원본 문자열 반환
   charset: 'utf8mb4'
 });
 
@@ -71,10 +72,11 @@ export async function testConnection() {
   }
 }
 
-// 쿼리 실행 헬퍼 함수 (Prepared Statement 사용)
+// 쿼리 실행 헬퍼 함수 (Prepared Statement 사용, undefined 바인딩 자동 치환)
 export async function query(sql, params = []) {
   try {
-    const [results] = await pool.execute(sql, params);
+    const safeParams = (params || []).map(p => (p === undefined ? '' : p));
+    const [results] = await pool.execute(sql, safeParams);
     return results;
   } catch (error) {
     console.error('SQL Execution Error:', error.message);
