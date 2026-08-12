@@ -57,8 +57,13 @@ async function safeFetchApi(endpoint, options = {}) {
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), options.timeout || 3000);
+    const headers = {
+      'Bypass-Tunnel-Reminder': 'true',
+      ...(options.headers || {})
+    };
     const res = await fetch(fullUrl, {
       ...options,
+      headers,
       signal: controller.signal
     }).catch(() => null);
     clearTimeout(tid);
@@ -637,7 +642,10 @@ class SecurityDatabase {
     try {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(`${formattedUrl}/api/sync-all`, { signal: controller.signal });
+      const res = await fetch(`${formattedUrl}/api/sync-all`, {
+        signal: controller.signal,
+        headers: { 'Bypass-Tunnel-Reminder': 'true' }
+      });
       clearTimeout(tid);
 
       if (res.ok) {
@@ -681,7 +689,7 @@ class SecurityDatabase {
         try {
           await fetch(`${formattedUrl}/api/sync-all`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
             body: JSON.stringify({
               checklists: mergedChecklists,
               sites: mergedSites,
@@ -754,6 +762,7 @@ class SecurityDatabase {
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${target}/api/status`, {
         method: 'GET',
+        headers: { 'Bypass-Tunnel-Reminder': 'true' },
         signal: controller.signal
       });
       clearTimeout(timeoutId);
