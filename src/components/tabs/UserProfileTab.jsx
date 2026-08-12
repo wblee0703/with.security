@@ -1426,20 +1426,22 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
           </div>
 
           <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '14px', lineHeight: '1.5' }}>
-            독립 백엔드 API 서버(<strong style={{ color: '#00f2fe' }}>node server/db.js</strong> 실행 주소: <code style={{ color: '#00f2fe' }}>http://localhost:4000</code>) 또는 원격 API 호스팅 주소를 등록하여 데이터를 실시간 연동합니다.
+            모바일 앱과 PC 웹 간 데이터베이스를 공유하려면 MySQL DB가 실행 중인 <strong style={{ color: '#00f2fe' }}>Node.js API 서버 주소</strong>를 등록해 주세요.<br />
+            - 같은 Wi-Fi 테스트 시: <code style={{ color: '#00f2fe' }}>http://192.168.0.108:4000</code> (PC 사내 IP)<br />
+            - 외부망(LTE/5G) 연동 시: ngrok 또는 클라우드 DB API 주소 입력 (※ GitHub Pages는 웹 화면 호스팅 전용 정적 웹서버입니다)
           </p>
 
           {/* URL Input */}
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '12px', fontWeight: '700', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>
-              백엔드 서버 URL (API Base URL)
+              백엔드 DB API 서버 주소 (Base API URL)
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#00f2fe' }} />
                 <input
                   type="text"
-                  placeholder="예: http://localhost:4000 또는 https://wblee0703.github.io/with.security"
+                  placeholder="예: http://192.168.0.108:4000 또는 https://your-db-api.com"
                   value={serverUrlInput}
                   onChange={(e) => setServerUrlInput(e.target.value)}
                   style={{
@@ -1462,31 +1464,24 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
             <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
             <button
               type="button"
-              onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
+              onClick={() => setServerUrlInput('http://192.168.0.108:4000')}
               style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.4)', color: '#00f2fe', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
             >
-              🌐 GitHub Pages (wblee0703)
+              📡 모바일-PC DB 공유 (192.168.0.108:4000)
             </button>
             <button
               type="button"
               onClick={() => setServerUrlInput('http://localhost:4000')}
               style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
             >
-              🖥️ 로컬 개발 (4000번)
-            </button>
-            <button
-              type="button"
-              onClick={() => setServerUrlInput('http://localhost:3000')}
-              style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
-            >
-              💻 로컬 개발 (3000번)
+              🖥️ PC 로컬 개발 (4000번)
             </button>
             <button
               type="button"
               onClick={() => setServerUrlInput('')}
               style={{ padding: '4px 10px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255, 255, 255, 0.1)', color: '#cbd5e1', fontSize: '11px', cursor: 'pointer' }}
             >
-              🏠 로컬 전용 모드 (기본)
+              🏠 로컬 전용 모드 (단말기 자체 DB)
             </button>
           </div>
 
