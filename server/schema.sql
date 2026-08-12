@@ -33,13 +33,15 @@ CREATE TABLE IF NOT EXISTS security_site (
   id VARCHAR(100) PRIMARY KEY COMMENT 'site-000 형식 현장 ID',
   type VARCHAR(100) DEFAULT '보안어플O' COMMENT '분류 (보안어플O / 보안어플X)',
   name VARCHAR(200) NOT NULL COMMENT '회사명 / 사업장명',
-  address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치'
+  address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치',
+  site_name VARCHAR(255) DEFAULT '' COMMENT '사업장 전체명'
 );
 
 -- 3. 보안서약 관리 테이블 (security_log)
 CREATE TABLE IF NOT EXISTS security_log (
   id INT AUTO_INCREMENT PRIMARY KEY,
   log_id VARCHAR(100) UNIQUE COMMENT '고유 로그 ID (PASS-YYYY-000)',
+  parent_log_id VARCHAR(100) DEFAULT '' COMMENT '최초 서약 ID (동행 등록 시 원본 서약 ID)',
   name VARCHAR(100) NOT NULL COMMENT '서약자 성명',
   division VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부',
   role VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할',

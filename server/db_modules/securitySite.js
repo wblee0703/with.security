@@ -1,62 +1,11 @@
 import { query } from '../mysql.js';
 
-let siteColumnsEnsured = false;
 
-/**
- * security_site 테이블 컬럼 자동 정리 및 마이그레이션 (site_name 컬럼 추가: name address 형태)
- */
-async function ensureSiteColumns() {
-  if (siteColumnsEnsured) return;
-  try {
-    const existingColumns = await query(`
-      SELECT COLUMN_NAME
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'security_site'
-    `);
-    const colNames = (existingColumns || []).map(c => String(c.COLUMN_NAME).toLowerCase());
-
-    // manager, contact, status, created_at 컬럼이 존재할 경우 삭제
-    if (colNames.includes('manager')) {
-      try { await query("ALTER TABLE security_site DROP COLUMN manager"); } catch (e) {}
-    }
-    if (colNames.includes('contact')) {
-      try { await query("ALTER TABLE security_site DROP COLUMN contact"); } catch (e) {}
-    }
-    if (colNames.includes('status')) {
-      try { await query("ALTER TABLE security_site DROP COLUMN status"); } catch (e) {}
-    }
-    if (colNames.includes('created_at')) {
-      try { await query("ALTER TABLE security_site DROP COLUMN created_at"); } catch (e) {}
-    }
-
-    // type, address, site_name 컬럼이 없을 경우 생성
-    if (!colNames.includes('type')) {
-      try { await query("ALTER TABLE security_site ADD COLUMN type VARCHAR(100) DEFAULT '보안어플O' COMMENT '분류'"); } catch (e) {}
-    }
-    if (!colNames.includes('address')) {
-      try { await query("ALTER TABLE security_site ADD COLUMN address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치'"); } catch (e) {}
-    }
-    if (!colNames.includes('site_name')) {
-      try { await query("ALTER TABLE security_site ADD COLUMN site_name VARCHAR(255) DEFAULT '' COMMENT '사업장 전체명 (이름 주소)'"); } catch (e) {}
-    }
-
-    // 기존 등록된 사업장 중 site_name이 비어있는 경우 'name address' 형태로 마이그레이션 일괄 업데이트
-    try {
-      await query(`
-        UPDATE security_site 
-        SET site_name = TRIM(CONCAT(COALESCE(name, ''), ' ', COALESCE(address, '')))
-        WHERE site_name IS NULL OR site_name = '' OR site_name = ' '
-      `);
-    } catch (e) {}
-  } catch (e) {}
-  siteColumnsEnsured = true;
-}
 
 /**
  * 현장 목록 조회 (security_site - id, type, name, address, site_name)
  */
 export async function getSecuritySites() {
-  await ensureSiteColumns();
   const sql = 'SELECT id, type, name, address, site_name FROM security_site ORDER BY id ASC';
   let sites = await query(sql);
 
@@ -90,7 +39,6 @@ export async function getSecuritySites() {
  * 특정 현장 상세 조회
  */
 export async function getSecuritySiteById(id) {
-  await ensureSiteColumns();
   const sql = 'SELECT id, type, name, address, site_name FROM security_site WHERE id = ? LIMIT 1';
   const results = await query(sql, [id]);
   if (results && results.length > 0) {
@@ -114,7 +62,6 @@ export async function getSecuritySiteById(id) {
  * 현장 등록 / 수정 (site_name 컬럼에 'name address' 형태로 기록)
  */
 export async function createSecuritySite(data = {}) {
-  await ensureSiteColumns();
 
   let siteId = String(data.id || '').trim().toLowerCase();
   if (!siteId || siteId === 'site-new' || siteId === 'new') {
@@ -148,7 +95,6 @@ export async function createSecuritySite(data = {}) {
  * 현장 삭제
  */
 export async function deleteSecuritySite(id) {
-  await ensureSiteColumns();
   const sql = 'DELETE FROM security_site WHERE id = ? OR id = ?';
   const result = await query(sql, [id, String(id).toLowerCase()]);
   return result.affectedRows > 0;

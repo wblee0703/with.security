@@ -649,6 +649,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           await dbService.saveChecklist({
             id: compLogId,
             log_id: compLogId,
+            parent_log_id: targetPledgeForCompanion.id || targetPledgeForCompanion.log_id,
+            parentLogId: targetPledgeForCompanion.id || targetPledgeForCompanion.log_id,
+            parentPledgeId: targetPledgeForCompanion.id || targetPledgeForCompanion.log_id,
             name: uName,
             user_name: uName,
             visitorName: uName,

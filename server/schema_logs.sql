@@ -6,6 +6,7 @@
 CREATE TABLE IF NOT EXISTS security_log (
   id INT AUTO_INCREMENT PRIMARY KEY,
   log_id VARCHAR(100) UNIQUE COMMENT '고유 로그 ID (PASS-YYYY-000)',
+  parent_log_id VARCHAR(100) DEFAULT '' COMMENT '최초 서약 ID (동행 등록 시 원본 서약 ID)',
   name VARCHAR(100) NOT NULL COMMENT '서약자 성명',
   division VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부',
   role VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할',

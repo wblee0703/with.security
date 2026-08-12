@@ -194,6 +194,7 @@ class SecurityDatabase {
 
       const payload = {
         log_id: checklist.id || checklist.log_id,
+        parent_log_id: checklist.parent_log_id || checklist.parentLogId || checklist.parentPledgeId || '',
         name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
         division: checklist.division || '',
         role: checklist.role || '일반',

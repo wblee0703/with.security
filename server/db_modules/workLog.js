@@ -1,68 +1,11 @@
 import { query } from '../mysql.js';
 
-let workLogColumnsEnsured = false;
 
-/**
- * work_log 테이블 컬럼 자동 변경 및 마이그레이션
- * 1. writer_name -> name, writer_rank -> rank, writer_team -> team 컬럼명 변경
- * 2. issues_found, weather, status 컬럼 삭제
- * 3. division(사업부), role(권한) 컬럼 추가
- * MySQL 예약어 (`name`, `rank`, `team`, `role`, `division` 등) 백틱 이스케이프 적용
- */
-async function ensureWorkLogColumns() {
-  if (workLogColumnsEnsured) return;
-  try {
-    const existingColumns = await query(`
-      SELECT COLUMN_NAME
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'work_log'
-    `);
-    const colNames = (existingColumns || []).map(c => String(c.COLUMN_NAME).toLowerCase());
-
-    // 1. 컬럼명 변경 (writer_name -> name, writer_rank -> rank, writer_team -> team)
-    if (colNames.includes('writer_name') && !colNames.includes('name')) {
-      try { await query("ALTER TABLE work_log CHANGE COLUMN `writer_name` `name` VARCHAR(100) NOT NULL COMMENT '작성자 성명'"); } catch (e) {}
-    }
-    if (colNames.includes('writer_rank') && !colNames.includes('rank')) {
-      try { await query("ALTER TABLE work_log CHANGE COLUMN `writer_rank` `rank` VARCHAR(50) DEFAULT '' COMMENT '작성자 직급'"); } catch (e) {}
-    }
-    if (colNames.includes('writer_team') && !colNames.includes('team')) {
-      try { await query("ALTER TABLE work_log CHANGE COLUMN `writer_team` `team` VARCHAR(100) DEFAULT '' COMMENT '작성자 소속팀'"); } catch (e) {}
-    }
-
-    // 2. 불필요 컬럼 삭제 (issues_found, weather, status)
-    const dropCols = ['issues_found', 'weather', 'status'];
-    for (const col of dropCols) {
-      if (colNames.includes(col)) {
-        try { await query(`ALTER TABLE work_log DROP COLUMN \`${col}\``); } catch (e) {}
-      }
-    }
-
-    // 최신 컬럼 목록 재조회
-    const currentCols = await query(`
-      SELECT COLUMN_NAME
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'work_log'
-    `);
-    const freshColNames = (currentCols || []).map(c => String(c.COLUMN_NAME).toLowerCase());
-
-    // 3. 신규 및 필수 컬럼 보장 (division, role)
-    if (!freshColNames.includes('name')) try { await query("ALTER TABLE work_log ADD COLUMN `name` VARCHAR(100) NOT NULL DEFAULT '작성자' COMMENT '작성자 성명'"); } catch (e) {}
-    if (!freshColNames.includes('rank')) try { await query("ALTER TABLE work_log ADD COLUMN `rank` VARCHAR(50) DEFAULT '' COMMENT '작성자 직급'"); } catch (e) {}
-    if (!freshColNames.includes('team')) try { await query("ALTER TABLE work_log ADD COLUMN `team` VARCHAR(100) DEFAULT '' COMMENT '작성자 소속팀'"); } catch (e) {}
-    if (!freshColNames.includes('division')) try { await query("ALTER TABLE work_log ADD COLUMN `division` VARCHAR(100) DEFAULT '' COMMENT '해당 계정 사업부'"); } catch (e) {}
-    if (!freshColNames.includes('role')) try { await query("ALTER TABLE work_log ADD COLUMN `role` VARCHAR(50) DEFAULT '일반' COMMENT '해당 계정 권한'"); } catch (e) {}
-    if (!freshColNames.includes('category')) try { await query("ALTER TABLE work_log ADD COLUMN `category` VARCHAR(50) DEFAULT '사내 업무' COMMENT '일지 구별'"); } catch (e) {}
-    if (!freshColNames.includes('site_name')) try { await query("ALTER TABLE work_log ADD COLUMN `site_name` VARCHAR(255) DEFAULT '' COMMENT '출장 사업장명'"); } catch (e) {}
-  } catch (e) {}
-  workLogColumnsEnsured = true;
-}
 
 /**
  * 업무일지(work_log) 생성 및 저장
  */
 export async function createWorkLog(data = {}) {
-  await ensureWorkLogColumns();
 
   const logId = String(data.logId || data.log_id || data.id || `work_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
   const name = String(data.name || data.writerName || data.writer_name || data.authorName || '작성자');
@@ -113,7 +56,6 @@ export async function createWorkLog(data = {}) {
  * 업무일지 목록 조회 (날짜별 / 작성자별 필터 가능, 모든 새 컬럼 반영)
  */
 export async function getWorkLogs(searchParams = {}) {
-  await ensureWorkLogColumns();
   let rows = [];
 
   try {
@@ -185,7 +127,6 @@ export async function getWorkLogs(searchParams = {}) {
  * 특정 업무일지 상세 조회
  */
 export async function getWorkLogById(logId) {
-  await ensureWorkLogColumns();
   const targetId = String(logId || '').trim();
   if (!targetId) return null;
 
@@ -237,7 +178,6 @@ export async function getWorkLogById(logId) {
  * 업무일지 수정
  */
 export async function updateWorkLog(logId, data) {
-  await ensureWorkLogColumns();
   const { title, tasksDone, details, category, team, rank, division, role, logDate, date, siteName, name } = data;
   const targetDate = logDate || date || null;
 
@@ -266,7 +206,6 @@ export async function updateWorkLog(logId, data) {
  * 업무일지 삭제
  */
 export async function deleteWorkLog(logId) {
-  await ensureWorkLogColumns();
   const targetId = String(logId || '').trim();
   if (!targetId) return false;
 
