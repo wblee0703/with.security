@@ -1,15 +1,16 @@
 import { hashPassword } from './cryptoUtil';
-import initialSitesData from '../data/sites.json';
-import initialUsersData from '../data/users.json';
-import initialPledgesData from '../data/pledges.json';
 
 // Server Base URL Management Helper
 export function getServerUrl() {
-  return localStorage.getItem('with_security_server_url') || '';
+  const url = localStorage.getItem('with_security_server_url') || '';
+  if (url && (url.includes('github.io') || url.includes('github.com'))) {
+    return 'http://localhost:4000';
+  }
+  return url || 'http://localhost:4000';
 }
 
 export function setServerUrl(url) {
-  if (!url || !url.trim()) {
+  if (!url || !url.trim() || url.includes('github.io') || url.includes('github.com')) {
     localStorage.removeItem('with_security_server_url');
   } else {
     let formatted = url.trim();
@@ -33,24 +34,6 @@ function isApiEndpoint(url) {
   if (!url || !url.trim()) return false;
   const lower = url.toLowerCase();
   return !lower.includes('github.io') && !lower.includes('github.com');
-}
-
-// Disk File Real-time Sync Helper (Writes JSON edits directly to src/data/*.json on disk or remote server)
-async function syncJsonToDisk(filename, data) {
-  try {
-    const serverUrl = getServerUrl();
-    if (serverUrl && !isApiEndpoint(serverUrl)) {
-      return;
-    }
-    const endpoint = serverUrl ? `${serverUrl}/api/sync-json` : '/api/sync-json';
-    await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename, data })
-    }).catch(() => {});
-  } catch (err) {
-    // Disk sync active via Vite dev server middleware / remote endpoint
-  }
 }
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
@@ -172,28 +155,6 @@ class SecurityDatabase {
   // Checklists (Dual IndexedDB + localStorage fallback)
   // Checklists (Prioritizing src/data/pledges.json & Dual IndexedDB + localStorage sync)
   async getChecklists() {
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch(`${serverUrl}/api/checklists`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (res.ok) {
-          const json = await res.json();
-          const remoteData = json.data || json;
-          if (Array.isArray(remoteData) && remoteData.length > 0) {
-            localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
-            try {
-              for (const p of remoteData) await this.putItem('checklists', p);
-            } catch (err) {}
-            return remoteData;
-          }
-        }
-      } catch (e) {}
-    }
-
-    let jsonPledges = initialPledgesData || [];
     let dbPledges = [];
     try {
       dbPledges = await this.getAll('checklists');
@@ -206,20 +167,7 @@ class SecurityDatabase {
         try { dbPledges = JSON.parse(backup); } catch (err) {}
       }
     }
-
-    const pledgeMap = new Map();
-    (dbPledges || []).forEach(p => pledgeMap.set(p.id, p));
-    (jsonPledges || []).forEach(p => pledgeMap.set(p.id, { ...(pledgeMap.get(p.id) || {}), ...p }));
-
-    const mergedPledges = Array.from(pledgeMap.values());
-    localStorage.setItem('with_security_checklists_backup', JSON.stringify(mergedPledges));
-    try {
-      for (const p of mergedPledges) {
-        await this.putItem('checklists', p);
-      }
-    } catch (e) {}
-
-    return mergedPledges;
+    return dbPledges || [];
   }
 
   async saveChecklist(checklist) {
@@ -239,21 +187,8 @@ class SecurityDatabase {
         updated = [checklist, ...existing];
       }
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
-      await syncJsonToDisk('pledges.json', updated);
     } catch (err) {
       console.error('Failed to update localStorage backup for checklist:', err);
-    }
-
-    // Remote Server Sync
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        await fetch(`${serverUrl}/api/checklists`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(checklist)
-        });
-      } catch (e) {}
     }
     notifyDataChanged();
     return checklist;
@@ -401,155 +336,67 @@ class SecurityDatabase {
   }
 
   async getSites() {
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch(`${serverUrl}/api/sites`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (res.ok) {
-          const json = await res.json();
-          const remoteData = json.data || json;
-          if (Array.isArray(remoteData) && remoteData.length > 0) {
-            localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
-            try {
-              for (const s of remoteData) await this.putItem('sites', s);
-            } catch (e) {}
-            return remoteData;
-          }
-        }
-      } catch (e) {}
-    }
-
-    let jsonSites = initialSitesData || [];
-    const deletedIdsRaw = localStorage.getItem('with_security_deleted_site_ids');
-    let deletedIds = [];
-    if (deletedIdsRaw) {
-      try { deletedIds = JSON.parse(deletedIdsRaw); } catch (e) {}
-    }
-
-    const addedSitesRaw = localStorage.getItem('with_security_added_sites');
-    let addedSites = [];
-    if (addedSitesRaw) {
-      try { addedSites = JSON.parse(addedSitesRaw); } catch (e) {}
-    }
-
-    // Baseline: jsonSites (src/data/sites.json) strictly defines registered sites
-    const siteMap = new Map();
-    (jsonSites || []).forEach(s => siteMap.set(s.id, s));
-    (addedSites || []).forEach(s => {
-      if (s && s.id) siteMap.set(s.id, { ...(siteMap.get(s.id) || {}), ...s });
-    });
-
-    let mergedSites = Array.from(siteMap.values());
-
-    // Exclude deleted sites permanently
-    if (deletedIds.length > 0) {
-      mergedSites = mergedSites.filter(s => !deletedIds.includes(s.id));
-    }
-
-    localStorage.setItem('with_security_sites_backup', JSON.stringify(mergedSites));
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      const db = await this.initDB('sites');
-      const tx = db.transaction('sites', 'readwrite');
-      const store = tx.objectStore('sites');
-      store.clear();
-      for (const s of mergedSites) {
-        store.put(s);
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${serverUrl}/api/security-sites`, { signal: controller.signal })
+        .catch(() => fetch(`${serverUrl}/api/sites`, { signal: controller.signal }))
+        .catch(() => fetch('/api/sites', { signal: controller.signal }));
+      clearTimeout(tid);
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData)) {
+          localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
+          try {
+            for (const s of remoteData) await this.putItem('sites', s);
+          } catch (e) {}
+          return remoteData;
+        }
       }
     } catch (e) {}
 
-    return mergedSites;
+    try {
+      const dbSites = await this.getAll('sites');
+      if (dbSites && dbSites.length > 0) return dbSites;
+    } catch (e) {}
+
+    return [];
   }
 
   async saveSite(site) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/security-sites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(site)
+      }).catch(() => fetch(`${serverUrl}/api/sites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(site)
+      }));
+    } catch (e) {}
+
     try {
       await this.putItem('sites', site);
-    } catch (e) {
-      console.warn('IndexedDB saveSite fallback:', e);
-    }
-    // Remove from deleted list if re-added
-    const deletedIdsRaw = localStorage.getItem('with_security_deleted_site_ids');
-    if (deletedIdsRaw) {
-      try {
-        let deletedIds = JSON.parse(deletedIdsRaw);
-        deletedIds = deletedIds.filter(id => id !== site.id);
-        localStorage.setItem('with_security_deleted_site_ids', JSON.stringify(deletedIds));
-      } catch (e) {}
-    }
-
-    const addedSitesRaw = localStorage.getItem('with_security_added_sites');
-    let addedSites = [];
-    if (addedSitesRaw) {
-      try { addedSites = JSON.parse(addedSitesRaw); } catch (e) {}
-    }
-    const idx = addedSites.findIndex(s => s.id === site.id);
-    if (idx >= 0) {
-      addedSites[idx] = site;
-    } else {
-      addedSites.push(site);
-    }
-    localStorage.setItem('with_security_added_sites', JSON.stringify(addedSites));
-
-    const current = await this.getSites();
-    await syncJsonToDisk('sites.json', current);
-
-    // Remote Server Sync
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        await fetch(`${serverUrl}/api/sites`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(site)
-        });
-      } catch (e) {}
-    }
+    } catch (e) {}
 
     notifyDataChanged();
     return site;
   }
 
   async deleteSite(id) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/security-sites/${id}`, { method: 'DELETE' })
+        .catch(() => fetch(`${serverUrl}/api/sites/${id}`, { method: 'DELETE' }));
+    } catch (e) {}
+
     try {
       await this.deleteItem('sites', id);
-    } catch (e) {
-      console.warn('IndexedDB deleteSite fallback:', e);
-    }
-
-    const deletedIdsRaw = localStorage.getItem('with_security_deleted_site_ids');
-    let deletedIds = [];
-    if (deletedIdsRaw) {
-      try { deletedIds = JSON.parse(deletedIdsRaw); } catch (e) {}
-    }
-    if (!deletedIds.includes(id)) {
-      deletedIds.push(id);
-      localStorage.setItem('with_security_deleted_site_ids', JSON.stringify(deletedIds));
-    }
-
-    // Remove from added list if present
-    const addedSitesRaw = localStorage.getItem('with_security_added_sites');
-    if (addedSitesRaw) {
-      try {
-        let addedSites = JSON.parse(addedSitesRaw);
-        addedSites = addedSites.filter(s => s.id !== id);
-        localStorage.setItem('with_security_added_sites', JSON.stringify(addedSites));
-      } catch (e) {}
-    }
-
-    const current = await this.getSites();
-    const updated = current.filter(s => s.id !== id);
-    localStorage.setItem('with_security_sites_backup', JSON.stringify(updated));
-    await syncJsonToDisk('sites.json', updated);
-
-    // Remote Server Sync
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        await fetch(`${serverUrl}/api/sites/${id}`, { method: 'DELETE' });
-      } catch (e) {}
-    }
+    } catch (e) {}
 
     notifyDataChanged();
     return id;
@@ -559,21 +406,17 @@ class SecurityDatabase {
     return this.getSites();
   }
 
-  // User Profile & Account Authentication Helpers (Strictly Ground-Truth by src/data/users.json)
+  // User Profile & Account Authentication Helpers
   async getUserProfile() {
     const cached = localStorage.getItem('with_security_active_user');
     let user = cached ? JSON.parse(cached) : null;
 
     const users = await this.getRegisteredUsers();
-    if (user) {
+    if (user && users.length > 0) {
       const match = users.find(u => u.username === user.username);
       if (match) {
         user = { ...user, ...match };
         localStorage.setItem('with_security_active_user', JSON.stringify(user));
-      } else {
-        // Logged-in user is NOT in users.json -> invalidate session immediately
-        localStorage.removeItem('with_security_active_user');
-        return null;
       }
     }
     return user;
@@ -594,154 +437,67 @@ class SecurityDatabase {
       console.warn('IndexedDB saveUserProfile fallback:', e);
     }
 
-    const users = await this.getRegisteredUsers();
-    const idx = users.findIndex(u => u.username === safeUser.username);
-    let updated;
-    if (idx >= 0) {
-      updated = [...users];
-      updated[idx] = safeUser;
-    } else {
-      updated = [...users, safeUser];
-    }
-    localStorage.setItem('with_security_users_json_store', JSON.stringify(updated));
-    localStorage.setItem('with_security_users_db', JSON.stringify(updated));
-    await syncJsonToDisk('users.json', updated);
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/security-users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(safeUser)
+      }).catch(() => fetch(`${serverUrl}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(safeUser)
+      }));
+    } catch (e) {}
+
     notifyDataChanged();
-
-    // Remote Server Sync
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        await fetch(`${serverUrl}/api/users`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(safeUser)
-        });
-      } catch (e) {}
-    }
-
     return safeUser;
   }
 
   async getRegisteredUsers() {
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        const controller = new AbortController();
-        const tid = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch(`${serverUrl}/api/users`, { signal: controller.signal });
-        clearTimeout(tid);
-        if (res.ok) {
-          const json = await res.json();
-          const remoteData = json.data || json;
-          if (Array.isArray(remoteData) && remoteData.length > 0) {
-            localStorage.setItem('with_security_users_json_store', JSON.stringify(remoteData));
-            try {
-              for (const u of remoteData) await this.putItem('users', u);
-            } catch (e) {}
-          }
-        }
-      } catch (e) {}
-    }
-
-    let jsonUsers = initialUsersData || [];
-
-    // Strictly exclude deleted usernames
-    const deletedUsersRaw = localStorage.getItem('with_security_deleted_usernames');
-    let deletedUsers = [];
-    if (deletedUsersRaw) {
-      try { deletedUsers = JSON.parse(deletedUsersRaw); } catch (e) {}
-    }
-    jsonUsers = jsonUsers.filter(u => !deletedUsers.includes(u.username));
-
-    // Ground truth & local storage sync
-    const savedJsonRaw = localStorage.getItem('with_security_users_json_store');
-    let savedJsonUsers = [];
-    if (savedJsonRaw) {
-      try { savedJsonUsers = JSON.parse(savedJsonRaw); } catch (e) {}
-    }
-    savedJsonUsers = savedJsonUsers.filter(u => !deletedUsers.includes(u.username));
-
-    const userMap = new Map();
-    (jsonUsers || []).forEach(u => userMap.set(u.username, u));
-    (savedJsonUsers || []).forEach(u => {
-      if (userMap.has(u.username)) {
-        userMap.set(u.username, { ...userMap.get(u.username), ...u });
-      } else if (u.username) {
-        userMap.set(u.username, u);
-      }
-    });
-
-    let validUsers = Array.from(userMap.values()).filter(u => !deletedUsers.includes(u.username));
-
-    const adminHash = await hashPassword('withtech123!');
-    validUsers = validUsers.map(u => {
-      if (u.username === 'admin') {
-        return {
-          ...u,
-          role: '개발자',
-          passwordHash: adminHash,
-          password: 'withtech123!'
-        };
-      }
-      return {
-        ...u,
-        role: u.role || '일반'
-      };
-    });
-
-    localStorage.setItem('with_security_users_db', JSON.stringify(validUsers));
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      for (const u of validUsers) {
-        await this.putItem('users', u);
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${serverUrl}/api/security-users`, { signal: controller.signal })
+        .catch(() => fetch(`${serverUrl}/api/users`, { signal: controller.signal }))
+        .catch(() => fetch('/api/users', { signal: controller.signal }));
+      clearTimeout(tid);
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData)) {
+          localStorage.setItem('with_security_users_db', JSON.stringify(remoteData));
+          try {
+            for (const u of remoteData) await this.putItem('users', u);
+          } catch (e) {}
+          return remoteData;
+        }
       }
-    } catch (err) {}
+    } catch (e) {}
 
-    return validUsers;
+    try {
+      const dbUsers = await this.getAll('users');
+      if (dbUsers && dbUsers.length > 0) return dbUsers;
+    } catch (e) {}
+
+    return [];
   }
 
   async deleteUser(username) {
     if (!username || username === 'admin') return false;
 
-    // 1. Save to deleted set in localStorage
-    const deletedUsersRaw = localStorage.getItem('with_security_deleted_usernames');
-    let deletedUsers = [];
-    if (deletedUsersRaw) {
-      try { deletedUsers = JSON.parse(deletedUsersRaw); } catch (e) {}
-    }
-    if (!deletedUsers.includes(username)) {
-      deletedUsers.push(username);
-      localStorage.setItem('with_security_deleted_usernames', JSON.stringify(deletedUsers));
-    }
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/security-users/${encodeURIComponent(username)}`, { method: 'DELETE' })
+        .catch(() => fetch(`${serverUrl}/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' }));
+    } catch (e) {}
 
-    // 2. Remove from json store
-    const savedJsonRaw = localStorage.getItem('with_security_users_json_store');
-    if (savedJsonRaw) {
-      try {
-        const filteredJson = JSON.parse(savedJsonRaw).filter(u => u.username !== username);
-        localStorage.setItem('with_security_users_json_store', JSON.stringify(filteredJson));
-      } catch (e) {}
-    }
-
-    // 3. Remove from IndexedDB
     try {
       await this.deleteItem('users', username);
     } catch (e) {}
 
-    // 4. Update valid users and sync to disk
-    const current = await this.getRegisteredUsers();
-    const filtered = current.filter(u => u.username !== username);
-    localStorage.setItem('with_security_users_db', JSON.stringify(filtered));
-    await syncJsonToDisk('users.json', filtered);
-
-    // Remote Server Sync
-    const serverUrl = getServerUrl();
-    if (serverUrl && isApiEndpoint(serverUrl)) {
-      try {
-        await fetch(`${serverUrl}/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
-      } catch (e) {}
-    }
-
+    notifyDataChanged();
     return true;
   }
 
@@ -939,16 +695,42 @@ class SecurityDatabase {
   }
 
   // -------------------------------------------------------------
-  // Work Log Persistence Methods (업무 일지)
+  // Work Log Persistence Methods (MySQL work_log Table Direct Sync)
   // -------------------------------------------------------------
   async getWorkLogs() {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${serverUrl}/api/work-logs`, { signal: controller.signal });
+      clearTimeout(tid);
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData)) {
+          const mapped = remoteData.map(item => ({
+            id: item.log_id || item.id,
+            category: item.category || '사내 업무',
+            title: item.title || '',
+            details: item.tasks_done || item.details || '',
+            date: item.log_date ? String(item.log_date).split('T')[0] : (item.date || new Date().toISOString().split('T')[0]),
+            authorName: item.writer_name || item.authorName || '작성자',
+            authorTeam: item.authorTeam || '',
+            authorRank: item.authorRank || '',
+            status: item.status || 'SUBMITTED',
+            createdAt: item.created_at || item.createdAt || ''
+          }));
+          localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
+          return mapped;
+        }
+      }
+    } catch (e) {}
+
     try {
       const raw = localStorage.getItem('with_security_work_logs');
       if (raw) return JSON.parse(raw);
-    } catch (e) {
-      console.error('Failed to parse work logs from storage:', e);
-    }
-    // Default baseline work logs
+    } catch (e) {}
+
     return [
       {
         id: 'LOG-20260811-001',
@@ -960,22 +742,31 @@ class SecurityDatabase {
         authorTeam: '영업/운영사업부 운영1팀',
         authorRank: '대리',
         createdAt: '2026-08-11 08:30'
-      },
-      {
-        id: 'LOG-20260810-002',
-        category: '출장 업무',
-        title: '삼성전자 평택캠퍼스 P4 라인 보안 장비 기술 지원',
-        details: '1. P4 라인 반도체 핵심보안통제구역 보안 게이트 장비 시운전\n2. 모바일 보안 어플(MDM) 카메라 사용 제한 연동 테스트 완료\n3. 현장 보안 담당자 미팅 진행 및 출속 절차 확인',
-        date: '2026-08-10',
-        authorName: '이원배',
-        authorTeam: '영업/운영사업부 운영1팀',
-        authorRank: '대리',
-        createdAt: '2026-08-10 17:40'
       }
     ];
   }
 
   async saveWorkLog(logItem) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/work-logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logId: logItem.id,
+          writerName: logItem.authorName || logItem.writerName || '이원배',
+          writerId: logItem.writerId || '',
+          siteName: logItem.siteName || '',
+          logDate: logItem.date || new Date().toISOString().split('T')[0],
+          title: logItem.title,
+          tasksDone: logItem.details || logItem.tasksDone || '',
+          issuesFound: logItem.issuesFound || '',
+          weather: logItem.weather || '맑음',
+          status: logItem.status || 'SUBMITTED'
+        })
+      });
+    } catch (e) {}
+
     const logs = await this.getWorkLogs();
     const existingIndex = logs.findIndex(l => l.id === logItem.id);
     let updated;
@@ -991,6 +782,11 @@ class SecurityDatabase {
   }
 
   async deleteWorkLog(id) {
+    const serverUrl = getServerUrl() || 'http://localhost:4000';
+    try {
+      await fetch(`${serverUrl}/api/work-logs/${id}`, { method: 'DELETE' });
+    } catch (e) {}
+
     const logs = await this.getWorkLogs();
     const updated = logs.filter(l => l.id !== id);
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));

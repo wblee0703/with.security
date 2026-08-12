@@ -7,6 +7,8 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview",
+    "init:db": "node server/init_db.js",
+    "server": "node server/db.js",
     "cap:sync": "vite build && npx cap sync",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios"
@@ -15,7 +17,9 @@
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
+    "dotenv": "^17.4.2",
     "lucide-react": "^0.380.0",
+    "mysql2": "^3.23.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
