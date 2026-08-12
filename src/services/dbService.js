@@ -36,19 +36,30 @@ export function isApiEndpoint(url) {
   return !lower.includes('github.io') && !lower.includes('github.com');
 }
 
-// Get REST API Base URL helper (defaults to http://localhost:4000 for PC Web Browser)
+// Get REST API Base URL helper (prevents Mixed Content errors on HTTPS GitHub Pages)
 export function getApiServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
+
+  // 1. If explicit server URL is saved by user
   if (url && isApiEndpoint(url)) {
-    return url.replace(/\/+$/, '');
+    const formatted = url.replace(/\/+$/, '');
+    // If page is loaded over HTTPS, block unencrypted http:// to prevent Mixed Content browser error
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && formatted.startsWith('http://')) {
+      return null;
+    }
+    return formatted;
   }
+
+  // 2. If running locally on PC (http://localhost:3000 or http://192.168.0.x:3000)
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
     if (!host.includes('github.io') && !host.includes('github.com')) {
-      return '';
+      return ''; // Use relative '/api' via local Vite dev server proxy
     }
   }
-  return 'http://localhost:4000';
+
+  // 3. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
+  return null;
 }
 
 async function safeFetchApi(endpoint, options = {}) {
