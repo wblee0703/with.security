@@ -1,10 +1,10 @@
 import { query } from '../mysql.js';
 
 /**
- * "사업장명 사업장위치" (예: SEC 평택사업장 P4 라인) 형태로 사업장명 포맷팅
+ * 사업장명 포맷팅 헬퍼
  */
 function formatSecLogSiteName(rawSite, rawAddress = '') {
-  if (!rawSite) return 'SEC 평택사업장';
+  if (!rawSite) return '';
   let siteStr = String(rawSite).trim();
   let addrStr = String(rawAddress).trim();
 
@@ -14,12 +14,6 @@ function formatSecLogSiteName(rawSite, rawAddress = '') {
       siteStr = match[1].trim();
       if (!addrStr) addrStr = match[2].trim();
     }
-  }
-
-  if (siteStr.includes('삼성전자')) {
-    siteStr = siteStr.replace(/삼성전자\s*/g, 'SEC ');
-  } else if (!siteStr.startsWith('SEC') && !siteStr.startsWith('SK') && !siteStr.includes('본사') && !siteStr.includes('관제')) {
-    siteStr = `SEC ${siteStr}`;
   }
 
   let finalSecName = siteStr;
@@ -164,7 +158,7 @@ export async function createSecurityLog(data = {}) {
           \`site_name\` = VALUES(\`site_name\`)
       `;
       await query(fallbackSql, [logId, parentLogId, siteName, status]);
-    } catch (e) {}
+    } catch (e) { }
   }
 
   return { id: logId, log_id: logId, parent_log_id: parentLogId, name, site_name: siteName, site: siteName, status: 'SUCCESS' };
@@ -275,7 +269,7 @@ export async function getSecurityLogById(logId) {
     try {
       const results = await query('SELECT * FROM security_log WHERE `log_id` = ? LIMIT 1', [targetId]);
       if (results && results.length > 0) row = results[0];
-    } catch (err) {}
+    } catch (err) { }
   }
 
   if (!row) return null;
@@ -299,7 +293,7 @@ export async function updateSecurityLog(logId, data) {
     ? 'UPDATE security_log SET `site_name` = COALESCE(?, `site_name`), `purpose` = COALESCE(?, `purpose`), `status` = COALESCE(?, `status`) WHERE `log_id` = ? OR `id` = ?'
     : 'UPDATE security_log SET `site_name` = COALESCE(?, `site_name`), `purpose` = COALESCE(?, `purpose`), `status` = COALESCE(?, `status`) WHERE `log_id` = ?';
 
-  const params = isPureNumber 
+  const params = isPureNumber
     ? [siteName || null, data.purpose || null, data.status || null, targetId, parseInt(targetId, 10)]
     : [siteName || null, data.purpose || null, data.status || null, targetId];
 

@@ -2,23 +2,22 @@ import { hashPassword } from './cryptoUtil';
 
 // Server Base URL Management Helper
 export function getServerUrl() {
-  const url = localStorage.getItem('with_security_server_url') || '';
-  if (url && (url.includes('github.io') || url.includes('github.com'))) {
-    return 'http://localhost:4000';
-  }
-  return url || 'http://localhost:4000';
+  const url = localStorage.getItem('with_security_server_url') || localStorage.getItem('with_security_hosted_app_url') || '';
+  return url;
 }
 
 export function setServerUrl(url) {
-  if (!url || !url.trim() || url.includes('github.io') || url.includes('github.com')) {
+  if (!url || !url.trim()) {
     localStorage.removeItem('with_security_server_url');
+    localStorage.removeItem('with_security_hosted_app_url');
   } else {
     let formatted = url.trim();
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
-      formatted = 'http://' + formatted;
+      formatted = 'https://' + formatted;
     }
     formatted = formatted.replace(/\/+$/, '');
     localStorage.setItem('with_security_server_url', formatted);
+    localStorage.setItem('with_security_hosted_app_url', formatted);
   }
 }
 
@@ -30,10 +29,43 @@ export function notifyDataChanged() {
 }
 
 // Check if target URL supports dynamic Node/Express REST API endpoints
-function isApiEndpoint(url) {
+export function isApiEndpoint(url) {
   if (!url || !url.trim()) return false;
   const lower = url.toLowerCase();
   return !lower.includes('github.io') && !lower.includes('github.com');
+}
+
+// Get REST API Base URL helper (returns null on static hosts like GitHub Pages unless explicit API server is set)
+export function getApiServerUrl() {
+  const url = localStorage.getItem('with_security_server_url') || '';
+  if (url && isApiEndpoint(url)) {
+    return url.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (!host.includes('github.io') && !host.includes('github.com')) {
+      return '';
+    }
+  }
+  return null;
+}
+
+async function safeFetchApi(endpoint, options = {}) {
+  const baseUrl = getApiServerUrl();
+  if (baseUrl === null) return null;
+  const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), options.timeout || 3000);
+    const res = await fetch(fullUrl, {
+      ...options,
+      signal: controller.signal
+    }).catch(() => null);
+    clearTimeout(tid);
+    return res;
+  } catch (e) {
+    return null;
+  }
 }
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
@@ -153,14 +185,8 @@ class SecurityDatabase {
   // --- Specific Domain Helpers ---
 
   async getChecklists() {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${serverUrl}/api/security-logs`, { signal: controller.signal })
-        .catch(() => fetch('/api/security-logs', { signal: controller.signal }))
-        .catch(() => fetch('/api/checklists', { signal: controller.signal }));
-      clearTimeout(tid);
+      const res = await safeFetchApi('/api/security-logs');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
@@ -188,7 +214,6 @@ class SecurityDatabase {
   }
 
   async saveChecklist(checklist) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
       const nowFormatted = new Date().toLocaleString('ko-KR', { hour12: false });
 
@@ -198,8 +223,8 @@ class SecurityDatabase {
         name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
         division: checklist.division || '',
         role: checklist.role || '일반',
-        site_name: checklist.site_name || checklist.siteName || checklist.site || 'SEC 평택사업장',
-        site: checklist.site_name || checklist.siteName || checklist.site || 'SEC 평택사업장',
+        site_name: checklist.site_name || checklist.siteName || checklist.site || '',
+        site: checklist.site_name || checklist.siteName || checklist.site || '',
         purpose: checklist.purpose || checklist.purposeType || checklist.customPurpose || '',
         visitor_phone: checklist.phone || checklist.visitorPhone || checklist.visitor_phone || '',
         team: checklist.team || checklist.department || checklist.visitor_team || '',
@@ -213,15 +238,11 @@ class SecurityDatabase {
         status: checklist.status || '승인완료'
       };
 
-      await fetch(`${serverUrl}/api/security-logs`, {
+      await safeFetchApi('/api/security-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      }).catch(() => fetch('/api/security-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      }));
+      });
     } catch (e) {
       console.warn('MySQL Security Log Sync Warning:', e);
     }
@@ -248,11 +269,8 @@ class SecurityDatabase {
   }
 
   async deleteChecklist(id) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/security-logs/${id}`, { method: 'DELETE' })
-        .catch(() => fetch(`/api/security-logs/${id}`, { method: 'DELETE' }))
-        .catch(() => fetch(`/api/checklists/${id}`, { method: 'DELETE' }));
+      await safeFetchApi(`/api/security-logs/${id}`, { method: 'DELETE' });
     } catch (e) {
       console.warn('MySQL deleteSecurityLog API call warning:', e);
     }
@@ -415,14 +433,8 @@ class SecurityDatabase {
   }
 
   async getSites() {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${serverUrl}/api/security-sites`, { signal: controller.signal })
-        .catch(() => fetch('/api/security-sites', { signal: controller.signal }))
-        .catch(() => fetch('/api/sites', { signal: controller.signal }));
-      clearTimeout(tid);
+      const res = await safeFetchApi('/api/security-sites');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
@@ -453,17 +465,12 @@ class SecurityDatabase {
   }
 
   async saveSite(site) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/security-sites`, {
+      await safeFetchApi('/api/security-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(site)
-      }).catch(() => fetch('/api/security-sites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(site)
-      }));
+      });
     } catch (e) {}
 
     try {
@@ -475,10 +482,8 @@ class SecurityDatabase {
   }
 
   async deleteSite(id) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/security-sites/${id}`, { method: 'DELETE' })
-        .catch(() => fetch(`/api/security-sites/${id}`, { method: 'DELETE' }));
+      await safeFetchApi(`/api/security-sites/${id}`, { method: 'DELETE' });
     } catch (e) {}
 
     try {
@@ -523,17 +528,12 @@ class SecurityDatabase {
       console.warn('IndexedDB saveUserProfile fallback:', e);
     }
 
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/security-users`, {
+      await safeFetchApi('/api/security-users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(safeUser)
-      }).catch(() => fetch(`${serverUrl}/api/users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(safeUser)
-      }));
+      });
     } catch (e) {}
 
     notifyDataChanged();
@@ -541,14 +541,8 @@ class SecurityDatabase {
   }
 
   async getRegisteredUsers() {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${serverUrl}/api/security-users`, { signal: controller.signal })
-        .catch(() => fetch(`${serverUrl}/api/users`, { signal: controller.signal }))
-        .catch(() => fetch('/api/users', { signal: controller.signal }));
-      clearTimeout(tid);
+      const res = await safeFetchApi('/api/security-users');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
@@ -577,10 +571,8 @@ class SecurityDatabase {
   async deleteUser(username) {
     if (!username || username === 'admin') return false;
 
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/security-users/${encodeURIComponent(username)}`, { method: 'DELETE' })
-        .catch(() => fetch(`${serverUrl}/api/users/${encodeURIComponent(username)}`, { method: 'DELETE' }));
+      await safeFetchApi(`/api/security-users/${encodeURIComponent(username)}`, { method: 'DELETE' });
     } catch (e) {}
 
     try {
@@ -788,12 +780,8 @@ class SecurityDatabase {
   // Work Log Persistence Methods (MySQL work_log Table Direct Sync)
   // -------------------------------------------------------------
   async getWorkLogs() {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 3000);
-      const res = await fetch(`${serverUrl}/api/work-logs`, { signal: controller.signal });
-      clearTimeout(tid);
+      const res = await safeFetchApi('/api/work-logs');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
@@ -857,9 +845,8 @@ class SecurityDatabase {
   }
 
   async saveWorkLog(logItem) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/work-logs`, {
+      await safeFetchApi('/api/work-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -894,9 +881,8 @@ class SecurityDatabase {
   }
 
   async deleteWorkLog(id) {
-    const serverUrl = getServerUrl() || 'http://localhost:4000';
     try {
-      await fetch(`${serverUrl}/api/work-logs/${id}`, { method: 'DELETE' });
+      await safeFetchApi(`/api/work-logs/${id}`, { method: 'DELETE' });
     } catch (e) {}
 
     const logs = await this.getWorkLogs();

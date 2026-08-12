@@ -52,7 +52,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       try {
         const freshItems = await dbService.getChecklists();
         setChecklistList(freshItems || []);
-      } catch (e) {}
+      } catch (e) { }
     };
 
     window.addEventListener('with_security_data_changed', handleDataChanged);
@@ -625,8 +625,10 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       const isAlreadyCompanion = updatedCompanions.some(c => isSamePerson(u, c));
 
       if (!isPrimary && !isAlreadyCompanion) {
+        const compLogId = `PASS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
         updatedCompanions.push({
-          id: `COMP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+          id: compLogId,
+          log_id: compLogId,
           visitorName: uName,
           name: uName,
           username: u.username || '',
@@ -645,7 +647,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
         // 데이터 베이스 security_log에 동행 계정 정보로 서약전 상태 레코드 즉시 기입
         try {
-          const compLogId = `PASS-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
           await dbService.saveChecklist({
             id: compLogId,
             log_id: compLogId,
@@ -807,13 +808,16 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     const targetPledge = checklistList.find(item => item.id === pledgeId);
     if (!targetPledge) return;
 
-    const updatedCompanions = (targetPledge.companions || []).filter(c => c.id !== companionId);
+    const updatedCompanions = (targetPledge.companions || []).filter(c => c.id !== companionId && c.log_id !== companionId);
     const updatedPledge = {
       ...targetPledge,
       companions: updatedCompanions
     };
 
     try {
+      if (companionId) {
+        await dbService.deleteChecklist(companionId);
+      }
       await dbService.saveChecklist(updatedPledge);
     } catch (err) {
       console.error('Failed to delete companion from DB:', err);
@@ -888,12 +892,8 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
     // 4. Site Filter
     let matchesSite = true;
-    if (selectedSiteFilter === '삼성전자') {
-      matchesSite = item.site.includes('삼성');
-    } else if (selectedSiteFilter === 'SK하이닉스') {
-      matchesSite = item.site.includes('SK') || item.site.includes('하이닉스');
-    } else if (selectedSiteFilter === 'OTHER') {
-      matchesSite = !item.site.includes('삼성') && !item.site.includes('SK') && !item.site.includes('하이닉스');
+    if (selectedSiteFilter && selectedSiteFilter !== 'ALL') {
+      matchesSite = item.site?.includes(selectedSiteFilter) || item.site_name?.includes(selectedSiteFilter);
     }
 
     // 5. Status Filter
@@ -1124,6 +1124,40 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
         try {
           await dbService.saveChecklist(updatedPledge);
+
+          const targetComp = updatedCompanions[existingIndex >= 0 ? existingIndex : updatedCompanions.length - 1];
+          if (targetComp && targetComp.id) {
+            await dbService.saveChecklist({
+              id: targetComp.id,
+              log_id: targetComp.id,
+              parent_log_id: targetPledge.id || targetPledge.log_id,
+              parentLogId: targetPledge.id || targetPledge.log_id,
+              name: inputVisitorName,
+              user_name: inputVisitorName,
+              visitorName: inputVisitorName,
+              userName: inputVisitorName,
+              username: inputUsername,
+              division: currentUser?.division || '',
+              role: currentUser?.role || '일반',
+              site: targetPledge.site || targetPledge.site_name || '',
+              purpose: targetPledge.purpose || '',
+              phone: inputPhone,
+              visitor_phone: inputPhone,
+              visitorPhone: inputPhone,
+              team: userTeam,
+              visitor_team: userTeam,
+              department: userTeam,
+              rank: formData.rank?.trim() || '대리',
+              visitor_rank: formData.rank?.trim() || '대리',
+              mdmVerified: true,
+              docChecklist: { gateApproved: true, docSecVerified: true, preCheckVerified: true },
+              pledgeTerms: targetPledge.pledgeTerms || '',
+              signature_date: new Date().toLocaleString('ko-KR', { hour12: false }),
+              signatureDate: new Date().toLocaleString('ko-KR', { hour12: false }),
+              signedAt: new Date().toLocaleString('ko-KR', { hour12: false }),
+              status: '승인완료'
+            });
+          }
         } catch (err) {
           console.error('Failed to update pass in DB:', err);
         }
@@ -1239,19 +1273,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     const newPassId = `PASS-${currentYear}-${String(nextNum).padStart(3, '0')}`;
 
     const rawSiteStr = String(formData.site || '').trim();
-    let formattedSiteName = rawSiteStr;
-    if (rawSiteStr.includes('삼성전자')) {
-      formattedSiteName = rawSiteStr.replace(/삼성전자\s*/g, 'SEC ');
-    } else if (rawSiteStr && !rawSiteStr.startsWith('SEC') && !rawSiteStr.startsWith('SK') && !rawSiteStr.includes('본사')) {
-      formattedSiteName = `SEC ${rawSiteStr}`;
-    }
 
     const newPass = {
       id: newPassId,
       log_id: newPassId,
-      site_name: formattedSiteName || 'SEC 평택사업장',
-      siteName: formattedSiteName || 'SEC 평택사업장',
-      site: formattedSiteName || 'SEC 평택사업장',
+      site_name: rawSiteStr,
+      siteName: rawSiteStr,
+      site: rawSiteStr,
       visitorName: formData.visitorName.trim(),
       name: formData.visitorName.trim(),
       username: activeUser?.username || currentUser?.username || '',
@@ -1318,7 +1346,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
       {/* Header Title Banner */}
       <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
               <Building2 size={22} color="#00f2fe" />
@@ -1331,17 +1359,20 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', width: '100%' }}>
             <button
               type="button"
               onClick={handleOpenPledgeModal}
               className="glass-button-primary"
               style={{
-                padding: '10px 18px',
+                width: '100%',
+                padding: '12px 18px',
                 borderRadius: '14px',
-                fontSize: '13px',
+                fontSize: '13.5px',
+                fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
+                justifyContent: 'center',
                 gap: '8px',
                 cursor: 'pointer'
               }}
@@ -1392,34 +1423,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
           <span style={{ fontSize: '14px', fontWeight: '700', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '4px' }}>
             해당 날짜 서약: <strong style={{ color: '#00f2fe', fontSize: '16px', fontWeight: '800' }}>{filteredList.length}건</strong>
           </span>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: '700',
-            padding: '2px 8px',
-            borderRadius: '6px',
-            marginTop: '2px',
-            background: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
-              ? 'rgba(0, 242, 254, 0.15)'
-              : currentUser?.role === '관리자'
-                ? 'rgba(245, 158, 11, 0.15)'
-                : 'rgba(16, 185, 129, 0.15)',
-            color: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
-              ? '#00f2fe'
-              : currentUser?.role === '관리자'
-                ? '#f59e0b'
-                : '#10b981',
-            border: (currentUser?.role === '개발자' || currentUser?.username === 'admin')
-              ? '1px solid rgba(0, 242, 254, 0.3)'
-              : currentUser?.role === '관리자'
-                ? '1px solid rgba(245, 158, 11, 0.3)'
-                : '1px solid rgba(16, 185, 129, 0.3)'
-          }}>
-            {(currentUser?.role === '개발자' || currentUser?.username === 'admin')
-              ? '🌐 전체 서약 목록 (개발자)'
-              : currentUser?.role === '관리자'
-                ? `🏢 소속팀(${currentUser?.team || currentUser?.department || '소속'}) 서약 목록`
-                : `👤 본인(${currentUser?.name || '작성자'}) 서약 목록만 표시`}
-          </span>
         </div>
 
         <button
@@ -1452,41 +1455,18 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         alignItems: 'center',
         justifyContent: 'space-between'
       }}>
-        {/* Search Input */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: 'rgba(15, 23, 42, 0.8)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRadius: '12px',
-          padding: '8px 14px',
-          flex: '1 1 240px'
-        }}>
-          <Search size={16} color="#64748b" />
-          <input
-            type="text"
-            placeholder="성명, 회사명, 사업장, 서약 번호 검색..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#fff',
-              fontSize: '13px',
-              outline: 'none',
-              width: '100%'
-            }}
-          />
-        </div>
-
         {/* Site Filter Pills */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
           {[
             { id: 'ALL', label: '전체 사업장' },
-            { id: '삼성전자', label: '삼성전자' },
-            { id: 'SK하이닉스', label: 'SK하이닉스' },
-            { id: 'OTHER', label: '기타 사업장' }
+            ...Array.from(new Set(
+              (sites || [])
+                .map(s => String(s.name || s.site_name || s.id || '').trim())
+                .filter(Boolean)
+            )).map(siteName => ({
+              id: siteName,
+              label: siteName
+            }))
           ].map(filter => (
             <button
               key={filter.id}
@@ -1527,7 +1507,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 style={{
                   padding: '16px 20px',
                   borderRadius: '16px',
-                  borderLeft: item.site.includes('삼성전자') ? '4px solid #00f2fe' : '4px solid #8b5cf6',
+                  borderLeft: '4px solid #00f2fe',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '12px',
@@ -1537,7 +1517,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                 {/* Row Header: Site Title & Companion Register Button */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Building2 size={16} color={item.site.includes('삼성전자') ? '#00f2fe' : '#8b5cf6'} />
+                    <Building2 size={16} color="#00f2fe" />
                     <span style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>
                       {item.site}
                     </span>

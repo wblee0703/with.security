@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS security_log (
   name VARCHAR(100) NOT NULL COMMENT '서약자 성명',
   division VARCHAR(100) DEFAULT '' COMMENT '서약자 사업부',
   role VARCHAR(50) DEFAULT '' COMMENT '서약자 권한/역할',
-  site_name VARCHAR(255) DEFAULT 'SEC 평택사업장' COMMENT '출입 현장명',
+  site_name VARCHAR(255) DEFAULT '' COMMENT '출입 현장명',
   purpose VARCHAR(255) DEFAULT '' COMMENT '방문/출입 목적',
   visitor_phone VARCHAR(50) DEFAULT '' COMMENT '방문자 연락처',
   team VARCHAR(100) DEFAULT '' COMMENT '방문자 소속팀',
@@ -97,14 +97,3 @@ ON DUPLICATE KEY UPDATE
   siteId = VALUES(siteId),
   phone = VALUES(phone),
   email = VALUES(email);
-
--- 2. 기본 작업 현장 데이터 추가
-INSERT INTO security_site (id, type, name, address)
-VALUES 
-  ('site-001', '보안어플O', '삼성전자 평택캠퍼스 P4 라인', '경기도 평택시 고덕면 삼성로 114'),
-  ('site-002', '보안어플O', 'SK하이닉스 이천 M16 공장', '경기도 이천시 부발읍 경충대로 2091'),
-  ('site-003', '보안어플X', '위드텍 본사 통합관제센터', '대전광역시 유성구 테크노2로 42')
-ON DUPLICATE KEY UPDATE
-  type = VALUES(type),
-  name = VALUES(name),
-  address = VALUES(address);

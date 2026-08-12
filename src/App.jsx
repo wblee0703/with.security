@@ -20,14 +20,41 @@ export default function App() {
   const [initialServerUrl, setInitialServerUrl] = useState('');
   const [isTestingInitialServer, setIsTestingInitialServer] = useState(false);
 
-  // Check if server URL is registered on first app launch
+  // Check if server URL / hosted app URL is registered on first app launch
   useEffect(() => {
+    // 1. Reset Host URL parameter check (e.g. ?reset_server=true)
+    if (window.location.search.includes('reset_server=true')) {
+      localStorage.removeItem('with_security_hosted_app_url');
+      localStorage.removeItem('with_security_server_url');
+      localStorage.removeItem('with_security_server_init_completed');
+      dbService.setServerUrl('');
+      setIsServerModalOpen(true);
+      if (window.history.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      return;
+    }
+
     const isCompleted = localStorage.getItem('with_security_server_init_completed');
     const savedUrl = dbService.getServerUrl();
-    if (!isCompleted && !savedUrl) {
+    const hostedUrl = localStorage.getItem('with_security_hosted_app_url');
+
+    // 2. Automatically load remote live hosted application URL if configured
+    if (hostedUrl && (hostedUrl.startsWith('http://') || hostedUrl.startsWith('https://'))) {
+      const currentOrigin = window.location.origin.replace(/\/+$/, '');
+      const targetOrigin = hostedUrl.replace(/\/+$/, '');
+      if (!currentOrigin.includes(targetOrigin) && !targetOrigin.includes(currentOrigin)) {
+        console.log('🌐 Loading Live Remote Hosted Web Application:', hostedUrl);
+        window.location.replace(hostedUrl);
+        return;
+      }
+    }
+
+    if (!isCompleted && !savedUrl && !hostedUrl) {
       setIsServerModalOpen(true);
     } else {
       if (savedUrl) setInitialServerUrl(savedUrl);
+      else if (hostedUrl) setInitialServerUrl(hostedUrl);
     }
   }, []);
 
@@ -36,21 +63,35 @@ export default function App() {
     if (!initialServerUrl.trim()) {
       dbService.setServerUrl('');
       setIsServerModalOpen(false);
-      const syncRes = await dbService.syncAllWithServer('');
       showToast('통합 데이터베이스 모드로 앱을 시작합니다. (웹/모바일 100% 동일 동기화)');
       return;
     }
 
     setIsTestingInitialServer(true);
-    dbService.setServerUrl(initialServerUrl);
-    const targetUrl = dbService.getServerUrl();
+    let targetUrl = initialServerUrl.trim();
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      targetUrl = 'https://' + targetUrl;
+    }
+    targetUrl = targetUrl.replace(/\/+$/, '');
+
+    dbService.setServerUrl(targetUrl);
+    localStorage.setItem('with_security_hosted_app_url', targetUrl);
 
     // Trigger full backend data sync
     const syncRes = await dbService.syncAllWithServer(targetUrl);
     setIsTestingInitialServer(false);
-
     setIsServerModalOpen(false);
-    showToast(syncRes.message || `웹 & 모바일 데이터 통합 동기화 완료: ${targetUrl}`);
+
+    // Redirect to live host URL if different origin
+    if (targetUrl && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
+      const currentOrigin = window.location.origin.replace(/\/+$/, '');
+      if (!currentOrigin.includes(targetUrl) && !targetUrl.includes(currentOrigin)) {
+        window.location.replace(targetUrl);
+        return;
+      }
+    }
+
+    showToast(syncRes.message || `웹 & 모바일 호스팅 서버 실시간 연동 완료: ${targetUrl}`);
   };
 
   const handleSkipServerSetup = async () => {
@@ -236,16 +277,16 @@ export default function App() {
               </div>
               <div>
                 <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                  초기 백엔드 서버 URL 설정
+                  호스팅 서버 및 실시간 앱 업데이트 설정
                 </div>
                 <div style={{ fontSize: '12px', color: '#00f2fe', fontWeight: '600', marginTop: '2px' }}>
-                  WithSecurity 통합 관제 연동
+                  WithSecurity 웹 & 모바일 자동 동기화
                 </div>
               </div>
             </div>
 
             <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', margin: 0 }}>
-              앱을 처음 실행하셨습니다. 실시간 사업장 출입 데이터 및 사용자 정보를 연동할 <strong>호스팅 백엔드 서버 URL</strong>을 먼저 등록해 주세요.
+              앱 실행 시 연결할 <strong>호스팅 서버 주소(웹/API URL)</strong>를 등록해 주세요. 등록하면 모바일 앱이 호스팅 서버와 실시간으로 연동되며, <strong>호스팅 서버가 업데이트될 때 모바일 앱도 실시간으로 최신 버전이 자동 반영</strong>됩니다.
             </p>
 
             {/* Input Field */}

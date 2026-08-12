@@ -1,26 +1,25 @@
 import { query } from '../mysql.js';
 
-
-
 /**
- * 현장 목록 조회 (security_site - id, type, name, address, site_name)
+ * 사업장(현장) 목록 조회 (security_site)
  */
 export async function getSecuritySites() {
   const sql = 'SELECT id, type, name, address, site_name FROM security_site ORDER BY id ASC';
-  let sites = await query(sql);
+  let results = await query(sql);
 
-  if (!Array.isArray(sites) || sites.length === 0) {
+  // 기본 사업장이 하나도 없으면 자동 초기 생성(Seed Data)
+  if (!results || results.length === 0) {
     try {
       await createSecuritySite({ id: 'site-001', type: '보안어플O', name: '삼성전자 평택캠퍼스 P4 라인', address: '경기도 평택시 고덕면 삼성로 114' });
       await createSecuritySite({ id: 'site-002', type: '보안어플O', name: 'SK하이닉스 이천 M16 공장', address: '경기도 이천시 부발읍 경충대로 2091' });
       await createSecuritySite({ id: 'site-003', type: '보안어플X', name: '위드텍 본사 통합관제센터', address: '대전광역시 유성구 테크노2로 42' });
-      sites = await query(sql);
+      results = await query(sql);
     } catch (e) {
       console.warn('Auto site seed warning:', e.message);
     }
   }
 
-  return (sites || []).map(s => {
+  return (results || []).map(s => {
     const sName = String(s.name || '').trim();
     const sAddr = String(s.address || '').trim();
     const fullSiteName = s.site_name || (sAddr ? `${sName} ${sAddr}` : sName);
