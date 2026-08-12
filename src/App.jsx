@@ -58,6 +58,32 @@ export default function App() {
     }
   }, []);
 
+  // Real-Time Background Data Sync between Mobile App & Web DB Server
+  useEffect(() => {
+    async function triggerAutoSync() {
+      const serverUrl = dbService.getServerUrl();
+      if (serverUrl) {
+        await dbService.syncAllWithServer(serverUrl);
+      }
+    }
+
+    triggerAutoSync();
+
+    // Auto sync every 15 seconds
+    const interval = setInterval(triggerAutoSync, 15000);
+
+    // Auto sync on app focus / tab switch
+    const handleFocus = () => triggerAutoSync();
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, []);
+
   const handleSaveInitialServer = async () => {
     localStorage.setItem('with_security_server_init_completed', 'true');
     if (!initialServerUrl.trim()) {
