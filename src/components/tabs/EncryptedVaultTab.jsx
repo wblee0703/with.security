@@ -849,68 +849,22 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 />
               </div>
 
-              {/* Local Folder & File Browser Options Bar */}
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                {/* 1. Folder Browser Option */}
-                <div style={{ flex: '1 1 220px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(0, 242, 254, 0.3)', padding: '10px 12px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '11.5px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Folder size={16} color="#00f2fe" />
-                    <span>📁 어플 저장 폴더 전체 선택</span>
-                  </div>
-                  <label style={{
-                    background: 'rgba(0, 242, 254, 0.15)',
-                    border: '1px solid rgba(0, 242, 254, 0.4)',
-                    color: '#00f2fe',
-                    padding: '5px 10px',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    flexShrink: 0
-                  }}>
-                    <Folder size={12} /> 폴더 선택
-                    <input
-                      type="file"
-                      webkitdirectory="true"
-                      directory="true"
-                      multiple
-                      onChange={handleAppFolderBrowsing}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
+              {/* Reassuring User Guide Banner */}
+              <div style={{
+                background: 'rgba(59, 130, 246, 0.08)',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+              }}>
+                <div style={{ fontSize: '12px', fontWeight: '800', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  💡 핸드폰 어플 연동 안내 (파일 찾기/등록 필요 없음!)
                 </div>
-
-                {/* 2. Single File Browser Option */}
-                <div style={{ flex: '1 1 220px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(56, 189, 248, 0.3)', padding: '10px 12px', borderRadius: '12px' }}>
-                  <div style={{ fontSize: '11.5px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <FileCode size={16} color="#38bdf8" />
-                    <span>📄 개별 어플 파일(APK/IPA) 선택</span>
-                  </div>
-                  <label style={{
-                    background: 'rgba(56, 189, 248, 0.15)',
-                    border: '1px solid rgba(56, 189, 248, 0.4)',
-                    color: '#38bdf8',
-                    padding: '5px 10px',
-                    borderRadius: '8px',
-                    fontSize: '11px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    flexShrink: 0
-                  }}>
-                    <Upload size={12} /> 파일 선택
-                    <input
-                      type="file"
-                      accept=".apk,.app,.ipa,.exe,.lnk"
-                      onChange={handleAppFileBrowsing}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
+                <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: '1.5' }}>
+                  스마트폰에 이미 설치된 앱은 <strong>파일(.apk)을 찾거나 등록할 필요가 없습니다.</strong><br />
+                  아래 카탈로그 목록에서 사용 중인 보안어플(Knox, SSM, V3 등)의 <strong>[연동 선택]</strong>을 클릭하시거나, 하단에 어플 이름(예: 삼성, 하이닉스, 안랩)을 입력해 주세요.
                 </div>
               </div>
             </div>
@@ -968,7 +922,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                         </span>
                       </div>
                       <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                        {app.company} | 스키마: <code style={{ color: '#38bdf8' }}>{app.scheme}</code>
+                        {app.company}
                       </div>
                     </div>
                   </div>
@@ -993,15 +947,15 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               ))}
             </div>
 
-            {/* Custom Package Name / App Scheme Direct Input */}
+            {/* Smart App Name / Package Direct Input */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '11.5px', color: '#00f2fe', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                📱 핸드폰에 설치된 앱 패키지명(Package Name) 또는 URL 직접 연동
+                📱 어플 이름 직접 입력 및 즉시 연동 (예: 삼성, 하이닉스, 안랩, V3 등)
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
-                  placeholder="예: com.sec.knox.app, com.skhynix.ssm, 또는 secapp://"
+                  placeholder="예: 삼성, 하이닉스, 안랩, 또는 com.sec.knox.app"
                   value={customAppInput}
                   onChange={(e) => setCustomAppInput(e.target.value)}
                   style={{
@@ -1019,16 +973,38 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   type="button"
                   onClick={() => {
                     if (!customAppInput || !customAppInput.trim()) {
-                      if (onTriggerToast) onTriggerToast('어플 패키지명 또는 스키마를 입력해 주세요.', 'warning');
+                      if (onTriggerToast) onTriggerToast('어플 이름 또는 패키지명을 입력해 주세요.', 'warning');
                       return;
                     }
                     const val = customAppInput.trim();
+                    const lower = val.toLowerCase();
                     let targetLaunchUrl = val;
-                    // If user typed a package name like com.sec.knox.app (contains dot and no protocol)
-                    if (val.includes('.') && !val.includes('://')) {
+                    let labelName = val;
+
+                    if (lower.includes('knox') || lower.includes('삼성') || lower.includes('sec')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=secapp;package=com.sec.knox.app;end';
+                      labelName = '삼성 Knox Security';
+                    } else if (lower.includes('ssm') || lower.includes('하이닉스') || lower.includes('sk')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end';
+                      labelName = 'SK하이닉스 SSM';
+                    } else if (lower.includes('v3') || lower.includes('안랩') || lower.includes('ahnlab')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end';
+                      labelName = '안랩 V3 Mobile';
+                    } else if (lower.includes('lg') || lower.includes('lgd') || lower.includes('엘지')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=lgdsec;package=com.lgd.security;end';
+                      labelName = 'LG디스플레이 모바일 보안';
+                    } else if (lower.includes('현대') || lower.includes('hmg')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=hsec;package=com.hmg.security;end';
+                      labelName = '현대차 모바일 보안';
+                    } else if (lower.includes('포스코') || lower.includes('posco')) {
+                      targetLaunchUrl = 'intent://#Intent;scheme=pososec;package=com.posco.security;end';
+                      labelName = '포스코 제철소 관제어플';
+                    } else if (val.includes('.') && !val.includes('://')) {
                       targetLaunchUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${val};end`;
+                      labelName = `핸드폰 설치 앱 (${val})`;
                     }
-                    handleSelectAppFromPicker(targetLaunchUrl, `핸드폰 설치 앱 (${val})`);
+
+                    handleSelectAppFromPicker(targetLaunchUrl, labelName);
                   }}
                   style={{
                     padding: '10px 14px',
@@ -1042,7 +1018,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  📱 실행 연동 등록
+                  📱 연동 등록
                 </button>
               </div>
             </div>
