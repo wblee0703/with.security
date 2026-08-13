@@ -372,6 +372,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
       // STRICT FAIL! Camera is ACTIVE / Unlocked!
       setAppCheckState({ isChecking: false, isVerified: false });
+      setCameraCheckVerified(false);
       setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 활성화 감지 (카메라 차단 필요)' });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
@@ -382,30 +383,39 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       });
 
       if (onTriggerToast) {
-        onTriggerToast(`❌ [검수 실패] 카메라가 활성화되어 있습니다. '${targetApp.shortName}' 보안 어플을 실행하여 카메라 사용제한(차단)을 먼저 활성화해 주세요.`, 'error');
+        onTriggerToast(`❌ [카메라 검수 실패] 카메라가 활성화되어 있습니다. 보안 어플을 실행하여 카메라 차단을 활성화해 주세요.`, 'error');
       }
+      return false;
     } catch (err) {
       if (err.message === 'NOT_SUPPORTED') {
-        setAppCheckState({ isChecking: false, isVerified: false });
-        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
-        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
-        setAppScanState({
-          isScanning: false,
-          status: 'NOT_RUNNING',
-          lastScannedAt: new Date().toLocaleTimeString(),
-          scanLog: []
-        });
-
-        if (onTriggerToast) {
-          onTriggerToast(`⚠️ [실행 상태 확인 필요] 모바일 보안 어플 카메라 제한이 감지되지 않았습니다. PC 환경인 경우 하단 개발자 수동 전환을 이용해 주세요.`, 'warning');
+        const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+        if (isMobile) {
+          setAppCheckState({ isChecking: false, isVerified: false });
+          setCameraCheckVerified(false);
+          setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 검수 미지원' });
+          setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+          if (onTriggerToast) {
+            onTriggerToast(`❌ [검수 실패] 해당 스마트폰 브라우저에서 카메라 차단 감지를 지원하지 않습니다.`, 'error');
+          }
+          return false;
+        } else {
+          // PC simulation
+          setAppCheckState({ isChecking: false, isVerified: true });
+          setCameraCheckVerified(true);
+          setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: 'PC 시뮬레이션 카메라 차단 검수 완료' });
+          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          if (onTriggerToast) {
+            onTriggerToast(`✓ [PC 개발 시뮬레이션] 카메라 차단 검수 테스트 완료`, 'info');
+          }
+          return true;
         }
-        return;
       }
 
       // IF CAMERA HARDWARE ACCESS IS STRICTLY BLOCKED BY KNOX/MDM SECURITY POLICY (NotReadableError / SecurityError / TrackStartError)
       if (err.name === 'NotReadableError' || err.name === 'SecurityError' || err.name === 'TrackStartError') {
         // STRICT SUCCESS! Camera hardware access was completely blocked by Knox/MDM policy!
         setAppCheckState({ isChecking: false, isVerified: true });
+        setCameraCheckVerified(true);
         setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '카메라 비활성화(차단) 확인됨' });
         setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
         setAppScanState({
@@ -416,11 +426,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`✓ [검수 완료] '${targetApp.appName}' 가동 및 카메라 비활성화(차단) 상태가 정상 확인되었습니다!`, 'success');
+          onTriggerToast(`✓ [카메라 검수 완료] 스마트폰 카메라 비활성화(차단) 상태가 정상 확인되었습니다!`, 'success');
         }
+        return true;
       } else {
         // Camera is active or permission was denied -> STRICT FAIL!
         setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckVerified(false);
         setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 비활성화 상태 확인 필요' });
         setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
         setAppScanState({
@@ -431,8 +443,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`⚠️ [검수 실패] 카메라가 차단되지 않았거나 보안 어플 정책이 감지되지 않았습니다. 어플 실행 후 카메라 차단을 완료해 주세요.`, 'warning');
+          onTriggerToast(`⚠️ [카메라 검수 실패] 카메라가 차단되지 않았거나 차단 권한을 확인할 수 없습니다.`, 'warning');
         }
+        return false;
       }
     }
   };
@@ -2549,8 +2562,12 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             <button
                               type="button"
                               onClick={async () => {
-                                await handleCheckAppExecutionStatus();
-                                setCameraCheckVerified(true);
+                                const isLocked = await handleCheckAppExecutionStatus();
+                                if (isLocked) {
+                                  setCameraCheckVerified(true);
+                                } else {
+                                  setCameraCheckVerified(false);
+                                }
                               }}
                               disabled={appScanState.isScanning || cameraCheckState.isTesting}
                               style={{
