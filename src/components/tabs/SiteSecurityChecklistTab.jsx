@@ -2450,20 +2450,56 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                   return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
                                 });
 
-                                const appUrl = selectedSiteObj?.appUrl || 'secapp://';
+                                const registeredAppUrl = selectedSiteObj?.appUrl || selectedSiteObj?.app_url || '';
                                 const siteName = selectedSiteObj?.name || formData.site || '출입 사업장';
 
-                                if (onTriggerToast) {
-                                  onTriggerToast(`📱 '${siteName}' 모바일 보안 어플을 실행합니다. 어플이 정상 작동하는지 확인해 주세요.`, 'info');
+                                if (!registeredAppUrl || !registeredAppUrl.trim()) {
+                                  setSecAppVerified(false);
+                                  if (onTriggerToast) {
+                                    onTriggerToast(`❌ [어플 미연동] ADMIN 사업장 관리에서 '${siteName}' 사업장의 모바일 어플 링크가 등록되지 않았습니다. 관리자 메뉴에서 어플을 연동해 주세요.`, 'warning');
+                                  }
+                                  return;
                                 }
 
-                                setSecAppVerified(true);
+                                const targetScheme = registeredAppUrl.trim();
+                                if (onTriggerToast) {
+                                  onTriggerToast(`📱 '${siteName}' ADMIN 연동 어플 실행 시도: (${targetScheme})`, 'info');
+                                }
+
+                                let hasBlurred = false;
+                                const handleBlur = () => {
+                                  hasBlurred = true;
+                                };
+
+                                window.addEventListener('blur', handleBlur, { once: true });
 
                                 try {
-                                  window.location.href = appUrl;
+                                  window.location.href = targetScheme;
                                 } catch (e) {
-                                  window.open(appUrl, '_blank');
+                                  window.open(targetScheme, '_blank');
                                 }
+
+                                setTimeout(() => {
+                                  window.removeEventListener('blur', handleBlur);
+                                  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
+                                  if (hasBlurred || document.hidden) {
+                                    setSecAppVerified(true);
+                                    if (onTriggerToast) {
+                                      onTriggerToast(`✓ [어플 검수 완료] '${siteName}' 모바일 보안 어플이 성공적으로 감지 및 실행되었습니다!`, 'success');
+                                    }
+                                  } else if (isMobile) {
+                                    setSecAppVerified(false);
+                                    if (onTriggerToast) {
+                                      onTriggerToast(`❌ [어플 검수 실패] 등록된 어플('${targetScheme}')을 실행할 수 없거나 핸드폰에 설치되어 있지 않습니다.`, 'error');
+                                    }
+                                  } else {
+                                    setSecAppVerified(true);
+                                    if (onTriggerToast) {
+                                      onTriggerToast(`✓ [PC 개발 시뮬레이션] ADMIN 연동 어플('${targetScheme}') 실행 확인 완료`, 'info');
+                                    }
+                                  }
+                                }, 1200);
                               }}
                               style={{
                                 width: '100%',
