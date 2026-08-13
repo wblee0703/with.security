@@ -769,73 +769,126 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* App Search Bar, Auto-Detect & File Browser */}
+            {/* Top Prominent Installed Apps Grid */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Smart Device Auto-Detect & Quick Register Banner */}
               <div style={{
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(0, 242, 254, 0.15) 100%)',
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(0, 242, 254, 0.14) 100%)',
                 border: '1px solid rgba(16, 185, 129, 0.4)',
-                padding: '12px 14px',
-                borderRadius: '14px',
+                borderRadius: '16px',
+                padding: '14px',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
+                flexDirection: 'column',
                 gap: '10px'
               }}>
-                <div>
-                  <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    ⚡ 접속 핸드폰 기기 자동 감지
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Smartphone size={16} /> 📱 내 스마트폰에 설치된 주요 보안어플 (즉시 클릭 연동)
                   </div>
-                  <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
-                    현재 사용하는 스마트폰 종류에 맞는 보안 어플을 자동 감지하여 연동합니다.
-                  </div>
+                  <span style={{ fontSize: '10.5px', background: 'rgba(16, 185, 129, 0.25)', color: '#10b981', padding: '2px 8px', borderRadius: '6px', fontWeight: '800' }}>
+                    ✓ 감지 완료
+                  </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ua = navigator.userAgent.toLowerCase();
-                    let detectedScheme = 'secapp://';
-                    let detectedName = '삼성 Knox Security';
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=secapp;package=com.sec.knox.app;end', '삼성 Knox Security')}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span>📱 삼성 Knox Security</span>
+                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
+                  </button>
 
-                    if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('macintosh')) {
-                      detectedScheme = 'iosmdm://';
-                      detectedName = 'iOS Enterprise Security';
-                    } else if (ua.includes('skhynix') || ua.includes('hynix')) {
-                      detectedScheme = 'ssm://';
-                      detectedName = 'SK하이닉스 SSM';
-                    } else if (ua.includes('lg')) {
-                      detectedScheme = 'lgdsec://';
-                      detectedName = 'LG디스플레이 모바일 보안';
-                    }
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end', 'SK하이닉스 SSM')}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span>🛡️ SK하이닉스 SSM</span>
+                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
+                  </button>
 
-                    handleSelectAppFromPicker(detectedScheme, `${detectedName} (기기 자동 감지)`);
-                  }}
-                  style={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #00f2fe 100%)',
-                    border: 'none',
-                    color: '#050b14',
-                    padding: '7px 12px',
-                    borderRadius: '10px',
-                    fontSize: '11.5px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
-                  }}
-                >
-                  <Smartphone size={14} /> 핸드폰 어플 자동 감지 연동
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end', '안랩 V3 Mobile')}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span>🔒 안랩 V3 Mobile</span>
+                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=lgdsec;package=com.lgd.security;end', 'LG디스플레이 보안')}
+                    style={{
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      padding: '10px 12px',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <span>📱 LG디스플레이 보안</span>
+                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
+                  </button>
+                </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0a0f1d', border: '1px solid rgba(0, 242, 254, 0.35)', padding: '10px 14px', borderRadius: '12px' }}>
                 <Search size={16} color="#00f2fe" />
                 <input
                   type="text"
-                  placeholder="어플 이름, 회사명 또는 스키마 검색..."
+                  placeholder="어플 이름 또는 브랜드 검색 (예: 현대, 포스코, 한화...)"
                   value={appSearchTerm}
                   onChange={(e) => setAppSearchTerm(e.target.value)}
                   style={{
@@ -847,25 +900,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                     outline: 'none'
                   }}
                 />
-              </div>
-
-              {/* Reassuring User Guide Banner */}
-              <div style={{
-                background: 'rgba(59, 130, 246, 0.08)',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                padding: '12px 14px',
-                borderRadius: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '4px'
-              }}>
-                <div style={{ fontSize: '12px', fontWeight: '800', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  💡 핸드폰 어플 연동 안내 (파일 찾기/등록 필요 없음!)
-                </div>
-                <div style={{ fontSize: '11px', color: '#cbd5e1', lineHeight: '1.5' }}>
-                  스마트폰에 이미 설치된 앱은 <strong>파일(.apk)을 찾거나 등록할 필요가 없습니다.</strong><br />
-                  아래 카탈로그 목록에서 사용 중인 보안어플(Knox, SSM, V3 등)의 <strong>[연동 선택]</strong>을 클릭하시거나, 하단에 어플 이름(예: 삼성, 하이닉스, 안랩)을 입력해 주세요.
-                </div>
               </div>
             </div>
 
