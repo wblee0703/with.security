@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -35,7 +36,42 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
+    <!-- Permissions for External App Querying & Launching -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- Queries for Package Launchers (SK Hynix SSM, Knox, V3, LGD, etc.) -->
+    <queries>
+        <package android:name="com.skhynix.ssm" />
+        <package android:name="com.skhynix.ssm.mobile" />
+        <package android:name="com.skhynix.mobile.ssm" />
+        <package android:name="com.sec.knox.app" />
+        <package android:name="com.ahnlab.v3mobile" />
+        <package android:name="com.lgd.security" />
+        <package android:name="com.hmg.security" />
+        <package android:name="com.posco.security" />
+        <package android:name="com.hanwha.sec" />
+        <package android:name="com.kt.enterprise" />
+        <package android:name="com.samsung.sec" />
+        <package android:name="com.kakao.talk" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="intent" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="ssm" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="secapp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="v3mobile" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
 </manifest>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { AppLauncher } from '@capacitor/app-launcher';
 import {
   Building2,
   ShieldCheck,
@@ -2487,6 +2488,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 window.addEventListener('blur', handleBlur, { once: true });
 
                                 try {
+                                  // Capacitor Native App Launcher
+                                  AppLauncher.openUrl({ url: targetScheme }).catch(() => {});
+
                                   window.location.href = targetScheme;
 
                                   // Dynamic Hidden Iframe Launcher (Bypasses Chrome Mobile popup/intent block)
@@ -2503,11 +2507,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                     setTimeout(() => {
                                       if (!hasBlurred) {
                                         window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end';
+                                        AppLauncher.openUrl({ url: 'com.skhynix.ssm' }).catch(() => {});
                                       }
                                     }, 250);
                                     setTimeout(() => {
                                       if (!hasBlurred) {
                                         window.location.href = 'ssm://';
+                                        AppLauncher.openUrl({ url: 'ssm://' }).catch(() => {});
                                       }
                                     }, 550);
                                   } else if (targetScheme.includes('knox') || targetScheme.includes('secapp')) {
