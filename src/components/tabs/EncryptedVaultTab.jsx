@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search, Upload, CheckCircle2, FileCode, Folder } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 
@@ -53,7 +53,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
       return;
     }
 
-    // 이름과 위치가 모두 일치하는 경우만 중복으로 체크
     const existingDuplicate = sites.find(
       s => String(s.name || '').trim().toLowerCase() === name.toLowerCase() &&
         String(s.address || '').trim().toLowerCase() === address.toLowerCase()
@@ -80,7 +79,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     if (onTriggerToast) onTriggerToast(`'${newSite.name}' (${newSite.address || '위치 미지정'}) 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
-  // Open Edit Site Modal
   const handleOpenEditModal = (site) => {
     setEditingSite({
       id: site.id,
@@ -92,7 +90,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     setIsEditModalOpen(true);
   };
 
-  // Save Edited Site
   const handleSaveEditSite = async (e) => {
     if (e) e.preventDefault();
     if (!editingSite || !editingSite.name.trim()) {
@@ -115,7 +112,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     if (onTriggerToast) onTriggerToast(`'${updatedSite.name}' 출입 사업장 정보가 성공적으로 수정되었습니다.`, 'success');
   };
 
-  // Delete Site Modal States
   const [deleteTargetSite, setDeleteTargetSite] = useState(null);
   const [devPasswordInput, setDevPasswordInput] = useState('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -154,7 +150,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     if (onTriggerToast) onTriggerToast(`'${deleteTargetSite.name}' 출입 사업장이 정상적으로 삭제되었습니다.`, 'success');
   };
 
-  // App Picker Modal Logic
   const handleOpenAppPickerModal = (targetSite) => {
     setAppPickerTargetSite(targetSite);
     setAppSearchTerm('');
@@ -173,10 +168,10 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
 
     if (appPickerTargetSite === 'new') {
       setNewSiteForm(prev => ({ ...prev, appUrl: finalScheme }));
-      if (onTriggerToast) onTriggerToast(`'${nameLabel}' (${finalScheme}) 어플이 선택되었습니다.`, 'success');
+      if (onTriggerToast) onTriggerToast(`'${nameLabel}' 어플이 선택되었습니다.`, 'success');
     } else if (appPickerTargetSite === 'editing' || (editingSite && editingSite.id === appPickerTargetSite)) {
       setEditingSite(prev => ({ ...prev, appUrl: finalScheme }));
-      if (onTriggerToast) onTriggerToast(`'${nameLabel}' (${finalScheme}) 어플이 설정되었습니다.`, 'success');
+      if (onTriggerToast) onTriggerToast(`'${nameLabel}' 어플이 설정되었습니다.`, 'success');
     } else {
       const targetSite = sites.find(s => s.id === appPickerTargetSite);
       if (targetSite) {
@@ -187,35 +182,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
       }
     }
     setIsAppPickerOpen(false);
-  };
-
-  const handleAppFileBrowsing = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const fileName = file.name;
-    const generatedScheme = `app://${fileName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-    handleSelectAppFromPicker(generatedScheme, `설치 어플 파일 (${fileName})`);
-  };
-
-  const handleAppFolderBrowsing = (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const folderPath = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : '어플_폴더';
-
-    const appFiles = Array.from(files).filter(f => {
-      const ext = f.name.toLowerCase();
-      return ext.endsWith('.apk') || ext.endsWith('.app') || ext.endsWith('.ipa') || ext.endsWith('.exe') || ext.endsWith('.lnk');
-    });
-
-    if (appFiles.length > 0) {
-      const selectedFile = appFiles[0];
-      const generatedScheme = `app://${selectedFile.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-      handleSelectAppFromPicker(generatedScheme, `폴더 내 감지 어플 (${folderPath} - ${selectedFile.name})`);
-    } else {
-      const generatedScheme = `app://${folderPath.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-      handleSelectAppFromPicker(generatedScheme, `선택한 어플 폴더 (${folderPath})`);
-    }
   };
 
   const filteredCatalog = SECURITY_APP_CATALOG.filter(app => {
@@ -257,7 +223,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
         </div>
 
         <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {/* 3-Column Grid for 분류, 사업장명, 사업장 위치 */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
@@ -328,7 +293,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* App URL Scheme Input with App Finder Button */}
           {newSiteForm.type === '보안어플O' && (
             <div style={{ background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.2)', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -424,7 +388,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                {/* Type Badge */}
                 <span style={{
                   padding: '3px 8px',
                   borderRadius: '6px',
@@ -437,7 +400,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   {s.type || '보안어플O'}
                 </span>
 
-                {/* Name & Address */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>
                     {s.name}
@@ -455,7 +417,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              {/* Action Buttons: 어플 찾기 + 수정 & 삭제 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {s.type === '보안어플O' && (
                   <button
@@ -622,7 +583,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 />
               </div>
 
-              {/* Edit App URL Scheme Input with App Finder Button */}
               {editingSite.type === '보안어플O' && (
                 <div style={{ background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.2)', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <label style={{ fontSize: '12px', color: '#00f2fe', fontWeight: '800' }}>
@@ -709,7 +669,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
         </div>
       )}
 
-      {/* Modal: Interactive Security App Finder & Package Register Modal */}
+      {/* Modal: Smartphone App Selector Modal */}
       {isAppPickerOpen && (
         <div style={{
           position: 'fixed',
@@ -754,10 +714,10 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 </div>
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>
-                    📱 핸드폰 보안 어플 탐색 및 등록
+                    📱 핸드폰 설치 어플 연동 선택
                   </div>
                   <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                    스마트폰에 설치된 기업 보안 어플을 찾아 사업장에 연동합니다.
+                    스마트폰에 설치되어 있는 어플을 사업장에 선택 등록합니다.
                   </div>
                 </div>
               </div>
@@ -769,141 +729,26 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* Top Prominent Installed Apps Grid */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <div style={{
-                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(0, 242, 254, 0.14) 100%)',
-                border: '1px solid rgba(16, 185, 129, 0.4)',
-                borderRadius: '16px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Smartphone size={16} /> 📱 내 스마트폰에 설치된 주요 보안어플 (즉시 클릭 연동)
-                  </div>
-                  <span style={{ fontSize: '10.5px', background: 'rgba(16, 185, 129, 0.25)', color: '#10b981', padding: '2px 8px', borderRadius: '6px', fontWeight: '800' }}>
-                    ✓ 감지 완료
-                  </span>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=secapp;package=com.sec.knox.app;end', '삼성 Knox Security')}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      border: '1px solid rgba(16, 185, 129, 0.5)',
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <span>📱 삼성 Knox Security</span>
-                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end', 'SK하이닉스 SSM')}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      border: '1px solid rgba(16, 185, 129, 0.5)',
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <span>🛡️ SK하이닉스 SSM</span>
-                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end', '안랩 V3 Mobile')}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      border: '1px solid rgba(16, 185, 129, 0.5)',
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <span>🔒 안랩 V3 Mobile</span>
-                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectAppFromPicker('intent://#Intent;scheme=lgdsec;package=com.lgd.security;end', 'LG디스플레이 보안')}
-                    style={{
-                      background: 'rgba(15, 23, 42, 0.85)',
-                      border: '1px solid rgba(16, 185, 129, 0.5)',
-                      padding: '10px 12px',
-                      borderRadius: '12px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <span>📱 LG디스플레이 보안</span>
-                    <span style={{ fontSize: '10.5px', color: '#10b981', fontWeight: '800', background: 'rgba(16,185,129,0.2)', padding: '2px 6px', borderRadius: '4px' }}>[연동]</span>
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0a0f1d', border: '1px solid rgba(0, 242, 254, 0.35)', padding: '10px 14px', borderRadius: '12px' }}>
-                <Search size={16} color="#00f2fe" />
-                <input
-                  type="text"
-                  placeholder="어플 이름 또는 브랜드 검색 (예: 현대, 포스코, 한화...)"
-                  value={appSearchTerm}
-                  onChange={(e) => setAppSearchTerm(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: '13px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
+            {/* Search Input Bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0a0f1d', border: '1px solid rgba(0, 242, 254, 0.35)', padding: '10px 14px', borderRadius: '12px' }}>
+              <Search size={16} color="#00f2fe" />
+              <input
+                type="text"
+                placeholder="핸드폰 어플 이름 검색 (예: 삼성, 하이닉스, 안랩, LG, 현대...)"
+                value={appSearchTerm}
+                onChange={(e) => setAppSearchTerm(e.target.value)}
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '13px',
+                  outline: 'none'
+                }}
+              />
             </div>
 
-            {/* App Catalog Grid */}
+            {/* Installed Smartphone Apps List */}
             <div style={{
               flex: 1,
               overflowY: 'auto',
@@ -912,8 +757,8 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               gap: '10px',
               paddingRight: '4px'
             }}>
-              <div style={{ fontSize: '12px', fontWeight: '800', color: '#00f2fe', marginTop: '4px' }}>
-                🏢 주요 기업용 모바일 보안 어플 카탈로그 ({filteredCatalog.length}개)
+              <div style={{ fontSize: '12px', fontWeight: '800', color: '#00f2fe', marginTop: '2px' }}>
+                📱 핸드폰 설치 어플 목록 ({filteredCatalog.length}개)
               </div>
 
               {filteredCatalog.map(app => (
@@ -946,7 +791,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                       justifyContent: 'center',
                       fontSize: '18px'
                     }}>
-                      {app.icon}
+                      📱
                     </div>
                     <div>
                       <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -964,32 +809,32 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   <button
                     type="button"
                     style={{
-                      background: 'rgba(0, 242, 254, 0.15)',
-                      border: '1px solid rgba(0, 242, 254, 0.35)',
-                      color: '#00f2fe',
-                      padding: '5px 10px',
+                      background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                      border: 'none',
+                      color: '#050b14',
+                      padding: '6px 12px',
                       borderRadius: '8px',
-                      fontSize: '11px',
-                      fontWeight: '700',
+                      fontSize: '11.5px',
+                      fontWeight: '800',
                       cursor: 'pointer',
                       flexShrink: 0
                     }}
                   >
-                    연동 선택
+                    어플 등록
                   </button>
                 </div>
               ))}
             </div>
 
-            {/* Smart App Name / Package Direct Input */}
+            {/* Smart Custom App Input */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ fontSize: '11.5px', color: '#00f2fe', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                📱 어플 이름 직접 입력 및 즉시 연동 (예: 삼성, 하이닉스, 안랩, V3 등)
+                📱 핸드폰에 있는 기타 어플 이름 직접 입력 및 등록
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
-                  placeholder="예: 삼성, 하이닉스, 안랩, 또는 com.sec.knox.app"
+                  placeholder="예: 삼성, 하이닉스, 안랩, V3 등 어플 이름 입력"
                   value={customAppInput}
                   onChange={(e) => setCustomAppInput(e.target.value)}
                   style={{
@@ -1007,7 +852,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   type="button"
                   onClick={() => {
                     if (!customAppInput || !customAppInput.trim()) {
-                      if (onTriggerToast) onTriggerToast('어플 이름 또는 패키지명을 입력해 주세요.', 'warning');
+                      if (onTriggerToast) onTriggerToast('어플 이름을 입력해 주세요.', 'warning');
                       return;
                     }
                     const val = customAppInput.trim();
@@ -1052,7 +897,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  📱 연동 등록
+                  어플 등록
                 </button>
               </div>
             </div>
