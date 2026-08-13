@@ -22,8 +22,23 @@ export async function checkIsAppInstalled(targetScheme) {
 }
 
 /**
- * Launch external application (e.g. SK Hynix SSM, Samsung Knox, AhnLab V3, custom schemes, package names).
- * Supported ONLY inside Native Mobile App (APK). Disabled on Web Browsers as requested.
+ * Scan device for installed security / corporate applications
+ * @returns {Promise<Array<{packageName: string, label: string}>>}
+ */
+export async function scanInstalledSecurityApps() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await NativeAppLauncher.scanSecurityApps();
+      return res?.apps || [];
+    } catch (e) {
+      console.warn('scanSecurityApps error:', e);
+    }
+  }
+  return [];
+}
+
+/**
+ * Launch external application and VERIFY that the app actually opened on mobile screen (focus lost).
  * @param {string} targetScheme
  * @returns {Promise<{ success: boolean, method: string, reason?: string }>}
  */
@@ -36,30 +51,46 @@ export async function launchApp(targetScheme) {
 
   // 1. Native Capacitor Environment (Android APK / iOS App) ONLY
   if (Capacitor.isNativePlatform()) {
-    try {
-      const res = await NativeAppLauncher.launchApp({ target: cleanScheme });
-      if (res && res.success) {
-        return { success: true, method: 'native-plugin' };
-      }
-    } catch (err) {
-      console.warn('NativeAppLauncher.launchApp failed, trying Capacitor AppLauncher fallback:', err);
-    }
+    return new Promise((resolve) => {
+      let appOpened = false;
 
-    // Secondary Native Fallback via standard Capacitor AppLauncher
-    try {
-      if (cleanScheme.startsWith('intent://') || cleanScheme.includes('://')) {
-        await AppLauncher.openUrl({ url: cleanScheme });
-        return { success: true, method: 'capacitor-app-launcher' };
-      }
-    } catch (err) {
-      console.warn('AppLauncher.openUrl fallback failed:', err);
-    }
+      const handleAppBlur = () => {
+        appOpened = true;
+      };
 
-    return { success: false, method: 'native-fail' };
+      // Listen to window blur & visibility change to verify focus actually left App A
+      window.addEventListener('blur', handleAppBlur, { once: true });
+      document.addEventListener('visibilitychange', handleAppBlur, { once: true });
+
+      // Attempt launch via Native Java Plugin
+      NativeAppLauncher.launchApp({ target: cleanScheme })
+        .then(() => {})
+        .catch((err) => {
+          console.warn('NativeAppLauncher.launchApp failed, trying Capacitor AppLauncher fallback:', err);
+          if (cleanScheme.startsWith('intent://') || cleanScheme.includes('://')) {
+            AppLauncher.openUrl({ url: cleanScheme }).catch(() => {});
+          }
+        });
+
+      // Wait 1200ms to verify if OS transferred focus to the newly opened app (B app)
+      setTimeout(() => {
+        window.removeEventListener('blur', handleAppBlur);
+        document.removeEventListener('visibilitychange', handleAppBlur);
+
+        if (appOpened || document.hidden) {
+          resolve({ success: true, method: 'native-verified' });
+        } else {
+          resolve({ 
+            success: false, 
+            method: 'native-not-opened', 
+            reason: '어플이 핸드폰에 설치되어 있지 않거나 모바일 화면에 열리지 않았습니다.' 
+          });
+        }
+      }, 1200);
+    });
   }
 
-  // 2. Web Browser (PC & Mobile Internet Browser) - Disabled (Only allowed in APK app)
-  console.log('🌐 Web Browser access detected: External app launching is disabled in Web Browsers.');
+  // 2. Web Browser (PC & Mobile Internet Browser) - Disabled
   return { 
     success: false, 
     method: 'web-disabled', 
