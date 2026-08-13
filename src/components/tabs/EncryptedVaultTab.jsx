@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search, Upload, CheckCircle2, FileCode } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search, Upload, CheckCircle2, FileCode, Folder } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 
 const SECURITY_APP_CATALOG = [
-  { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'secapp://', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
-  { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'ssm://', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
-  { id: 'lgd', name: 'LG디스플레이 모바일 보안관제', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'lgdsec://', desc: 'LG디스플레이 모바일 보안 어플', badge: 'LGD' },
-  { id: 'v3', name: '안랩 V3 Mobile Enterprise', company: '기업 통합 모바일 백신 및 보안어플', scheme: 'v3mobile://', desc: 'AhnLab V3 Enterprise Security', badge: '안랩' },
-  { id: 'hmg', name: '현대자동차그룹 모바일 보안', company: '현대자동차 / 기아 남양연구소 및 공장', scheme: 'hsec://', desc: 'HMG Mobile Security Guard', badge: '현대차그룹' },
-  { id: 'posco', name: '포스코 제철소 모바일 관제', company: '포스코 포항 / 광양제철소', scheme: 'pososec://', desc: 'POSCO Mobile Guard', badge: '포스코' },
-  { id: 'hanwha', name: '한화 모바일 통합 보안관제', company: '한화솔루션 / 한화토탈 사업장', scheme: 'hanwhasec://', desc: 'Hanwha Mobile Guard', badge: '한화' },
-  { id: 'kt', name: 'KT 기업 통합 보안어플', company: 'KT 사옥 및 IDC 통합 관제', scheme: 'ktsec://', desc: 'KT Enterprise Security', badge: 'KT' },
-  { id: 'samsungsec', name: '삼성 모바일 통합 보안관제', company: '삼성그룹 통계 및 보안관제', scheme: 'samsungsec://', desc: 'Samsung Mobile Security', badge: '삼성' }
+  { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;scheme=secapp;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
+  { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
+  { id: 'lgd', name: 'LG디스플레이 모바일 보안관제', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;scheme=lgdsec;package=com.lgd.security;end', desc: 'LG디스플레이 모바일 보안 어플', badge: 'LGD' },
+  { id: 'v3', name: '안랩 V3 Mobile Enterprise', company: '기업 통합 모바일 백신 및 보안어플', scheme: 'intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end', desc: 'AhnLab V3 Enterprise Security', badge: '안랩' },
+  { id: 'hmg', name: '현대자동차그룹 모바일 보안', company: '현대자동차 / 기아 남양연구소 및 공장', scheme: 'intent://#Intent;scheme=hsec;package=com.hmg.security;end', desc: 'HMG Mobile Security Guard', badge: '현대차그룹' },
+  { id: 'posco', name: '포스코 제철소 모바일 관제', company: '포스코 포항 / 광양제철소', scheme: 'intent://#Intent;scheme=pososec;package=com.posco.security;end', desc: 'POSCO Mobile Guard', badge: '포스코' },
+  { id: 'hanwha', name: '한화 모바일 통합 보안관제', company: '한화솔루션 / 한화토탈 사업장', scheme: 'intent://#Intent;scheme=hanwhasec;package=com.hanwha.sec;end', desc: 'Hanwha Mobile Guard', badge: '한화' },
+  { id: 'kt', name: 'KT 기업 통합 보안어플', company: 'KT 사옥 및 IDC 통합 관제', scheme: 'intent://#Intent;scheme=ktsec;package=com.kt.enterprise;end', desc: 'KT Enterprise Security', badge: 'KT' },
+  { id: 'samsungsec', name: '삼성 모바일 통합 보안관제', company: '삼성그룹 통계 및 보안관제', scheme: 'intent://#Intent;scheme=samsungsec;package=com.samsung.sec;end', desc: 'Samsung Mobile Security', badge: '삼성' }
 ];
 
 export default function EncryptedVaultTab({ onTriggerToast }) {
@@ -195,6 +195,27 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     const fileName = file.name;
     const generatedScheme = `app://${fileName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     handleSelectAppFromPicker(generatedScheme, `설치 어플 파일 (${fileName})`);
+  };
+
+  const handleAppFolderBrowsing = (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const folderPath = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : '어플_폴더';
+
+    const appFiles = Array.from(files).filter(f => {
+      const ext = f.name.toLowerCase();
+      return ext.endsWith('.apk') || ext.endsWith('.app') || ext.endsWith('.ipa') || ext.endsWith('.exe') || ext.endsWith('.lnk');
+    });
+
+    if (appFiles.length > 0) {
+      const selectedFile = appFiles[0];
+      const generatedScheme = `app://${selectedFile.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      handleSelectAppFromPicker(generatedScheme, `폴더 내 감지 어플 (${folderPath} - ${selectedFile.name})`);
+    } else {
+      const generatedScheme = `app://${folderPath.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      handleSelectAppFromPicker(generatedScheme, `선택한 어플 폴더 (${folderPath})`);
+    }
   };
 
   const filteredCatalog = SECURITY_APP_CATALOG.filter(app => {
@@ -828,33 +849,69 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 />
               </div>
 
-              {/* Local File Browser Option */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.15)', padding: '10px 14px', borderRadius: '12px' }}>
-                <div style={{ fontSize: '12px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <FileCode size={16} color="#00f2fe" />
-                  <span>설치 어플 파일(APK / 스키마 파일) 찾아보기</span>
+              {/* Local Folder & File Browser Options Bar */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {/* 1. Folder Browser Option */}
+                <div style={{ flex: '1 1 220px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(0, 242, 254, 0.3)', padding: '10px 12px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Folder size={16} color="#00f2fe" />
+                    <span>📁 어플 저장 폴더 전체 선택</span>
+                  </div>
+                  <label style={{
+                    background: 'rgba(0, 242, 254, 0.15)',
+                    border: '1px solid rgba(0, 242, 254, 0.4)',
+                    color: '#00f2fe',
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0
+                  }}>
+                    <Folder size={12} /> 폴더 선택
+                    <input
+                      type="file"
+                      webkitdirectory="true"
+                      directory="true"
+                      multiple
+                      onChange={handleAppFolderBrowsing}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
                 </div>
-                <label style={{
-                  background: 'rgba(0, 242, 254, 0.15)',
-                  border: '1px solid rgba(0, 242, 254, 0.4)',
-                  color: '#00f2fe',
-                  padding: '5px 10px',
-                  borderRadius: '8px',
-                  fontSize: '11.5px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <Upload size={13} /> 어플 파일 선택
-                  <input
-                    type="file"
-                    accept=".apk,.app,.ipa,.exe"
-                    onChange={handleAppFileBrowsing}
-                    style={{ display: 'none' }}
-                  />
-                </label>
+
+                {/* 2. Single File Browser Option */}
+                <div style={{ flex: '1 1 220px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(56, 189, 248, 0.3)', padding: '10px 12px', borderRadius: '12px' }}>
+                  <div style={{ fontSize: '11.5px', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <FileCode size={16} color="#38bdf8" />
+                    <span>📄 개별 어플 파일(APK/IPA) 선택</span>
+                  </div>
+                  <label style={{
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.4)',
+                    color: '#38bdf8',
+                    padding: '5px 10px',
+                    borderRadius: '8px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    flexShrink: 0
+                  }}>
+                    <Upload size={12} /> 파일 선택
+                    <input
+                      type="file"
+                      accept=".apk,.app,.ipa,.exe,.lnk"
+                      onChange={handleAppFileBrowsing}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -936,23 +993,23 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               ))}
             </div>
 
-            {/* Custom Scheme Input Fallback */}
+            {/* Custom Package Name / App Scheme Direct Input */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>
-                ✍️ 목록에 없는 커스텀 어플 URL Scheme 직접 입력
+              <div style={{ fontSize: '11.5px', color: '#00f2fe', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                📱 핸드폰에 설치된 앱 패키지명(Package Name) 또는 URL 직접 연동
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input
                   type="text"
-                  placeholder="예: mysecapp:// or intent://..."
+                  placeholder="예: com.sec.knox.app, com.skhynix.ssm, 또는 secapp://"
                   value={customAppInput}
                   onChange={(e) => setCustomAppInput(e.target.value)}
                   style={{
                     flex: 1,
-                    padding: '8px 12px',
-                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    borderRadius: '10px',
                     background: '#0a0f1d',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    border: '1px solid rgba(0, 242, 254, 0.35)',
                     color: '#fff',
                     fontSize: '12px',
                     outline: 'none'
@@ -960,19 +1017,32 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 />
                 <button
                   type="button"
-                  onClick={() => handleSelectAppFromPicker(customAppInput, '커스텀 어플')}
+                  onClick={() => {
+                    if (!customAppInput || !customAppInput.trim()) {
+                      if (onTriggerToast) onTriggerToast('어플 패키지명 또는 스키마를 입력해 주세요.', 'warning');
+                      return;
+                    }
+                    const val = customAppInput.trim();
+                    let targetLaunchUrl = val;
+                    // If user typed a package name like com.sec.knox.app (contains dot and no protocol)
+                    if (val.includes('.') && !val.includes('://')) {
+                      targetLaunchUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${val};end`;
+                    }
+                    handleSelectAppFromPicker(targetLaunchUrl, `핸드폰 설치 앱 (${val})`);
+                  }}
                   style={{
-                    padding: '8px 14px',
-                    borderRadius: '8px',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
                     background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
                     color: '#050b14',
                     border: 'none',
                     fontSize: '12px',
                     fontWeight: '800',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  직접 등록
+                  📱 실행 연동 등록
                 </button>
               </div>
             </div>
