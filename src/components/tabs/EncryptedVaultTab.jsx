@@ -748,8 +748,68 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* App Search Bar & File Browser */}
+            {/* App Search Bar, Auto-Detect & File Browser */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {/* Smart Device Auto-Detect & Quick Register Banner */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(0, 242, 254, 0.15) 100%)',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                padding: '12px 14px',
+                borderRadius: '14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px'
+              }}>
+                <div>
+                  <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    ⚡ 접속 핸드폰 기기 자동 감지
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: '2px' }}>
+                    현재 사용하는 스마트폰 종류에 맞는 보안 어플을 자동 감지하여 연동합니다.
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ua = navigator.userAgent.toLowerCase();
+                    let detectedScheme = 'secapp://';
+                    let detectedName = '삼성 Knox Security';
+
+                    if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('macintosh')) {
+                      detectedScheme = 'iosmdm://';
+                      detectedName = 'iOS Enterprise Security';
+                    } else if (ua.includes('skhynix') || ua.includes('hynix')) {
+                      detectedScheme = 'ssm://';
+                      detectedName = 'SK하이닉스 SSM';
+                    } else if (ua.includes('lg')) {
+                      detectedScheme = 'lgdsec://';
+                      detectedName = 'LG디스플레이 모바일 보안';
+                    }
+
+                    handleSelectAppFromPicker(detectedScheme, `${detectedName} (기기 자동 감지)`);
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #00f2fe 100%)',
+                    border: 'none',
+                    color: '#050b14',
+                    padding: '7px 12px',
+                    borderRadius: '10px',
+                    fontSize: '11.5px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    boxShadow: '0 2px 10px rgba(16, 185, 129, 0.3)'
+                  }}
+                >
+                  <Smartphone size={14} /> 핸드폰 어플 자동 감지 연동
+                </button>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0a0f1d', border: '1px solid rgba(0, 242, 254, 0.35)', padding: '10px 14px', borderRadius: '12px' }}>
                 <Search size={16} color="#00f2fe" />
                 <input
