@@ -2489,6 +2489,15 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 try {
                                   window.location.href = targetScheme;
 
+                                  // Dynamic Hidden Iframe Launcher (Bypasses Chrome Mobile popup/intent block)
+                                  try {
+                                    const iframe = document.createElement('iframe');
+                                    iframe.style.display = 'none';
+                                    iframe.src = targetScheme;
+                                    document.body.appendChild(iframe);
+                                    setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 1500);
+                                  } catch (err) {}
+
                                   // Multi-Intent Fallback Chain for SK Hynix SSM & Corporate Security Apps
                                   if (targetScheme.includes('ssm') || targetScheme.includes('skhynix') || targetScheme.includes('SK')) {
                                     setTimeout(() => {

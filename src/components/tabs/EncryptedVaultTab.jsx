@@ -418,6 +418,42 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {s.type === '보안어플O' && s.appUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = s.appUrl.trim();
+                      if (!url) return;
+                      if (onTriggerToast) onTriggerToast(`🚀 '${s.name}' 핸드폰 연동 어플 실행 시도 (${url})`, 'info');
+                      try {
+                        window.location.href = url;
+                      } catch (e) {}
+                      try {
+                        const iframe = document.createElement('iframe');
+                        iframe.style.display = 'none';
+                        iframe.src = url;
+                        document.body.appendChild(iframe);
+                        setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 1500);
+                      } catch (e) {}
+                    }}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(0, 242, 254, 0.25) 100%)',
+                      border: '1px solid rgba(16, 185, 129, 0.5)',
+                      color: '#34d399',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)'
+                    }}
+                  >
+                    🚀 어플 바로가기
+                  </button>
+                )}
                 {s.type === '보안어플O' && (
                   <button
                     type="button"
