@@ -2487,17 +2487,17 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 if (result.success) {
                                   setSecAppVerified(true);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`✓ [어플 검수 완료] '${siteName}' 모바일 보안 어플이 성공적으로 감지 및 실행되었습니다!`, 'success');
+                                    onTriggerToast(`✓ [어플 실행 완료] '${siteName}' 모바일 보안 어플이 스마트폰 화면에 성공적으로 열렸습니다!`, 'success');
                                   }
                                 } else if (result.method === 'web-disabled') {
-                                  setSecAppVerified(true);
+                                  setSecAppVerified(false);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`🧪 [개발자 웹 테스트 환경] ADMIN 연동 어플('${targetScheme}') 시뮬레이션 검수 완료`, 'info');
+                                    onTriggerToast(`⚠️ [모바일 APK 전용] 실제 어플 실행은 핸드폰에 설치된 .apk 앱에서만 작동합니다. (새 APK 빌드가 필요합니다)`, 'warning');
                                   }
                                 } else {
                                   setSecAppVerified(false);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`❌ [어플 검수 실패] 등록된 어플('${targetScheme}')을 실행할 수 없거나 핸드폰에 설치되어 있지 않습니다.`, 'error');
+                                    onTriggerToast(`❌ [어플 실행 실패] 등록된 어플('${targetScheme}')을 열 수 없거나 핸드폰에 설치되어 있지 않습니다. (SSM 어플 설치 여부 확인 필요)`, 'error');
                                   }
                                 }
                               }}

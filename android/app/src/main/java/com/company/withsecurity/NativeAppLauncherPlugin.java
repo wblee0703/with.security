@@ -93,24 +93,29 @@ public class NativeAppLauncherPlugin extends Plugin {
     }
 
     private boolean tryLaunchCandidate(Context context, PackageManager pm, String candidate) {
+        if (candidate == null || candidate.trim().isEmpty()) return false;
+        candidate = candidate.trim();
+
         try {
             Intent intent = null;
 
-            // 1. Try launching by explicit package name if extractable
-            String pkgName = extractPackageName(candidate);
-            if (pkgName != null) {
-                intent = pm.getLaunchIntentForPackage(pkgName);
-            }
-
-            // 2. Try parsing intent:// URI scheme
-            if (intent == null && candidate.startsWith("intent://")) {
+            // 1. If candidate is intent:// URI scheme, parse intent directly first
+            if (candidate.startsWith("intent://")) {
                 try {
                     intent = Intent.parseUri(candidate, Intent.URI_INTENT_SCHEME);
                 } catch (Exception ignored) {
                 }
             }
 
-            // 3. Try parsing custom URI scheme (e.g., ssm://)
+            // 2. Try package name launch intent
+            if (intent == null) {
+                String pkgName = extractPackageName(candidate);
+                if (pkgName != null) {
+                    intent = pm.getLaunchIntentForPackage(pkgName);
+                }
+            }
+
+            // 3. Try custom scheme (e.g. ssm://, skhynixssm://)
             if (intent == null && candidate.contains("://")) {
                 try {
                     intent = new Intent(Intent.ACTION_VIEW, Uri.parse(candidate));
@@ -125,6 +130,8 @@ public class NativeAppLauncherPlugin extends Plugin {
 
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                intent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
                 context.startActivity(intent);
                 return true;
             }
@@ -142,8 +149,11 @@ public class NativeAppLauncherPlugin extends Plugin {
                 "com.skhynix.ssm",
                 "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end",
                 "ssm://",
+                "skhynixssm://",
                 "com.skhynix.ssm.mobile",
-                "com.skhynix.mobile.ssm"
+                "com.skhynix.mobile.ssm",
+                "com.skhynix.smartsecurity",
+                "com.skhynix.sec"
             };
         } else if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성")) {
             return new String[] {
