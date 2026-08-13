@@ -1,9 +1,5 @@
 {
   "appId": "com.company.withsecurity",
   "appName": "WithSecurity",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "http",
-    "cleartext": true
-  }
+  "webDir": "dist"
 }
