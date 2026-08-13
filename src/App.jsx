@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
 import PinLockModal from './components/layout/PinLockModal';
@@ -21,8 +22,16 @@ export default function App() {
   const [initialServerUrl, setInitialServerUrl] = useState('');
   const [isTestingInitialServer, setIsTestingInitialServer] = useState(false);
 
+  const isNative = Capacitor.isNativePlatform();
+
   // Check if server URL / hosted app URL is registered on first app launch
   useEffect(() => {
+    // If running inside Capacitor Native Mobile App, bypass web location redirects
+    if (isNative) {
+      console.log('📱 Native Mobile APK detected. Running local native application bundle.');
+      return;
+    }
+
     // 1. Reset Host URL parameter check (e.g. ?reset_server=true)
     if (window.location.search.includes('reset_server=true')) {
       localStorage.removeItem('with_security_hosted_app_url');
@@ -40,7 +49,7 @@ export default function App() {
     const savedUrl = dbService.getServerUrl();
     const hostedUrl = localStorage.getItem('with_security_hosted_app_url');
 
-    // 2. Automatically load remote live hosted application URL if configured
+    // 2. Automatically load remote live hosted application URL if configured (Browser Web only)
     if (hostedUrl && (hostedUrl.startsWith('http://') || hostedUrl.startsWith('https://'))) {
       const currentOrigin = window.location.origin.replace(/\/+$/, '');
       const targetOrigin = hostedUrl.replace(/\/+$/, '');
@@ -109,8 +118,8 @@ export default function App() {
     setIsTestingInitialServer(false);
     setIsServerModalOpen(false);
 
-    // Redirect to live host URL if different origin
-    if (targetUrl && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
+    // Redirect to live host URL if different origin (Browser Web only)
+    if (!isNative && targetUrl && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
       const currentOrigin = window.location.origin.replace(/\/+$/, '');
       if (!currentOrigin.includes(targetUrl) && !targetUrl.includes(currentOrigin)) {
         window.location.replace(targetUrl);
