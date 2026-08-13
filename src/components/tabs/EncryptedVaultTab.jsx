@@ -4,8 +4,8 @@ import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 
 const SECURITY_APP_CATALOG = [
-  { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;scheme=secapp;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
-  { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
+  { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
+  { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
   { id: 'lgd', name: 'LG디스플레이 모바일 보안관제', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;scheme=lgdsec;package=com.lgd.security;end', desc: 'LG디스플레이 모바일 보안 어플', badge: 'LGD' },
   { id: 'v3', name: '안랩 V3 Mobile Enterprise', company: '기업 통합 모바일 백신 및 보안어플', scheme: 'intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end', desc: 'AhnLab V3 Enterprise Security', badge: '안랩' },
   { id: 'hmg', name: '현대자동차그룹 모바일 보안', company: '현대자동차 / 기아 남양연구소 및 공장', scheme: 'intent://#Intent;scheme=hsec;package=com.hmg.security;end', desc: 'HMG Mobile Security Guard', badge: '현대차그룹' },

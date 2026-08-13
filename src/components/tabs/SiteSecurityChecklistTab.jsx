@@ -2488,6 +2488,26 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
                                 try {
                                   window.location.href = targetScheme;
+
+                                  // Multi-Intent Fallback Chain for SK Hynix SSM & Corporate Security Apps
+                                  if (targetScheme.includes('ssm') || targetScheme.includes('skhynix') || targetScheme.includes('SK')) {
+                                    setTimeout(() => {
+                                      if (!hasBlurred) {
+                                        window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end';
+                                      }
+                                    }, 250);
+                                    setTimeout(() => {
+                                      if (!hasBlurred) {
+                                        window.location.href = 'ssm://';
+                                      }
+                                    }, 550);
+                                  } else if (targetScheme.includes('knox') || targetScheme.includes('secapp')) {
+                                    setTimeout(() => {
+                                      if (!hasBlurred) {
+                                        window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end';
+                                      }
+                                    }, 250);
+                                  }
                                 } catch (e) {
                                   window.open(targetScheme, '_blank');
                                 }
