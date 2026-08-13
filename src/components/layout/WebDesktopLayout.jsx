@@ -24,8 +24,9 @@ import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
 import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
 import UserProfileTab from '../tabs/UserProfileTab';
 import WorkLogTab from '../tabs/WorkLogTab';
+import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet } from 'lucide-react';
 
 export default function WebDesktopLayout({ 
   activeTab, 
@@ -68,6 +69,7 @@ export default function WebDesktopLayout({
   const navItems = [
     { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList, badge: '신규' },
+    { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet, badge: 'NEW' },
     ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),
     { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' }
   ];
@@ -260,7 +262,7 @@ export default function WebDesktopLayout({
       </header>
 
       {/* Main Body (Sidebar + Content Canvas) */}
-      <div style={{ flex: 1, display: 'flex', width: '100%', maxWidth: '1440px', margin: '0 auto', padding: '24px' }}>
+      <div style={{ flex: 1, display: 'flex', width: '100%', padding: '24px' }}>
         
         {/* Left Web Sidebar Navigation */}
         <aside style={{
@@ -319,9 +321,10 @@ export default function WebDesktopLayout({
 
         {/* Right Main Web Content Panel */}
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
-          <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+          <div style={{ width: '100%' }}>
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} setActiveTab={setActiveTab} />}
           </div>

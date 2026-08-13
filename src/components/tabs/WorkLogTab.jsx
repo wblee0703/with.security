@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
+import WorkLogCalendar from '../common/WorkLogCalendar';
 
 export default function WorkLogTab({ onTriggerToast }) {
   const [workLogs, setWorkLogs] = useState([]);
@@ -28,6 +29,46 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLogId, setEditingLogId] = useState(null);
+  const [extraTasks, setExtraTasks] = useState([]); // Multiple tasks state
+
+  // Inline editing state for editing task directly inside list card
+  const [inlineEditingId, setInlineEditingId] = useState(null);
+  const [inlineForm, setInlineForm] = useState({ title: '', details: '' });
+
+  const handleStartInlineEdit = (item) => {
+    setInlineEditingId(item.id);
+    setInlineForm({
+      title: item.title || '',
+      details: item.details || ''
+    });
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditingId(null);
+    setInlineForm({ title: '', details: '' });
+  };
+
+  const handleSaveInlineEdit = async (item) => {
+    if (!inlineForm.title.trim()) {
+      if (onTriggerToast) onTriggerToast('업무명을 입력해 주세요.', 'warning');
+      return;
+    }
+
+    const updatedLogItem = {
+      ...item,
+      title: inlineForm.title.trim(),
+      details: inlineForm.details.trim()
+    };
+
+    const updatedLogs = await dbService.saveWorkLog(updatedLogItem);
+    setWorkLogs(updatedLogs);
+    setInlineEditingId(null);
+    setInlineForm({ title: '', details: '' });
+
+    if (onTriggerToast) {
+      onTriggerToast(`'${updatedLogItem.title}' 업무가 수정되었습니다.`, 'success');
+    }
+  };
 
   // Deletion Password Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -154,6 +195,20 @@ export default function WorkLogTab({ onTriggerToast }) {
       details: '',
       siteName: ''
     });
+    setExtraTasks([]);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenAddModalForCard = (logItem) => {
+    setEditingLogId(null);
+    setForm({
+      category: logItem.category || '사내 업무',
+      date: logItem.date || getTodayIsoDate(),
+      title: '',
+      details: '',
+      siteName: logItem.siteName || logItem.site_name || ''
+    });
+    setExtraTasks([]);
     setIsModalOpen(true);
   };
 
@@ -166,6 +221,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       details: logItem.details || '',
       siteName: logItem.siteName || logItem.site_name || ''
     });
+    setExtraTasks([]);
     setIsModalOpen(true);
   };
 
@@ -204,19 +260,51 @@ export default function WorkLogTab({ onTriggerToast }) {
       createdAt: editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
     };
 
-    const updatedLogs = await dbService.saveWorkLog(newLogItem);
+    let updatedLogs = await dbService.saveWorkLog(newLogItem);
+
+    // Save extra task items if added in multi-task mode
+    if (!editingLogId && extraTasks.length > 0) {
+      for (let i = 0; i < extraTasks.length; i++) {
+        const ext = extraTasks[i];
+        if (ext.title && ext.title.trim()) {
+          const extraLogItem = {
+            id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
+            category: form.category,
+            date: form.date,
+            title: ext.title.trim(),
+            details: (ext.details || '').trim(),
+            siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
+            authorName,
+            authorTeam,
+            authorRank,
+            authorUsername,
+            authorDivision,
+            authorRole,
+            division: authorDivision,
+            role: authorRole,
+            createdAt: `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+          };
+          updatedLogs = await dbService.saveWorkLog(extraLogItem);
+        }
+      }
+    }
+
     setWorkLogs(updatedLogs);
     setIsModalOpen(false);
+    setExtraTasks([]);
 
     // Automatically switch selectedDate to the saved log's date
     setSelectedDate(form.date);
     setViewAllDates(false);
 
     if (onTriggerToast) {
-      onTriggerToast(
-        editingLogId ? `'${newLogItem.title}' 업무 일지가 수정되었습니다.` : `'${newLogItem.title}' 업무 일지가 등록되었습니다.`,
-        'success'
-      );
+      const validExtras = extraTasks.filter(t => t.title && t.title.trim()).length;
+      const msg = editingLogId
+        ? `'${newLogItem.title}' 업무 일지가 수정되었습니다.`
+        : (validExtras > 0
+          ? `총 ${1 + validExtras}건의 업무 일지가 등록되었습니다.`
+          : `'${newLogItem.title}' 업무 일지가 등록되었습니다.`);
+      onTriggerToast(msg, 'success');
     }
   };
 
@@ -310,451 +398,673 @@ export default function WorkLogTab({ onTriggerToast }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-      {/* Header Banner */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '14px',
-              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid rgba(0, 242, 254, 0.4)'
-            }}>
-              <ClipboardList size={24} color="#00f2fe" />
-            </div>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                업무 일지 관리
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleOpenAddModal}
-            className="glass-button-primary"
-            style={{
-              padding: '10px 18px',
-              borderRadius: '12px',
-              fontSize: '13px',
-              fontWeight: '800',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              boxShadow: '0 4px 14px rgba(0, 242, 254, 0.3)'
-            }}
-          >
-            <Plus size={16} /> 업무 등록
-          </button>
-        </div>
-      </div>
-
-      {/* Interactive Date Selector Navigation Bar (2-Row Layout) */}
-      <div className="glass-panel" style={{
-        padding: '16px 20px',
-        borderRadius: '18px',
-        background: 'rgba(0, 242, 254, 0.05)',
-        border: '1px solid rgba(0, 242, 254, 0.25)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
+      {/* Main 2-Column Responsive Layout for Work Log Management & Desktop Calendar */}
+      <div className="work-log-desktop-grid" style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1.3fr',
+        gap: '24px',
+        alignItems: 'start',
         width: '100%'
       }}>
-        {/* Line 1: [Left Arrow] --- [Date Display + Picker] --- [Right Arrow] */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          gap: '12px'
-        }}>
-          <button
-            type="button"
-            onClick={handlePrevDay}
-            title="이전 날짜"
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '12px',
-              border: '1px solid rgba(0, 242, 254, 0.4)',
-              background: 'rgba(0, 242, 254, 0.12)',
-              color: '#00f2fe',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <ChevronLeft size={20} />
-          </button>
+        {/* Left Column: Header Banner, Date Navigation, Search Filter, & Work Log List */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
+          {/* Header Banner */}
+          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '14px',
+                  background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1px solid rgba(0, 242, 254, 0.4)'
+                }}>
+                  <ClipboardList size={24} color="#00f2fe" />
+                </div>
+                <div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
+                    업무 일지 관리
+                  </div>
+                </div>
+              </div>
 
-          {/* Interactive Date Picker Button (Entire Area Clickable -> Triggers Calendar Popup) */}
-          <button
-            type="button"
-            onClick={handleTriggerDatePicker}
-            title="클릭하여 달력에서 날짜 선택"
-            style={{
-              position: 'relative',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '8px 16px',
-              borderRadius: '10px',
-              background: 'rgba(0, 242, 254, 0.12)',
-              border: '1px solid rgba(0, 242, 254, 0.4)',
-              boxShadow: '0 0 12px rgba(0, 242, 254, 0.2)',
-              cursor: 'pointer',
-              overflow: 'hidden'
-            }}
-          >
-            {/* Visual Button Text & Icon */}
+              <button
+                type="button"
+                onClick={handleOpenAddModal}
+                className="glass-button-primary"
+                style={{
+                  padding: '10px 18px',
+                  borderRadius: '12px',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 14px rgba(0, 242, 254, 0.3)'
+                }}
+              >
+                <Plus size={16} /> 업무 등록
+              </button>
+            </div>
+          </div>
+
+          {/* Interactive Date Selector Navigation Bar (2-Row Layout) */}
+          <div className="glass-panel" style={{
+            padding: '16px 20px',
+            borderRadius: '18px',
+            background: 'rgba(0, 242, 254, 0.05)',
+            border: '1px solid rgba(0, 242, 254, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            width: '100%'
+          }}>
+            {/* Line 1: [Left Arrow] --- [Date Display + Picker] --- [Right Arrow] */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
-              color: '#fff',
-              fontSize: '13px',
-              fontWeight: '800',
-              pointerEvents: 'none'
+              justifyContent: 'space-between',
+              width: '100%',
+              gap: '12px'
             }}>
-              <Calendar size={15} color="#00f2fe" />
-              <span>{viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}</span>
+              <button
+                type="button"
+                onClick={handlePrevDay}
+                title="이전 날짜"
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  color: '#00f2fe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <ChevronLeft size={20} />
+              </button>
+
+              {/* Interactive Date Picker Button (Entire Area Clickable -> Triggers Calendar Popup) */}
+              <button
+                type="button"
+                onClick={handleTriggerDatePicker}
+                title="클릭하여 달력에서 날짜 선택"
+                style={{
+                  position: 'relative',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '8px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  boxShadow: '0 0 12px rgba(0, 242, 254, 0.2)',
+                  cursor: 'pointer',
+                  overflow: 'hidden'
+                }}
+              >
+                {/* Visual Button Text & Icon */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: '#fff',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  pointerEvents: 'none'
+                }}>
+                  <Calendar size={15} color="#00f2fe" />
+                  <span>{viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}</span>
+                </div>
+
+                {/* Transparent Calendar Input spanning 100% width & height with full-clickable-datepicker */}
+                <input
+                  ref={datePickerRef}
+                  type="date"
+                  className="full-clickable-datepicker"
+                  value={selectedDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setSelectedDate(e.target.value);
+                      setViewAllDates(false);
+                    }
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    cursor: 'pointer',
+                    zIndex: 10
+                  }}
+                />
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextDay}
+                title="다음 날짜"
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  background: 'rgba(0, 242, 254, 0.12)',
+                  color: '#00f2fe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
 
-            {/* Transparent Calendar Input spanning 100% width & height with full-clickable-datepicker */}
-            <input
-              ref={datePickerRef}
-              type="date"
-              className="full-clickable-datepicker"
-              value={selectedDate}
-              onChange={(e) => {
-                if (e.target.value) {
-                  setSelectedDate(e.target.value);
-                  setViewAllDates(false);
-                }
-              }}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                opacity: 0,
-                cursor: 'pointer',
-                zIndex: 10
-              }}
-            />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNextDay}
-            title="다음 날짜"
-            style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '12px',
-              border: '1px solid rgba(0, 242, 254, 0.4)',
-              background: 'rgba(0, 242, 254, 0.12)',
-              color: '#00f2fe',
+            {/* Line 2 (Below Line): [Today Button] --- [Count Display] --- [View All Toggle Button] */}
+            <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0,
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
+              justifyContent: 'space-between',
+              width: '100%',
+              paddingTop: '10px',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                type="button"
+                onClick={handleToday}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '10px',
+                  border: selectedDate === getTodayIsoDate() && !viewAllDates
+                    ? '1px solid #00f2fe'
+                    : '1px solid rgba(255, 255, 255, 0.15)',
+                  background: selectedDate === getTodayIsoDate() && !viewAllDates
+                    ? 'rgba(0, 242, 254, 0.2)'
+                    : 'rgba(255, 255, 255, 0.05)',
+                  color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#00f2fe' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                오늘
+              </button>
 
-        {/* Line 2 (Below Line): [Today Button] --- [Count Display] --- [View All Toggle Button] */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          width: '100%',
-          paddingTop: '10px',
-          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-          gap: '12px',
-          flexWrap: 'wrap'
-        }}>
-          <button
-            type="button"
-            onClick={handleToday}
-            style={{
-              padding: '7px 16px',
-              borderRadius: '10px',
-              border: selectedDate === getTodayIsoDate() && !viewAllDates
-                ? '1px solid #00f2fe'
-                : '1px solid rgba(255, 255, 255, 0.15)',
-              background: selectedDate === getTodayIsoDate() && !viewAllDates
-                ? 'rgba(0, 242, 254, 0.2)'
-                : 'rgba(255, 255, 255, 0.05)',
-              color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#00f2fe' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: '800',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            오늘
-          </button>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#00f2fe', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+              </div>
 
-          <div style={{ fontSize: '13px', fontWeight: '700', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#00f2fe', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+              <button
+                type="button"
+                onClick={() => setViewAllDates(!viewAllDates)}
+                style={{
+                  padding: '7px 16px',
+                  borderRadius: '10px',
+                  border: viewAllDates ? '1px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.15)',
+                  background: viewAllDates ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                  color: viewAllDates ? '#a78bfa' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {viewAllDates ? '📅 날짜별 보기' : '🌐 전체 보기'}
+              </button>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setViewAllDates(!viewAllDates)}
-            style={{
-              padding: '7px 16px',
-              borderRadius: '10px',
-              border: viewAllDates ? '1px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.15)',
-              background: viewAllDates ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-              color: viewAllDates ? '#a78bfa' : '#94a3b8',
-              fontSize: '12px',
-              fontWeight: '800',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {viewAllDates ? '📅 날짜별 보기' : '🌐 전체 보기'}
-          </button>
-        </div>
-      </div>
+          {/* Filter Bar & Search */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', flexWrap: 'wrap' }}>
+            {/* Category Segmented Control */}
+            <div style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.04)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)', flexShrink: 0 }}>
+              {['전체', '사내 업무', '출장 업무'].map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFilterCategory(cat)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    border: 'none',
+                    background: filterCategory === cat ? 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)' : 'transparent',
+                    color: filterCategory === cat ? '#050b14' : '#94a3b8',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {cat === '사내 업무' && '🏢 '}
+                  {cat === '출장 업무' && '🚗 '}
+                  {cat}
+                </button>
+              ))}
+            </div>
 
-      {/* Filter Bar & Search */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-        {/* Category Segmented Control */}
-        <div style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.04)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-          {['전체', '사내 업무', '출장 업무'].map(cat => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setFilterCategory(cat)}
-              style={{
-                padding: '6px 14px',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: '800',
-                border: 'none',
-                background: filterCategory === cat ? 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)' : 'transparent',
-                color: filterCategory === cat ? '#050b14' : '#94a3b8',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              {cat === '사내 업무' && '🏢 '}
-              {cat === '출장 업무' && '🚗 '}
-              {cat}
-            </button>
-          ))}
+            {/* Search Bar (Expanded right to match remaining width) */}
+            <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
+              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+              <input
+                type="text"
+                placeholder="업무명 또는 내용 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px 9px 34px',
+                  borderRadius: '12px',
+                  background: '#0a0f1d',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  color: '#fff',
+                  fontSize: '12px',
+                  outline: 'none',
+                  transition: 'all 0.2s ease'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Date-Grouped Work Logs List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {sortedDates.length === 0 ? (
+              <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '20px', color: '#64748b' }}>
+                <ClipboardList size={36} color="#475569" style={{ marginBottom: '10px' }} />
+                <div style={{ fontSize: '14px', fontWeight: '700' }}>
+                  {viewAllDates ? '등록된 업무 일지가 없습니다.' : `${getFormattedKoreanDate(selectedDate)}에 등록된 업무 일지가 없습니다.`}
+                </div>
+                <div style={{ fontSize: '12px', marginTop: '6px', color: '#94a3b8' }}>
+                  상단 [<ChevronLeft size={12} style={{ display: 'inline' }} /> <ChevronRight size={12} style={{ display: 'inline' }} />] 버튼으로 날짜를 변경하거나 [업무 등록] 버튼을 누르면 신규 기록을 등록할 수 있습니다.
+                </div>
+              </div>
+            ) : (
+              sortedDates.map(dateStr => (
+                <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Date Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px' }}>
+                    <Calendar size={15} color="#00f2fe" />
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#00f2fe' }}>
+                      {getFormattedKoreanDate(dateStr)}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      ({groupedByDate[dateStr].length}건)
+                    </span>
+                  </div>
+
+                  {/* Logs Grid for this date */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {(() => {
+                      const logsForDate = groupedByDate[dateStr] || [];
+                      const cardGroupsMap = logsForDate.reduce((acc, log) => {
+                        const sName = log.siteName || log.site_name || '';
+                        const aName = log.authorName || log.name || '작성자';
+                        const key = `${log.category}___${sName}___${aName}`;
+                        if (!acc[key]) {
+                          acc[key] = {
+                            key,
+                            category: log.category,
+                            siteName: sName,
+                            authorName: aName,
+                            authorRank: log.authorRank || log.rank || '대리',
+                            authorTeam: log.authorTeam || log.team || log.department || '보안관제팀',
+                            createdAt: log.createdAt || '',
+                            date: log.date,
+                            primaryLog: log,
+                            items: []
+                          };
+                        }
+                        acc[key].items.push(log);
+                        return acc;
+                      }, {});
+
+                      return Object.values(cardGroupsMap).map(group => (
+                        <div
+                          key={group.key}
+                          className="glass-panel"
+                          style={{
+                            padding: '18px 20px',
+                            borderRadius: '16px',
+                            borderLeft: group.category === '출장 업무' ? '4px solid #a78bfa' : '4px solid #00f2fe',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                          }}
+                        >
+                          {/* Log Header Row 1: Category Badge + Business Trip Site + Group Action Button */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                              <span style={{
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(0, 242, 254, 0.18)',
+                                color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
+                                border: `1px solid ${group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(0, 242, 254, 0.4)'}`
+                              }}>
+                                {group.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
+                              </span>
+
+                              {group.category === '출장 업무' && group.siteName && (
+                                <span style={{
+                                  padding: '4px 10px',
+                                  borderRadius: '6px',
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  background: 'rgba(167, 139, 250, 0.15)',
+                                  color: '#c4b5fd',
+                                  border: '1px solid rgba(167, 139, 250, 0.35)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  📍 {group.siteName}
+                                </span>
+                              )}
+
+                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>
+                                ({group.items.length}건)
+                              </span>
+                            </div>
+
+                            {/* Action Buttons: Add Task to this Card Group */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAddModalForCard(group.primaryLog)}
+                                style={{
+                                  background: 'rgba(0, 242, 254, 0.14)',
+                                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                                  color: '#00f2fe',
+                                  padding: '5px 10px',
+                                  borderRadius: '8px',
+                                  fontSize: '11.5px',
+                                  fontWeight: '700',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  transition: 'all 0.2s ease',
+                                  boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)'
+                                }}
+                                title="이 카드의 업무 분류/날짜/사업장에 새 업무 추가"
+                              >
+                                <Plus size={13} /> 추가
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Author & Info Line (Rendered once per card) */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8', flexWrap: 'wrap', paddingTop: '2px', paddingBottom: '4px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                            <span style={{ color: '#fff', fontWeight: '700' }}>
+                              👤 {group.authorName} {group.authorRank || ''}
+                            </span>
+                            <span>|</span>
+                            <span style={{ color: '#00f2fe', fontWeight: '600' }}>
+                              {formatOnlyTeam(group.authorTeam)}
+                            </span>
+                            <span>|</span>
+                            <span className="mono-font">🕒 {group.createdAt}</span>
+                          </div>
+
+                          {/* Nested List of Tasks (Titles & Details) inside this Card */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {[...group.items]
+                              .sort((a, b) => (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || ''))
+                              .map((item, itemIdx) => {
+                                const isEditingThis = inlineEditingId === item.id;
+
+                                return (
+                                  <div
+                                    key={item.id}
+                                    style={{
+                                      background: isEditingThis ? 'rgba(0, 242, 254, 0.07)' : 'rgba(0, 0, 0, 0.2)',
+                                      border: isEditingThis ? '1px solid rgba(0, 242, 254, 0.45)' : '1px solid rgba(255, 255, 255, 0.06)',
+                                      borderRadius: '12px',
+                                      padding: '12px 14px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '8px',
+                                      transition: 'all 0.2s ease',
+                                      boxShadow: isEditingThis ? '0 0 16px rgba(0, 242, 254, 0.15)' : 'none'
+                                    }}
+                                  >
+                                    {isEditingThis ? (
+                                      /* Inline Editing Mode */
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+                                            <span style={{
+                                              color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
+                                              fontWeight: '800',
+                                              fontSize: '12px',
+                                              flexShrink: 0
+                                            }}>
+                                              #{itemIdx + 1}
+                                            </span>
+                                            <input
+                                              type="text"
+                                              value={inlineForm.title}
+                                              onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
+                                              placeholder="업무명 입력"
+                                              autoFocus
+                                              style={{
+                                                width: '100%',
+                                                padding: '6px 10px',
+                                                borderRadius: '8px',
+                                                background: '#0a0f1d',
+                                                border: '1px solid #00f2fe',
+                                                color: '#fff',
+                                                fontSize: '13.5px',
+                                                fontWeight: '700',
+                                                outline: 'none',
+                                                boxShadow: '0 0 10px rgba(0, 242, 254, 0.25)'
+                                              }}
+                                            />
+                                          </div>
+
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSaveInlineEdit(item)}
+                                              style={{
+                                                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                                                border: 'none',
+                                                color: '#050b14',
+                                                padding: '5px 12px',
+                                                borderRadius: '8px',
+                                                fontSize: '11.5px',
+                                                fontWeight: '800',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '4px',
+                                                boxShadow: '0 2px 10px rgba(0, 242, 254, 0.3)'
+                                              }}
+                                              title="수정 사항 저장"
+                                            >
+                                              <CheckCircle2 size={13} /> 저장
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={handleCancelInlineEdit}
+                                              style={{
+                                                background: 'rgba(255, 255, 255, 0.08)',
+                                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                color: '#cbd5e1',
+                                                padding: '5px 10px',
+                                                borderRadius: '8px',
+                                                fontSize: '11.5px',
+                                                fontWeight: '700',
+                                                cursor: 'pointer'
+                                              }}
+                                              title="수정 취소"
+                                            >
+                                              취소
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        <textarea
+                                          rows={Math.max(3, (inlineForm.details || '').split('\n').length)}
+                                          value={inlineForm.details}
+                                          onChange={(e) => setInlineForm({ ...inlineForm, details: e.target.value })}
+                                          onInput={(e) => {
+                                            e.target.style.height = 'auto';
+                                            e.target.style.height = `${e.target.scrollHeight}px`;
+                                          }}
+                                          placeholder="세부 업무 내용 작성 (선택)"
+                                          style={{
+                                            width: '100%',
+                                            minHeight: '75px',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            background: '#0a0f1d',
+                                            border: '1px solid rgba(0, 242, 254, 0.35)',
+                                            color: '#cbd5e1',
+                                            fontSize: '12.5px',
+                                            outline: 'none',
+                                            resize: 'vertical',
+                                            lineHeight: '1.55',
+                                            overflowY: 'hidden'
+                                          }}
+                                        />
+                                      </div>
+                                    ) : (
+                                      /* Normal Display Mode */
+                                      <>
+                                        {/* Task Title Line + Individual Edit & Delete Buttons */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                                          <div style={{
+                                            fontSize: '14px',
+                                            fontWeight: '700',
+                                            color: '#fff',
+                                            lineHeight: '1.4',
+                                            wordBreak: 'break-word',
+                                            display: 'flex',
+                                            alignItems: 'flex-start',
+                                            gap: '6px'
+                                          }}>
+                                            <span style={{
+                                              color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
+                                              fontWeight: '800',
+                                              fontSize: '12px',
+                                              flexShrink: 0,
+                                              paddingTop: '1px'
+                                            }}>
+                                              #{itemIdx + 1}
+                                            </span>
+                                            <span>{item.title}</span>
+                                          </div>
+
+                                          {canModifyLog(item) && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleStartInlineEdit(item)}
+                                                style={{
+                                                  background: 'rgba(255, 255, 255, 0.06)',
+                                                  border: '1px solid rgba(255, 255, 255, 0.18)',
+                                                  color: '#cbd5e1',
+                                                  padding: '3px 8px',
+                                                  borderRadius: '6px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '700',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px'
+                                                }}
+                                                title="이 업무 바로 수정"
+                                              >
+                                                <Edit3 size={12} /> 수정
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleInitiateDeleteLog(item)}
+                                                style={{
+                                                  background: 'rgba(244, 63, 94, 0.12)',
+                                                  border: '1px solid rgba(244, 63, 94, 0.35)',
+                                                  color: '#f43f5e',
+                                                  padding: '3px 8px',
+                                                  borderRadius: '6px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '700',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  gap: '3px'
+                                                }}
+                                                title="이 업무 삭제"
+                                              >
+                                                <Trash2 size={12} />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        {/* Log Details Box (Only rendered if details exist) */}
+                                        {item.details && item.details.trim() !== '' && (
+                                          <div style={{
+                                            background: 'rgba(0, 0, 0, 0.25)',
+                                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                                            padding: '10px 12px',
+                                            borderRadius: '8px',
+                                            fontSize: '12px',
+                                            color: '#cbd5e1',
+                                            whiteSpace: 'pre-wrap',
+                                            lineHeight: '1.5'
+                                          }}>
+                                            {item.details}
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div style={{ position: 'relative', width: '240px' }}>
-          <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-          <input
-            type="text"
-            placeholder="업무명 또는 내용 검색"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px 8px 34px',
-              borderRadius: '10px',
-              background: '#0a0f1d',
-              border: '1px solid rgba(255, 255, 255, 0.12)',
-              color: '#fff',
-              fontSize: '12px',
-              outline: 'none'
+        {/* Right Column: Desktop Calendar Widget */}
+        <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
+          <WorkLogCalendar
+            workLogs={workLogs}
+            selectedDate={selectedDate}
+            onSelectDate={(date) => {
+              setSelectedDate(date);
+              setViewAllDates(false);
             }}
+            onOpenAddModal={handleOpenAddModal}
           />
         </div>
-      </div>
-
-      {/* Date-Grouped Work Logs List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-        {sortedDates.length === 0 ? (
-          <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '20px', color: '#64748b' }}>
-            <ClipboardList size={36} color="#475569" style={{ marginBottom: '10px' }} />
-            <div style={{ fontSize: '14px', fontWeight: '700' }}>
-              {viewAllDates ? '등록된 업무 일지가 없습니다.' : `${getFormattedKoreanDate(selectedDate)}에 등록된 업무 일지가 없습니다.`}
-            </div>
-            <div style={{ fontSize: '12px', marginTop: '6px', color: '#94a3b8' }}>
-              상단 [<ChevronLeft size={12} style={{ display: 'inline' }} /> <ChevronRight size={12} style={{ display: 'inline' }} />] 버튼으로 날짜를 변경하거나 [업무 등록] 버튼을 누르면 신규 기록을 등록할 수 있습니다.
-            </div>
-          </div>
-        ) : (
-          sortedDates.map(dateStr => (
-            <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {/* Date Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px' }}>
-                <Calendar size={15} color="#00f2fe" />
-                <span style={{ fontSize: '13px', fontWeight: '800', color: '#00f2fe' }}>
-                  {getFormattedKoreanDate(dateStr)}
-                </span>
-                <span style={{ fontSize: '11px', color: '#64748b' }}>
-                  ({groupedByDate[dateStr].length}건)
-                </span>
-              </div>
-
-              {/* Logs Grid for this date */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {groupedByDate[dateStr].map(log => (
-                  <div
-                    key={log.id}
-                    className="glass-panel"
-                    style={{
-                      padding: '16px 20px',
-                      borderRadius: '16px',
-                      borderLeft: log.category === '출장 업무' ? '4px solid #a78bfa' : '4px solid #00f2fe',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '10px'
-                    }}
-                  >
-                    {/* Log Header Row 1: Category Badge + Business Trip Site + Action Buttons */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          background: log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(0, 242, 254, 0.18)',
-                          color: log.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
-                          border: `1px solid ${log.category === '출장 업무' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(0, 242, 254, 0.4)'}`
-                        }}>
-                          {log.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
-                        </span>
-
-                        {log.category === '출장 업무' && (log.siteName || log.site_name) && (
-                          <span style={{
-                            padding: '4px 10px',
-                            borderRadius: '6px',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            background: 'rgba(167, 139, 250, 0.15)',
-                            color: '#c4b5fd',
-                            border: '1px solid rgba(167, 139, 250, 0.35)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}>
-                            📍 {log.siteName || log.site_name}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Action Buttons: Only visible if user is the author or admin/dev */}
-                      {canModifyLog(log) && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(log)}
-                            style={{
-                              background: 'rgba(255, 255, 255, 0.06)',
-                              border: '1px solid rgba(255, 255, 255, 0.18)',
-                              color: '#cbd5e1',
-                              padding: '5px 10px',
-                              borderRadius: '8px',
-                              fontSize: '11.5px',
-                              fontWeight: '700',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s ease'
-                            }}
-                          >
-                            <Edit3 size={13} /> 수정
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleInitiateDeleteLog(log)}
-                            style={{
-                              background: 'rgba(244, 63, 94, 0.12)',
-                              border: '1px solid rgba(244, 63, 94, 0.35)',
-                              color: '#f43f5e',
-                              padding: '5px 10px',
-                              borderRadius: '8px',
-                              fontSize: '11.5px',
-                              fontWeight: '700',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0,
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                              transition: 'all 0.2s ease'
-                            }}
-                          >
-                            <Trash2 size={13} /> 삭제
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Log Title Row 2: Full-Width Dedicated Line */}
-                    <div style={{
-                      fontSize: '16px',
-                      fontWeight: '800',
-                      color: '#fff',
-                      width: '100%',
-                      lineHeight: '1.4',
-                      wordBreak: 'break-word',
-                      paddingTop: '2px'
-                    }}>
-                      {log.title}
-                    </div>
-
-                    {/* Author & Info Line */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#fff', fontWeight: '700' }}>
-                        👤 {log.authorName} {log.authorRank || ''}
-                      </span>
-                      <span>|</span>
-                      <span style={{ color: '#00f2fe', fontWeight: '600' }}>
-                        {formatOnlyTeam(log.authorTeam || log.writer_team || log.department || (currentUser?.name === log.authorName ? (currentUser.team || currentUser.department) : '') || '운영팀')}
-                      </span>
-                      <span>|</span>
-                      <span className="mono-font">🕒 {log.createdAt}</span>
-                    </div>
-
-                    {/* Log Details Box (Only rendered if details exist) */}
-                    {log.details && log.details.trim() !== '' && (
-                      <div style={{
-                        background: 'rgba(0, 0, 0, 0.25)',
-                        border: '1px solid rgba(255, 255, 255, 0.06)',
-                        padding: '12px 14px',
-                        borderRadius: '10px',
-                        fontSize: '12.5px',
-                        color: '#cbd5e1',
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: '1.6'
-                      }}>
-                        {log.details}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
       </div>
 
       {/* Modal: Register / Edit Work Log */}
@@ -931,7 +1241,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   세부 업무 기록 (선택)
                 </label>
                 <textarea
-                  rows={5}
+                  rows={4}
                   placeholder="진행한 업무 내용을 작성해 주세요."
                   value={form.details}
                   onChange={(e) => setForm({ ...form, details: e.target.value })}
@@ -949,6 +1259,105 @@ export default function WorkLogTab({ onTriggerToast }) {
                   }}
                 />
               </div>
+
+              {/* Dynamic Extra Tasks List (When adding 2 or more tasks at once) */}
+              {!editingLogId && extraTasks.map((tItem, idx) => (
+                <div key={idx} style={{
+                  background: 'rgba(0, 242, 254, 0.05)',
+                  border: '1px solid rgba(0, 242, 254, 0.25)',
+                  borderRadius: '16px',
+                  padding: '14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Plus size={14} /> 추가 업무 항목 #{idx + 2}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = extraTasks.filter((_, i) => i !== idx);
+                        setExtraTasks(updated);
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#f43f5e', cursor: 'pointer', padding: '2px' }}
+                      title="이 항목 삭제"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder={`추가 업무명 입력 (예: ${form.category === '출장 업무' ? '2차 현장점검' : '문서 검토'})`}
+                    value={tItem.title}
+                    onChange={(e) => {
+                      const updated = [...extraTasks];
+                      updated[idx].title = e.target.value;
+                      setExtraTasks(updated);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: '#0a0f1d',
+                      border: '1px solid rgba(0, 242, 254, 0.3)',
+                      color: '#fff',
+                      fontSize: '13px',
+                      outline: 'none'
+                    }}
+                  />
+
+                  <textarea
+                    rows={2}
+                    placeholder="추가 업무 세부내용 (선택)"
+                    value={tItem.details}
+                    onChange={(e) => {
+                      const updated = [...extraTasks];
+                      updated[idx].details = e.target.value;
+                      setExtraTasks(updated);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      borderRadius: '10px',
+                      background: '#0a0f1d',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#cbd5e1',
+                      fontSize: '12px',
+                      outline: 'none',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+              ))}
+
+              {/* Add Extra Task Button in Modal */}
+              {!editingLogId && (
+                <button
+                  type="button"
+                  onClick={() => setExtraTasks([...extraTasks, { title: '', details: '' }])}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: 'rgba(0, 242, 254, 0.08)',
+                    border: '1px dashed rgba(0, 242, 254, 0.4)',
+                    color: '#00f2fe',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.2s ease',
+                    marginTop: '2px'
+                  }}
+                >
+                  <Plus size={14} /> 업무 항목 추가 (+1개 더 작성)
+                </button>
+              )}
 
               {/* Submit / Cancel Buttons */}
               <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>

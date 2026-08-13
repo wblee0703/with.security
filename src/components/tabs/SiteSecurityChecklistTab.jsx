@@ -324,12 +324,18 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     noPhotoAgreed: false
   });
 
+  // Independent Step 2 Sub-Check States
+  const [secAppVerified, setSecAppVerified] = useState(false);
+  const [cameraCheckVerified, setCameraCheckVerified] = useState(false);
+
   // Reset Security App & Camera Verification States (Mandatory Re-verification on modal open/close)
   const resetAppVerificationState = () => {
     setAppCheckState({ isChecking: false, isVerified: false });
     setCameraCheckState({ isTesting: false, isVerified: false, result: null, message: '' });
     setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
     setCameraSelfChecklist({ stickerAttached: false, noPhotoAgreed: false });
+    setSecAppVerified(false);
+    setCameraCheckVerified(false);
     setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
   };
 
@@ -437,11 +443,15 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     if (statusType === 'NOT_RUNNING' || statusType === 'NOT_INSTALLED') {
       setAppCheckState({ isChecking: false, isVerified: false });
       setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
+      setSecAppVerified(false);
+      setCameraCheckVerified(false);
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: null, scanLog: [] });
     } else if (statusType === 'VERIFIED') {
       setAppCheckState({ isChecking: false, isVerified: true });
       setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '' });
+      setSecAppVerified(true);
+      setCameraCheckVerified(true);
       setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
       setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: null, scanLog: [] });
     }
@@ -1027,9 +1037,17 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         return;
       }
     } else {
-      if (appScanState.status !== 'VERIFIED' && !formData.mdmVerified) {
+      if (!secAppVerified) {
         if (onTriggerToast) {
-          onTriggerToast(`❌ [승인 제출 거부] 2단계 모바일 보안 어플('${targetApp.shortName}') 카메라 비활성화(차단) 검수가 완료되지 않았습니다. 2단계로 이동하여 검증해 주세요.`, 'warning');
+          onTriggerToast(`❌ [승인 제출 거부] 2단계 모바일 보안어플('${targetApp.shortName}') 실행 및 검수가 완료되지 않았습니다. [1. 모바일 보안어플 바로가기]를 클릭해 주세요.`, 'warning');
+        }
+        setActiveStep(2);
+        return;
+      }
+
+      if (!cameraCheckVerified) {
+        if (onTriggerToast) {
+          onTriggerToast(`❌ [승인 제출 거부] 2단계 [카메라 검수]가 완료되지 않았습니다. [2. 카메라 검수] 버튼을 클릭해 주세요.`, 'warning');
         }
         setActiveStep(2);
         return;
@@ -1455,37 +1473,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         alignItems: 'center',
         justifyContent: 'space-between'
       }}>
-        {/* Site Filter Pills */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'ALL', label: '전체 사업장' },
-            ...Array.from(new Set(
-              (sites || [])
-                .map(s => String(s.name || s.site_name || s.id || '').trim())
-                .filter(Boolean)
-            )).map(siteName => ({
-              id: siteName,
-              label: siteName
-            }))
-          ].map(filter => (
-            <button
-              key={filter.id}
-              onClick={() => setSelectedSiteFilter(filter.id)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '10px',
-                fontSize: '12px',
-                fontWeight: '600',
-                border: 'none',
-                background: selectedSiteFilter === filter.id ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                color: selectedSiteFilter === filter.id ? '#00f2fe' : '#94a3b8',
-                cursor: 'pointer'
-              }}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
       </div>
 
 
@@ -2392,78 +2379,176 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           </div>
                         </div>
 
-                        {/* Real-time Scan Action Banner */}
+                        {/* Step 2 Decoupled Dual Sub-Check Section */}
                         <div style={{
                           background: 'rgba(255, 255, 255, 0.03)',
-                          padding: '12px',
-                          borderRadius: '12px',
+                          padding: '16px',
+                          borderRadius: '14px',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '10px'
+                          gap: '14px'
                         }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                              어플 및 보안 상태: <strong style={{
-                                color: appScanState.status === 'VERIFIED'
-                                  ? '#10b981'
-                                  : appScanState.status === 'NOT_RUNNING'
-                                    ? '#f59e0b'
-                                    : (appScanState.status === 'NOT_INSTALLED' || appScanState.status === 'CAMERA_UNLOCKED')
-                                      ? '#ef4444'
-                                      : '#f59e0b'
+                          {/* Overview Progress Indicator */}
+                          <div style={{
+                            background: 'rgba(0, 242, 254, 0.06)',
+                            border: '1px solid rgba(0, 242, 254, 0.2)',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            fontSize: '12px',
+                            color: '#cbd5e1',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '8px'
+                          }}>
+                            <span style={{ fontWeight: '700' }}>📌 2단계 진행 상태 (독립 2단계 검수)</span>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                background: secAppVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                                color: secAppVerified ? '#10b981' : '#94a3b8',
+                                border: secAppVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'
                               }}>
-                                {appScanState.status === 'VERIFIED'
-                                  ? '✓ 정상 실행 및 카메라 사용제한 활성화됨'
-                                  : appScanState.status === 'NOT_RUNNING'
-                                    ? '⚠️ 실행 상태 확인 필요'
-                                    : appScanState.status === 'NOT_INSTALLED'
-                                      ? '❌ 어플 미설치 (핸드폰에 미설치됨)'
-                                      : appScanState.status === 'CAMERA_UNLOCKED'
-                                        ? '❌ 카메라 사용 제한 검증 실패'
-                                        : appScanState.status === 'CAMERA_CHECK_NEEDED'
-                                          ? '🟡 보안 어플 실행 완료 (카메라 검증 필요)'
-                                          : '검수 대기 중'}
-                              </strong>
+                                1. 어플 검수 {secAppVerified ? '✓ 완료' : '미완료'}
+                              </span>
+                              <span style={{
+                                padding: '2px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                background: cameraCheckVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                                color: cameraCheckVerified ? '#10b981' : '#94a3b8',
+                                border: cameraCheckVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'
+                              }}>
+                                2. 카메라 검수 {cameraCheckVerified ? '✓ 완료' : '미완료'}
+                              </span>
                             </div>
+                          </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
-                              <button
-                                type="button"
-                                onClick={handleCheckAppExecutionStatus}
-                                disabled={appScanState.isScanning || cameraCheckState.isTesting}
-                                style={{
-                                  width: '100%',
-                                  padding: '14px 16px',
-                                  borderRadius: '12px',
-                                  fontSize: '13px',
-                                  fontWeight: '800',
-                                  background: appScanState.status === 'VERIFIED'
-                                    ? 'rgba(16, 185, 129, 0.2)'
-                                    : `linear-gradient(135deg, ${targetApp.color} 0%, #00b4d8 100%)`,
-                                  color: appScanState.status === 'VERIFIED' ? '#10b981' : '#000',
-                                  border: appScanState.status === 'VERIFIED'
-                                    ? '1px solid rgba(16, 185, 129, 0.5)'
-                                    : 'none',
-                                  boxShadow: appScanState.status === 'VERIFIED'
-                                    ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                    : '0 4px 14px rgba(0, 242, 254, 0.25)',
-                                  cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  gap: '8px',
-                                  transition: 'all 0.25s ease'
-                                }}
-                              >
-                                {appScanState.isScanning || cameraCheckState.isTesting ? (
-                                  <><ShieldCheck size={18} className="animate-spin" /> 보안 어플 실행 상태 검수 중...</>
-                                ) : appScanState.status === 'VERIFIED' ? (
-                                  <><CheckCircle2 size={18} color="#10b981" /> ✓ 보안 어플 실행 상태 확인 완료</>
-                                ) : (
-                                  <><ShieldCheck size={18} /> 보안 어플 실행 상태 확인</>
-                                )}
-                              </button>
+                          {/* Sub-Check 1: 모바일 보안어플 바로가기 (어플 검수) */}
+                          <div style={{
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: secAppVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '14px',
+                            padding: '14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px'
+                          }}>
+                            <div style={{ fontSize: '12.5px', fontWeight: '800', color: secAppVerified ? '#10b981' : '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📱 1단계: 모바일 보안어플 직접 실행 및 검수</span>
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const selectedSiteObj = sites.find(s => {
+                                  const dName = s.address ? `${s.name} (${s.address})` : s.name;
+                                  return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
+                                });
+
+                                const appUrl = selectedSiteObj?.appUrl || 'secapp://';
+                                const siteName = selectedSiteObj?.name || formData.site || '출입 사업장';
+
+                                if (onTriggerToast) {
+                                  onTriggerToast(`📱 '${siteName}' 모바일 보안 어플을 실행합니다. 어플이 정상 작동하는지 확인해 주세요.`, 'info');
+                                }
+
+                                setSecAppVerified(true);
+
+                                try {
+                                  window.location.href = appUrl;
+                                } catch (e) {
+                                  window.open(appUrl, '_blank');
+                                }
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '14px 16px',
+                                borderRadius: '12px',
+                                fontSize: '13.5px',
+                                fontWeight: '800',
+                                background: secAppVerified
+                                  ? 'rgba(16, 185, 129, 0.2)'
+                                  : 'rgba(255, 255, 255, 0.08)',
+                                color: secAppVerified ? '#10b981' : '#cbd5e1',
+                                border: secAppVerified
+                                  ? '1px solid rgba(16, 185, 129, 0.5)'
+                                  : '1px solid rgba(255, 255, 255, 0.18)',
+                                boxShadow: secAppVerified
+                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
+                                  : 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                transition: 'all 0.25s ease'
+                              }}
+                            >
+                              {secAppVerified ? (
+                                <><CheckCircle2 size={18} color="#10b981" /> ✓ 모바일 보안어플 바로가기 (검수 완료)</>
+                              ) : (
+                                <><Smartphone size={18} /> 🚀 모바일 보안어플 바로가기 (앱 실행하기)</>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Sub-Check 2: 카메라 검수 */}
+                          <div style={{
+                            background: 'rgba(255, 255, 255, 0.02)',
+                            border: cameraCheckVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            borderRadius: '14px',
+                            padding: '14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px'
+                          }}>
+                            <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraCheckVerified ? '#10b981' : '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span>📸 2단계: 스마트폰 카메라 차단 검수</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await handleCheckAppExecutionStatus();
+                                setCameraCheckVerified(true);
+                              }}
+                              disabled={appScanState.isScanning || cameraCheckState.isTesting}
+                              style={{
+                                width: '100%',
+                                padding: '12px 16px',
+                                borderRadius: '12px',
+                                fontSize: '12.5px',
+                                fontWeight: '800',
+                                background: cameraCheckVerified
+                                  ? 'rgba(16, 185, 129, 0.2)'
+                                  : 'rgba(0, 242, 254, 0.12)',
+                                color: cameraCheckVerified ? '#10b981' : '#00f2fe',
+                                border: cameraCheckVerified
+                                  ? '1px solid rgba(16, 185, 129, 0.5)'
+                                  : '1px solid rgba(0, 242, 254, 0.35)',
+                                boxShadow: cameraCheckVerified
+                                  ? '0 0 14px rgba(16, 185, 129, 0.35)'
+                                  : '0 4px 14px rgba(0, 242, 254, 0.2)',
+                                cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '8px',
+                                transition: 'all 0.25s ease'
+                              }}
+                            >
+                              {appScanState.isScanning || cameraCheckState.isTesting ? (
+                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 검수 진행 중...</>
+                              ) : cameraCheckVerified ? (
+                                <><CheckCircle2 size={16} color="#10b981" /> ✓ 카메라 검수 완료</>
+                              ) : (
+                                <><ShieldCheck size={16} /> 카메라 검수</>
+                              )}
+                            </button>
                           </div>
                         </div>
 

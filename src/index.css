@@ -317,3 +317,42 @@ body {
 .toggle-switch.active .toggle-switch-handle {
   transform: translateX(20px);
 }
+
+/* Work Log Desktop Layout Grid (1 : 2.5 Ratio & Top Alignment) */
+@media (min-width: 1024px) {
+  .work-log-desktop-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 2.5fr !important;
+    align-items: start !important;
+  }
+
+  .work-log-calendar-sticky {
+    position: sticky !important;
+    top: 10px !important;
+    align-self: start !important;
+    height: fit-content !important;
+  }
+}
+
+/* Hide Calendar Widget in Mobile Shell Frame Mode and Small Viewports */
+.mobile-shell-wrapper .work-log-calendar-sticky {
+  display: none !important;
+}
+
+.mobile-shell-wrapper .work-log-desktop-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+@media (max-width: 1023px) {
+  .work-log-calendar-sticky {
+    display: none !important;
+  }
+
+  .work-log-desktop-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+}

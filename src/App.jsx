@@ -6,6 +6,7 @@ import EncryptedVaultTab from './components/tabs/EncryptedVaultTab';
 import SiteSecurityChecklistTab from './components/tabs/SiteSecurityChecklistTab';
 import UserProfileTab from './components/tabs/UserProfileTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
+import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw } from 'lucide-react';
 import { dbService } from './services/dbService';
 
@@ -246,6 +247,7 @@ export default function App() {
           >
             {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
+            {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={showToast} />}
             {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
             {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} setActiveTab={setActiveTab} />}
           </MobileContainer>

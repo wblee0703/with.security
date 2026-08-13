@@ -5,7 +5,8 @@ import {
   Building2,
   Settings,
   UserCheck,
-  ClipboardList
+  ClipboardList,
+  FileSpreadsheet
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 
@@ -120,6 +121,14 @@ export default function MobileContainer({
         >
           <ClipboardList size={18} />
           <span>업무 일지</span>
+        </button>
+
+        <button
+          onClick={() => handleNavClick('workSummary')}
+          className={`nav-item ${activeTab === 'workSummary' ? 'active' : ''}`}
+        >
+          <FileSpreadsheet size={18} />
+          <span>업무 정리</span>
         </button>
 
         {isAdmin && (
