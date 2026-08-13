@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
+import { launchApp } from '../../services/appLauncherService.js';
 
 const SECURITY_APP_CATALOG = [
   { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
@@ -421,20 +422,16 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 {s.type === '보안어플O' && s.appUrl && (
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       const url = s.appUrl.trim();
                       if (!url) return;
                       if (onTriggerToast) onTriggerToast(`🚀 '${s.name}' 핸드폰 연동 어플 실행 시도 (${url})`, 'info');
-                      try {
-                        window.location.href = url;
-                      } catch (e) {}
-                      try {
-                        const iframe = document.createElement('iframe');
-                        iframe.style.display = 'none';
-                        iframe.src = url;
-                        document.body.appendChild(iframe);
-                        setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 1500);
-                      } catch (e) {}
+                      const result = await launchApp(url);
+                      if (result.success) {
+                        if (onTriggerToast) onTriggerToast(`✓ '${s.name}' 연동 어플이 성공적으로 실행되었습니다!`, 'success');
+                      } else {
+                        if (onTriggerToast) onTriggerToast(`⚠️ 어플('${url}')을 실행할 수 없거나 설치되어 있지 않습니다.`, 'warning');
+                      }
                     }}
                     style={{
                       background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(0, 242, 254, 0.25) 100%)',

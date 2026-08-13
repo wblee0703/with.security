@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { 
   ShieldCheck, 
   QrCode, 
@@ -65,9 +66,12 @@ export default function WebDesktopLayout({
   };
 
   const isAdmin = ['개발자', '관리자'].includes(activeUser?.role) || activeUser?.username === 'admin';
+  const isDeveloper = activeUser?.role === '개발자' || activeUser?.username === 'admin';
+  const isNative = Capacitor.isNativePlatform();
+  const showSecurityChecklistTab = isNative || isDeveloper;
 
   const navItems = [
-    { id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: 'HOT' },
+    ...(showSecurityChecklistTab ? [{ id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: isNative ? 'HOT' : 'DEV 전용' }] : []),
     { id: 'workLog', label: '업무 일지', icon: ClipboardList, badge: '신규' },
     { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet, badge: 'NEW' },
     ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),

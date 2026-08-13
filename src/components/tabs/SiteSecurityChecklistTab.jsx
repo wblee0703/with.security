@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { launchApp } from '../../services/appLauncherService.js';
 import {
   Building2,
   ShieldCheck,
@@ -2458,7 +2459,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                             </div>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 const selectedSiteObj = sites.find(s => {
                                   const dName = s.address ? `${s.name} (${s.address})` : s.name;
                                   return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
@@ -2480,74 +2481,25 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                   onTriggerToast(`📱 '${siteName}' ADMIN 연동 어플 실행 시도: (${targetScheme})`, 'info');
                                 }
 
-                                let hasBlurred = false;
-                                const handleBlur = () => {
-                                  hasBlurred = true;
-                                };
+                                const result = await launchApp(targetScheme);
+                                const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
-                                window.addEventListener('blur', handleBlur, { once: true });
-
-                                try {
-                                  // Capacitor Native App Launcher
-                                  AppLauncher.openUrl({ url: targetScheme }).catch(() => {});
-
-                                  window.location.href = targetScheme;
-
-                                  // Dynamic Hidden Iframe Launcher (Bypasses Chrome Mobile popup/intent block)
-                                  try {
-                                    const iframe = document.createElement('iframe');
-                                    iframe.style.display = 'none';
-                                    iframe.src = targetScheme;
-                                    document.body.appendChild(iframe);
-                                    setTimeout(() => { if (iframe.parentNode) iframe.parentNode.removeChild(iframe); }, 1500);
-                                  } catch (err) {}
-
-                                  // Multi-Intent Fallback Chain for SK Hynix SSM & Corporate Security Apps
-                                  if (targetScheme.includes('ssm') || targetScheme.includes('skhynix') || targetScheme.includes('SK')) {
-                                    setTimeout(() => {
-                                      if (!hasBlurred) {
-                                        window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end';
-                                        AppLauncher.openUrl({ url: 'com.skhynix.ssm' }).catch(() => {});
-                                      }
-                                    }, 250);
-                                    setTimeout(() => {
-                                      if (!hasBlurred) {
-                                        window.location.href = 'ssm://';
-                                        AppLauncher.openUrl({ url: 'ssm://' }).catch(() => {});
-                                      }
-                                    }, 550);
-                                  } else if (targetScheme.includes('knox') || targetScheme.includes('secapp')) {
-                                    setTimeout(() => {
-                                      if (!hasBlurred) {
-                                        window.location.href = 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end';
-                                      }
-                                    }, 250);
+                                if (result.success) {
+                                  setSecAppVerified(true);
+                                  if (onTriggerToast) {
+                                    onTriggerToast(`✓ [어플 검수 완료] '${siteName}' 모바일 보안 어플이 성공적으로 감지 및 실행되었습니다!`, 'success');
                                   }
-                                } catch (e) {
-                                  window.open(targetScheme, '_blank');
+                                } else if (result.method === 'web-disabled') {
+                                  setSecAppVerified(true);
+                                  if (onTriggerToast) {
+                                    onTriggerToast(`🧪 [개발자 웹 테스트 환경] ADMIN 연동 어플('${targetScheme}') 시뮬레이션 검수 완료`, 'info');
+                                  }
+                                } else {
+                                  setSecAppVerified(false);
+                                  if (onTriggerToast) {
+                                    onTriggerToast(`❌ [어플 검수 실패] 등록된 어플('${targetScheme}')을 실행할 수 없거나 핸드폰에 설치되어 있지 않습니다.`, 'error');
+                                  }
                                 }
-
-                                setTimeout(() => {
-                                  window.removeEventListener('blur', handleBlur);
-                                  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-
-                                  if (hasBlurred || document.hidden) {
-                                    setSecAppVerified(true);
-                                    if (onTriggerToast) {
-                                      onTriggerToast(`✓ [어플 검수 완료] '${siteName}' 모바일 보안 어플이 성공적으로 감지 및 실행되었습니다!`, 'success');
-                                    }
-                                  } else if (isMobile) {
-                                    setSecAppVerified(false);
-                                    if (onTriggerToast) {
-                                      onTriggerToast(`❌ [어플 검수 실패] 등록된 어플('${targetScheme}')을 실행할 수 없거나 핸드폰에 설치되어 있지 않습니다.`, 'error');
-                                    }
-                                  } else {
-                                    setSecAppVerified(true);
-                                    if (onTriggerToast) {
-                                      onTriggerToast(`✓ [PC 개발 시뮬레이션] ADMIN 연동 어플('${targetScheme}') 실행 확인 완료`, 'info');
-                                    }
-                                  }
-                                }, 1200);
                               }}
                               style={{
                                 width: '100%',
