@@ -138,8 +138,9 @@ export default function App() {
     showToast('로컬 전용 모드로 앱을 시작합니다. (모바일/웹 데이터 실시간 동기화)');
   };
 
-  // View mode: 'web' or 'mobile'. Default based on screen width.
+  // View mode: 'web' or 'mobile'. Default based on screen width or native platform.
   const [viewMode, setViewMode] = useState(() => {
+    if (Capacitor.isNativePlatform()) return 'mobile';
     return window.innerWidth > 768 ? 'web' : 'mobile';
   });
 
