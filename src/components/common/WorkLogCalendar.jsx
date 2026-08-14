@@ -272,7 +272,7 @@ export default function WorkLogCalendar({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
           background: 'rgba(255, 255, 255, 0.02)',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           textAlign: 'center',
@@ -296,11 +296,13 @@ export default function WorkLogCalendar({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(7, 1fr)',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
           gridAutoRows: 'minmax(84px, 1fr)',
           gap: '1px',
           background: 'rgba(255, 255, 255, 0.06)',
-          flex: 1
+          flex: 1,
+          width: '100%',
+          boxSizing: 'border-box'
         }}
       >
         {calendarDays.map((cell, idx) => {
@@ -329,7 +331,11 @@ export default function WorkLogCalendar({
                 position: 'relative',
                 cursor: cell.isCurrentMonth ? 'pointer' : 'default',
                 transition: 'all 0.15s ease',
-                border: isSelected ? '1px solid rgba(0, 242, 254, 0.6)' : '1px solid transparent'
+                border: isSelected ? '1px solid rgba(0, 242, 254, 0.6)' : '1px solid transparent',
+                minWidth: 0,
+                maxWidth: '100%',
+                overflow: 'hidden',
+                boxSizing: 'border-box'
               }}
             >
               {/* Day Number Header */}
@@ -338,7 +344,9 @@ export default function WorkLogCalendar({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  marginBottom: '2px'
+                  marginBottom: '2px',
+                  minWidth: 0,
+                  width: '100%'
                 }}
               >
                 <span
@@ -375,7 +383,8 @@ export default function WorkLogCalendar({
                       padding: '1px 4px',
                       borderRadius: '4px',
                       background: 'rgba(0, 242, 254, 0.15)',
-                      color: '#00f2fe'
+                      color: '#00f2fe',
+                      flexShrink: 0
                     }}
                   >
                     {dayLogs.length}건
@@ -391,7 +400,10 @@ export default function WorkLogCalendar({
                   gap: '3px',
                   overflowY: 'auto',
                   maxHeight: '76px',
-                  scrollbarWidth: 'none'
+                  scrollbarWidth: 'none',
+                  minWidth: 0,
+                  width: '100%',
+                  overflowX: 'hidden'
                 }}
               >
                 {dayLogs.map((log) => {
@@ -418,7 +430,11 @@ export default function WorkLogCalendar({
                         textOverflow: 'ellipsis',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '3px'
+                        gap: '3px',
+                        minWidth: 0,
+                        width: '100%',
+                        maxWidth: '100%',
+                        boxSizing: 'border-box'
                       }}
                     >
                       <span
@@ -430,7 +446,16 @@ export default function WorkLogCalendar({
                           flexShrink: 0
                         }}
                       />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span
+                        style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          minWidth: 0,
+                          flex: 1,
+                          display: 'block'
+                        }}
+                      >
                         {log.title}
                       </span>
                     </div>

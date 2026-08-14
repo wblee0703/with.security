@@ -46,8 +46,17 @@
         <package android:name="com.skhynix.ssm.mobile" />
         <package android:name="com.skhynix.mobile.ssm" />
         <package android:name="com.sec.knox.app" />
-        <package android:name="com.ahnlab.v3mobile" />
+        <package android:name="com.samsung.klms" />
+        <package android:name="com.sds.emp.mobile.mdm" />
+        <package android:name="com.samsung.sec.android.mdm" />
+        <package android:name="com.samsung.mdm" />
+        <package android:name="com.lgd.deviceon" />
+        <package android:name="com.lgd.deviceon.mobile" />
+        <package android:name="com.lgdisplay.deviceon" />
+        <package android:name="kr.co.lgd.deviceon" />
         <package android:name="com.lgd.security" />
+        <package android:name="com.lg.deviceon" />
+        <package android:name="com.ahnlab.v3mobile" />
         <package android:name="com.hmg.security" />
         <package android:name="com.posco.security" />
         <package android:name="com.hanwha.sec" />
@@ -65,6 +74,22 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="secapp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="knox" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="samsungmdm" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="deviceon" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="lgdsec" />
         </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />

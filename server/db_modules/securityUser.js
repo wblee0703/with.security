@@ -1,14 +1,41 @@
 import { query } from '../mysql.js';
 import crypto from 'crypto';
+
+const SALT_PREFIX = 'WithSecurity_SALT_2026_';
+
 /**
- * SHA-256 서버 암호화 헬퍼 (평문 입력시 자동 암호화, 이미 64자리 해시인 경우 그대로 보존)
+ * 4. SHA-256 서버 솔트(Salt) 암호화 헬퍼
  */
-function hashPasswordServer(rawPassword) {
+export function hashPasswordServer(rawPassword) {
   if (!rawPassword) return '';
   const str = String(rawPassword).trim();
+  // 이미 솔트 해시된 64자리 문자열인 경우 그대로 보존
   if (/^[a-f0-9]{64}$/i.test(str)) return str;
-  return crypto.createHash('sha256').update(`WithSecurity_SALT_2026_${str}`).digest('hex');
+  return crypto.createHash('sha256').update(`${SALT_PREFIX}${str}`).digest('hex');
 }
+
+/**
+ * 솔트 해시 및 레거시 해시 호환 검증 함수
+ */
+export function verifyUserPasswordServer(inputPassword, storedPasswordHash) {
+  if (!inputPassword || !storedPasswordHash) return false;
+  const inputStr = String(inputPassword).trim();
+  const storedStr = String(storedPasswordHash).trim();
+
+  // 1. 솔트 적용 해시 검증
+  const saltedHash = crypto.createHash('sha256').update(`${SALT_PREFIX}${inputStr}`).digest('hex');
+  if (saltedHash === storedStr) return true;
+
+  // 2. 레거시 일반 SHA-256 해시 검증 (하위 호환성)
+  const legacyHash = crypto.createHash('sha256').update(inputStr).digest('hex');
+  if (legacyHash === storedStr) return true;
+
+  // 3. 평문 직접 일치 검증 (개발/테스트 임시 계정)
+  if (inputStr === storedStr) return true;
+
+  return false;
+}
+
 /**
  * 사용자 목록 조회 (security_user)
  * admin 개발자 계정이 없으면 자동 생성 후 반환
@@ -23,7 +50,7 @@ export async function getSecurityUsers() {
     try {
       await createSecurityUser({
         username: 'admin',
-        password: 'd68e2e25808044e471e01da6bf4ef8dc8fd56de3c4fa590b34b86b7c86fef899',
+        password: hashPasswordServer('admin'),
         name: '이원배',
         role: '개발자',
         division: '영업/운영사업부',
@@ -35,7 +62,7 @@ export async function getSecurityUsers() {
       });
       await createSecurityUser({
         username: 'wblee',
-        password: 'd68e2e25808044e471e01da6bf4ef8dc8fd56de3c4fa590b34b86b7c86fef899',
+        password: hashPasswordServer('1234'),
         name: '이원배',
         role: '일반',
         division: '영업/운영사업부',
@@ -73,10 +100,9 @@ export async function getSecurityUserByUsername(username) {
 }
 
 /**
- * 사용자 생성 / 업데이트 (비밀번호 SHA-256 암호화 적용)
+ * 사용자 생성 / 업데이트 (비밀번호 솔트 SHA-256 암호화 적용)
  */
 export async function createSecurityUser(data = {}) {
-
   const username = data.username || '';
   const rawPass = data.password || data.passwordHash || '';
   const password = rawPass ? hashPasswordServer(rawPass) : '';

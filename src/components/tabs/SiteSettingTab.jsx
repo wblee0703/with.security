@@ -1,22 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone, Search } from 'lucide-react';
+import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { launchApp } from '../../services/appLauncherService.js';
 
 const SECURITY_APP_CATALOG = [
-  { id: 'knox', name: '삼성 Knox Security', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox 보안어플', badge: '삼성' },
+  { id: 'knox', name: '삼성 Knox / MDM 모바일 보안', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end', desc: '삼성 스마트폰 Enterprise Knox / 삼성 MDM 보안어플', badge: '삼성' },
   { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
-  { id: 'lgd', name: 'LG디스플레이 모바일 보안관제', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;scheme=lgdsec;package=com.lgd.security;end', desc: 'LG디스플레이 모바일 보안 어플', badge: 'LGD' },
-  { id: 'v3', name: '안랩 V3 Mobile Enterprise', company: '기업 통합 모바일 백신 및 보안어플', scheme: 'intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end', desc: 'AhnLab V3 Enterprise Security', badge: '안랩' },
-  { id: 'hmg', name: '현대자동차그룹 모바일 보안', company: '현대자동차 / 기아 남양연구소 및 공장', scheme: 'intent://#Intent;scheme=hsec;package=com.hmg.security;end', desc: 'HMG Mobile Security Guard', badge: '현대차그룹' },
-  { id: 'posco', name: '포스코 제철소 모바일 관제', company: '포스코 포항 / 광양제철소', scheme: 'intent://#Intent;scheme=pososec;package=com.posco.security;end', desc: 'POSCO Mobile Guard', badge: '포스코' },
-  { id: 'hanwha', name: '한화 모바일 통합 보안관제', company: '한화솔루션 / 한화토탈 사업장', scheme: 'intent://#Intent;scheme=hanwhasec;package=com.hanwha.sec;end', desc: 'Hanwha Mobile Guard', badge: '한화' },
-  { id: 'kt', name: 'KT 기업 통합 보안어플', company: 'KT 사옥 및 IDC 통합 관제', scheme: 'intent://#Intent;scheme=ktsec;package=com.kt.enterprise;end', desc: 'KT Enterprise Security', badge: 'KT' },
-  { id: 'samsungsec', name: '삼성 모바일 통합 보안관제', company: '삼성그룹 통계 및 보안관제', scheme: 'intent://#Intent;scheme=samsungsec;package=com.samsung.sec;end', desc: 'Samsung Mobile Security', badge: '삼성' }
+  { id: 'lgd', name: 'LGD 디바이스온 (LG디스플레이)', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end', desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 어플', badge: 'LGD' }
 ];
 
-export default function EncryptedVaultTab({ onTriggerToast }) {
+export default function SiteSettingTab({ onTriggerToast }) {
   const [sites, setSites] = useState([]);
   const [newSiteForm, setNewSiteForm] = useState({ type: '보안어플O', name: '', address: '', appUrl: '' });
 
@@ -27,8 +21,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
   // App Picker Modal State
   const [isAppPickerOpen, setIsAppPickerOpen] = useState(false);
   const [appPickerTargetSite, setAppPickerTargetSite] = useState(null); // 'new' | 'editing' | siteId
-  const [appSearchTerm, setAppSearchTerm] = useState('');
-  const [customAppInput, setCustomAppInput] = useState('');
 
   const loadSites = async () => {
     try {
@@ -66,17 +58,23 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
 
     const uniqueId = `site-${Date.now().toString().slice(-6)}`;
 
+    const matchingApp = SECURITY_APP_CATALOG.find(a => a.scheme === (newSiteForm.appUrl || '').trim());
+    const resolvedAppName = newSiteForm.appName || (matchingApp ? matchingApp.name : '');
+
     const newSite = {
       id: uniqueId,
       type: type,
       name: name,
       address: address,
-      appUrl: (newSiteForm.appUrl || '').trim()
+      appName: resolvedAppName,
+      app_name: resolvedAppName,
+      appUrl: (newSiteForm.appUrl || '').trim(),
+      app_url: (newSiteForm.appUrl || '').trim()
     };
 
     await dbService.saveSite(newSite);
     await loadSites();
-    setNewSiteForm({ type: '보안어플O', name: '', address: '', appUrl: '' });
+    setNewSiteForm({ type: '보안어플O', name: '', address: '', appUrl: '', appName: '' });
     if (onTriggerToast) onTriggerToast(`'${newSite.name}' (${newSite.address || '위치 미지정'}) 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
@@ -86,6 +84,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
       type: site.type || '보안어플O',
       name: site.name || '',
       address: site.address || '',
+      appName: site.appName || site.app_name || '',
       appUrl: site.appUrl || site.app_url || ''
     });
     setIsEditModalOpen(true);
@@ -98,12 +97,18 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
       return;
     }
 
+    const matchingApp = SECURITY_APP_CATALOG.find(a => a.scheme === (editingSite.appUrl || '').trim());
+    const resolvedAppName = editingSite.appName || (matchingApp ? matchingApp.name : '');
+
     const updatedSite = {
       id: editingSite.id,
       type: editingSite.type.trim() || '보안어플O',
       name: editingSite.name.trim(),
       address: editingSite.address.trim(),
-      appUrl: (editingSite.appUrl || '').trim()
+      appName: resolvedAppName,
+      app_name: resolvedAppName,
+      appUrl: (editingSite.appUrl || '').trim(),
+      app_url: (editingSite.appUrl || '').trim()
     };
 
     await dbService.saveSite(updatedSite);
@@ -153,8 +158,6 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
 
   const handleOpenAppPickerModal = (targetSite) => {
     setAppPickerTargetSite(targetSite);
-    setAppSearchTerm('');
-    setCustomAppInput('');
     setIsAppPickerOpen(true);
   };
 
@@ -168,15 +171,15 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     const nameLabel = appNameStr || finalScheme;
 
     if (appPickerTargetSite === 'new') {
-      setNewSiteForm(prev => ({ ...prev, appUrl: finalScheme }));
+      setNewSiteForm(prev => ({ ...prev, appUrl: finalScheme, appName: nameLabel }));
       if (onTriggerToast) onTriggerToast(`'${nameLabel}' 어플이 선택되었습니다.`, 'success');
     } else if (appPickerTargetSite === 'editing' || (editingSite && editingSite.id === appPickerTargetSite)) {
-      setEditingSite(prev => ({ ...prev, appUrl: finalScheme }));
+      setEditingSite(prev => ({ ...prev, appUrl: finalScheme, appName: nameLabel }));
       if (onTriggerToast) onTriggerToast(`'${nameLabel}' 어플이 설정되었습니다.`, 'success');
     } else {
       const targetSite = sites.find(s => s.id === appPickerTargetSite);
       if (targetSite) {
-        const updated = { ...targetSite, appUrl: finalScheme, type: '보안어플O' };
+        const updated = { ...targetSite, appUrl: finalScheme, app_url: finalScheme, appName: nameLabel, app_name: nameLabel, type: '보안어플O' };
         await dbService.saveSite(updated);
         await loadSites();
         if (onTriggerToast) onTriggerToast(`'${targetSite.name}' 사업장에 '${nameLabel}' 어플이 연동 등록되었습니다.`, 'success');
@@ -185,32 +188,29 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
     setIsAppPickerOpen(false);
   };
 
-  const filteredCatalog = SECURITY_APP_CATALOG.filter(app => {
-    const q = appSearchTerm.toLowerCase();
-    return app.name.toLowerCase().includes(q) || app.company.toLowerCase().includes(q) || app.scheme.toLowerCase().includes(q);
-  });
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
       {/* Header Banner */}
       <div className="glass-panel" style={{ padding: '20px 24px', borderRadius: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
-              width: '44px',
-              height: '44px',
+              width: '46px',
+              height: '46px',
               borderRadius: '14px',
-              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '1px solid rgba(0, 242, 254, 0.4)'
+              color: '#050b14',
+              boxShadow: '0 0 18px rgba(0, 242, 254, 0.4)',
+              flexShrink: 0
             }}>
-              <Settings size={24} color="#00f2fe" />
+              <Building2 size={24} />
             </div>
             <div>
               <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                출입 대상 사업장 통합 관리
+                출입 사업장 관리
               </div>
             </div>
           </div>
@@ -338,7 +338,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                     flexShrink: 0
                   }}
                 >
-                  <Search size={14} /> 🔍 어플 찾기
+                  <Smartphone size={14} /> 📱 어플 선택
                 </button>
               </div>
             </div>
@@ -372,7 +372,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {sites.map((s) => (
             <div
               key={s.id}
@@ -382,84 +382,61 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                 padding: '14px 16px',
                 borderRadius: '14px',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: '10px'
+                flexDirection: 'column',
+                gap: '10px',
+                width: '100%',
+                boxSizing: 'border-box'
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <span style={{
-                  padding: '3px 8px',
-                  borderRadius: '6px',
-                  fontSize: '11px',
-                  fontWeight: '700',
-                  background: s.type === '보안어플O' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  color: s.type === '보안어플O' ? '#34d399' : '#f87171',
-                  border: s.type === '보안어플O' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+              {/* Row 1: 분류, 사업장명, 사업장 위치 (왼쪽) | 수정버튼, 삭제버튼 (오른쪽) */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                width: '100%'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  flexWrap: 'wrap',
+                  minWidth: 0,
+                  flex: 1
                 }}>
-                  {s.type || '보안어플O'}
-                </span>
+                  <span style={{
+                    padding: '3px 8px',
+                    borderRadius: '6px',
+                    fontSize: '11px',
+                    fontWeight: '700',
+                    background: s.type === '보안어플O' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: s.type === '보안어플O' ? '#34d399' : '#f87171',
+                    border: s.type === '보안어플O' ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                    flexShrink: 0
+                  }}>
+                    {s.type || '보안어플O'}
+                  </span>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>
+                  <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#fff' }}>
                     {s.name}
                   </span>
+
                   {s.address && (
                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                      {s.address}
-                    </span>
-                  )}
-                  {s.appUrl && (
-                    <span style={{ fontSize: '11px', color: '#00f2fe', background: 'rgba(0,242,254,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                      📱 {s.appUrl}
+                      ({s.address})
                     </span>
                   )}
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {s.type === '보안어플O' && s.appUrl && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                   <button
                     type="button"
-                    onClick={async () => {
-                      const url = s.appUrl.trim();
-                      if (!url) return;
-                      if (onTriggerToast) onTriggerToast(`🚀 '${s.name}' 핸드폰 연동 어플 실행 시도 (${url})`, 'info');
-                      const result = await launchApp(url);
-                      if (result.success) {
-                        if (onTriggerToast) onTriggerToast(`✓ '${s.name}' 연동 어플이 성공적으로 실행되었습니다!`, 'success');
-                      } else {
-                        if (onTriggerToast) onTriggerToast(`⚠️ 어플('${url}')을 실행할 수 없거나 설치되어 있지 않습니다.`, 'warning');
-                      }
-                    }}
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(0, 242, 254, 0.25) 100%)',
-                      border: '1px solid rgba(16, 185, 129, 0.5)',
-                      color: '#34d399',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)'
-                    }}
-                  >
-                    🚀 어플 바로가기
-                  </button>
-                )}
-                {s.type === '보안어플O' && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenAppPickerModal(s.id)}
+                    onClick={() => handleOpenEditModal(s)}
                     style={{
                       background: 'rgba(0, 242, 254, 0.1)',
                       border: '1px solid rgba(0, 242, 254, 0.3)',
                       color: '#00f2fe',
-                      padding: '6px 12px',
+                      padding: '5px 10px',
                       borderRadius: '8px',
                       fontSize: '12px',
                       fontWeight: '700',
@@ -469,52 +446,136 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                       gap: '4px',
                       transition: 'all 0.2s ease'
                     }}
-                    title="스마트폰 보안 어플 찾기 및 연동 등록"
+                    title="사업장 정보 수정"
                   >
-                    <Search size={13} /> 어플 찾기
+                    <Edit3 size={13} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleOpenEditModal(s)}
-                  style={{
-                    background: 'rgba(0, 242, 254, 0.1)',
-                    border: '1px solid rgba(0, 242, 254, 0.3)',
-                    color: '#00f2fe',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <Edit3 size={13} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleInitiateDeleteSite(s.id, s.name)}
-                  style={{
-                    background: 'rgba(244, 63, 94, 0.1)',
-                    border: '1px solid rgba(244, 63, 94, 0.3)',
-                    color: '#f43f5e',
-                    padding: '6px 12px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'all 0.2s ease'
-                  }}
-                >
-                  <Trash2 size={13} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInitiateDeleteSite(s.id, s.name)}
+                    style={{
+                      background: 'rgba(244, 63, 94, 0.1)',
+                      border: '1px solid rgba(244, 63, 94, 0.3)',
+                      color: '#f43f5e',
+                      padding: '5px 10px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    title="사업장 삭제"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
+
+              {/* Row 2: 어플 경로(너비 맞춤 말줄임) | 어플 바로가기 & 어플 찾기 버튼 */}
+              {s.type === '보안어플O' && (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                  width: '100%',
+                  minWidth: 0
+                }}>
+                  {/* 어플 경로 텍스트 (너비에 맞춰 말줄임 처리) */}
+                  <div
+                    title={s.appUrl ? `연동 어플: ${s.appName || ''}\n경로: ${s.appUrl}` : '연동된 보안 어플이 없습니다.'}
+                    style={{
+                      fontSize: '11.5px',
+                      color: s.appUrl ? '#00f2fe' : '#64748b',
+                      background: s.appUrl ? 'rgba(0, 242, 254, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+                      border: s.appUrl ? '1px solid rgba(0, 242, 254, 0.2)' : '1px solid rgba(255, 255, 255, 0.06)',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      minWidth: 0,
+                      flex: 1,
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <Smartphone size={13} style={{ flexShrink: 0, color: s.appUrl ? '#00f2fe' : '#64748b' }} />
+                    <span style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      minWidth: 0,
+                      flex: 1
+                    }}>
+                      {s.appUrl ? (s.appName ? `[${s.appName}] ${s.appUrl}` : s.appUrl) : '연동된 모바일 보안 어플 없음 (어플 찾기 필요)'}
+                    </span>
+                  </div>
+
+                  {/* Buttons: 어플 바로가기(실행) + 어플 찾기(선택) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {s.appUrl && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const url = s.appUrl.trim();
+                          if (!url) return;
+                          if (onTriggerToast) onTriggerToast(`🚀 '${s.name}' 핸드폰 연동 어플 실행 시도 (${url})`, 'info');
+                          const result = await launchApp(url);
+                          if (result.success) {
+                            if (onTriggerToast) onTriggerToast(`✓ '${s.name}' 연동 어플이 성공적으로 실행되었습니다!`, 'success');
+                          } else {
+                            if (onTriggerToast) onTriggerToast(`⚠️ 어플('${url}')을 실행할 수 없거나 설치되어 있지 않습니다.`, 'warning');
+                          }
+                        }}
+                        style={{
+                          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(0, 242, 254, 0.25) 100%)',
+                          border: '1px solid rgba(16, 185, 129, 0.5)',
+                          color: '#34d399',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '11.5px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          boxShadow: '0 2px 8px rgba(16, 185, 129, 0.2)'
+                        }}
+                        title="연동된 모바일 어플 실행"
+                      >
+                        🚀 바로가기
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAppPickerModal(s.id)}
+                      style={{
+                        background: 'rgba(0, 242, 254, 0.12)',
+                        border: '1px solid rgba(0, 242, 254, 0.35)',
+                        color: '#00f2fe',
+                        padding: '5px 10px',
+                        borderRadius: '8px',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease'
+                      }}
+                      title="스마트폰 보안 어플 찾기 및 연동 등록"
+                    >
+                      <Smartphone size={13} /> 어플 찾기
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -656,7 +717,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                         flexShrink: 0
                       }}
                     >
-                      <Search size={14} /> 🔍 어플 찾기
+                      <Smartphone size={14} /> 📱 어플 선택
                     </button>
                   </div>
                 </div>
@@ -762,39 +823,17 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* Search Input Bar */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#0a0f1d', border: '1px solid rgba(0, 242, 254, 0.35)', padding: '10px 14px', borderRadius: '12px' }}>
-              <Search size={16} color="#00f2fe" />
-              <input
-                type="text"
-                placeholder="핸드폰 어플 이름 검색 (예: 삼성, 하이닉스, 안랩, LG, 현대...)"
-                value={appSearchTerm}
-                onChange={(e) => setAppSearchTerm(e.target.value)}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#fff',
-                  fontSize: '13px',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
             {/* Installed Smartphone Apps List */}
             <div style={{
-              flex: 1,
-              overflowY: 'auto',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px',
-              paddingRight: '4px'
+              gap: '12px'
             }}>
               <div style={{ fontSize: '12px', fontWeight: '800', color: '#00f2fe', marginTop: '2px' }}>
-                📱 핸드폰 설치 어플 목록 ({filteredCatalog.length}개)
+                📱 지원 보안 어플 선택 (총 {SECURITY_APP_CATALOG.length}개사)
               </div>
 
-              {filteredCatalog.map(app => (
+              {SECURITY_APP_CATALOG.map(app => (
                 <div
                   key={app.id}
                   onClick={() => handleSelectAppFromPicker(app.scheme, app.name)}
@@ -802,7 +841,7 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                     background: 'rgba(255, 255, 255, 0.03)',
                     border: '1px solid rgba(255, 255, 255, 0.08)',
                     borderRadius: '14px',
-                    padding: '12px 14px',
+                    padding: '14px 16px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -813,27 +852,27 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0, 242, 254, 0.08)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)'}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                     <div style={{
-                      width: '38px',
-                      height: '38px',
-                      borderRadius: '10px',
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '12px',
                       background: 'rgba(255,255,255,0.06)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      fontSize: '18px'
+                      fontSize: '20px'
                     }}>
                       📱
                     </div>
                     <div>
-                      <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span>{app.name}</span>
-                        <span style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '4px', background: 'rgba(0,242,254,0.15)', color: '#00f2fe' }}>
+                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(0,242,254,0.15)', color: '#00f2fe', fontWeight: '700' }}>
                           {app.badge}
                         </span>
                       </div>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                      <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '3px' }}>
                         {app.company}
                       </div>
                     </div>
@@ -845,94 +884,18 @@ export default function EncryptedVaultTab({ onTriggerToast }) {
                       background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
                       border: 'none',
                       color: '#050b14',
-                      padding: '6px 12px',
+                      padding: '8px 14px',
                       borderRadius: '8px',
-                      fontSize: '11.5px',
+                      fontSize: '12px',
                       fontWeight: '800',
                       cursor: 'pointer',
                       flexShrink: 0
                     }}
                   >
-                    어플 등록
+                    어플 연동
                   </button>
                 </div>
               ))}
-            </div>
-
-            {/* Smart Custom App Input */}
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ fontSize: '11.5px', color: '#00f2fe', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                📱 핸드폰에 있는 기타 어플 이름 직접 입력 및 등록
-              </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input
-                  type="text"
-                  placeholder="예: 삼성, 하이닉스, 안랩, V3 등 어플 이름 입력"
-                  value={customAppInput}
-                  onChange={(e) => setCustomAppInput(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: '10px 12px',
-                    borderRadius: '10px',
-                    background: '#0a0f1d',
-                    border: '1px solid rgba(0, 242, 254, 0.35)',
-                    color: '#fff',
-                    fontSize: '12px',
-                    outline: 'none'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!customAppInput || !customAppInput.trim()) {
-                      if (onTriggerToast) onTriggerToast('어플 이름을 입력해 주세요.', 'warning');
-                      return;
-                    }
-                    const val = customAppInput.trim();
-                    const lower = val.toLowerCase();
-                    let targetLaunchUrl = val;
-                    let labelName = val;
-
-                    if (lower.includes('knox') || lower.includes('삼성') || lower.includes('sec')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=secapp;package=com.sec.knox.app;end';
-                      labelName = '삼성 Knox Security';
-                    } else if (lower.includes('ssm') || lower.includes('하이닉스') || lower.includes('sk')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=ssm;package=com.skhynix.ssm;end';
-                      labelName = 'SK하이닉스 SSM';
-                    } else if (lower.includes('v3') || lower.includes('안랩') || lower.includes('ahnlab')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=v3mobile;package=com.ahnlab.v3mobile;end';
-                      labelName = '안랩 V3 Mobile';
-                    } else if (lower.includes('lg') || lower.includes('lgd') || lower.includes('엘지')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=lgdsec;package=com.lgd.security;end';
-                      labelName = 'LG디스플레이 모바일 보안';
-                    } else if (lower.includes('현대') || lower.includes('hmg')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=hsec;package=com.hmg.security;end';
-                      labelName = '현대차 모바일 보안';
-                    } else if (lower.includes('포스코') || lower.includes('posco')) {
-                      targetLaunchUrl = 'intent://#Intent;scheme=pososec;package=com.posco.security;end';
-                      labelName = '포스코 제철소 관제어플';
-                    } else if (val.includes('.') && !val.includes('://')) {
-                      targetLaunchUrl = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${val};end`;
-                      labelName = `핸드폰 설치 앱 (${val})`;
-                    }
-
-                    handleSelectAppFromPicker(targetLaunchUrl, labelName);
-                  }}
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-                    color: '#050b14',
-                    border: 'none',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  어플 등록
-                </button>
-              </div>
             </div>
           </div>
         </div>

@@ -411,18 +411,20 @@ export default function WorkLogTab({ onTriggerToast }) {
           {/* Header Banner */}
           <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{
-                  width: '44px',
-                  height: '44px',
+                  width: '46px',
+                  height: '46px',
                   borderRadius: '14px',
-                  background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px solid rgba(0, 242, 254, 0.4)'
+                  color: '#050b14',
+                  boxShadow: '0 0 18px rgba(0, 242, 254, 0.4)',
+                  flexShrink: 0
                 }}>
-                  <ClipboardList size={24} color="#00f2fe" />
+                  <ClipboardList size={24} />
                 </div>
                 <div>
                   <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>

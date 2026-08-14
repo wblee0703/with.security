@@ -72,7 +72,7 @@ export async function decryptData(cipherText) {
   }
 }
 
-// SHA-256 One-Way Password Hashing Helper
+// SHA-256 One-Way Password Hashing Helper with Salt
 export async function hashPassword(plainPassword) {
   try {
     if (!plainPassword) return '';
@@ -85,4 +85,28 @@ export async function hashPassword(plainPassword) {
     console.error('Password hash error:', err);
     return plainPassword;
   }
+}
+
+// Password Verification Helper (Salted Hash + Legacy Hash + Direct Match)
+export async function verifyPasswordHash(inputPassword, storedHash) {
+  if (!inputPassword || !storedHash) return false;
+  const inputStr = String(inputPassword).trim();
+  const storedStr = String(storedHash).trim();
+
+  // 1. Salted Hash check
+  const saltedHash = await hashPassword(inputStr);
+  if (saltedHash === storedStr) return true;
+
+  // 2. Legacy Plain SHA-256 check
+  try {
+    const enc = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(inputStr));
+    const legacyHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    if (legacyHash === storedStr) return true;
+  } catch (e) {}
+
+  // 3. Direct match check (for raw admin/1234 credentials)
+  if (inputStr === storedStr) return true;
+
+  return false;
 }

@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { 
-  ShieldCheck, 
-  QrCode, 
-  KeyRound, 
-  Lock, 
-  AlertOctagon, 
-  Monitor, 
-  Smartphone, 
-  Bell, 
-  User, 
-  Search, 
-  Activity, 
+import {
+  ShieldCheck,
+  QrCode,
+  KeyRound,
+  Lock,
+  AlertOctagon,
+  Monitor,
+  Smartphone,
+  Bell,
+  User,
+  Search,
+  Activity,
   LogOut,
   ExternalLink,
   ChevronRight,
@@ -21,18 +21,18 @@ import {
   LockKeyhole,
   Settings
 } from 'lucide-react';
-import EncryptedVaultTab from '../tabs/EncryptedVaultTab';
-import SiteSecurityChecklistTab from '../tabs/SiteSecurityChecklistTab';
-import UserProfileTab from '../tabs/UserProfileTab';
+import SiteSettingTab from '../tabs/SiteSettingTab';
+import SecurityChecklistTab from '../tabs/SecurityChecklistTab';
+import UserSettingTab from '../tabs/UserSettingTab';
 import WorkLogTab from '../tabs/WorkLogTab';
 import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
 import { ClipboardList, FileSpreadsheet } from 'lucide-react';
 
-export default function WebDesktopLayout({ 
-  activeTab, 
-  setActiveTab, 
-  onLockApp, 
+export default function WebDesktopLayout({
+  activeTab,
+  setActiveTab,
+  onLockApp,
   onTriggerToast,
   platform,
   onToggleViewMode,
@@ -71,11 +71,11 @@ export default function WebDesktopLayout({
   const showSecurityChecklistTab = isNative || isDeveloper;
 
   const navItems = [
-    ...(showSecurityChecklistTab ? [{ id: 'entryCheck', label: '사업장 출입 보안 서약', icon: Building2, badge: isNative ? 'HOT' : 'DEV 전용' }] : []),
-    { id: 'workLog', label: '업무 일지', icon: ClipboardList, badge: '신규' },
-    { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet, badge: 'NEW' },
-    ...(isAdmin ? [{ id: 'admin', label: '사업장 관리 (Admin)', icon: Settings, badge: 'Admin' }] : []),
-    { id: 'userProfile', label: '사용자 정보 (Profile)', icon: User, badge: 'User' }
+    ...(showSecurityChecklistTab ? [{ id: 'entryCheck', label: '보안 서약', icon: ShieldCheck }] : []),
+    { id: 'workLog', label: '업무 일지', icon: ClipboardList },
+    { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet },
+    ...(isAdmin ? [{ id: 'admin', label: '사업장', icon: Building2 }] : []),
+    { id: 'userProfile', label: '사용자 정보', icon: User }
   ];
 
   return (
@@ -87,7 +87,7 @@ export default function WebDesktopLayout({
       display: 'flex',
       flexDirection: 'column'
     }}>
-      
+
       {/* Top Desktop Web Navbar */}
       <header style={{
         height: '64px',
@@ -267,7 +267,7 @@ export default function WebDesktopLayout({
 
       {/* Main Body (Sidebar + Content Canvas) */}
       <div style={{ flex: 1, display: 'flex', width: '100%', padding: '24px' }}>
-        
+
         {/* Left Web Sidebar Navigation */}
         <aside style={{
           width: '260px',
@@ -308,16 +308,6 @@ export default function WebDesktopLayout({
                   <IconComp size={18} color={isActive ? '#00f2fe' : '#64748b'} />
                   <span>{item.label}</span>
                 </div>
-                <span style={{
-                  fontSize: '10px',
-                  fontWeight: '700',
-                  padding: '2px 6px',
-                  borderRadius: '6px',
-                  background: isActive ? 'rgba(0, 242, 254, 0.2)' : 'rgba(255,255,255,0.05)',
-                  color: isActive ? '#00f2fe' : '#64748b'
-                }}>
-                  {item.badge}
-                </span>
               </button>
             );
           })}
@@ -326,11 +316,11 @@ export default function WebDesktopLayout({
         {/* Right Main Web Content Panel */}
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
           <div style={{ width: '100%' }}>
-            {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'entryCheck' && <SecurityChecklistTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={onTriggerToast} setActiveTab={setActiveTab} />}
+            {activeTab === 'admin' && <SiteSettingTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={onTriggerToast} setActiveTab={setActiveTab} />}
           </div>
         </main>
 

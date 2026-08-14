@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Calendar, 
-  ChevronLeft, 
-  ChevronRight, 
-  FileText, 
-  CheckCircle2, 
-  Building2, 
-  User, 
-  Filter, 
-  PieChart, 
-  Clock, 
-  Sparkles, 
-  RefreshCw, 
-  Layers, 
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  CheckCircle2,
+  Building2,
+  User,
+  Filter,
+  PieChart,
+  Clock,
+  Sparkles,
+  RefreshCw,
+  Layers,
   Briefcase,
   CalendarDays,
   FileSpreadsheet,
@@ -103,9 +103,39 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     return `${y}년 ${m}월 ${d}일 (${dayNames[dateObj.getDay()]})`;
   };
 
+  // Grouping helper: calculates unique initial work cards (excludes extra tasks attached to the same card)
+  const getInitialWorkGroups = (logs) => {
+    const groups = {};
+    (logs || []).forEach(log => {
+      const sName = (log.siteName || log.site_name || '').trim();
+      const aName = (log.authorName || log.name || '작성자').trim();
+      const d = (log.date || '').trim();
+      const cat = (log.category || '사내 업무').trim();
+      const key = `${d}___${cat}___${sName}___${aName}`;
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          date: d,
+          category: cat,
+          siteName: sName,
+          authorName: aName,
+          items: []
+        };
+      }
+      groups[key].items.push(log);
+    });
+    return Object.values(groups);
+  };
+
   const dailyLogs = workLogs.filter(log => (log.date || '').startsWith(dailyDate));
   const dailyInternalLogs = dailyLogs.filter(l => l.category === '사내 업무');
   const dailyTripLogs = dailyLogs.filter(l => l.category === '출장 업무');
+
+  // Initial work registration counts for daily (처음 등록 기준 건수)
+  const dailyInitialGroups = getInitialWorkGroups(dailyLogs);
+  const dailyInitialInternalCount = dailyInitialGroups.filter(g => g.category === '사내 업무').length;
+  const dailyInitialTripCount = dailyInitialGroups.filter(g => g.category === '출장 업무').length;
+  const dailyTotalInitialCount = dailyInitialInternalCount + dailyInitialTripCount;
 
   // --- Weekly Helpers ---
   const getWeeklyDateRange = (monIso) => {
@@ -156,6 +186,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const weeklyActiveDaysCount = Array.from(new Set(weeklyLogs.map(l => l.date))).length;
   const weeklyAuthors = Array.from(new Set(weeklyLogs.map(l => l.authorName || l.name))).filter(Boolean);
 
+  // Initial work registration counts for weekly (처음 등록 기준 건수)
+  const weeklyInitialGroups = getInitialWorkGroups(weeklyLogs);
+  const weeklyInitialInternalCount = weeklyInitialGroups.filter(g => g.category === '사내 업무').length;
+  const weeklyInitialTripCount = weeklyInitialGroups.filter(g => g.category === '출장 업무').length;
+  const weeklyTotalInitialCount = weeklyInitialInternalCount + weeklyInitialTripCount;
+
   // Group weekly logs by date
   const weeklyGroupedByDate = {};
   weeklyLogs.forEach(log => {
@@ -173,37 +209,85 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }
   };
 
+  // Group daily trip logs by site
+  const dailyTripGroupedBySite = {};
+  dailyTripLogs.forEach(log => {
+    const siteKey = (log.siteName || log.site_name || '기타 사업장').trim();
+    if (!dailyTripGroupedBySite[siteKey]) dailyTripGroupedBySite[siteKey] = [];
+    dailyTripGroupedBySite[siteKey].push(log);
+  });
+
   const generateDailyReportText = () => {
     let t = `============================================\n`;
-    t += `   [ WithSecurity 일일 업무 수행 보고서 ]\n`;
+    t += `   [ 일일 업무 수행 보고서 ]\n`;
     t += `============================================\n`;
     t += `• 보고 일자: ${getFormattedKoreanDate(dailyDate)}\n`;
-    t += `• 총 업무 실적: 총 ${dailyLogs.length}건 (사내 ${dailyInternalLogs.length}건 / 출장 ${dailyTripLogs.length}건)\n\n`;
+    t += `• 총 업무 실적: 총 ${dailyTotalInitialCount}건 (사내 ${dailyInitialInternalCount}건 / 출장 ${dailyInitialTripCount}건)\n\n`;
 
     t += `1. 🏢 사내 업무 추진 현황\n`;
     if (dailyInternalLogs.length === 0) {
       t += `   - 사내 업무 기록 없음\n`;
     } else {
       dailyInternalLogs.forEach((l, i) => {
+        const authorStr = l.authorName || l.name || '';
+        const teamStr = l.authorTeam || l.team || '';
+        const rankStr = l.authorRank || l.rank || '';
+        let fullAuthor = authorStr;
+        if (rankStr && !fullAuthor.includes(rankStr)) fullAuthor += ` ${rankStr}`;
+        if (teamStr && !fullAuthor.includes(teamStr)) fullAuthor += ` (${teamStr})`;
+
         t += `   (${i + 1}) ${l.title}\n`;
-        if (l.details) t += `       - 내용: ${l.details}\n`;
-        t += `       - 담당자: ${l.authorName || l.name} (${l.authorTeam || '운영팀'})\n`;
+        if (l.details && l.details.trim()) {
+          const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+          lines.forEach(line => {
+            t += `       ${line.trim()}\n`;
+          });
+        }
       });
     }
 
     t += `\n2. 🚗 출장 및 현장 지원 현황\n`;
-    if (dailyTripLogs.length === 0) {
+    const siteKeys = Object.keys(dailyTripGroupedBySite);
+    if (siteKeys.length === 0) {
       t += `   - 출장 업무 기록 없음\n`;
     } else {
-      dailyTripLogs.forEach((l, i) => {
-        t += `   (${i + 1}) [${l.siteName || l.site_name || '사업장'}] ${l.title}\n`;
-        if (l.details) t += `       - 내용: ${l.details}\n`;
-        t += `       - 출장자: ${l.authorName || l.name} (${l.authorTeam || '운영팀'})\n`;
+      siteKeys.forEach((siteKey, siteIdx) => {
+        const siteLogs = dailyTripGroupedBySite[siteKey];
+        const authorSet = new Set();
+        siteLogs.forEach(l => {
+          const a = l.authorName || l.name || '';
+          const tm = l.authorTeam || l.team || '';
+          const rk = l.authorRank || l.rank || '';
+          let nameLabel = a;
+          if (rk && !nameLabel.includes(rk)) nameLabel += ` ${rk}`;
+          if (tm && !nameLabel.includes(tm)) nameLabel += ` (${tm})`;
+          if (nameLabel) authorSet.add(nameLabel);
+
+          if (l.companionNames && Array.isArray(l.companionNames)) {
+            l.companionNames.forEach(c => c && authorSet.add(c));
+          } else if (typeof l.companionNames === 'string' && l.companionNames.trim()) {
+            l.companionNames.split(',').forEach(c => c.trim() && authorSet.add(c.trim()));
+          }
+        });
+        const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
+
+        t += `   > 출장지: ${siteKey}\n`;
+        t += `   > 출장자: ${authorsText}\n`;
+        siteLogs.forEach((l, taskIdx) => {
+          t += `   (${taskIdx + 1}) ${l.title}\n`;
+          if (l.details && l.details.trim()) {
+            const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+            lines.forEach(line => {
+              t += `       ${line.trim()}\n`;
+            });
+          }
+        });
+        if (siteIdx < siteKeys.length - 1) t += `\n`;
       });
     }
 
     t += `\n3. 📋 종합 총평\n`;
-    t += `   - 금일 총 ${dailyLogs.length}건의 안전 관리 및 보안 운영 업무가 정상 조치 완료되었습니다.\n`;
+    t += `   - 금일 총 ${dailyTotalInitialCount}건의 안전 관리 및 보안 운영 업무가 정상 조치 완료되었습니다.\n`;
     t += `============================================`;
     return t;
   };
@@ -213,7 +297,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     t += `   [ WithSecurity 주간 업무 종합 보고서 ]\n`;
     t += `============================================\n`;
     t += `• 대상 주차: ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n`;
-    t += `• 주간 총 실적: 총 ${weeklyLogs.length}건 (사내 ${weeklyInternalLogs.length}건 / 출장 ${weeklyTripLogs.length}건)\n`;
+    t += `• 주간 총 실적: 총 ${weeklyTotalInitialCount}건 (사내 ${weeklyInitialInternalCount}건 / 출장 ${weeklyInitialTripCount}건)\n`;
     t += `• 활동 일수: ${weeklyActiveDaysCount}일 / 참여 인원: ${weeklyAuthors.length}명\n\n`;
 
     t += `1. 📅 요일별 업무 수행 실적\n`;
@@ -221,24 +305,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       t += `   - 주간 업무 기록 없음\n`;
     } else {
       sortedWeeklyDates.forEach(dStr => {
-        t += `\n ■ ${getFormattedKoreanDate(dStr)} (총 ${weeklyGroupedByDate[dStr].length}건)\n`;
-        weeklyGroupedByDate[dStr].forEach((l, i) => {
+        const dayLogs = weeklyGroupedByDate[dStr] || [];
+        const dayInitialGroups = getInitialWorkGroups(dayLogs);
+        t += `\n ■ ${getFormattedKoreanDate(dStr)} (총 ${dayInitialGroups.length}건)\n`;
+        dayLogs.forEach((l, i) => {
           t += `   (${i + 1}) [${l.category}] ${l.title}${l.siteName ? ` @${l.siteName}` : ''}\n`;
-          if (l.details) t += `       - 내용: ${l.details}\n`;
-          t += `       - 담당자: ${l.authorName || l.name}\n`;
+          if (l.details && l.details.trim()) {
+            const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+            lines.forEach(line => {
+              t += `       ${line.trim()}\n`;
+            });
+          }
         });
       });
     }
 
     t += `\n\n2. 📌 주간 총평 및 특이사항\n`;
-    t += `   - 금주 총 ${weeklyLogs.length}건의 보안 및 사업장 관리 업무가 문제없이 완수되었습니다.\n`;
+    t += `   - 금주 총 ${weeklyTotalInitialCount}건의 보안 및 사업장 관리 업무가 문제없이 완수되었습니다.\n`;
     t += `============================================`;
     return t;
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
-      
+
       {/* Top Main Banner */}
       <div className="glass-panel" style={{
         padding: '20px 24px',
@@ -269,13 +359,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           </div>
           <div>
             <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              보안 및 업무 수행 공식 레포트
-              <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '12px', background: 'rgba(0, 242, 254, 0.15)', color: '#00f2fe', border: '1px solid rgba(0, 242, 254, 0.3)' }}>
-                Executive Report Mode
-              </span>
-            </div>
-            <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-              일일 및 주간 단위의 업무 실적을 규격화된 보고서 서식 형태로 즉시 요약하고 복사할 수 있습니다.
+              업무 정리 레포트
             </div>
           </div>
         </div>
@@ -322,18 +406,18 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           gap: '18px',
           boxShadow: '0 12px 40px rgba(0, 0, 0, 0.4)'
         }}>
-          
-          {/* Daily Filter Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <CalendarDays size={20} color="#00f2fe" />
-              <span style={{ fontSize: '17px', fontWeight: '800', color: '#00f2fe' }}>
-                일일 업무 수행 보고서
-              </span>
-            </div>
 
-            {/* Daily Date Controller */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#070c17', padding: '3px 6px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+          {/* Daily Filter Header Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CalendarDays size={20} color="#00f2fe" />
+            <span style={{ fontSize: '17px', fontWeight: '800', color: '#00f2fe' }}>
+              일일 업무 수행 보고서
+            </span>
+          </div>
+
+          {/* Daily Date Controller & Copy Report Action Bar (Same Row) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#070c17', padding: '4px 8px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
               <button
                 type="button"
                 onClick={handlePrevDay}
@@ -351,7 +435,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   background: 'transparent',
                   border: 'none',
                   color: '#00f2fe',
-                  fontSize: '12px',
+                  fontSize: '12.5px',
                   fontWeight: '800',
                   outline: 'none',
                   cursor: 'pointer',
@@ -386,13 +470,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 오늘
               </button>
             </div>
-          </div>
 
-          {/* Copy Report Action Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 242, 254, 0.05)', border: '1px solid rgba(0, 242, 254, 0.2)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '600' }}>
-              📄 {getFormattedKoreanDate(dailyDate)} 일간 보고
-            </span>
             <button
               type="button"
               onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 보고서')}
@@ -400,18 +478,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 background: 'rgba(0, 242, 254, 0.15)',
                 border: '1px solid rgba(0, 242, 254, 0.4)',
                 color: '#00f2fe',
-                padding: '5px 10px',
-                borderRadius: '8px',
-                fontSize: '11.5px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '5px',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(0, 242, 254, 0.2)'
               }}
             >
-              <Copy size={13} /> 보고서 복사
+              <Copy size={13} /> 복사
             </button>
           </div>
 
@@ -428,14 +507,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           }}>
             {/* Report Document Title Header Block */}
             <div style={{ borderBottom: '2px double rgba(0, 242, 254, 0.4)', paddingBottom: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#00f2fe', fontWeight: '800', letterSpacing: '1px' }}>
-                DAILY OPERATIONS REPORT
-              </div>
               <div style={{ fontSize: '17px', fontWeight: '900', color: '#fff', marginTop: '2px' }}>
-                일일 업무 수행 현황 보고서
+                일일 업무 일지
               </div>
               <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px' }}>
-                보고일: {getFormattedKoreanDate(dailyDate)} | 작성: WithSecurity 관제 시스템
+                작성일: {getFormattedKoreanDate(dailyDate)}
               </div>
             </div>
 
@@ -450,15 +526,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>총 수행 건수</div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#00f2fe', marginTop: '2px' }}>{dailyLogs.length}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#00f2fe', marginTop: '2px' }}>{dailyTotalInitialCount}건</div>
               </div>
               <div style={{ padding: '8px 10px', borderRight: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>사내 업무</div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#38bdf8', marginTop: '2px' }}>{dailyInternalLogs.length}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#38bdf8', marginTop: '2px' }}>{dailyInitialInternalCount}건</div>
               </div>
               <div style={{ padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>출장 업무</div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#a78bfa', marginTop: '2px' }}>{dailyTripLogs.length}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#a78bfa', marginTop: '2px' }}>{dailyInitialTripCount}건</div>
               </div>
             </div>
 
@@ -472,7 +548,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 {/* Section 1: 🏢 사내 업무 보고 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #00f2fe', paddingLeft: '8px' }}>
-                    1. 사내 업무 추진 실적 ({dailyInternalLogs.length}건)
+                    1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
                   </div>
 
                   {dailyInternalLogs.length === 0 ? (
@@ -481,55 +557,87 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
                       {dailyInternalLogs.map((item, idx) => (
                         <div key={item.id || idx} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ color: '#00f2fe', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
-                            <span>{item.title}</span>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ color: '#00f2fe', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
+                              <span>{item.title}</span>
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>
+                              담당자: {item.authorName || item.name} ({item.authorTeam || item.team || '운영팀'})
+                            </span>
                           </div>
                           {item.details && (
-                            <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px', paddingLeft: '14px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                              - 세부내용: {item.details}
+                            <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                              {item.details}
                             </div>
                           )}
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', paddingLeft: '14px' }}>
-                            - 담당자: {item.authorName || item.name} ({item.authorTeam || item.team || '운영팀'})
-                          </div>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
 
-                {/* Section 2: 🚗 출장 업무 보고 */}
+                {/* Section 2: 🚗 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #a78bfa', paddingLeft: '8px' }}>
-                    2. 출장 및 현장 지원 실적 ({dailyTripLogs.length}건)
+                    2. 출장 및 현장 지원 실적 ({dailyInitialTripCount}건)
                   </div>
 
                   {dailyTripLogs.length === 0 ? (
                     <div style={{ fontSize: '12px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
-                      {dailyTripLogs.map((item, idx) => (
-                        <div key={item.id || idx} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ color: '#a78bfa', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
-                            {item.siteName && (
-                              <span style={{ color: '#c4b5fd', fontSize: '11px', fontWeight: '700', background: 'rgba(167,139,250,0.15)', padding: '2px 6px', borderRadius: '4px' }}>
-                                📍 {item.siteName}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>
+                      {Object.keys(dailyTripGroupedBySite).map((siteKey, sIdx) => {
+                        const siteLogs = dailyTripGroupedBySite[siteKey];
+                        const authorSet = new Set();
+                        siteLogs.forEach(l => {
+                          const a = l.authorName || l.name || '';
+                          const tm = l.authorTeam || l.team || '';
+                          const rk = l.authorRank || l.rank || '';
+                          let nameLabel = a;
+                          if (rk && !nameLabel.includes(rk)) nameLabel += ` ${rk}`;
+                          if (tm && !nameLabel.includes(tm)) nameLabel += ` (${tm})`;
+                          if (nameLabel) authorSet.add(nameLabel);
+
+                          if (l.companionNames && Array.isArray(l.companionNames)) {
+                            l.companionNames.forEach(c => c && authorSet.add(c));
+                          } else if (typeof l.companionNames === 'string' && l.companionNames.trim()) {
+                            l.companionNames.split(',').forEach(c => c.trim() && authorSet.add(c.trim()));
+                          }
+                        });
+                        const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
+
+                        return (
+                          <div key={siteKey || sIdx} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(167,139,250,0.2)', borderRadius: '10px', padding: '12px 14px' }}>
+                            {/* Site Header & Combined Authors */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '8px', marginBottom: '8px' }}>
+                              <span style={{ color: '#c4b5fd', fontSize: '12.5px', fontWeight: '800', background: 'rgba(167,139,250,0.18)', padding: '3px 8px', borderRadius: '6px' }}>
+                                📍 {siteKey}
                               </span>
-                            )}
-                            <span>{item.title}</span>
-                          </div>
-                          {item.details && (
-                            <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px', paddingLeft: '14px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                              - 세부내용: {item.details}
+                              <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                                출장자: <strong style={{ color: '#e2e8f0' }}>{authorsText}</strong>
+                              </span>
                             </div>
-                          )}
-                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', paddingLeft: '14px' }}>
-                            - 출장자: {item.authorName || item.name} ({item.authorTeam || item.team || '운영팀'})
+
+                            {/* Task Items under this Site */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {siteLogs.map((item, tIdx) => (
+                                <div key={item.id || tIdx} style={{ paddingLeft: '4px' }}>
+                                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ color: '#a78bfa', fontWeight: '800', fontSize: '11px' }}>▪ ({tIdx + 1})</span>
+                                    <span>{item.title}</span>
+                                  </div>
+                                  {item.details && (
+                                    <div style={{ fontSize: '12px', color: '#cbd5e1', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                      {item.details}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -540,7 +648,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     3. 종합 총평
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: '1.5', background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: '8px' }}>
-                    ▪ 금일 등록된 총 {dailyLogs.length}건의 사내 및 출장 업무 조치 사항이 모두 정상적으로 완수되었습니다.
+                    ▪ 금일 등록된 총 {dailyTotalInitialCount}건의 사내 및 출장 업무 조치 사항이 모두 정상적으로 완수되었습니다.
                   </div>
                 </div>
               </>
@@ -562,17 +670,17 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           boxShadow: '0 12px 40px rgba(0, 0, 0, 0.4)'
         }}>
 
-          {/* Weekly Filter Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Layers size={20} color="#a78bfa" />
-              <span style={{ fontSize: '17px', fontWeight: '800', color: '#a78bfa' }}>
-                주간 업무 종합 보고서
-              </span>
-            </div>
+          {/* Weekly Filter Header Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers size={20} color="#a78bfa" />
+            <span style={{ fontSize: '17px', fontWeight: '800', color: '#a78bfa' }}>
+              주간 업무 종합 보고서
+            </span>
+          </div>
 
-            {/* Weekly Controller */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#070c17', padding: '3px 6px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+          {/* Weekly Controller & Copy Report Action Bar (Same Row) */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#070c17', padding: '4px 8px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
               <button
                 type="button"
                 onClick={handlePrevWeek}
@@ -613,32 +721,27 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 이번주
               </button>
             </div>
-          </div>
 
-          {/* Copy Report Action Bar */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(167, 139, 250, 0.05)', border: '1px solid rgba(167, 139, 250, 0.2)', padding: '10px 14px', borderRadius: '12px' }}>
-            <span style={{ fontSize: '12px', color: '#cbd5e1', fontWeight: '600' }}>
-              📄 {getWeekText(weeklyMonday)} 주간 보고
-            </span>
             <button
               type="button"
               onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
               style={{
                 background: 'rgba(167, 139, 250, 0.18)',
-                border: '1px solid rgba(167, 139, 250, 0.4)',
+                border: '1px solid rgba(167, 139, 250, 0.45)',
                 color: '#c4b5fd',
-                padding: '5px 10px',
-                borderRadius: '8px',
-                fontSize: '11.5px',
+                padding: '6px 12px',
+                borderRadius: '10px',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '5px',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 8px rgba(167, 139, 250, 0.2)'
               }}
             >
-              <Copy size={13} /> 보고서 복사
+              <Copy size={13} /> 복사
             </button>
           </div>
 
@@ -655,14 +758,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           }}>
             {/* Report Document Title Header Block */}
             <div style={{ borderBottom: '2px double rgba(167, 139, 250, 0.4)', paddingBottom: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '11px', color: '#a78bfa', fontWeight: '800', letterSpacing: '1px' }}>
-                WEEKLY CONSOLIDATED SUMMARY REPORT
-              </div>
               <div style={{ fontSize: '17px', fontWeight: '900', color: '#fff', marginTop: '2px' }}>
-                주간 업무 종합 성과 보고서
+                주간 업무 보고서
               </div>
               <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '4px' }}>
-                기간: {weeklyRange.monIso} ~ {weeklyRange.sunIso} | 작성: WithSecurity 관제 시스템
+                기간: {weeklyRange.monIso} ~ {weeklyRange.sunIso}
               </div>
             </div>
 
@@ -677,7 +777,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>주간 총 실적</div>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#a78bfa', marginTop: '2px' }}>{weeklyLogs.length}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#a78bfa', marginTop: '2px' }}>{weeklyTotalInitialCount}건</div>
               </div>
               <div style={{ padding: '8px 10px', borderRight: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#94a3b8' }}>활동 일수</div>
@@ -703,31 +803,35 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '4px' }}>
-                    {sortedWeeklyDates.map(dStr => (
-                      <div key={dStr} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 12px' }}>
-                        <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#c4b5fd', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', marginBottom: '6px' }}>
-                          ■ {getFormattedKoreanDate(dStr)} (총 {weeklyGroupedByDate[dStr].length}건)
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {weeklyGroupedByDate[dStr].map((item, idx) => (
-                            <div key={item.id || idx} style={{ fontSize: '12px', color: '#cbd5e1', paddingLeft: '4px' }}>
-                              <div style={{ fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ color: item.category === '출장 업무' ? '#a78bfa' : '#00f2fe', fontSize: '11px', fontWeight: '800' }}>
-                                  ({idx + 1})
-                                </span>
-                                <span>[{item.category}] {item.title}</span>
-                                {item.siteName && <span style={{ fontSize: '10.5px', color: '#c4b5fd' }}>@{item.siteName}</span>}
-                              </div>
-                              {item.details && (
-                                <div style={{ fontSize: '11.5px', color: '#94a3b8', paddingLeft: '14px', marginTop: '2px', lineHeight: '1.45' }}>
-                                  - 세부: {item.details}
+                    {sortedWeeklyDates.map(dStr => {
+                      const dayLogs = weeklyGroupedByDate[dStr] || [];
+                      const dayInitialGroups = getInitialWorkGroups(dayLogs);
+                      return (
+                        <div key={dStr} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 12px' }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#c4b5fd', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '4px', marginBottom: '6px' }}>
+                            ■ {getFormattedKoreanDate(dStr)} (총 {dayInitialGroups.length}건)
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {dayLogs.map((item, idx) => (
+                              <div key={item.id || idx} style={{ fontSize: '12px', color: '#cbd5e1', paddingLeft: '4px' }}>
+                                <div style={{ fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ color: item.category === '출장 업무' ? '#a78bfa' : '#00f2fe', fontSize: '11px', fontWeight: '800' }}>
+                                    ({idx + 1})
+                                  </span>
+                                  <span>[{item.category}] {item.title}</span>
+                                  {item.siteName && <span style={{ fontSize: '10.5px', color: '#c4b5fd' }}>@{item.siteName}</span>}
                                 </div>
-                              )}
-                            </div>
-                          ))}
+                                {item.details && (
+                                  <div style={{ fontSize: '11.5px', color: '#94a3b8', paddingLeft: '14px', marginTop: '2px', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                                    {item.details}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -737,7 +841,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     2. 주간 종합 총평 및 시사점
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: '1.5', background: 'rgba(0,0,0,0.2)', padding: '8px 10px', borderRadius: '8px' }}>
-                    ▪ 금주 총 {weeklyLogs.length}건의 업무(사내 {weeklyInternalLogs.length}건, 출장 {weeklyTripLogs.length}건)가 안전 규정에 따라 정상적으로 추진되었습니다.
+                    ▪ 금주 총 {weeklyTotalInitialCount}건의 업무(사내 {weeklyInitialInternalCount}건, 출장 {weeklyInitialTripCount}건)가 안전 규정에 따라 정상적으로 추진되었습니다.
                   </div>
                 </div>
               </>

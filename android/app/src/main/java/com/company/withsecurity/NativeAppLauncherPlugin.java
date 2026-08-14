@@ -106,6 +106,7 @@ public class NativeAppLauncherPlugin extends Plugin {
             for (PackageInfo pkg : packages) {
                 String pName = pkg.packageName.toLowerCase();
                 if (pName.contains("ssm") || pName.contains("hynix") || pName.contains("knox") ||
+                    pName.contains("samsung") || pName.contains("deviceon") || pName.contains("lgd") ||
                     pName.contains("v3") || pName.contains("ahnlab") || pName.contains("security") ||
                     pName.contains("sec") || pName.contains("guard") || pName.contains("mdm")) {
                     JSObject item = new JSObject();
@@ -151,7 +152,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             }
 
-            // 3. Try custom scheme (e.g. ssm://, skhynixssm://)
+            // 3. Try custom scheme (e.g. ssm://, skhynixssm://, deviceon://, secapp://)
             if (intent == null && candidate.contains("://")) {
                 try {
                     intent = new Intent(Intent.ACTION_VIEW, Uri.parse(candidate));
@@ -204,7 +205,8 @@ public class NativeAppLauncherPlugin extends Plugin {
                         for (ActivityInfo act : pkgInfo.activities) {
                             if (act.exported || act.name.toLowerCase().contains("main") || 
                                 act.name.toLowerCase().contains("splash") || act.name.toLowerCase().contains("init") || 
-                                act.name.toLowerCase().contains("security") || act.name.toLowerCase().contains("login")) {
+                                act.name.toLowerCase().contains("security") || act.name.toLowerCase().contains("device") ||
+                                act.name.toLowerCase().contains("mdm") || act.name.toLowerCase().contains("login")) {
                                 intent = new Intent();
                                 intent.setClassName(pkgName, act.name);
                                 break;
@@ -240,7 +242,8 @@ public class NativeAppLauncherPlugin extends Plugin {
 
         String lower = target != null ? target.toLowerCase() : "";
 
-        if (lower.contains("ssm") || lower.contains("skhynix") || lower.contains("하이닉스")) {
+        // 1. SK Hynix SSM candidates & dynamic scan
+        if (lower.contains("ssm") || lower.contains("skhynix") || lower.contains("하이닉스") || lower.contains("hynix")) {
             list.add("com.skhynix.ssm");
             list.add("com.skhynix.ssm.mobile");
             list.add("com.skhynix.mobile.ssm");
@@ -255,7 +258,6 @@ public class NativeAppLauncherPlugin extends Plugin {
             list.add("ssm://");
             list.add("skhynixssm://");
 
-            // Dynamic Scan for installed packages on the user's device matching ssm or hynix
             try {
                 List<PackageInfo> installed = pm.getInstalledPackages(0);
                 for (PackageInfo pkg : installed) {
@@ -268,17 +270,34 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             } catch (Exception ignored) {
             }
-        } else if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성")) {
+        }
+
+        // 2. Samsung MDM / Knox candidates & dynamic scan
+        if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm")) {
             list.add("com.sec.knox.app");
             list.add("com.samsung.klms");
+            list.add("com.sds.emp.mobile.mdm");
+            list.add("com.samsung.sec.android.mdm");
+            list.add("com.sec.enterprise.knox.attestation");
+            list.add("com.samsung.android.knox.containercore");
+            list.add("com.samsung.sec");
+            list.add("com.sds.mdm");
+            list.add("com.samsung.mdm");
+            list.add("kr.co.samsung.mdm");
+            list.add("com.samsung.android.mdm");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sds.emp.mobile.mdm;end");
             list.add("secapp://");
+            list.add("knox://");
+            list.add("samsungmdm://");
 
             try {
                 List<PackageInfo> installed = pm.getInstalledPackages(0);
                 for (PackageInfo pkg : installed) {
                     String pName = pkg.packageName.toLowerCase();
-                    if (pName.contains("knox") || pName.contains("secapp")) {
+                    if (pName.contains("knox") || pName.contains("secapp") || 
+                        (pName.contains("samsung") && (pName.contains("sec") || pName.contains("mdm") || pName.contains("agent"))) ||
+                        (pName.contains("sds") && pName.contains("mdm"))) {
                         if (!list.contains(pkg.packageName)) {
                             list.add(pkg.packageName);
                         }
@@ -286,8 +305,47 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             } catch (Exception ignored) {
             }
-        } else if (lower.contains("v3") || lower.contains("ahnlab") || lower.contains("안랩")) {
+        }
+
+        // 3. LGD DeviceOn (LG디스플레이 디바이스온) candidates & dynamic scan
+        if (lower.contains("lgd") || lower.contains("디바이스온") || lower.contains("deviceon") || lower.contains("lg") || lower.contains("엘지")) {
+            list.add("com.lgd.deviceon");
+            list.add("com.lgd.deviceon.mobile");
+            list.add("com.lgdisplay.deviceon");
+            list.add("kr.co.lgd.deviceon");
+            list.add("com.lgd.security");
+            list.add("com.lg.deviceon");
+            list.add("com.lgdisplay.security");
+            list.add("com.lg.mdm");
+            list.add("com.lgcns.deviceon");
+            list.add("com.lgd.mobile");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.security;end");
+            list.add("deviceon://");
+            list.add("lgddeviceon://");
+            list.add("lgdsec://");
+
+            try {
+                List<PackageInfo> installed = pm.getInstalledPackages(0);
+                for (PackageInfo pkg : installed) {
+                    String pName = pkg.packageName.toLowerCase();
+                    if (pName.contains("deviceon") || pName.contains("lgd") || 
+                        (pName.contains("lgdisplay") && (pName.contains("sec") || pName.contains("mdm") || pName.contains("device"))) ||
+                        (pName.contains("lg") && (pName.contains("mdm") || pName.contains("security") || pName.contains("deviceon")))) {
+                        if (!list.contains(pkg.packageName)) {
+                            list.add(pkg.packageName);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        // 4. AhnLab V3 Mobile Enterprise
+        if (lower.contains("v3") || lower.contains("ahnlab") || lower.contains("안랩")) {
             list.add("com.ahnlab.v3mobile");
+            list.add("com.ahnlab.v3mobileplus");
+            list.add("com.ahnlab.v3mobileenterprise");
             list.add("v3mobile://");
 
             try {
@@ -302,16 +360,20 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             } catch (Exception ignored) {
             }
-        } else if (lower.contains("lgd") || lower.contains("lg")) {
-            list.add("com.lgd.security");
-            list.add("lgdsec://");
-        } else if (lower.contains("hmg") || lower.contains("현대")) {
+        }
+
+        // 5. Hyundai HMG
+        if (lower.contains("hmg") || lower.contains("현대")) {
             list.add("com.hmg.security");
             list.add("hsec://");
-        } else if (lower.contains("posco") || lower.contains("포스코")) {
+        }
+
+        // 6. POSCO
+        if (lower.contains("posco") || lower.contains("포스코")) {
             list.add("com.posco.security");
             list.add("pososec://");
         }
+
         return list;
     }
 

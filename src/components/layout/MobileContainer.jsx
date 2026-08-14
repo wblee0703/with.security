@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { 
-  ShieldCheck, 
+import {
+  ShieldCheck,
   LockKeyhole,
   Building2,
   Settings,
@@ -11,14 +11,14 @@ import {
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 
-export default function MobileContainer({ 
-  children, 
-  activeTab, 
-  setActiveTab, 
-  platform, 
-  setPlatform, 
-  isLocked, 
-  setIsLocked 
+export default function MobileContainer({
+  children,
+  activeTab,
+  setActiveTab,
+  platform,
+  setPlatform,
+  isLocked,
+  setIsLocked
 }) {
   const [time, setTime] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
@@ -58,7 +58,7 @@ export default function MobileContainer({
 
   return (
     <div className="mobile-shell-wrapper">
-      
+
       {/* Clean Mobile App Top Header (Supports Safe Area Inset for Notches) */}
       <div style={{
         paddingTop: 'max(env(safe-area-inset-top), 12px)',
@@ -90,17 +90,9 @@ export default function MobileContainer({
           </div>
           <div>
             <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', letterSpacing: '0.3px', lineHeight: 1.2 }}>
-              WithSecurity
-            </div>
-            <div style={{ fontSize: '10px', color: '#64748b' }}>
-              통합 보안 솔루션
+              WITH Sharing
             </div>
           </div>
-        </div>
-
-        {/* Right Status Badge */}
-        <div className="badge-secure">
-          Strict Mode
         </div>
       </div>
 
@@ -116,7 +108,7 @@ export default function MobileContainer({
             onClick={() => handleNavClick('entryCheck')}
             className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
           >
-            <Building2 size={18} />
+            <ShieldCheck size={18} />
             <span>보안 서약</span>
           </button>
         )}
@@ -142,8 +134,8 @@ export default function MobileContainer({
             onClick={() => handleNavClick('admin')}
             className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
           >
-            <Settings size={18} />
-            <span>Admin</span>
+            <Building2 size={18} />
+            <span>사업장</span>
           </button>
         )}
 

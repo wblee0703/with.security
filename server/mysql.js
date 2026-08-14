@@ -19,7 +19,7 @@ if (envFile) {
   dotenv.config();
 }
 
-// MySQL 데이터베이스 커넥션 풀(Connection Pool) 생성
+// 5. 가비아 MySQL 최적화 커넥션 풀(Connection Pool) 생성
 const pool = mysql.createPool({
   host: process.env.DB_HOST || process.env.MYSQL_HOST || 'localhost',
   port: (process.env.DB_PORT || process.env.MYSQL_PORT) ? Number(process.env.DB_PORT || process.env.MYSQL_PORT) : 3306,
@@ -27,9 +27,11 @@ const pool = mysql.createPool({
   password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : (process.env.MYSQL_PASSWORD !== undefined ? process.env.MYSQL_PASSWORD : ''),
   database: process.env.DB_NAME || process.env.MYSQL_DB || 'dbwithtech002',
   waitForConnections: true,
-  connectionLimit: 10, // 동시에 유지할 최대 커넥션 수
+  connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10), // 가비아 호스팅 동시 커넥션 한도 최적화
   queueLimit: 0,
-  dateStrings: true, // DATE, DATETIME 타입 시차 변환 없는 원본 문자열 반환
+  enableKeepAlive: true, // 유휴(Idle) 시 연결 유실 방지 Keep-Alive 활성화
+  keepAliveInitialDelay: 10000,
+  dateStrings: true, // DATE, DATETIME 시차 변환 없는 원본 문자열 유지
   charset: 'utf8mb4'
 });
 
@@ -37,7 +39,7 @@ const pool = mysql.createPool({
 export async function testConnection() {
   try {
     const connection = await pool.getConnection();
-    console.log('✅ MySQL 데이터베이스 연결 성공!');
+    console.log('✅ MySQL 데이터베이스 연결 성공! (가비아 커넥션 풀 활성화)');
     connection.release(); // 커넥션 반환
     return true;
   } catch (error) {
@@ -72,7 +74,7 @@ export async function testConnection() {
   }
 }
 
-// 쿼리 실행 헬퍼 함수 (Prepared Statement 사용, undefined 바인딩 자동 치환)
+// 쿼리 실행 헬퍼 함수 (Prepared Statement 사용, SQL Injection 원천 차단)
 export async function query(sql, params = []) {
   try {
     const safeParams = (params || []).map(p => (p === undefined ? '' : p));

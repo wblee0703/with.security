@@ -4,6 +4,9 @@ import { hashPassword } from './cryptoUtil';
 export function getServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
   if (url) return url;
+  if (import.meta.env && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
+  }
   return 'http://localhost:4000';
 }
 

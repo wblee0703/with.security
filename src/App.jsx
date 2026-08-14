@@ -3,9 +3,9 @@ import { Capacitor } from '@capacitor/core';
 import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
 import PinLockModal from './components/layout/PinLockModal';
-import EncryptedVaultTab from './components/tabs/EncryptedVaultTab';
-import SiteSecurityChecklistTab from './components/tabs/SiteSecurityChecklistTab';
-import UserProfileTab from './components/tabs/UserProfileTab';
+import SiteSettingTab from './components/tabs/SiteSettingTab';
+import SecurityChecklistTab from './components/tabs/SecurityChecklistTab';
+import UserSettingTab from './components/tabs/UserSettingTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw } from 'lucide-react';
@@ -265,11 +265,11 @@ export default function App() {
             isLocked={isLocked}
             setIsLocked={setIsLocked}
           >
-            {activeTab === 'entryCheck' && <SiteSecurityChecklistTab onTriggerToast={showToast} />}
+            {activeTab === 'entryCheck' && <SecurityChecklistTab onTriggerToast={showToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={showToast} />}
-            {activeTab === 'admin' && <EncryptedVaultTab onTriggerToast={showToast} />}
-            {activeTab === 'userProfile' && <UserProfileTab onTriggerToast={showToast} setActiveTab={setActiveTab} />}
+            {activeTab === 'admin' && <SiteSettingTab onTriggerToast={showToast} />}
+            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={showToast} setActiveTab={setActiveTab} />}
           </MobileContainer>
         </div>
       )}

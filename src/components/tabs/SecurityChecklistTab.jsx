@@ -12,6 +12,8 @@ import {
   Clock,
   AlertTriangle,
   X,
+  XCircle,
+  ShieldAlert,
   QrCode,
   Printer,
   Smartphone,
@@ -35,7 +37,7 @@ import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { isSamePerson, DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
-export default function SiteSecurityChecklistTab({ onTriggerToast }) {
+export default function SecurityChecklistTab({ onTriggerToast }) {
   const [checklistList, setChecklistList] = useState([]);
 
   // Load from IndexedDB on component mount & listen for real-time DB changes
@@ -328,7 +330,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
   // Independent Step 2 Sub-Check States
   const [secAppVerified, setSecAppVerified] = useState(false);
+  const [secAppFailed, setSecAppFailed] = useState(false);
   const [cameraCheckVerified, setCameraCheckVerified] = useState(false);
+  const [step2Attempted, setStep2Attempted] = useState(false);
 
   // Reset Security App & Camera Verification States (Mandatory Re-verification on modal open/close)
   const resetAppVerificationState = () => {
@@ -337,7 +341,9 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
     setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
     setCameraSelfChecklist({ stickerAttached: false, noPhotoAgreed: false });
     setSecAppVerified(false);
+    setSecAppFailed(false);
     setCameraCheckVerified(false);
+    setStep2Attempted(false);
     setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
   };
 
@@ -375,7 +381,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       // STRICT FAIL! Camera is ACTIVE / Unlocked!
       setAppCheckState({ isChecking: false, isVerified: false });
       setCameraCheckVerified(false);
-      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 활성화 감지 (카메라 차단 필요)' });
+      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '❌ 카메라 차단 안됨 (카메라 활성화 감지)' });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
         isScanning: false,
@@ -385,7 +391,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       });
 
       if (onTriggerToast) {
-        onTriggerToast(`❌ [카메라 검수 실패] 카메라가 활성화되어 있습니다. 보안 어플을 실행하여 카메라 차단을 활성화해 주세요.`, 'error');
+        onTriggerToast(`❌ [카메라 검수 실패] 카메라 차단 안됨! 보안 어플을 실행하여 카메라 차단을 활성화해 주세요.`, 'error');
       }
       return false;
     } catch (err) {
@@ -435,7 +441,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         // Camera is active or permission was denied -> STRICT FAIL!
         setAppCheckState({ isChecking: false, isVerified: false });
         setCameraCheckVerified(false);
-        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '카메라 비활성화 상태 확인 필요' });
+        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '❌ 카메라 차단 안됨 (차단 상태 확인 필요)' });
         setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
         setAppScanState({
           isScanning: false,
@@ -445,7 +451,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`⚠️ [카메라 검수 실패] 카메라가 차단되지 않았거나 차단 권한을 확인할 수 없습니다.`, 'warning');
+          onTriggerToast(`⚠️ [카메라 검수 실패] 카메라 차단 안됨: 보안 어플에서 카메라 차단을 켜주세요.`, 'warning');
         }
         return false;
       }
@@ -1380,16 +1386,29 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
       {/* Header Title Banner */}
       <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <Building2 size={22} color="#00f2fe" />
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{
+              width: '46px',
+              height: '46px',
+              borderRadius: '14px',
+              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#050b14',
+              boxShadow: '0 0 18px rgba(0, 242, 254, 0.4)',
+              flexShrink: 0
+            }}>
+              <ShieldCheck size={24} />
+            </div>
+            <div>
+              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px', margin: 0 }}>
                 사업장 출입 보안 서약
               </h2>
+              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '2px 0 0 0' }}>
+                모바일 보안 앱 · 자재&문서 확인 · 전자 서약서
+              </p>
             </div>
-            <p style={{ fontSize: '12px', color: '#94a3b8' }}>
-              모바일 보안 앱 · 자재&문서 확인 · 전자 서약서
-            </p>
           </div>
 
           <div style={{ display: 'flex', width: '100%' }}>
@@ -2230,7 +2249,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                         justifyContent: 'space-between',
                         gap: '10px'
                       }}>
-                        <span>⚠️ 출입 대상 사업장이 선택되지 않았습니다! 1단계에서 사업장을 먼저 선택해 주세요.</span>
+                        <span>⚠️ 사업장을 먼저 선택해 주세요.</span>
                         <button
                           type="button"
                           onClick={() => setActiveStep(1)}
@@ -2403,59 +2422,35 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                           flexDirection: 'column',
                           gap: '14px'
                         }}>
-                          {/* Overview Progress Indicator */}
-                          <div style={{
-                            background: 'rgba(0, 242, 254, 0.06)',
-                            border: '1px solid rgba(0, 242, 254, 0.2)',
-                            padding: '10px 14px',
-                            borderRadius: '12px',
-                            fontSize: '12px',
-                            color: '#cbd5e1',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '8px'
-                          }}>
-                            <span style={{ fontWeight: '700' }}>📌 2단계 진행 상태 (독립 2단계 검수)</span>
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                background: secAppVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                                color: secAppVerified ? '#10b981' : '#94a3b8',
-                                border: secAppVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'
-                              }}>
-                                1. 어플 검수 {secAppVerified ? '✓ 완료' : '미완료'}
-                              </span>
-                              <span style={{
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                background: cameraCheckVerified ? 'rgba(16, 185, 129, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                                color: cameraCheckVerified ? '#10b981' : '#94a3b8',
-                                border: cameraCheckVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.15)'
-                              }}>
-                                2. 카메라 검수 {cameraCheckVerified ? '✓ 완료' : '미완료'}
-                              </span>
-                            </div>
-                          </div>
 
                           {/* Sub-Check 1: 모바일 보안어플 바로가기 (어플 검수) */}
                           <div style={{
-                            background: 'rgba(255, 255, 255, 0.02)',
-                            border: secAppVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            background: secAppVerified
+                              ? 'rgba(16, 185, 129, 0.04)'
+                              : (!secAppVerified && (secAppFailed || step2Attempted))
+                                ? 'rgba(239, 68, 68, 0.05)'
+                                : 'rgba(255, 255, 255, 0.02)',
+                            border: secAppVerified
+                              ? '1px solid rgba(16, 185, 129, 0.4)'
+                              : (!secAppVerified && (secAppFailed || step2Attempted))
+                                ? '1px solid rgba(239, 68, 68, 0.45)'
+                                : '1px solid rgba(255, 255, 255, 0.08)',
                             borderRadius: '14px',
                             padding: '14px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '10px'
+                            gap: '10px',
+                            transition: 'all 0.25s ease'
                           }}>
-                            <div style={{ fontSize: '12.5px', fontWeight: '800', color: secAppVerified ? '#10b981' : '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span>📱 1단계: 모바일 보안어플 직접 실행 및 검수</span>
+                            <div style={{
+                              fontSize: '12.5px',
+                              fontWeight: '800',
+                              color: secAppVerified ? '#10b981' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#f87171' : '#00f2fe',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}>
+                              <span>📱 1단계: 모바일 보안어플 검수</span>
                             </div>
                             <button
                               type="button"
@@ -2470,6 +2465,7 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
 
                                 if (!registeredAppUrl || !registeredAppUrl.trim()) {
                                   setSecAppVerified(false);
+                                  setSecAppFailed(true);
                                   if (onTriggerToast) {
                                     onTriggerToast(`❌ [어플 미연동] ADMIN 사업장 관리에서 '${siteName}' 사업장의 모바일 어플 링크가 등록되지 않았습니다. 관리자 메뉴에서 어플을 연동해 주세요.`, 'warning');
                                   }
@@ -2482,41 +2478,50 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                                 }
 
                                 const result = await launchApp(targetScheme);
-                                const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent);
 
                                 if (result.success) {
                                   setSecAppVerified(true);
+                                  setSecAppFailed(false);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`✓ [어플 실행 감지 완료] '${siteName}' 보안 어플이 모바일 화면에 성공적으로 열렸습니다!`, 'success');
+                                    onTriggerToast(`✓ [1단계 검수 완료] '${siteName}' 보안 어플이 모바일 화면에 성공적으로 열렸습니다!`, 'success');
                                   }
                                 } else if (result.method === 'web-disabled') {
                                   setSecAppVerified(false);
+                                  setSecAppFailed(true);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`⚠️ [모바일 APK 전용] 실제 어플 연동 실행은 핸드폰에 설치된 .apk 앱에서만 작동합니다.`, 'warning');
+                                    onTriggerToast(`⚠️ [모바일 APK 전용] 실제 어플 연동 실행 및 검수는 핸드폰에 설치된 .apk 앱에서만 작동합니다.`, 'warning');
                                   }
                                 } else {
                                   setSecAppVerified(false);
+                                  setSecAppFailed(true);
                                   if (onTriggerToast) {
-                                    onTriggerToast(`❌ [어플 실행 실패] 어플이 모바일 화면에 열리지 않았습니다. ('${targetScheme}' 설치 상태 및 APK 업데이트 필요)`, 'error');
+                                    onTriggerToast(`⚠️ [1단계 검수 미완료] 어플이 핸드폰에 설치되어 있지 않거나 열리지 않았습니다. 설치 상태를 확인해 주세요. ('${targetScheme}')`, 'error');
                                   }
                                 }
                               }}
                               style={{
                                 width: '100%',
-                                padding: '14px 16px',
+                                height: '46px',
+                                padding: '0 16px',
                                 borderRadius: '12px',
-                                fontSize: '13.5px',
+                                fontSize: '13px',
                                 fontWeight: '800',
                                 background: secAppVerified
                                   ? 'rgba(16, 185, 129, 0.2)'
-                                  : 'rgba(255, 255, 255, 0.08)',
-                                color: secAppVerified ? '#10b981' : '#cbd5e1',
+                                  : (!secAppVerified && (secAppFailed || step2Attempted))
+                                    ? 'rgba(239, 68, 68, 0.18)'
+                                    : 'rgba(0, 242, 254, 0.1)',
+                                color: secAppVerified ? '#10b981' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#f87171' : '#00f2fe',
                                 border: secAppVerified
                                   ? '1px solid rgba(16, 185, 129, 0.5)'
-                                  : '1px solid rgba(255, 255, 255, 0.18)',
+                                  : (!secAppVerified && (secAppFailed || step2Attempted))
+                                    ? '1px solid rgba(239, 68, 68, 0.55)'
+                                    : '1px solid rgba(0, 242, 254, 0.35)',
                                 boxShadow: secAppVerified
                                   ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                  : 'none',
+                                  : (!secAppVerified && (secAppFailed || step2Attempted))
+                                    ? '0 0 14px rgba(239, 68, 68, 0.25)'
+                                    : '0 4px 14px rgba(0, 242, 254, 0.15)',
                                 cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2526,24 +2531,42 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                               }}
                             >
                               {secAppVerified ? (
-                                <><CheckCircle2 size={18} color="#10b981" /> ✓ 모바일 보안어플 바로가기 (검수 완료)</>
+                                <><CheckCircle2 size={18} color="#10b981" /> 모바일 보안어플 바로가기 (검수 완료)</>
+                              ) : (!secAppVerified && (secAppFailed || step2Attempted)) ? (
+                                <>❌ 보안어플 미실행 (설치 상태 확인 필요)</>
                               ) : (
-                                <><Smartphone size={18} /> 🚀 모바일 보안어플 바로가기 (앱 실행하기)</>
+                                <><Smartphone size={18} /> 모바일 보안어플 실행</>
                               )}
                             </button>
                           </div>
 
                           {/* Sub-Check 2: 카메라 검수 */}
                           <div style={{
-                            background: 'rgba(255, 255, 255, 0.02)',
-                            border: cameraCheckVerified ? '1px solid rgba(16, 185, 129, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
+                            background: cameraCheckVerified
+                              ? 'rgba(16, 185, 129, 0.04)'
+                              : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                ? 'rgba(239, 68, 68, 0.05)'
+                                : 'rgba(255, 255, 255, 0.02)',
+                            border: cameraCheckVerified
+                              ? '1px solid rgba(16, 185, 129, 0.4)'
+                              : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                ? '1px solid rgba(239, 68, 68, 0.45)'
+                                : '1px solid rgba(255, 255, 255, 0.08)',
                             borderRadius: '14px',
                             padding: '14px',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '10px'
+                            gap: '10px',
+                            transition: 'all 0.25s ease'
                           }}>
-                            <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraCheckVerified ? '#10b981' : '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{
+                              fontSize: '12.5px',
+                              fontWeight: '800',
+                              color: cameraCheckVerified ? '#10b981' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#f87171' : '#00f2fe',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px'
+                            }}>
                               <span>📸 2단계: 스마트폰 카메라 차단 검수</span>
                             </div>
                             <button
@@ -2559,20 +2582,27 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                               disabled={appScanState.isScanning || cameraCheckState.isTesting}
                               style={{
                                 width: '100%',
-                                padding: '12px 16px',
+                                height: '46px',
+                                padding: '0 16px',
                                 borderRadius: '12px',
-                                fontSize: '12.5px',
+                                fontSize: '13px',
                                 fontWeight: '800',
                                 background: cameraCheckVerified
                                   ? 'rgba(16, 185, 129, 0.2)'
-                                  : 'rgba(0, 242, 254, 0.12)',
-                                color: cameraCheckVerified ? '#10b981' : '#00f2fe',
+                                  : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                    ? 'rgba(239, 68, 68, 0.18)'
+                                    : 'rgba(0, 242, 254, 0.1)',
+                                color: cameraCheckVerified ? '#10b981' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#f87171' : '#00f2fe',
                                 border: cameraCheckVerified
                                   ? '1px solid rgba(16, 185, 129, 0.5)'
-                                  : '1px solid rgba(0, 242, 254, 0.35)',
+                                  : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                    ? '1px solid rgba(239, 68, 68, 0.55)'
+                                    : '1px solid rgba(0, 242, 254, 0.35)',
                                 boxShadow: cameraCheckVerified
                                   ? '0 0 14px rgba(16, 185, 129, 0.35)'
-                                  : '0 4px 14px rgba(0, 242, 254, 0.2)',
+                                  : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                    ? '0 0 14px rgba(239, 68, 68, 0.25)'
+                                    : '0 4px 14px rgba(0, 242, 254, 0.15)',
                                 cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -2582,11 +2612,13 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                               }}
                             >
                               {appScanState.isScanning || cameraCheckState.isTesting ? (
-                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 검수 진행 중...</>
+                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 검수 진행 중</>
                               ) : cameraCheckVerified ? (
-                                <><CheckCircle2 size={16} color="#10b981" /> ✓ 카메라 검수 완료</>
+                                <><CheckCircle2 size={16} color="#10b981" /> 카메라 차단 확인됨 (검수 완료)</>
+                              ) : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? (
+                                <>❌ 카메라 차단 안됨 (앱 상태 확인 필요)</>
                               ) : (
-                                <><ShieldCheck size={16} /> 카메라 검수</>
+                                <>📸 카메라 검수 시작</>
                               )}
                             </button>
                           </div>
@@ -2677,13 +2709,19 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                               return;
                             }
                           } else {
-                            if (appScanState.status !== 'VERIFIED' && !formData.mdmVerified) {
-                              if (onTriggerToast) {
-                                onTriggerToast(`❌ [검수 미완료] 카메라가 활성화 상태이거나 보안 어플('${targetApp.shortName}') 검수가 완료되지 않았습니다. [보안 어플 실행 상태 확인] 버튼을 눌러 카메라 차단을 완료해 주세요.`, 'warning');
+                            if (!secAppVerified || !cameraCheckVerified) {
+                              setStep2Attempted(true);
+                              if (!secAppVerified && !cameraCheckVerified) {
+                                if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 1단계 모바일 보안어플 실행과 2단계 카메라 차단 검수를 모두 완료해 주세요.`, 'warning');
+                              } else if (!secAppVerified) {
+                                if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 1단계 모바일 보안어플 실행 검수가 완료되지 않았습니다.`, 'warning');
+                              } else {
+                                if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 2단계 카메라 차단 검수가 완료되지 않았습니다. [카메라 검수 시작]을 진행해 주세요.`, 'warning');
                               }
                               return;
                             }
                           }
+                          setStep2Attempted(false);
                           setActiveStep(3);
                         }}
                         className="glass-button-primary"
@@ -2714,9 +2752,6 @@ export default function SiteSecurityChecklistTab({ onTriggerToast }) {
                       <div style={{ fontSize: '13px', fontWeight: '700', color: '#00f2fe' }}>
                         📦 Step 3. 자재&문서 확인
                       </div>
-                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                        반입 자재 및 문서 필수 검수
-                      </span>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
-import { hashPassword } from '../../services/cryptoUtil';
+import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
-export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
+export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
 
@@ -139,19 +139,19 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
     const inputHash = await hashPassword(inputPassword);
     const users = await dbService.getRegisteredUsers();
 
-    const match = users.find(u => {
+    let match = null;
+    for (const u of users) {
       const dbUsername = String(u?.username || '').trim().toLowerCase();
-      const targetUsername = inputUsername.toLowerCase();
-      if (dbUsername !== targetUsername) return false;
-
-      const dbPass = String(u?.password || '').trim();
-      const dbHash = String(u?.passwordHash || '').trim();
-
-      if (dbPass && (dbPass === inputHash || dbPass === inputPassword)) return true;
-      if (dbHash && (dbHash === inputHash || dbHash === inputPassword)) return true;
-
-      return false;
-    });
+      if (dbUsername === inputUsername.toLowerCase()) {
+        const dbPass = String(u?.password || '').trim();
+        const dbHash = String(u?.passwordHash || '').trim();
+        const isPassOk = (await verifyPasswordHash(inputPassword, dbHash)) || (await verifyPasswordHash(inputPassword, dbPass));
+        if (isPassOk) {
+          match = u;
+          break;
+        }
+      }
+    }
 
     if (match) {
       const activeUser = {
@@ -240,13 +240,10 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
       return;
     }
 
-    const inputHash = await hashPassword(inputPass);
     const dbPass = String(currentUser?.password || '').trim();
     const dbHash = String(currentUser?.passwordHash || '').trim();
 
-    let isPasswordCorrect = false;
-    if (dbPass && (dbPass === inputPass || dbPass === inputHash)) isPasswordCorrect = true;
-    if (dbHash && (dbHash === inputHash || dbHash === inputPass)) isPasswordCorrect = true;
+    let isPasswordCorrect = (await verifyPasswordHash(inputPass, dbHash)) || (await verifyPasswordHash(inputPass, dbPass));
 
     // Query latest DB if local currentUser cache lacks password properties
     if (!isPasswordCorrect && currentUser?.username) {
@@ -256,10 +253,13 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
         if (found) {
           const fPass = String(found.password || '').trim();
           const fHash = String(found.passwordHash || '').trim();
-          if (fPass && (fPass === inputPass || fPass === inputHash)) isPasswordCorrect = true;
-          if (fHash && (fHash === inputHash || fHash === inputPass)) isPasswordCorrect = true;
+          if ((await verifyPasswordHash(inputPass, fHash)) || (await verifyPasswordHash(inputPass, fPass))) {
+            isPasswordCorrect = true;
+          }
         }
-      } catch (err) {}
+      } catch (err) {
+        console.warn('Fallback verification error:', err);
+      }
     }
 
     if (isPasswordCorrect) {
@@ -415,18 +415,20 @@ export default function UserProfileTab({ onTriggerToast, setActiveTab }) {
       {/* Top Banner Header */}
       <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
-              width: '44px',
-              height: '44px',
+              width: '46px',
+              height: '46px',
               borderRadius: '14px',
-              background: 'linear-gradient(135deg, rgba(0, 242, 254, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '1px solid rgba(0, 242, 254, 0.4)'
+              color: '#050b14',
+              boxShadow: '0 0 18px rgba(0, 242, 254, 0.4)',
+              flexShrink: 0
             }}>
-              <UserCheck size={24} color="#00f2fe" />
+              <UserCheck size={24} />
             </div>
             <div>
               <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
