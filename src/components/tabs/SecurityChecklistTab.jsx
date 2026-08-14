@@ -614,15 +614,30 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     const m = String(parseInt(parts[1], 10));
     const d = String(parseInt(parts[2], 10));
 
-    const created = item.createdAt || '';
-    const visit = item.visitDate || '';
+    const dateValues = [
+      item.createdAt,
+      item.created_at,
+      item.signature_date,
+      item.signatureDate,
+      item.signedAt,
+      item.pledgedAt,
+      item.visitDate,
+      item.visit_date
+    ].filter(Boolean).map(v => String(v));
 
-    const matchIso = created.includes(dateStr) || visit.includes(dateStr);
-    const matchKr1 = created.includes(`${y}. ${m}. ${d}.`) || visit.includes(`${y}. ${m}. ${d}.`);
-    const matchKr2 = created.includes(`${y}.${parts[1]}.${parts[2]}`) || visit.includes(`${y}.${parts[1]}.${parts[2]}`);
-    const matchKr3 = created.includes(`${y}년 ${m}월 ${d}일`) || visit.includes(`${y}년 ${m}월 ${d}일`);
+    if (dateValues.length === 0) return true; // If no date field, don't hide
 
-    return matchIso || matchKr1 || matchKr2 || matchKr3;
+    const matchPatterns = [
+      dateStr, // 2026-08-14
+      `${y}. ${m}. ${d}.`, // 2026. 8. 14.
+      `${y}. ${parts[1]}. ${parts[2]}`, // 2026. 08. 14.
+      `${y}.${parts[1]}.${parts[2]}`, // 2026.08.14
+      `${y}.${m}.${d}`, // 2026.8.14
+      `${y}년 ${m}월 ${d}일`, // 2026년 8월 14일
+      `${y}-${m}-${d}` // 2026-8-14
+    ];
+
+    return dateValues.some(val => matchPatterns.some(pattern => val.includes(pattern)));
   };
 
   // Modal States
@@ -1403,6 +1418,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     const rawSiteStr = String(formData.site || '').trim();
 
+    const nowTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
+    const todayIso = getTodayLocalIsoDate();
+
     const newPass = {
       id: newPassId,
       log_id: newPassId,
@@ -1418,13 +1436,20 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       department: userTeam,
       rank: formData.rank?.trim() || '대리',
       phone: formData.phone || '010-0000-0000',
+      company: formData.company || userTeam,
       purpose: finalPurpose,
+      purposeType: formData.purposeType || '',
+      customPurpose: formData.customPurpose || '',
+      visitDate: formData.visitDate || `${todayIso} ~ ${todayIso}`,
       mdmVerified: formData.mdmVerified,
       docChecklist: formData.docChecklist || { gateApproved: false, docSecVerified: false, preCheckVerified: false },
+      materials: formData.materials || [],
+      companions: formData.companions || [],
       status: '승인완료',
-      signature_date: new Date().toLocaleString('ko-KR', { hour12: false }),
-      signatureDate: new Date().toLocaleString('ko-KR', { hour12: false }),
-      signedAt: new Date().toLocaleString('ko-KR', { hour12: false })
+      signature_date: nowTimeStr,
+      signatureDate: nowTimeStr,
+      signedAt: nowTimeStr,
+      createdAt: nowTimeStr
     };
 
     try {

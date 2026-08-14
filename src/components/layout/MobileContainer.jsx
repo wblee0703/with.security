@@ -61,13 +61,13 @@ export default function MobileContainer({
   return (
     <div className="mobile-shell-wrapper">
 
-      {/* Clean Mobile App Top Header */}
+      {/* Clean Mobile App Top Header with Status Bar Safe Area Padding */}
       <div style={{
-        paddingTop: '4px',
-        paddingBottom: '4px',
-        paddingLeft: '12px',
-        paddingRight: '12px',
-        minHeight: '44px',
+        paddingTop: 'max(env(safe-area-inset-top, 0px), 14px)',
+        paddingBottom: '8px',
+        paddingLeft: '14px',
+        paddingRight: '14px',
+        minHeight: 'calc(48px + env(safe-area-inset-top, 0px))',
         background: '#ffffff',
         borderBottom: '1px solid #e2e8f0',
         display: 'flex',

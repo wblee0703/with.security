@@ -207,12 +207,15 @@ class SecurityDatabase {
   // --- Specific Domain Helpers ---
 
   async getChecklists() {
+    let list = [];
+
+    // 1. Try fetching from remote MySQL Server API if connected
     try {
       const res = await safeFetchApi('/api/security-logs');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
-        if (Array.isArray(remoteData)) {
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
           localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
           try {
             for (const p of remoteData) await this.putItem('checklists', p);
@@ -222,42 +225,81 @@ class SecurityDatabase {
       }
     } catch (e) {}
 
-    try {
-      const dbPledges = await this.getAll('checklists');
-      if (dbPledges && dbPledges.length > 0) return dbPledges;
-    } catch (e) {}
-
+    // 2. Offline / Standalone Fallback: Combine IndexedDB and LocalStorage cache (Robust 2-tier local fallback)
     try {
       const backup = localStorage.getItem('with_security_checklists_backup');
-      if (backup) return JSON.parse(backup);
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed;
+        }
+      }
     } catch (err) {}
 
-    return [];
+    try {
+      const dbPledges = await this.getAll('checklists');
+      if (Array.isArray(dbPledges) && dbPledges.length > 0) {
+        if (list.length === 0) {
+          list = dbPledges;
+          localStorage.setItem('with_security_checklists_backup', JSON.stringify(dbPledges));
+        } else {
+          // Merge unique items by id / log_id
+          const map = new Map();
+          list.forEach(item => {
+            const key = String(item.id || item.log_id);
+            if (key) map.set(key, item);
+          });
+          dbPledges.forEach(item => {
+            const key = String(item.id || item.log_id);
+            if (key && !map.has(key)) map.set(key, item);
+          });
+          list = Array.from(map.values());
+          localStorage.setItem('with_security_checklists_backup', JSON.stringify(list));
+        }
+      }
+    } catch (e) {}
+
+    return list;
   }
 
   async saveChecklist(checklist) {
+    if (!checklist) return null;
+    const targetId = checklist.id || checklist.log_id || `PASS-${new Date().getFullYear()}-${Date.now()}`;
+    const normalizedChecklist = {
+      ...checklist,
+      id: targetId,
+      log_id: checklist.log_id || targetId,
+      site_name: checklist.site_name || checklist.siteName || checklist.site || '',
+      site: checklist.site_name || checklist.siteName || checklist.site || '',
+      visitorName: checklist.visitorName || checklist.name || checklist.userName || '서약자',
+      name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
+      createdAt: checklist.createdAt || checklist.created_at || new Date().toLocaleString('ko-KR', { hour12: false }),
+      signature_date: checklist.signature_date || checklist.signatureDate || checklist.signedAt || new Date().toLocaleString('ko-KR', { hour12: false }),
+      signatureDate: checklist.signatureDate || checklist.signature_date || checklist.signedAt || new Date().toLocaleString('ko-KR', { hour12: false })
+    };
+
+    // 1. Try remote MySQL API sync (Non-blocking)
     try {
       const nowFormatted = new Date().toLocaleString('ko-KR', { hour12: false });
-
       const payload = {
-        log_id: checklist.id || checklist.log_id,
-        parent_log_id: checklist.parent_log_id || checklist.parentLogId || checklist.parentPledgeId || '',
-        name: checklist.name || checklist.visitorName || checklist.userName || '서약자',
-        division: checklist.division || '',
-        role: checklist.role || '일반',
-        site_name: checklist.site_name || checklist.siteName || checklist.site || '',
-        site: checklist.site_name || checklist.siteName || checklist.site || '',
-        purpose: checklist.purpose || checklist.purposeType || checklist.customPurpose || '',
-        visitor_phone: checklist.phone || checklist.visitorPhone || checklist.visitor_phone || '',
-        team: checklist.team || checklist.department || checklist.visitor_team || '',
-        rank: checklist.rank || checklist.visitorRank || checklist.visitor_rank || '',
-        mdm_verified: (checklist.mdmVerified || checklist.mdm_verified) ? 1 : 0,
-        gate_approved: (checklist.docChecklist?.gateApproved || checklist.gate_approved) ? 1 : 0,
-        doc_sec_verified: (checklist.docChecklist?.docSecVerified || checklist.doc_sec_verified) ? 1 : 0,
-        pre_check_verified: (checklist.docChecklist?.preCheckVerified || checklist.pre_check_verified) ? 1 : 0,
-        pledge_terms: checklist.pledgeTerms || checklist.pledge_terms || '',
-        signature_date: checklist.signatureDate || checklist.signature_date || checklist.signedAt || nowFormatted,
-        status: checklist.status || '승인완료'
+        log_id: normalizedChecklist.log_id,
+        parent_log_id: normalizedChecklist.parent_log_id || normalizedChecklist.parentLogId || normalizedChecklist.parentPledgeId || '',
+        name: normalizedChecklist.name,
+        division: normalizedChecklist.division || '',
+        role: normalizedChecklist.role || '일반',
+        site_name: normalizedChecklist.site_name,
+        site: normalizedChecklist.site_name,
+        purpose: normalizedChecklist.purpose || normalizedChecklist.purposeType || normalizedChecklist.customPurpose || '',
+        visitor_phone: normalizedChecklist.phone || normalizedChecklist.visitorPhone || normalizedChecklist.visitor_phone || '',
+        team: normalizedChecklist.team || normalizedChecklist.department || normalizedChecklist.visitor_team || '',
+        rank: normalizedChecklist.rank || normalizedChecklist.visitorRank || normalizedChecklist.visitor_rank || '',
+        mdm_verified: (normalizedChecklist.mdmVerified || normalizedChecklist.mdm_verified) ? 1 : 0,
+        gate_approved: (normalizedChecklist.docChecklist?.gateApproved || normalizedChecklist.gate_approved) ? 1 : 0,
+        doc_sec_verified: (normalizedChecklist.docChecklist?.docSecVerified || normalizedChecklist.doc_sec_verified) ? 1 : 0,
+        pre_check_verified: (normalizedChecklist.docChecklist?.preCheckVerified || normalizedChecklist.pre_check_verified) ? 1 : 0,
+        pledge_terms: normalizedChecklist.pledgeTerms || normalizedChecklist.pledge_terms || '',
+        signature_date: normalizedChecklist.signature_date || nowFormatted,
+        status: normalizedChecklist.status || '승인완료'
       };
 
       await safeFetchApi('/api/security-logs', {
@@ -269,27 +311,31 @@ class SecurityDatabase {
       console.warn('MySQL Security Log Sync Warning:', e);
     }
 
+    // 2. Guaranteed Local Persistence: Save to LocalStorage immediately
     try {
-      await this.putItem('checklists', checklist);
-    } catch (e) {}
-
-    try {
-      const backup = localStorage.getItem('with_security_checklists_backup');
-      const existing = backup ? JSON.parse(backup) : await this.getAll('checklists');
-      const targetId = checklist.id || checklist.log_id;
-      const index = (existing || []).findIndex(item => String(item.id) === String(targetId) || String(item.log_id) === String(targetId));
+      const existing = await this.getChecklists();
+      const existingIndex = existing.findIndex(item => String(item.id) === String(targetId) || String(item.log_id) === String(targetId));
       let updated;
-      if (index >= 0) {
+      if (existingIndex >= 0) {
         updated = [...existing];
-        updated[index] = { ...existing[index], ...checklist };
+        updated[existingIndex] = { ...existing[existingIndex], ...normalizedChecklist };
       } else {
-        updated = [checklist, ...(existing || [])];
+        updated = [normalizedChecklist, ...existing];
       }
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
-    } catch (err) {}
+    } catch (err) {
+      console.warn('LocalStorage saveChecklist fallback warning:', err);
+    }
+
+    // 3. Guaranteed Local Persistence: Save to IndexedDB
+    try {
+      await this.putItem('checklists', normalizedChecklist);
+    } catch (e) {
+      console.warn('IndexedDB putItem checklists fallback warning:', e);
+    }
 
     notifyDataChanged();
-    return checklist;
+    return normalizedChecklist;
   }
 
   async deleteChecklist(id) {
@@ -304,12 +350,9 @@ class SecurityDatabase {
     } catch (e) {}
 
     try {
-      const backup = localStorage.getItem('with_security_checklists_backup');
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        const filtered = (parsed || []).filter(item => item.id !== id && item.log_id !== id);
-        localStorage.setItem('with_security_checklists_backup', JSON.stringify(filtered));
-      }
+      const existing = await this.getChecklists();
+      const filtered = existing.filter(item => String(item.id) !== String(id) && String(item.log_id) !== String(id));
+      localStorage.setItem('with_security_checklists_backup', JSON.stringify(filtered));
     } catch (err) {}
 
     notifyDataChanged();

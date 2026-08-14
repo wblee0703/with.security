@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Calendar,
   ChevronLeft,
@@ -28,6 +28,7 @@ import { dbService } from '../../services/dbService';
 export default function WorkSummaryTab({ onTriggerToast }) {
   const [workLogs, setWorkLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const dailyDateInputRef = useRef(null);
 
   // Today local ISO date (YYYY-MM-DD)
   const getTodayIso = () => {
@@ -441,22 +442,54 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 <ChevronLeft size={16} />
               </button>
 
-              <input
-                type="date"
-                className="borderless-date-input"
-                value={dailyDate}
-                onChange={(e) => e.target.value && setDailyDate(e.target.value)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#0284c7',
-                  fontSize: '12.5px',
-                  fontWeight: '800',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit'
+              <div
+                onClick={() => {
+                  if (dailyDateInputRef.current) {
+                    if (typeof dailyDateInputRef.current.showPicker === 'function') {
+                      dailyDateInputRef.current.showPicker();
+                    } else {
+                      dailyDateInputRef.current.focus();
+                      dailyDateInputRef.current.click();
+                    }
+                  }
                 }}
-              />
+                style={{
+                  position: 'relative',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer',
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  transition: 'background 0.2s ease',
+                  userSelect: 'none'
+                }}
+                title="클릭하여 달력에서 날짜 선택"
+              >
+                <Calendar size={13} color="#0284c7" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0284c7', whiteSpace: 'nowrap' }}>
+                  {getFormattedKoreanDate(dailyDate)}
+                </span>
+                <input
+                  ref={dailyDateInputRef}
+                  type="date"
+                  value={dailyDate}
+                  onChange={(e) => e.target.value && setDailyDate(e.target.value)}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                    border: 'none',
+                    outline: 'none',
+                    padding: 0,
+                    margin: 0
+                  }}
+                />
+              </div>
 
               <button
                 type="button"
