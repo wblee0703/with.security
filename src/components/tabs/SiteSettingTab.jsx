@@ -310,18 +310,18 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     fontWeight: '600'
                   }}
                 >
-                  <option value="보안앱O">보안앱O (보안 검수 필수)</option>
-                  <option value="보안앱X">보안앱X (예외 구역)</option>
+                  <option value="보안앱O">보안앱O</option>
+                  <option value="보안앱X">보안앱X</option>
                 </select>
               </div>
 
               <div>
                 <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                  회사명 / 사업장명 *
+                  사업장명 *
                 </label>
                 <input
                   type="text"
-                  placeholder="예: 삼성전자 평택캠퍼스 P4"
+                  placeholder="예: SEC, SKH"
                   value={newSiteForm.name}
                   onChange={(e) => setNewSiteForm({ ...newSiteForm, name: e.target.value })}
                   style={{
@@ -339,11 +339,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
 
               <div>
                 <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                  사업장 위치 (주소/동/라인)
+                  사업장 위치
                 </label>
                 <input
                   type="text"
-                  placeholder="예: 경기도 평택시 고덕면 삼성로 114"
+                  placeholder="예: 평택 사업장"
                   value={newSiteForm.address}
                   onChange={(e) => setNewSiteForm({ ...newSiteForm, address: e.target.value })}
                   style={{

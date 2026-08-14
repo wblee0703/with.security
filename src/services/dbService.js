@@ -274,14 +274,16 @@ class SecurityDatabase {
     } catch (e) {}
 
     try {
-      const existing = await this.getChecklists();
-      const index = existing.findIndex(item => item.id === checklist.id);
+      const backup = localStorage.getItem('with_security_checklists_backup');
+      const existing = backup ? JSON.parse(backup) : await this.getAll('checklists');
+      const targetId = checklist.id || checklist.log_id;
+      const index = (existing || []).findIndex(item => String(item.id) === String(targetId) || String(item.log_id) === String(targetId));
       let updated;
       if (index >= 0) {
         updated = [...existing];
-        updated[index] = checklist;
+        updated[index] = { ...existing[index], ...checklist };
       } else {
-        updated = [checklist, ...existing];
+        updated = [checklist, ...(existing || [])];
       }
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(updated));
     } catch (err) {}

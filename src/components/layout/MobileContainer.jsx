@@ -61,12 +61,13 @@ export default function MobileContainer({
   return (
     <div className="mobile-shell-wrapper">
 
-      {/* Clean Mobile App Top Header (Supports Safe Area Inset for Notches) */}
+      {/* Clean Mobile App Top Header */}
       <div style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: '2px',
+        paddingTop: '4px',
+        paddingBottom: '4px',
         paddingLeft: '12px',
         paddingRight: '12px',
+        minHeight: '44px',
         background: '#ffffff',
         borderBottom: '1px solid #e2e8f0',
         display: 'flex',

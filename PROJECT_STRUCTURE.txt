@@ -91,4 +91,4 @@ with.security/
    - Android Studio 실행 > Build > Build Bundle(s) / APK(s) > Build APK(s)
 
 3) APK 설치 파일 생성 경로:
-   - with.security\android\app\build\outputs\apk\debug\app-debug.apk
+   - C:\Users\USER\Desktop\with.security\android\app\build\outputs\apk\debug

@@ -648,7 +648,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             </div>
 
             <form onSubmit={handleProfileUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              {/* Row 1: Account Role & Division (2 Columns) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                     계정 구분
@@ -753,7 +754,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     ))}
                   </select>
                 </div>
+              </div>
 
+              {/* Row 2: Team, Rank & Name (3 Columns in the Same Row) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                     소속팀 *
@@ -783,9 +787,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                     직급 *
@@ -1165,7 +1167,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 transition: 'all 0.2s ease'
               }}
             >
-              <UserPlus size={16} /> 신규 회원가입 (계정 생성)
+              <UserPlus size={16} /> 신규 회원가입
             </button>
           </div>
 
@@ -1305,9 +1307,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     }}
                   />
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
                     사업부 *
@@ -1343,7 +1343,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     ))}
                   </select>
                 </div>
+              </div>
 
+              {/* Row 3: Team, Rank & Name (3 Columns in the Same Row) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
                     소속팀 *
@@ -1371,9 +1374,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
                     직급 *

@@ -291,12 +291,22 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       };
     }
 
+    const cleanSiteName = siteName.trim().toLowerCase();
+
     const foundSite = sites.find(s => {
-      const displayName = s.address ? `${s.name} (${s.address})` : s.name;
-      return displayName.trim() === siteName.trim() || s.name?.trim() === siteName.trim();
+      const displayName = (s.address ? `${s.name} (${s.address})` : s.name).trim().toLowerCase();
+      const sName = (s.name || '').trim().toLowerCase();
+      return displayName === cleanSiteName ||
+        sName === cleanSiteName ||
+        cleanSiteName.includes(sName) ||
+        (s.address && cleanSiteName.includes(s.address.trim().toLowerCase()));
     });
 
-    const isAppRequired = foundSite ? (foundSite.type === '보안앱O' || foundSite.type === '보안어플O' || !foundSite.type) : true;
+    const isAppX = cleanSiteName.includes('보안앱x') ||
+      cleanSiteName.includes('보안어플x') ||
+      (foundSite && (foundSite.type === '보안앱X' || foundSite.type === '보안어플X' || foundSite.type === '수동체크'));
+
+    const isAppRequired = !isAppX;
 
     if (isAppRequired) {
       return {
@@ -364,7 +374,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   const videoPreviewRef = useRef(null);
   const cameraStreamRef = useRef(null);
 
-  // Independent Step 2 Sub-Check States
+  // Independent Step Verification States
+  const [step1Attempted, setStep1Attempted] = useState(false);
   const [secAppVerified, setSecAppVerified] = useState(false);
   const [secAppFailed, setSecAppFailed] = useState(false);
   const [cameraCheckVerified, setCameraCheckVerified] = useState(false);
@@ -397,6 +408,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
   // Reset Security App & Camera Verification States (Mandatory Re-verification on modal open/close)
   const resetAppVerificationState = () => {
+    setStep1Attempted(false);
     setAppCheckState({ isChecking: false, isVerified: false });
     setCameraCheckState({ isTesting: false, isVerified: false, result: null, message: '' });
     setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
@@ -634,9 +646,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     company: '',
     phone: '',
     hostName: '',
-    purposeType: '작업',
+    purposeType: '',
     customPurpose: '',
-    purpose: '작업',
+    purpose: '',
     visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
     mdmVerified: false,
     docChecklist: {
@@ -795,6 +807,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   };
 
   // Handle Perform Companion Pledge (Companion performs security pledge for shared pledge)
+  // Handle Companion Pledge Action (Directly jump to Step 2 with locked site and purpose)
   const handlePerformCompanionPledge = async (targetItem, companion) => {
     const activeUser = await dbService.getUserProfile();
     if (!activeUser) {
@@ -803,9 +816,16 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
+    resetAppVerificationState();
+
     const userTeam = activeUser.team || activeUser.department || companion.team || '보안관제팀';
+    const targetSite = targetItem.site || targetItem.site_name || targetItem.siteName || '';
+    const inheritedPurpose = targetItem.purpose || targetItem.purposeType || '작업';
+    const inheritedPurposeType = targetItem.purposeType || targetItem.purpose || '작업';
+    const inheritedCustomPurpose = targetItem.customPurpose || (targetItem.purposeType === '기타' ? targetItem.purpose : '') || '';
+
     setFormData({
-      site: targetItem.site,
+      site: targetSite,
       visitorName: companion.visitorName || activeUser.name || '',
       phone: activeUser.phone || companion.phone || '010-0000-0000',
       team: userTeam,
@@ -813,9 +833,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       rank: activeUser.rank || companion.rank || '대리',
       company: userTeam,
       hostName: targetItem.hostName || '사업장 보안관제센터',
-      purposeType: targetItem.purpose || '작업',
-      customPurpose: '',
-      purpose: targetItem.purpose || '작업',
+      purposeType: inheritedPurposeType,
+      customPurpose: inheritedCustomPurpose,
+      purpose: inheritedPurpose,
       visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
       mdmVerified: false,
       docChecklist: {
@@ -827,15 +847,21 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       agreedToTerms: false,
       isCompanionMode: true,
       parentPledgeId: targetItem.id,
-      companionId: companion.id
+      companionId: companion.id,
+      isEditMode: false,
+      editingPledgeId: null
     });
 
-    setAppScanState({ isScanning: false, status: 'IDLE', lastScannedAt: null, scanLog: [] });
-    setAppCheckState({ isChecking: false, isVerified: false });
-    setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
-    setActiveStep(1);
+    setActiveStep(2);
     setIsModalOpen(true);
-    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${companion.visitorName}'님 동행 보안 서약 모드가 시작되었습니다. 2단계 앱 검수 및 서약을 완료해 주세요.`, 'info');
+    const targetApp = getTargetSecurityAppInfo(targetSite);
+    if (onTriggerToast) {
+      if (targetApp.isChecklistMode) {
+        onTriggerToast(`[${targetSite}] 동행인 '${companion.visitorName}'님의 보안 서약이 시작되었습니다. 2단계 수동 보안 체크리스트부터 진행해 주세요.`, 'info');
+      } else {
+        onTriggerToast(`[${targetSite}] 동행인 '${companion.visitorName}'님의 보안 서약이 시작되었습니다. 2단계 모바일 보안 앱 검수부터 진행해 주세요.`, 'info');
+      }
+    }
   };
 
   // Handle Primary Creator Re-Signing Pledge
@@ -847,27 +873,29 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
+    resetAppVerificationState();
+
     const userTeam = activeUser.team || activeUser.department || targetItem.team || '보안관제팀';
     setFormData({
-      site: targetItem.site,
-      visitorName: targetItem.visitorName || activeUser.name || '',
-      phone: activeUser.phone || targetItem.phone || '010-0000-0000',
+      site: targetItem.site || '',
+      visitorName: activeUser ? activeUser.name : (targetItem.visitorName || ''),
+      phone: activeUser ? activeUser.phone : (targetItem.phone || '010-0000-0000'),
       team: userTeam,
       department: userTeam,
-      rank: activeUser.rank || targetItem.rank || '대리',
+      rank: activeUser ? activeUser.rank : (targetItem.rank || '대리'),
       company: userTeam,
       hostName: targetItem.hostName || '사업장 보안관제센터',
-      purposeType: targetItem.purpose || '작업',
+      purposeType: '',
       customPurpose: '',
-      purpose: targetItem.purpose || '작업',
-      visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+      purpose: '',
+      visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
       mdmVerified: false,
-      docChecklist: targetItem.docChecklist || {
+      docChecklist: {
         gateApproved: false,
         docSecVerified: false,
         preCheckVerified: false
       },
-      materials: targetItem.materials || [],
+      materials: [],
       agreedToTerms: false,
       isCompanionMode: false,
       parentPledgeId: null,
@@ -876,12 +904,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       editingPledgeId: targetItem.id
     });
 
-    setAppScanState({ isScanning: false, status: 'IDLE', lastScannedAt: null, scanLog: [] });
-    setAppCheckState({ isChecking: false, isVerified: false });
-    setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '' });
     setActiveStep(1);
     setIsModalOpen(true);
-    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] '${targetItem.visitorName}'님 서약 재작성 모드가 시작되었습니다. 4단계까지 확인 후 다시 서명을 완료해 주세요.`, 'info');
+    if (onTriggerToast) onTriggerToast(`[${targetItem.site}] 서약 재작성 모드가 시작되었습니다. 1단계부터 확인 후 다시 서약을 완료해 주세요.`, 'info');
   };
 
   // Handle Delete Companion Entry from Pledge
@@ -890,10 +915,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
-    const targetPledge = checklistList.find(item => item.id === pledgeId);
+    const targetPledge = checklistList.find(item => String(item.id) === String(pledgeId) || String(item.log_id) === String(pledgeId));
     if (!targetPledge) return;
 
-    const updatedCompanions = (targetPledge.companions || []).filter(c => c.id !== companionId && c.log_id !== companionId);
+    const updatedCompanions = (targetPledge.companions || []).filter(c => String(c.id) !== String(companionId) && String(c.log_id) !== String(companionId));
     const updatedPledge = {
       ...targetPledge,
       companions: updatedCompanions
@@ -908,7 +933,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       console.error('Failed to delete companion from DB:', err);
     }
 
-    setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+    setChecklistList(prev => prev.map(item => (String(item.id) === String(updatedPledge.id) || String(item.log_id) === String(updatedPledge.id)) ? updatedPledge : item));
     if (onTriggerToast) {
       onTriggerToast(`'${companionName}' 동행자 서약 내역이 성공적으로 삭제되었습니다.`, 'success');
     }
@@ -1294,24 +1319,40 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     }
 
     // Handle Primary Creator Re-Signing Submission
-    const wasEditMode = formData.isEditMode;
-    if (wasEditMode && formData.editingPledgeId) {
-      const targetPledge = checklistList.find(item => item.id === formData.editingPledgeId);
+    const wasEditMode = Boolean(formData.isEditMode && formData.editingPledgeId);
+    if (wasEditMode) {
+      const targetPledge = checklistList.find(item => String(item.id) === String(formData.editingPledgeId) || String(item.log_id) === String(formData.editingPledgeId));
       if (targetPledge) {
+        const updatedCompanions = (targetPledge.companions || []).map(c => ({
+          ...c,
+          site: formData.site,
+          site_name: formData.site,
+          siteName: formData.site
+        }));
+
         const updatedPledge = {
           ...targetPledge,
           site: formData.site,
+          site_name: formData.site,
+          siteName: formData.site,
+          name: formData.visitorName.trim(),
           visitorName: formData.visitorName.trim(),
           team: userTeam,
+          visitor_team: userTeam,
           department: userTeam,
           rank: formData.rank?.trim() || targetPledge.rank || '대리',
+          visitor_rank: formData.rank?.trim() || targetPledge.rank || '대리',
           company: userTeam,
           phone: formData.phone || targetPledge.phone || '010-0000-0000',
+          visitor_phone: formData.phone || targetPledge.phone || '010-0000-0000',
           purpose: finalPurpose,
+          purposeType: formData.purposeType,
+          customPurpose: formData.customPurpose,
           visitDate: formData.visitDate,
           mdmVerified: formData.mdmVerified,
           docChecklist: formData.docChecklist || targetPledge.docChecklist,
           materials: formData.materials || [],
+          companions: updatedCompanions,
           status: '승인완료',
           updatedAt: new Date().toLocaleString('ko-KR', { hour12: false })
         };
@@ -1322,7 +1363,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           console.error('Failed to update pass in DB:', err);
         }
 
-        setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+        setChecklistList(prev => prev.map(item => (String(item.id) === String(updatedPledge.id) || String(item.log_id) === String(updatedPledge.id)) ? updatedPledge : item));
         handleCloseModal();
         setActiveStep(1);
 
@@ -1336,9 +1377,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           company: '',
           phone: activeUser ? activeUser.phone : '',
           hostName: '',
-          purposeType: '작업',
+          purposeType: '',
           customPurpose: '',
-          purpose: '작업',
+          purpose: '',
           visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
           mdmVerified: false,
           materials: [],
@@ -1350,7 +1391,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`[${updatedPledge.site}] '${updatedPledge.visitorName}'님의 보안 서약이 성공적으로 다시 서명(재작성)되었습니다.`, 'success');
+          onTriggerToast(`[${updatedPledge.site}] 보안 서약이 성공적으로 다시 서명(수정)되었습니다.`, 'success');
         }
         return;
       }
@@ -1408,9 +1449,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       company: '',
       phone: activeUser ? activeUser.phone : '',
       hostName: '',
-      purposeType: '작업',
+      purposeType: '',
       customPurpose: '',
-      purpose: '작업',
+      purpose: '',
       visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
       mdmVerified: false,
       docChecklist: {
@@ -1580,9 +1621,6 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '18px', border: '1.5px solid #cbd5e1', color: '#64748b' }}>
             <ShieldCheck size={36} color="#94a3b8" style={{ marginBottom: '10px' }} />
             <div style={{ fontSize: '14px', fontWeight: '700' }}>선택하신 날짜에 등록된 보안 서약 내역이 없습니다.</div>
-            <div style={{ fontSize: '12px', marginTop: '6px', color: '#94a3b8' }}>
-              상단 [사업장 출입 체크리스트 & 보안 서약] 버튼을 눌러 신규 서약을 작성해 주세요.
-            </div>
           </div>
         ) : (
           filteredList.map((item) => {
@@ -1636,33 +1674,43 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       <UserPlus size={13} /> 동행 등록
                     </button>
 
-                    {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`'${item.visitorName}'님의 [${item.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
-                            handleDeletePledge(item.id, item.site);
-                          }
-                        }}
-                        title="개발자 전용: 서약 내역 삭제"
-                        style={{
-                          background: '#fff1f2',
-                          border: '1.5px solid #fda4af',
-                          color: '#e11d48',
-                          padding: '6px 10px',
-                          borderRadius: '10px',
-                          fontSize: '11.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          transition: 'all 0.2s ease'
-                        }}
-                      >
-                        <Trash2 size={13} /> 삭제
-                      </button>
-                    )}
+                    {(() => {
+                      const hasCompletedCompanions = item.companions && item.companions.some(c => c.status === '완료' || c.status === '서약 완료' || c.status === '승인완료');
+                      const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
+                      const canDeleteMainPledge = hasCompletedCompanions
+                        ? isDevUser
+                        : (isDevUser || currentUser?.role === '관리자' || isPrimaryVisitor);
+
+                      if (!canDeleteMainPledge) return null;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`'${item.visitorName}'님의 [${item.site}] 보안 서약 내역을 정말로 삭제하시겠습니까?`)) {
+                              handleDeletePledge(item.id, item.site);
+                            }
+                          }}
+                          title={hasCompletedCompanions ? "개발자 전용: 완료된 동행인이 포함된 서약 내역 삭제" : "서약 내역 삭제"}
+                          style={{
+                            background: '#fff1f2',
+                            border: '1.5px solid #fda4af',
+                            color: '#e11d48',
+                            padding: '6px 10px',
+                            borderRadius: '10px',
+                            fontSize: '11.5px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -1690,7 +1738,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       </span>
                       <span style={{ color: '#cbd5e1' }}>|</span>
                       <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '12px' }}>
-                        👤 {item.visitorName}
+                        {item.visitorName}
                       </span>
                       <span style={{ color: '#cbd5e1' }}>|</span>
                       <span className="mono-font" style={{ color: '#64748b', fontSize: '11.5px' }}>
@@ -1707,40 +1755,45 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       color: '#059669',
                       border: '1.5px solid #a7f3d0'
                     }}>
-                      ✓ 서약 완료
+                      완료
                     </span>
                   </div>
 
-                  {/* Bottom Full-Width Line: Primary Creator Re-Sign Action Button */}
-                  {isPrimaryVisitor && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePerformPrimaryResign(item);
-                      }}
-                      style={{
-                        width: '100%',
-                        marginTop: '2px',
-                        padding: '9px 14px',
-                        background: '#f0f9ff',
-                        color: '#0284c7',
-                        border: '1.5px solid #7dd3fc',
-                        borderRadius: '10px',
-                        fontSize: '12.5px',
-                        fontWeight: '800',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)',
-                        transition: 'all 0.2s ease'
-                      }}
-                    >
-                      ✍️ 다시 서명하기
-                    </button>
-                  )}
+                  {/* Bottom Full-Width Line: Primary Creator Re-Sign Action Button (Hidden when any companion is completed) */}
+                  {(() => {
+                    const hasCompletedCompanions = item.companions && item.companions.some(c => c.status === '완료' || c.status === '서약 완료' || c.status === '승인완료');
+                    if (!isPrimaryVisitor || hasCompletedCompanions) return null;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handlePerformPrimaryResign(item);
+                        }}
+                        style={{
+                          width: '100%',
+                          marginTop: '2px',
+                          padding: '9px 14px',
+                          background: '#f0f9ff',
+                          color: '#0284c7',
+                          border: '1.5px solid #7dd3fc',
+                          borderRadius: '10px',
+                          fontSize: '12.5px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                          boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)',
+                          transition: 'all 0.2s ease'
+                        }}
+                      >
+                        ✍️ 다시 서명하기
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {/* Additional Registrations / Companions Rows */}
@@ -1750,7 +1803,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       const isCompleted = comp.status === '완료' || comp.status === '서약 완료' || comp.status === '승인완료';
                       const isCurrentCompanion = isSamePerson(currentUser, comp);
                       const isDev = currentUser?.role === '개발자' || currentUser?.username === 'admin';
-                      const canDeleteCompanion = isDev || isPrimaryVisitor || isCurrentCompanion;
+                      const canDeleteCompanion = isCompleted
+                        ? isDev
+                        : (isDev || isPrimaryVisitor || isCurrentCompanion);
 
                       return (
                         <div
@@ -1779,7 +1834,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               </span>
                               <span style={{ color: '#cbd5e1' }}>|</span>
                               <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '12px' }}>
-                                👥 {comp.visitorName}
+                                {comp.visitorName}
                               </span>
                               <span style={{ color: '#cbd5e1' }}>|</span>
                               <span className="mono-font" style={{ color: '#64748b', fontSize: '11.5px' }}>
@@ -1787,74 +1842,96 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               </span>
                             </div>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{
-                                fontSize: '10.5px',
-                                fontWeight: '800',
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                background: isCompleted ? '#ecfdf5' : '#fffbeb',
-                                color: isCompleted ? '#059669' : '#d97706',
-                                border: isCompleted ? '1.5px solid #a7f3d0' : '1.5px solid #fde68a'
-                              }}>
-                                {isCompleted ? '✓ 완료' : '대기'}
-                              </span>
-
-                              {canDeleteCompanion && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCompanion(item.id, comp.id, comp.visitorName);
-                                  }}
-                                  title={isCurrentCompanion ? "본인 동행 서약 삭제" : isPrimaryVisitor ? "최초 등록자 권한: 동행자 삭제" : "개발자 권한: 동행자 삭제"}
-                                  style={{
-                                    background: '#fff1f2',
-                                    border: '1.5px solid #fda4af',
-                                    color: '#e11d48',
-                                    padding: '2px 8px',
-                                    borderRadius: '6px',
-                                    fontSize: '10.5px',
-                                    fontWeight: '800',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    transition: 'all 0.2s ease'
-                                  }}
-                                >
-                                  삭제
-                                </button>
-                              )}
-                            </div>
+                            <span style={{
+                              fontSize: '10.5px',
+                              fontWeight: '800',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: isCompleted ? '#ecfdf5' : '#fffbeb',
+                              color: isCompleted ? '#059669' : '#d97706',
+                              border: isCompleted ? '1.5px solid #a7f3d0' : '1.5px solid #fde68a'
+                            }}>
+                              {isCompleted ? '완료' : '대기'}
+                            </span>
                           </div>
 
-                          {/* Bottom Full-Width Line: Companion Action Button */}
-                          {isCurrentCompanion && !isCompleted && (
-                            <button
-                              type="button"
-                              onClick={() => handlePerformCompanionPledge(item, comp)}
-                              style={{
+                          {/* Bottom Line: Companion Action Buttons (Pledge & Delete - 1:1 side-by-side when both exist) */}
+                          {(() => {
+                            const showPledgeBtn = isCurrentCompanion && !isCompleted;
+                            const showDeleteBtn = canDeleteCompanion;
+
+                            if (!showPledgeBtn && !showDeleteBtn) return null;
+
+                            const isBoth = showPledgeBtn && showDeleteBtn;
+
+                            return (
+                              <div style={{
+                                display: isBoth ? 'grid' : 'flex',
+                                gridTemplateColumns: isBoth ? '1fr 1fr' : undefined,
+                                gap: '8px',
                                 width: '100%',
-                                marginTop: '2px',
-                                padding: '9px 14px',
-                                background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '10px',
-                                fontSize: '12.5px',
-                                fontWeight: '800',
-                                cursor: 'pointer',
-                                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              ✍️ 동행 서약 하기
-                            </button>
-                          )}
+                                marginTop: '2px'
+                              }}>
+                                {showPledgeBtn && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handlePerformCompanionPledge(item, comp)}
+                                    style={{
+                                      width: '100%',
+                                      padding: '9px 12px',
+                                      background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                                      color: '#ffffff',
+                                      border: 'none',
+                                      borderRadius: '10px',
+                                      fontSize: '12.5px',
+                                      fontWeight: '800',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      transition: 'all 0.2s ease',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    ✍️ 동행 서약 하기
+                                  </button>
+                                )}
+
+                                {showDeleteBtn && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteCompanion(item.id, comp.id, comp.visitorName);
+                                    }}
+                                    title={isCurrentCompanion ? "본인 동행 서약 삭제" : isPrimaryVisitor ? "최초 등록자 권한: 동행자 삭제" : "개발자 권한: 동행자 삭제"}
+                                    style={{
+                                      width: '100%',
+                                      padding: '9px 12px',
+                                      background: '#fff1f2',
+                                      color: '#e11d48',
+                                      border: '1.5px solid #fda4af',
+                                      borderRadius: '10px',
+                                      fontSize: '12.5px',
+                                      fontWeight: '800',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: '6px',
+                                      boxShadow: '0 2px 8px rgba(244, 63, 94, 0.08)',
+                                      transition: 'all 0.2s ease',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                  >
+                                    <Trash2 size={13} /> 동행인 삭제
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
@@ -1990,7 +2067,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
               borderBottom: '1.5px solid #cbd5e1'
             }}>
               {(() => {
-                const isStep1Done = Boolean(formData.site && formData.site.trim() && formData.visitorName && formData.visitorName.trim());
+                const isStep1Done = Boolean(
+                  formData.site && formData.site.trim() &&
+                  formData.visitorName && formData.visitorName.trim() &&
+                  formData.purposeType && formData.purposeType.trim() &&
+                  (formData.purposeType !== '기타' || formData.customPurpose?.trim())
+                );
                 const selSite = sites.find(s => {
                   const dName = s.address ? `${s.name} (${s.address})` : s.name;
                   return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
@@ -2109,302 +2191,338 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             {/* Step Contents Form */}
             <form onSubmit={handleSubmitForm} style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-              {/* STEP 1: Site & Visitor Info */}
-              {activeStep === 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    📍 Step 1. 출입 사업장 및 방문자 기본 정보
-                  </div>
+              {/* STEP 1: Site & Security Checklist Entry Information */}
+              {activeStep === 1 && (() => {
+                const isSiteInvalid = step1Attempted && (!formData.site || !formData.site.trim());
+                const isPurposeInvalid = step1Attempted && (!formData.purposeType || !formData.purposeType.trim());
+                const isCustomPurposeInvalid = step1Attempted && formData.purposeType === '기타' && (!formData.customPurpose || !formData.customPurpose.trim());
 
-                  {formData.isCompanionMode && (
-                    <div style={{
-                      background: '#f0f9ff',
-                      border: '1.5px solid #7dd3fc',
-                      borderRadius: '14px',
-                      padding: '14px 16px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px'
-                    }}>
-                      <UserPlus size={24} color="#0284c7" style={{ flexShrink: 0 }} />
-                      <div style={{ fontSize: '12px', color: '#0f172a', lineHeight: '1.5' }}>
-                        <div style={{ color: '#0284c7', fontWeight: '800', marginBottom: '2px' }}>
-                          👥 동행인 보안 서약 등록 모드
-                        </div>
-                        사업장 정보(<strong>{formData.site}</strong>)는 동일하게 적용되며, 아래 본인(동행자) 정보를 확인 후 [다음 단계] 버튼을 눌러 서약을 완료해 주세요.
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    {/* Select Target Site */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: isSiteInvalid ? '#e11d48' : '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        출입 대상 사업장 * {isSiteInvalid && <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>[사업장을 선택해 주세요]</span>}
+                      </label>
+                      {formData.isCompanionMode ? (
+                        <input
+                          type="text"
+                          disabled
+                          value={formData.site}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#0284c7',
+                            fontWeight: '800',
+                            fontSize: '13px',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
+                      ) : (
+                        <select
+                          value={formData.site}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const selectedSiteObj = sites.find(s => {
+                              const dName = s.address ? `${s.name} (${s.address})` : s.name;
+                              return dName === val || s.name === val;
+                            });
+
+                            const targetName = formData.visitorName || currentUser?.name || '';
+                            const targetPhone = formData.phone || currentUser?.phone || '';
+                            const targetUsername = currentUser?.username || '';
+                            const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                            const targetRank = formData.rank || currentUser?.rank || '';
+
+                            if (!formData.isEditMode && !formData.isCompanionMode && selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
+                              if (onTriggerToast) {
+                                onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 다른 사업장을 선택해 주세요.`, 'warning');
+                              }
+                              return;
+                            }
+
+                            setFormData({ ...formData, site: val });
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: isSiteInvalid ? '#fff1f2' : '#ffffff',
+                            border: isSiteInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
+                            boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
+                            color: formData.site ? '#0f172a' : '#94a3b8',
+                            fontSize: '13px',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <option value="" disabled>-- 출입 사업장을 선택해 주세요 --</option>
+                          {sites.map((s) => {
+                            const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+                            const targetName = formData.visitorName || currentUser?.name || '';
+                            const targetPhone = formData.phone || currentUser?.phone || '';
+                            const targetUsername = currentUser?.username || '';
+                            const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                            const targetRank = formData.rank || currentUser?.rank || '';
+
+                            const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+
+                            return (
+                              <option
+                                key={s.id}
+                                value={displayName}
+                                disabled={isPledged}
+                                style={{
+                                  background: isPledged ? '#f1f5f9' : '#ffffff',
+                                  color: isPledged ? '#94a3b8' : '#0f172a'
+                                }}
+                              >
+                                [{(s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O'}] {displayName} {isPledged ? '⛔ (오늘 서약 완료됨)' : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Visit Purpose Dropdown & Custom Text Input */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: isPurposeInvalid ? '#e11d48' : '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        방문 목적 * {isPurposeInvalid && <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>[방문 목적을 선택해 주세요]</span>}
+                      </label>
+                      {formData.isCompanionMode ? (
+                        <input
+                          type="text"
+                          disabled
+                          value={formData.purpose || formData.purposeType || '작업'}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#0284c7',
+                            fontWeight: '800',
+                            fontSize: '13px',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
+                      ) : (
+                        <select
+                          value={formData.purposeType}
+                          onChange={(e) => {
+                            const type = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              purposeType: type,
+                              purpose: type === '기타' ? prev.customPurpose : type
+                            }));
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: isPurposeInvalid ? '#fff1f2' : '#ffffff',
+                            border: isPurposeInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
+                            boxShadow: isPurposeInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
+                            color: formData.purposeType ? '#0f172a' : '#94a3b8',
+                            fontSize: '13px',
+                            fontWeight: formData.purposeType ? '600' : '500',
+                            outline: 'none',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <option value="" disabled>-- 방문 목적을 선택해 주세요 --</option>
+                          <option value="작업">작업</option>
+                          <option value="회의">회의</option>
+                          <option value="납품">납품</option>
+                          <option value="기타">기타</option>
+                        </select>
+                      )}
+                    </div>
+
+                    {formData.purposeType === '기타' && (
+                      <div>
+                        <label style={{ fontSize: '12px', color: isCustomPurposeInvalid ? '#e11d48' : '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          기타 방문 목적 상세 입력 * {isCustomPurposeInvalid && <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>[목적을 입력해 주세요]</span>}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="방문 목적을 직접 입력해 주세요 (예: 설비 정기 점검 및 세미나 참석)"
+                          value={formData.customPurpose}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              customPurpose: val,
+                              purpose: val
+                            }));
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: isCustomPurposeInvalid ? '#fff1f2' : '#ffffff',
+                            border: isCustomPurposeInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
+                            boxShadow: isCustomPurposeInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
+                            color: '#0f172a',
+                            fontSize: '13px',
+                            outline: 'none',
+                            transition: 'all 0.2s ease'
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Visitor Name & Rank (Disabled - Fixed to Logged In User Profile) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          방문자 성명 <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}></span>
+                        </label>
+                        <input
+                          type="text"
+                          disabled
+                          placeholder="홍길동"
+                          value={formData.visitorName}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          직급 <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}></span>
+                        </label>
+                        <input
+                          type="text"
+                          disabled
+                          value={formData.rank || '대리'}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
                       </div>
                     </div>
-                  )}
 
-                  {/* Site Select */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      출입 대상 사업장 {formData.isCompanionMode ? '(동행 사업장 고정)' : '(필수)'}
-                    </label>
-                    <select
-                      disabled={formData.isCompanionMode}
-                      value={formData.site}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        const selectedSiteObj = sites.find(s => {
-                          const dName = s.address ? `${s.name} (${s.address})` : s.name;
-                          return dName === val || s.name === val;
-                        });
+                    {/* Department & Phone (Disabled - Fixed to Logged In User Profile) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          소속팀 (부서) <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}></span>
+                        </label>
+                        <input
+                          type="text"
+                          disabled
+                          placeholder="예: 보안관제팀"
+                          value={formData.department}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
+                      </div>
 
-                        const targetName = formData.visitorName || currentUser?.name || '';
-                        const targetPhone = formData.phone || currentUser?.phone || '';
-                        const targetUsername = currentUser?.username || '';
-                        const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                        const targetRank = formData.rank || currentUser?.rank || '';
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          연락처 <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}></span>
+                        </label>
+                        <input
+                          type="text"
+                          disabled
+                          placeholder="010-0000-0000"
+                          maxLength={13}
+                          value={formData.phone}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#f1f5f9',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            outline: 'none',
+                            cursor: 'not-allowed'
+                          }}
+                        />
+                      </div>
+                    </div>
 
-                        if (!formData.isEditMode && !formData.isCompanionMode && selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
-                          if (onTriggerToast) {
-                            onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 다른 사업장을 선택해 주세요.`, 'warning');
-                          }
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStep1Attempted(true);
+                        if (!formData.site || !formData.site.trim()) {
+                          if (onTriggerToast) onTriggerToast('❌ [필수 선택] 출입하실 사업장을 선택해 주세요.', 'warning');
                           return;
                         }
-
-                        setFormData({ ...formData, site: val });
+                        if (!formData.visitorName || !formData.visitorName.trim()) {
+                          if (onTriggerToast) onTriggerToast('❌ [필수 입력] 방문자 성명을 입력해 주세요.', 'warning');
+                          return;
+                        }
+                        if (!formData.purposeType || !formData.purposeType.trim()) {
+                          if (onTriggerToast) onTriggerToast('❌ [필수 입력] 방문 목적을 선택해 주세요.', 'warning');
+                          return;
+                        }
+                        if (formData.purposeType === '기타' && (!formData.customPurpose || !formData.customPurpose.trim())) {
+                          if (onTriggerToast) onTriggerToast('❌ [필수 입력] 기타 방문 목적 상세 내용을 입력해 주세요.', 'warning');
+                          return;
+                        }
+                        setActiveStep(2);
                       }}
+                      className="glass-button-primary"
                       style={{
-                        width: '100%',
-                        padding: '10px 14px',
+                        padding: '12px',
                         borderRadius: '12px',
-                        background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        color: formData.isCompanionMode ? '#0284c7' : '#0f172a',
-                        fontWeight: formData.isCompanionMode ? '700' : 'normal',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: formData.isCompanionMode ? 'not-allowed' : 'pointer'
+                        marginTop: '8px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: '800'
                       }}
                     >
-                      <option value="" disabled hidden={formData.isCompanionMode}>-- 출입 사업장을 선택해 주세요 --</option>
-                      {sites.map((s) => {
-                        const displayName = s.address ? `${s.name} (${s.address})` : s.name;
-                        const targetName = formData.visitorName || currentUser?.name || '';
-                        const targetPhone = formData.phone || currentUser?.phone || '';
-                        const targetUsername = currentUser?.username || '';
-                        const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                        const targetRank = formData.rank || currentUser?.rank || '';
-
-                        const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
-
-                        return (
-                          <option
-                            key={s.id}
-                            value={displayName}
-                            disabled={isPledged}
-                            style={{
-                              background: isPledged ? '#f1f5f9' : '#ffffff',
-                              color: isPledged ? '#94a3b8' : '#0f172a'
-                            }}
-                          >
-                            [{(s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O'}] {displayName} {isPledged ? '⛔ (오늘 서약 완료됨)' : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
+                      다음: 모바일 보안 앱 검수 <ChevronRight size={16} />
+                    </button>
                   </div>
-
-                  {/* Visitor Name & Rank */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        방문자 성명 {formData.isCompanionMode ? '(동행자 본인)' : '*'}
-                      </label>
-                      <input
-                        type="text"
-                        disabled={formData.isCompanionMode}
-                        placeholder="홍길동"
-                        value={formData.visitorName}
-                        onChange={(e) => setFormData({ ...formData, visitorName: e.target.value })}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '12px',
-                          background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          outline: 'none',
-                          cursor: formData.isCompanionMode ? 'not-allowed' : 'text'
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        직급
-                      </label>
-                      <select
-                        disabled={formData.isCompanionMode}
-                        value={formData.rank || '대리'}
-                        onChange={(e) => setFormData({ ...formData, rank: e.target.value })}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '12px',
-                          background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          outline: 'none',
-                          cursor: formData.isCompanionMode ? 'not-allowed' : 'pointer'
-                        }}
-                      >
-                        <option value="" disabled>-- 직급 선택 --</option>
-                        {RANK_LIST.map(rk => (
-                          <option key={rk} value={rk}>
-                            {rk}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Department & Phone */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        소속팀 (부서)
-                      </label>
-                      <input
-                        type="text"
-                        disabled={formData.isCompanionMode}
-                        placeholder="예: 보안관제팀, EUV설비팀"
-                        value={formData.department}
-                        onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '12px',
-                          background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          outline: 'none',
-                          cursor: formData.isCompanionMode ? 'not-allowed' : 'text'
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        연락처
-                      </label>
-                      <input
-                        type="text"
-                        disabled={formData.isCompanionMode}
-                        placeholder="010-0000-0000"
-                        maxLength={13}
-                        inputMode="numeric"
-                        value={formData.phone}
-                        onChange={(e) => {
-                          const formatted = formatPhoneNumber(e.target.value);
-                          setFormData({ ...formData, phone: formatted });
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '12px',
-                          background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          outline: 'none',
-                          cursor: formData.isCompanionMode ? 'not-allowed' : 'text'
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Visit Purpose Dropdown & Custom Text Input */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      방문 목적 {formData.isCompanionMode ? '(이전 동행 서약 항목 고정)' : '(필수 선택)'}
-                    </label>
-                    <select
-                      disabled={formData.isCompanionMode}
-                      value={formData.purposeType}
-                      onChange={(e) => {
-                        const type = e.target.value;
-                        setFormData(prev => ({
-                          ...prev,
-                          purposeType: type,
-                          purpose: type === '기타' ? prev.customPurpose : type
-                        }));
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: formData.isCompanionMode ? '#f1f5f9' : '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        color: '#0f172a',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: formData.isCompanionMode ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      <option value="작업">작업</option>
-                      <option value="회의">회의</option>
-                      <option value="납품">납품</option>
-                      <option value="기타">기타</option>
-                    </select>
-                  </div>
-
-                  {formData.purposeType === '기타' && (
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        기타 방문 목적 상세 입력 *
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="방문 목적을 직접 입력해 주세요 (예: 설비 정기 점검 및 세미나 참석)"
-                        value={formData.customPurpose}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFormData(prev => ({
-                            ...prev,
-                            customPurpose: val,
-                            purpose: val
-                          }));
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '12px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          outline: 'none'
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveStep(2)}
-                    className="glass-button-primary"
-                    style={{
-                      padding: '12px',
-                      borderRadius: '12px',
-                      marginTop: '8px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: '6px',
-                      fontWeight: '800'
-                    }}
-                  >
-                    다음: 모바일 보안 앱 검수 <ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
+                );
+              })()}
 
               {/* STEP 2: Mobile Security App Verification (Samsung MDM & SK Hynix SSM) */}
               {activeStep === 2 && (() => {
@@ -2992,7 +3110,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               1. 지입 자재 물품 보안 검색대 승인
                             </div>
                             <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                              출입구 게이트 보안 검색대를 통한 자재 및 물품 검수/승인 완료
+                              보안 검색대를 통한 자재 및 물품 검수/승인 완료
                             </div>
                           </div>
                         </div>
@@ -3029,7 +3147,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               2. 문서 보안 상태 확인
                             </div>
                             <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                              지입 서류 및 문서 내 영업비밀 및 기밀 정보 노출/유출 방지 확인
+                              서류 및 문서 보안 상태 확인
                             </div>
                           </div>
                         </div>
@@ -3066,7 +3184,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               3. 보안 물품 반입 전 확인
                             </div>
                             <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                              전자기기/노트북/공구 등 보안 물품 봉인 라벨 부착 및 사전 점검 완료
+                              전자기기/노트북/공구 등 보안 물품 봉인 라벨 부착 상태 확인
                             </div>
                           </div>
                         </div>
@@ -3160,16 +3278,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
                         style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
                       />
-                      <span style={{ fontSize: '12.5px', fontWeight: '800', color: formData.agreedToTerms ? '#0284c7' : '#e11d48' }}>
-                        위 보안 준수 사항을 숙지하였으며 성실히 이행할 것을 서약합니다.
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: formData.agreedToTerms ? '#0284c7' : '#e11d48' }}>
+                        위 사항을 숙지하였으며 성실히 이행할 것을 서약합니다.
                       </span>
                     </label>
-                    {!formData.agreedToTerms && (
-                      <div style={{ fontSize: '11.5px', color: '#e11d48', fontWeight: '700', marginLeft: '28px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <AlertTriangle size={13} color="#e11d48" />
-                        <span>전자 서약을 제출하려면 서약 동의 체크박스를 확인해 주십시오.</span>
-                      </div>
-                    )}
                   </div>
 
                   {/* Submission Readiness Checklist Banner */}
@@ -3193,10 +3305,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         gap: '8px'
                       }}>
                         <div style={{ fontSize: '12px', fontWeight: '800', color: isReadyToSubmit ? '#059669' : '#d97706', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>📋 보안 서약 승인 제출 필수 요건 검수:</span>
-                          <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: isReadyToSubmit ? '#d1fae5' : '#fef3c7', color: isReadyToSubmit ? '#059669' : '#d97706', fontWeight: '800' }}>
-                            {isReadyToSubmit ? '✓ 제출 승인 가능' : '⚠️ 제출 필수 항목 확인 필요'}
-                          </span>
+                          <span>📋 보안 서약 요건 검수</span>
                         </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px' }}>
@@ -3485,7 +3594,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 <UserPlus size={22} color="#0284c7" />
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
-                    동행인 서약 등록 (사용자 검색 & 다중 선택)
+                    동행인 서약 등록
                   </div>
                   <div style={{ fontSize: '11.5px', color: '#64748b' }}>
                     [사업장: {targetPledgeForCompanion.site}] 등록할 동행 인원을 선택해 주세요
@@ -3550,46 +3659,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             {/* Select All Toggle Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '0 4px' }}>
               <span style={{ color: '#64748b' }}>
-                전체 사용자: <strong style={{ color: '#0284c7' }}>{allSystemUsers.length}명</strong> (선택됨: <strong style={{ color: '#059669' }}>{selectedCompanionUsernames.length}명</strong>)
+                선택됨: <strong style={{ color: '#059669' }}>{selectedCompanionUsernames.length}명</strong>
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  const filtered = allSystemUsers.filter(u => {
-                    const term = companionSearchTerm.toLowerCase();
-                    const matchesTerm = !term ||
-                      (u.name && u.name.toLowerCase().includes(term)) ||
-                      (u.team && u.team.toLowerCase().includes(term)) ||
-                      (u.department && u.department.toLowerCase().includes(term)) ||
-                      (u.rank && u.rank.toLowerCase().includes(term)) ||
-                      (u.phone && u.phone.includes(term));
-
-                    const isPrimary = isSamePerson(u, targetPledgeForCompanion) ||
-                      (u.username && targetPledgeForCompanion.username && u.username === targetPledgeForCompanion.username) ||
-                      (u.name?.trim() === targetPledgeForCompanion.visitorName?.trim() &&
-                        (u.phone === targetPledgeForCompanion.phone || u.team === targetPledgeForCompanion.team || u.department === targetPledgeForCompanion.department));
-
-                    const isAlreadyCompanion = targetPledgeForCompanion.companions?.some(c => isSamePerson(u, c));
-
-                    return matchesTerm && !isPrimary && !isAlreadyCompanion;
-                  });
-                  if (selectedCompanionUsernames.length === filtered.length) {
-                    setSelectedCompanionUsernames([]);
-                  } else {
-                    setSelectedCompanionUsernames(filtered.map(u => u.username));
-                  }
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#0284c7',
-                  fontSize: '11.5px',
-                  fontWeight: '800',
-                  cursor: 'pointer'
-                }}
-              >
-                {selectedCompanionUsernames.length > 0 ? '전체 해제' : '검색결과 전체 선택'}
-              </button>
             </div>
 
             {/* Users Suggestion List */}
@@ -3661,10 +3732,6 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             <span style={{ color: '#334155', fontWeight: '700' }}>{u.division || '사업부 미지정'}</span>
                             <span>•</span>
                             <span>{u.team || u.department || '소속팀'}</span>
-                            <span>•</span>
-                            <span className="mono-font">{u.phone || '연락처 미등록'}</span>
-                            <span>•</span>
-                            <span className="mono-font" style={{ color: '#0284c7' }}>@{u.username}</span>
                           </div>
                         </div>
                       </div>
