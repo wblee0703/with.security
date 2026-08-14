@@ -194,6 +194,17 @@ export default function App() {
     }, 3000);
   };
 
+  // Global event listener for custom toast events (e.g. from native double-back exit warning)
+  useEffect(() => {
+    const handleCustomToast = (e) => {
+      if (e?.detail?.message) {
+        showToast(e.detail.message);
+      }
+    };
+    window.addEventListener('with_security_toast', handleCustomToast);
+    return () => window.removeEventListener('with_security_toast', handleCustomToast);
+  }, []);
+
   return (
     <div style={{ position: 'relative', width: '100vw', minHeight: '100vh', background: '#f8fafc' }}>
       

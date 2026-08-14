@@ -218,6 +218,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     dailyTripGroupedBySite[siteKey].push(log);
   });
 
+  // Group daily internal authors
+  const dailyInternalAuthorSet = new Set();
+  dailyInternalLogs.forEach(l => {
+    const a = l.authorName || l.name || '';
+    const tm = l.authorTeam || l.team || '';
+    const rk = l.authorRank || l.rank || '';
+    let nameLabel = a;
+    if (rk && !nameLabel.includes(rk)) nameLabel += ` ${rk}`;
+    if (tm && !nameLabel.includes(tm)) nameLabel += ` (${tm})`;
+    if (nameLabel) dailyInternalAuthorSet.add(nameLabel);
+  });
+  const dailyInternalAuthorsText = Array.from(dailyInternalAuthorSet).join(', ') || '담당자 미지정';
+
   const generateDailyReportText = () => {
     let t = `============================================\n`;
     t += `   [ 일일 업무 수행 보고서 ]\n`;
@@ -229,14 +242,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     if (dailyInternalLogs.length === 0) {
       t += `   - 사내 업무 기록 없음\n`;
     } else {
+      t += `   > 담당자: ${dailyInternalAuthorsText}\n`;
       dailyInternalLogs.forEach((l, i) => {
-        const authorStr = l.authorName || l.name || '';
-        const teamStr = l.authorTeam || l.team || '';
-        const rankStr = l.authorRank || l.rank || '';
-        let fullAuthor = authorStr;
-        if (rankStr && !fullAuthor.includes(rankStr)) fullAuthor += ` ${rankStr}`;
-        if (teamStr && !fullAuthor.includes(teamStr)) fullAuthor += ` (${teamStr})`;
-
         t += `   (${i + 1}) ${l.title}\n`;
         if (l.details && l.details.trim()) {
           const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
@@ -595,8 +602,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               <>
                 {/* Section 1: 🏢 사내 업무 보고 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0284c7', paddingLeft: '8px' }}>
-                    1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0284c7', paddingLeft: '8px' }}>
+                      1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
+                    </div>
+                    {dailyInternalLogs.length > 0 && (
+                      <span style={{ fontSize: '11.5px', color: '#475569', paddingRight: '4px' }}>
+                        담당자: <strong style={{ color: '#0f172a' }}>{dailyInternalAuthorsText}</strong>
+                      </span>
+                    )}
                   </div>
 
                   {dailyInternalLogs.length === 0 ? (
@@ -605,14 +619,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
                       {dailyInternalLogs.map((item, idx) => (
                         <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ color: '#0284c7', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
-                              <span>{item.title}</span>
-                            </div>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>
-                              담당자: {item.authorName || item.name} ({item.authorTeam || item.team || '운영팀'})
-                            </span>
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ color: '#0284c7', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
+                            <span>{item.title}</span>
                           </div>
                           {item.details && (
                             <div style={{ fontSize: '12px', color: '#334155', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>

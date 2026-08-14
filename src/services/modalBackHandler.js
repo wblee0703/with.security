@@ -4,6 +4,7 @@
 class ModalBackHandler {
   constructor() {
     this.stack = [];
+    this.lastBackPressTime = 0;
     this.isInitialized = false;
     this.init();
   }
@@ -18,7 +19,23 @@ class ModalBackHandler {
         this.closeTopModal();
         return true;
       }
-      return false;
+
+      // If no modals are open: double-back press within 3 seconds to exit app
+      const now = Date.now();
+      if (this.lastBackPressTime && (now - this.lastBackPressTime < 3000)) {
+        // Second press within 3 seconds -> allow app to close/exit
+        this.lastBackPressTime = 0;
+        return false;
+      }
+
+      // First press -> record timestamp and show toast warning for 3 seconds
+      this.lastBackPressTime = now;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('with_security_toast', {
+          detail: { message: "'뒤로' 버튼을 한 번 더 누르면 앱이 종료됩니다.", type: 'info' }
+        }));
+      }
+      return true;
     };
 
     // 2. Listen to browser & Android WebView popstate events

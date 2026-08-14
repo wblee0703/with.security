@@ -45,7 +45,9 @@
         <package android:name="com.skhynix.ssm" />
         <package android:name="com.skhynix.ssm.mobile" />
         <package android:name="com.skhynix.mobile.ssm" />
-        <package android:name="com.skhynix.smartsecurity" />
+        <package android:name="com.moplus.samsung.semi.user" />
+        <package android:name="com.moplus.samsung.semi" />
+        <package android:name="com.moplus.samsung" />
         <package android:name="com.sec.knox.app" />
         <package android:name="com.samsung.klms" />
         <package android:name="com.sds.emp.mobile.mdm" />

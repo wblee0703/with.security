@@ -142,12 +142,13 @@ public class NativeAppLauncherPlugin extends Plugin {
 
                 boolean isTarget = pLower.contains("ssm") || pLower.contains("hynix") ||
                                   pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
-                                  pLower.contains("samsung") || pLower.contains("deviceon") || pLower.contains("lgd") ||
+                                  pLower.contains("samsung") || pLower.contains("moplus") || pLower.contains("semi") ||
+                                  pLower.contains("deviceon") || pLower.contains("lgd") ||
                                   pLower.contains("lgdisplay") || pLower.contains("v3") || pLower.contains("ahnlab") ||
                                   pLower.contains("security") || pLower.contains("guard") ||
                                   lLower.contains("보안") || lLower.contains("ssm") || lLower.contains("knox") ||
                                   lLower.contains("디바이스온") || lLower.contains("deviceon") || lLower.contains("mdm") ||
-                                  lLower.contains("출입");
+                                  lLower.contains("협력사") || lLower.contains("출입");
 
                 if (isTarget) {
                     addedPackages.add(pkgName);
@@ -166,6 +167,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                 String pName = pkg.packageName.toLowerCase();
                 if (pName.contains("ssm") || pName.contains("hynix") || pName.contains("knox") ||
                     pName.contains("sds") || pName.contains("mdm") || pName.contains("samsung.sec") ||
+                    pName.contains("moplus") || pName.contains("semi") ||
                     pName.contains("deviceon") || pName.contains("lgd") || pName.contains("lgdisplay") ||
                     pName.contains("v3") || pName.contains("ahnlab") || pName.contains("security")) {
                     
@@ -340,9 +342,12 @@ public class NativeAppLauncherPlugin extends Plugin {
             list.add("skhynixssm://");
         }
 
-        // 2. Samsung MDM / Knox / SDS Enterprise candidates
-        if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("sds")) {
-            list.add("com.sds.emp.mobile.mdm"); // Samsung SDS Mobile MDM (Most common contractor app)
+        // 2. Samsung MDM / Knox / Partner MDM candidates
+        if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("sds") || lower.contains("협력사") || lower.contains("moplus") || lower.contains("semi")) {
+            list.add("com.moplus.samsung.semi.user"); // Samsung Partner MDM (com.moplus.samsung.semi.user)
+            list.add("com.moplus.samsung.semi");
+            list.add("com.moplus.samsung");
+            list.add("com.sds.emp.mobile.mdm"); // Samsung SDS Mobile MDM
             list.add("com.sds.emp.mobile");
             list.add("com.sds.mdm");
             list.add("com.sds.emm.agent");
@@ -359,6 +364,7 @@ public class NativeAppLauncherPlugin extends Plugin {
             list.add("com.samsung.knox.manage");
             list.add("com.samsung.sec.mdm");
             list.add("com.samsung.mobile.security");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sds.emp.mobile.mdm;end");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.samsung.sec.android.mdm;end");
@@ -423,10 +429,12 @@ public class NativeAppLauncherPlugin extends Plugin {
                 CharSequence labelCs = ri.loadLabel(pm);
                 String label = labelCs != null ? labelCs.toString().toLowerCase() : "";
 
-                // Check Samsung Knox / MDM match
-                if (lower.contains("knox") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm")) {
-                    if (pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
-                        (pLower.contains("samsung") && (pLower.contains("sec") || pLower.contains("agent") || pLower.contains("security"))) ||
+                // Check Samsung Knox / MDM / 협력사 MDM match
+                if (lower.contains("knox") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("협력사") || lower.contains("moplus") || lower.contains("semi")) {
+                    if (pLower.contains("com.moplus.samsung.semi.user") || pLower.contains("moplus") ||
+                        label.contains("협력사 mdm") || label.contains("협력사mdm") || label.contains("협력사") ||
+                        pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
+                        (pLower.contains("samsung") && (pLower.contains("sec") || pLower.contains("agent") || pLower.contains("security") || pLower.contains("semi"))) ||
                         label.contains("knox") || label.contains("mdm") || (label.contains("삼성") && label.contains("보안"))) {
                         return pkgName;
                     }

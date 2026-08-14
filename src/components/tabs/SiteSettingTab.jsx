@@ -6,7 +6,7 @@ import { launchApp, scanInstalledSecurityApps } from '../../services/appLauncher
 import { useModalBack } from '../../services/modalBackHandler';
 
 const SECURITY_APP_CATALOG = [
-  { id: 'knox', name: '삼성 Knox / MDM 모바일 보안', company: '삼성전자 / 삼성SDI / 삼성디스플레이', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sds.emp.mobile.mdm;end', desc: '삼성 스마트폰 Enterprise Knox / 삼성 SDS MDM 보안 앱', badge: '삼성' },
+  { id: 'knox', name: '삼성 협력사 MDM (보안앱)', company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 반도체', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end', desc: '삼성 협력사 MDM (com.moplus.samsung.semi.user)', badge: '삼성' },
   { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
   { id: 'lgd', name: 'LGD 디바이스온 (LG디스플레이)', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end', desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱', badge: 'LGD' }
 ];
@@ -910,14 +910,102 @@ export default function SiteSettingTab({ onTriggerToast }) {
               maxHeight: '60vh',
               paddingRight: '4px'
             }}>
-              {/* 1. Real-time Device Scanned Apps */}
-              {scannedDeviceApps.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }} />
-                    🔍 내 스마트폰에서 발견된 보안 앱 ({scannedDeviceApps.length}개)
+              {/* 1. Official Standard Presets (주요 기업 지원 보안 앱 - First) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7', display: 'inline-block', boxShadow: '0 0 8px #0284c7' }} />
+                  📱 주요 기업 지원 보안 앱 (프리셋 선택)
+                </div>
+
+                {SECURITY_APP_CATALOG.map(app => (
+                  <div
+                    key={app.id}
+                    onClick={() => handleSelectAppFromPicker(app.scheme, app.name)}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '14px',
+                      padding: '14px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f0f9ff';
+                      e.currentTarget.style.borderColor = '#7dd3fc';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = '#f8fafc';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                      <div style={{
+                        width: '42px',
+                        height: '42px',
+                        borderRadius: '12px',
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '20px'
+                      }}>
+                        📱
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{app.name}</span>
+                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(14,165,233,0.12)', color: '#0284c7', fontWeight: '700', border: '1px solid rgba(14,165,233,0.25)' }}>
+                            {app.badge}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px' }}>
+                          {app.company}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      style={{
+                        background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                        border: 'none',
+                        color: '#ffffff',
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        flexShrink: 0
+                      }}
+                    >
+                      앱 연동
+                    </button>
                   </div>
-                  {scannedDeviceApps.map((sc, idx) => (
+                ))}
+              </div>
+
+              {/* 2. Real-time Device Scanned Apps (내 스마트폰에서 발견된 보안 앱 - Second) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#059669', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', display: 'inline-block', boxShadow: '0 0 8px #10b981' }} />
+                  🔍 내 스마트폰에서 발견된 보안 앱 {scannedDeviceApps.length > 0 ? `(${scannedDeviceApps.length}개)` : ''}
+                </div>
+
+                {isScanningApps ? (
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    스마트폰 설치 보안 앱 검색 중...
+                  </div>
+                ) : scannedDeviceApps.length === 0 ? (
+                  <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    스마트폰에서 추가로 감지된 기타 보안 앱이 없습니다.
+                  </div>
+                ) : (
+                  scannedDeviceApps.map((sc, idx) => (
                     <div
                       key={sc.packageName || idx}
                       onClick={() => handleSelectAppFromPicker(sc.scheme || `package:${sc.packageName}`, sc.label || sc.packageName)}
@@ -966,85 +1054,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         연동 선택
                       </button>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* 2. Official Standard Presets */}
-              <div style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', marginTop: '2px' }}>
-                📱 주요 기업 지원 보안 앱 (프리셋 선택)
+                  ))
+                )}
               </div>
-
-              {SECURITY_APP_CATALOG.map(app => (
-                <div
-                  key={app.id}
-                  onClick={() => handleSelectAppFromPicker(app.scheme, app.name)}
-                  style={{
-                    background: '#f8fafc',
-                    border: '1.5px solid #cbd5e1',
-                    borderRadius: '14px',
-                    padding: '14px 16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#f0f9ff';
-                    e.currentTarget.style.borderColor = '#7dd3fc';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = '#f8fafc';
-                    e.currentTarget.style.borderColor = '#cbd5e1';
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{
-                      width: '42px',
-                      height: '42px',
-                      borderRadius: '12px',
-                      background: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px'
-                    }}>
-                      📱
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>{app.name}</span>
-                        <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(14,165,233,0.12)', color: '#0284c7', fontWeight: '700', border: '1px solid rgba(14,165,233,0.25)' }}>
-                          {app.badge}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px' }}>
-                        {app.company}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    style={{
-                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                      border: 'none',
-                      color: '#ffffff',
-                      padding: '8px 14px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      flexShrink: 0
-                    }}
-                  >
-                    앱 연동
-                  </button>
-                </div>
-              ))}
             </div>
           </div>
         </div>
