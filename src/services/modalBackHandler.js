@@ -1,5 +1,5 @@
 // Global Modal Back-Button Stack Handler
-// Supports Android Hardware/Gesture Back, iOS Swipe/Back, Browser Navigation Back & Desktop ESC key
+// Supports Android Native Hardware/Gesture Back, iOS Swipe/Back, Browser Navigation Back & Desktop ESC key
 
 class ModalBackHandler {
   constructor() {
@@ -12,18 +12,30 @@ class ModalBackHandler {
     if (this.isInitialized || typeof window === 'undefined') return;
     this.isInitialized = true;
 
-    // Listen to browser & Android WebView popstate events
+    // 1. Android Native Back Button Bridge Interface for MainActivity.java
+    window.__handleNativeBackPressed = () => {
+      if (this.hasOpenModals()) {
+        this.closeTopModal();
+        return true;
+      }
+      return false;
+    };
+
+    // 2. Listen to browser & Android WebView popstate events
     window.addEventListener('popstate', (e) => {
       if (this.stack.length > 0) {
-        // Pop the top-most modal and close it
         const topModal = this.stack.pop();
         if (topModal && typeof topModal.close === 'function') {
-          topModal.close();
+          try {
+            topModal.close();
+          } catch (err) {
+            console.warn('Error closing modal on popstate:', err);
+          }
         }
       }
     });
 
-    // Support Desktop Escape key
+    // 3. Support Desktop Escape key
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.stack.length > 0) {
         this.closeTopModal();
@@ -47,9 +59,11 @@ class ModalBackHandler {
 
     this.stack.push({ id, close: closeFn });
 
-    // Push a dummy history state so Android/Browser back button triggers popstate instead of exiting app
+    // Push history state if not already pushed for this modal
     try {
-      window.history.pushState({ modalBackId: id, timestamp: Date.now() }, '');
+      if (!window.history.state || window.history.state.modalBackId !== id) {
+        window.history.pushState({ modalBackId: id, timestamp: Date.now() }, '');
+      }
     } catch (e) {
       console.warn('Modal pushState error:', e);
     }
@@ -63,9 +77,8 @@ class ModalBackHandler {
     const index = this.stack.findIndex(m => m.id === id);
     if (index !== -1) {
       this.stack.splice(index, 1);
-      // Revert history state if it was pushed
       try {
-        if (window.history.state && window.history.state.modalBackId) {
+        if (window.history.state && window.history.state.modalBackId === id) {
           window.history.back();
         }
       } catch (e) {}
@@ -73,13 +86,17 @@ class ModalBackHandler {
   }
 
   /**
-   * Close the top-most modal manually
+   * Close the top-most modal manually (called by native Android back press or ESC key)
    */
   closeTopModal() {
     if (this.stack.length > 0) {
       const top = this.stack.pop();
       if (top && typeof top.close === 'function') {
-        top.close();
+        try {
+          top.close();
+        } catch (err) {
+          console.warn('Error closing top modal:', err);
+        }
       }
       try {
         if (window.history.state && window.history.state.modalBackId) {
@@ -96,7 +113,7 @@ class ModalBackHandler {
 
 export const modalBackHandler = new ModalBackHandler();
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * Custom React Hook to connect any Modal's open/close state with Android/Browser Back Button
@@ -105,10 +122,17 @@ import { useEffect } from 'react';
  * @param {string} modalId Unique identifier for this modal
  */
 export function useModalBack(isOpen, onClose, modalId) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
-    if (isOpen && typeof onClose === 'function') {
+    if (isOpen) {
       const id = modalId || `modal-${Date.now()}-${Math.random()}`;
-      modalBackHandler.openModal(id, onClose);
+      modalBackHandler.openModal(id, () => {
+        if (typeof onCloseRef.current === 'function') {
+          onCloseRef.current();
+        }
+      });
       return () => {
         modalBackHandler.closeModal(id);
       };

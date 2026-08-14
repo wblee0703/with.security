@@ -31,4 +31,24 @@ public class MainActivity extends BridgeActivity {
             e.printStackTrace();
         }
     }
+
+    @Override
+    public void onBackPressed() {
+        // Check if there is an open modal/popup in JavaScript layer
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().evaluateJavascript(
+                "(function() { return (typeof window.__handleNativeBackPressed === 'function') ? window.__handleNativeBackPressed() : false; })();",
+                value -> {
+                    if ("true".equals(value) || "\"true\"".equals(value)) {
+                        // Modal popup was closed in JS. Consume the back press event!
+                    } else {
+                        // No modal popup was active. Proceed with default back navigation.
+                        runOnUiThread(() -> MainActivity.super.onBackPressed());
+                    }
+                }
+            );
+            return;
+        }
+        super.onBackPressed();
+    }
 }
