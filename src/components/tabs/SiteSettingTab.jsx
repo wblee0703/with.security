@@ -12,6 +12,7 @@ const SECURITY_APP_CATALOG = [
 ];
 
 export default function SiteSettingTab({ onTriggerToast }) {
+  const [currentUser, setCurrentUser] = useState(null);
   const [sites, setSites] = useState([]);
   const [newSiteForm, setNewSiteForm] = useState({ type: '보안앱O', name: '', address: '', appUrl: '' });
 
@@ -29,16 +30,57 @@ export default function SiteSettingTab({ onTriggerToast }) {
   useModalBack(isEditModalOpen, () => { setIsEditModalOpen(false); setEditingSite(null); }, 'site-edit-modal');
   useModalBack(isAppPickerOpen, () => setIsAppPickerOpen(false), 'site-app-picker-modal');
 
+  const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
+
+  // Helper: Get local device app configuration mapping
+  const getDeviceAppMap = () => {
+    try {
+      const raw = localStorage.getItem('with_security_device_site_apps');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  };
+
+  // Helper: Save local device app configuration mapping
+  const saveDeviceAppMap = (siteId, appName, appUrl) => {
+    try {
+      const map = getDeviceAppMap();
+      if (!appUrl && !appName) {
+        delete map[siteId];
+      } else {
+        map[siteId] = { appName: appName || '', appUrl: appUrl || '' };
+      }
+      localStorage.setItem('with_security_device_site_apps', JSON.stringify(map));
+    } catch (e) {
+      console.warn('Save device app map error:', e);
+    }
+  };
+
   const loadSites = async () => {
     try {
       const siteList = await dbService.getSites();
-      setSites(siteList || []);
+      const deviceApps = getDeviceAppMap();
+      const mapped = (siteList || []).map(s => {
+        const localApp = deviceApps[s.id] || {};
+        return {
+          ...s,
+          appName: localApp.appName || '',
+          appUrl: localApp.appUrl || ''
+        };
+      });
+      setSites(mapped);
     } catch (err) {
       console.error('Failed to load entrance sites:', err);
     }
   };
 
   useEffect(() => {
+    async function loadUser() {
+      const u = await dbService.getUserProfile();
+      setCurrentUser(u);
+    }
+    loadUser();
     loadSites();
   }, []);
 
@@ -68,31 +110,36 @@ export default function SiteSettingTab({ onTriggerToast }) {
     const matchingApp = SECURITY_APP_CATALOG.find(a => a.scheme === (newSiteForm.appUrl || '').trim());
     const resolvedAppName = newSiteForm.appName || (matchingApp ? matchingApp.name : '');
 
+    // 1. Pure Site data to Central Database
     const newSite = {
       id: uniqueId,
       type: type,
       name: name,
-      address: address,
-      appName: resolvedAppName,
-      app_name: resolvedAppName,
-      appUrl: (newSiteForm.appUrl || '').trim(),
-      app_url: (newSiteForm.appUrl || '').trim()
+      address: address
     };
 
     await dbService.saveSite(newSite);
+
+    // 2. Save App linkage exclusively to device local storage
+    if (resolvedAppName || newSiteForm.appUrl) {
+      saveDeviceAppMap(uniqueId, resolvedAppName, (newSiteForm.appUrl || '').trim());
+    }
+
     await loadSites();
     setNewSiteForm({ type: '보안앱O', name: '', address: '', appUrl: '', appName: '' });
     if (onTriggerToast) onTriggerToast(`'${newSite.name}' (${newSite.address || '위치 미지정'}) 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
   const handleOpenEditModal = (site) => {
+    const deviceApps = getDeviceAppMap();
+    const localApp = deviceApps[site.id] || {};
     setEditingSite({
       id: site.id,
       type: (site.type === '보안어플O' ? '보안앱O' : site.type === '보안어플X' ? '보안앱X' : site.type) || '보안앱O',
       name: site.name || '',
       address: site.address || '',
-      appName: site.appName || site.app_name || '',
-      appUrl: site.appUrl || site.app_url || ''
+      appName: localApp.appName || site.appName || '',
+      appUrl: localApp.appUrl || site.appUrl || ''
     });
     setIsEditModalOpen(true);
   };
@@ -107,18 +154,19 @@ export default function SiteSettingTab({ onTriggerToast }) {
     const matchingApp = SECURITY_APP_CATALOG.find(a => a.scheme === (editingSite.appUrl || '').trim());
     const resolvedAppName = editingSite.appName || (matchingApp ? matchingApp.name : '');
 
+    // 1. Pure Site data to Central Database
     const updatedSite = {
       id: editingSite.id,
       type: editingSite.type.trim() || '보안앱O',
       name: editingSite.name.trim(),
-      address: editingSite.address.trim(),
-      appName: resolvedAppName,
-      app_name: resolvedAppName,
-      appUrl: (editingSite.appUrl || '').trim(),
-      app_url: (editingSite.appUrl || '').trim()
+      address: editingSite.address.trim()
     };
 
     await dbService.saveSite(updatedSite);
+
+    // 2. Save App linkage exclusively to device local storage
+    saveDeviceAppMap(editingSite.id, resolvedAppName, (editingSite.appUrl || '').trim());
+
     await loadSites();
     setIsEditModalOpen(false);
     setEditingSite(null);
@@ -196,10 +244,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
     } else {
       const targetSite = sites.find(s => s.id === appPickerTargetSite);
       if (targetSite) {
-        const updated = { ...targetSite, appUrl: finalScheme, app_url: finalScheme, appName: nameLabel, app_name: nameLabel, type: '보안앱O' };
-        await dbService.saveSite(updated);
+        saveDeviceAppMap(targetSite.id, nameLabel, finalScheme);
         await loadSites();
-        if (onTriggerToast) onTriggerToast(`'${targetSite.name}' 사업장에 '${nameLabel}' 앱이 연동 등록되었습니다.`, 'success');
+        if (onTriggerToast) onTriggerToast(`'${targetSite.name}' 사업장에 '${nameLabel}' 앱이 단말기에 연동 설정되었습니다.`, 'success');
       }
     }
     setIsAppPickerOpen(false);
@@ -235,152 +282,154 @@ export default function SiteSettingTab({ onTriggerToast }) {
         </div>
       </div>
 
-      {/* Add New Site Card Form */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
-        <div style={{ fontSize: '14px', fontWeight: '700', color: '#0284c7', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Plus size={16} /> 신규 출입 사업장 등록
-        </div>
-
-        <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-            <div>
-              <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                분류 *
-              </label>
-              <select
-                value={newSiteForm.type}
-                onChange={(e) => setNewSiteForm({ ...newSiteForm, type: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  background: '#ffffff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#0f172a',
-                  fontSize: '13px',
-                  outline: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <option value="보안앱O">보안앱O</option>
-                <option value="보안앱X">보안앱X</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                사업장명 *
-              </label>
-              <input
-                type="text"
-                placeholder="예: SKH"
-                value={newSiteForm.name}
-                onChange={(e) => setNewSiteForm({ ...newSiteForm, name: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  background: '#ffffff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#0f172a',
-                  fontSize: '13px',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                사업장 위치
-              </label>
-              <input
-                type="text"
-                placeholder="예: 이천사업장"
-                value={newSiteForm.address}
-                onChange={(e) => setNewSiteForm({ ...newSiteForm, address: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  background: '#ffffff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#0f172a',
-                  fontSize: '13px',
-                  outline: 'none'
-                }}
-              />
-            </div>
+      {/* Add New Site Card Form (Visible ONLY for Developer Role) */}
+      {isDevUser && (
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0284c7', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Plus size={16} /> 신규 출입 사업장 등록
           </div>
 
-          {(newSiteForm.type === '보안앱O' || newSiteForm.type === '보안어플O') && (
-            <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ fontSize: '12px', color: '#0284c7', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  📱 모바일 보안 앱 바로가기 실행 링크
+          <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  분류 *
                 </label>
+                <select
+                  value={newSiteForm.type}
+                  onChange={(e) => setNewSiteForm({ ...newSiteForm, type: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontSize: '13px',
+                    outline: 'none',
+                    fontWeight: '600'
+                  }}
+                >
+                  <option value="보안앱O">보안앱O (보안 검수 필수)</option>
+                  <option value="보안앱X">보안앱X (예외 구역)</option>
+                </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '8px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  회사명 / 사업장명 *
+                </label>
                 <input
                   type="text"
-                  placeholder="예: secapp://, samsungknox://, intent://com.sec.security..."
-                  value={newSiteForm.appUrl || ''}
-                  onChange={(e) => setNewSiteForm({ ...newSiteForm, appUrl: e.target.value })}
+                  placeholder="예: 삼성전자 평택캠퍼스 P4"
+                  value={newSiteForm.name}
+                  onChange={(e) => setNewSiteForm({ ...newSiteForm, name: e.target.value })}
                   style={{
-                    flex: 1,
+                    width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '10px',
+                    borderRadius: '12px',
                     background: '#ffffff',
-                    border: '1.5px solid #7dd3fc',
+                    border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
-                    fontSize: '12.5px',
+                    fontSize: '13px',
                     outline: 'none'
                   }}
                 />
-                <button
-                  type="button"
-                  onClick={() => handleOpenAppPickerModal('new')}
+              </div>
+
+              <div>
+                <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                  사업장 위치 (주소/동/라인)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 경기도 평택시 고덕면 삼성로 114"
+                  value={newSiteForm.address}
+                  onChange={(e) => setNewSiteForm({ ...newSiteForm, address: e.target.value })}
                   style={{
+                    width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                    border: '1px solid #0284c7',
-                    color: '#ffffff',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    flexShrink: 0,
-                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                    borderRadius: '12px',
+                    background: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontSize: '13px',
+                    outline: 'none'
                   }}
-                >
-                  <Smartphone size={14} /> 📱 앱 선택
-                </button>
+                />
               </div>
             </div>
-          )}
 
-          <button
-            type="submit"
-            className="glass-button-primary"
-            style={{
-              padding: '12px',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: '6px',
-              fontWeight: '700',
-              fontSize: '13px'
-            }}
-          >
-            <Plus size={16} /> 신규 사업장 추가 저장
-          </button>
-        </form>
-      </div>
+            {(newSiteForm.type === '보안앱O' || newSiteForm.type === '보안어플O') && (
+              <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ fontSize: '12px', color: '#0284c7', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📱 모바일 보안 앱 바로가기 실행 링크
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="예: secapp://, samsungknox://, intent://com.sec.security..."
+                    value={newSiteForm.appUrl || ''}
+                    onChange={(e) => setNewSiteForm({ ...newSiteForm, appUrl: e.target.value })}
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      border: '1.5px solid #7dd3fc',
+                      color: '#0f172a',
+                      fontSize: '12.5px',
+                      outline: 'none'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAppPickerModal('new')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                      border: '1px solid #0284c7',
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      flexShrink: 0,
+                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                    }}
+                  >
+                    <Smartphone size={14} /> 📱 앱 선택
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="glass-button-primary"
+              style={{
+                padding: '12px',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: '700',
+                fontSize: '13px'
+              }}
+            >
+              <Plus size={16} /> 신규 사업장 추가 저장
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* Registered Sites List */}
       <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
@@ -451,50 +500,52 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(s)}
-                      style={{
-                        background: '#f0f9ff',
-                        border: '1.5px solid #7dd3fc',
-                        color: '#0284c7',
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease'
-                      }}
-                      title="사업장 정보 수정"
-                    >
-                      <Edit3 size={13} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInitiateDeleteSite(s.id, s.name)}
-                      style={{
-                        background: '#fff1f2',
-                        border: '1.5px solid #fda4af',
-                        color: '#e11d48',
-                        padding: '5px 10px',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease'
-                      }}
-                      title="사업장 삭제"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {isDevUser && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(s)}
+                        style={{
+                          background: '#f0f9ff',
+                          border: '1.5px solid #7dd3fc',
+                          color: '#0284c7',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        title="사업장 정보 수정"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInitiateDeleteSite(s.id, s.name)}
+                        style={{
+                          background: '#fff1f2',
+                          border: '1.5px solid #fda4af',
+                          color: '#e11d48',
+                          padding: '5px 10px',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s ease'
+                        }}
+                        title="사업장 삭제"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Row 2: 앱 경로(너비 맞춤 말줄임) | 앱 바로가기 & 앱 찾기 버튼 */}
@@ -742,7 +793,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         flexShrink: 0
                       }}
                     >
-                      <Smartphone size={14} /> 📱 앱 선택
+                      <Smartphone size={14} /> 앱 선택
                     </button>
                   </div>
                 </div>

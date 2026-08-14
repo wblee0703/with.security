@@ -63,10 +63,10 @@ export default function MobileContainer({
 
       {/* Clean Mobile App Top Header (Supports Safe Area Inset for Notches) */}
       <div style={{
-        paddingTop: 'max(env(safe-area-inset-top), 16px)',
-        paddingBottom: '8px',
-        paddingLeft: '14px',
-        paddingRight: '14px',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: '2px',
+        paddingLeft: '12px',
+        paddingRight: '12px',
         background: '#ffffff',
         borderBottom: '1px solid #e2e8f0',
         display: 'flex',
@@ -105,7 +105,7 @@ export default function MobileContainer({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '7px',
+              gap: '6px',
               cursor: 'pointer',
               padding: '3px 6px',
               borderRadius: '10px',
@@ -114,40 +114,26 @@ export default function MobileContainer({
             title="사용자 프로필 관리로 이동"
           >
             <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1.5px solid #38bdf8',
-              color: '#ffffff',
+              padding: '2px 6px',
+              borderRadius: '6px',
+              background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#f0f9ff'),
+              color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#0284c7'),
               fontWeight: '800',
-              fontSize: '11px',
+              fontSize: '10px',
+              border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#bae6fd')}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
-              boxShadow: '0 2px 6px rgba(14, 165, 233, 0.25)'
+              letterSpacing: '-0.2px'
             }}>
-              {currentUser.name ? currentUser.name.slice(0, 2) : 'US'}
+              {currentUser.role || '일반'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', lineHeight: 1.2 }}>
-                <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                  {currentUser.name} {currentUser.rank || ''}
-                </span>
-                <span style={{
-                  fontSize: '8.5px',
-                  padding: '1px 4px',
-                  borderRadius: '4px',
-                  background: currentUser.role === '개발자' ? 'rgba(244, 63, 94, 0.12)' : (currentUser.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(14, 165, 233, 0.12)'),
-                  color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#0284c7'),
-                  fontWeight: '800',
-                  border: `1px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#bae6fd')}`
-                }}>
-                  {currentUser.role || '일반'}
-                </span>
-              </div>
-              <span style={{ fontSize: '9.5px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '90px' }}>
+              <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                {currentUser.name} {currentUser.rank || ''}
+              </span>
+              <span style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100px', fontWeight: '500' }}>
                 {currentUser.team || currentUser.department || '위드텍'}
               </span>
             </div>

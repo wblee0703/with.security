@@ -170,23 +170,9 @@ export default function App() {
   useEffect(() => {
     async function enforceLoginGuard() {
       const u = await dbService.getUserProfile();
-      const isNativeEnv = Capacitor.isNativePlatform();
-      const isDevUser = u?.role === '개발자' || u?.username === 'admin';
-
       if (!u || !u.username) {
         if (activeTab !== 'userProfile') {
           setActiveTab('userProfile');
-        }
-      } else {
-        if (!isNativeEnv && activeTab === 'entryCheck' && !isDevUser) {
-          setActiveTab('workLog');
-          showToast('보안 서약 메뉴는 설치형 모바일 APK 앱 전용 기능입니다. (개발자 권한 계정만 웹 브라우저 접근 가능)');
-        } else if (activeTab === 'admin') {
-          const isAdmin = ['개발자', '관리자'].includes(u?.role) || u?.username === 'admin';
-          if (!isAdmin) {
-            setActiveTab(isNativeEnv || isDevUser ? 'entryCheck' : 'workLog');
-            showToast('Admin 메뉴는 개발자/관리자 계정만 접근 가능합니다.');
-          }
         }
       }
     }

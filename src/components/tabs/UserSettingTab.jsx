@@ -6,6 +6,18 @@ import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
 
+const formatPhoneNumber = (value) => {
+  if (!value) return '';
+  const clean = value.replace(/[^0-9]/g, '').slice(0, 11);
+  if (clean.length <= 3) {
+    return clean;
+  } else if (clean.length <= 7) {
+    return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+  } else {
+    return `${clean.slice(0, 3)}-${clean.slice(3, 7)}-${clean.slice(7, 11)}`;
+  }
+};
+
 export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
@@ -839,8 +851,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     type="text"
                     disabled={!isEditUnlocked}
                     placeholder="010-0000-0000"
+                    maxLength={13}
+                    inputMode="numeric"
                     value={editForm?.phone || ''}
-                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    onChange={(e) => {
+                      const formatted = formatPhoneNumber(e.target.value);
+                      setEditForm({ ...editForm, phone: formatted });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
@@ -1416,8 +1433,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   <input
                     type="text"
                     placeholder="010-0000-0000"
+                    maxLength={13}
+                    inputMode="numeric"
                     value={signupForm.phone}
-                    onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
+                    onChange={(e) => {
+                      const formatted = formatPhoneNumber(e.target.value);
+                      setSignupForm({ ...signupForm, phone: formatted });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',

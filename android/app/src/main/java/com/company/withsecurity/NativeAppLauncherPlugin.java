@@ -195,6 +195,25 @@ public class NativeAppLauncherPlugin extends Plugin {
         if (candidate == null || candidate.trim().isEmpty()) return false;
         candidate = candidate.trim();
 
+        if (candidate.equalsIgnoreCase("camera") || candidate.equalsIgnoreCase("android.media.action.STILL_IMAGE_CAMERA") || candidate.contains("STILL_IMAGE_CAMERA") || candidate.equalsIgnoreCase("android.media.action.IMAGE_CAPTURE")) {
+            try {
+                Intent camIntent = new Intent(android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+                camIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                camIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                if (camIntent.resolveActivity(pm) != null) {
+                    context.startActivity(camIntent);
+                    return true;
+                } else {
+                    Intent capIntent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+                    capIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(capIntent);
+                    return true;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
         try {
             Intent intent = null;
 

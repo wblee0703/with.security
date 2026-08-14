@@ -65,16 +65,11 @@ export default function WebDesktopLayout({
     setActiveTab(targetTabId);
   };
 
-  const isAdmin = ['개발자', '관리자'].includes(activeUser?.role) || activeUser?.username === 'admin';
-  const isDeveloper = activeUser?.role === '개발자' || activeUser?.username === 'admin';
-  const isNative = Capacitor.isNativePlatform();
-  const showSecurityChecklistTab = isNative || isDeveloper;
-
   const navItems = [
-    ...(showSecurityChecklistTab ? [{ id: 'entryCheck', label: '보안 서약', icon: ShieldCheck }] : []),
+    { id: 'entryCheck', label: '보안 서약', icon: ShieldCheck },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList },
     { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet },
-    ...(isAdmin ? [{ id: 'admin', label: '사업장', icon: Building2 }] : []),
+    { id: 'admin', label: '사업장', icon: Building2 },
     { id: 'userProfile', label: '사용자 정보', icon: User }
   ];
 
@@ -175,40 +170,41 @@ export default function WebDesktopLayout({
         {/* User Profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '34px',
-              height: '34px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1.5px solid #38bdf8',
-              color: '#ffffff',
-              fontWeight: '800',
-              fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 2px 6px rgba(14, 165, 233, 0.2)'
-            }}>
-              {activeUser ? (activeUser.name ? activeUser.name.slice(0, 2) : 'US') : 'GUEST'}
-            </div>
+            {activeUser ? (
+              <div style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: activeUser.role === '개발자' ? '#fff1f2' : (activeUser.role === '관리자' ? '#fffbeb' : '#f0f9ff'),
+                color: activeUser.role === '개발자' ? '#e11d48' : (activeUser.role === '관리자' ? '#d97706' : '#0284c7'),
+                fontWeight: '800',
+                fontSize: '11.5px',
+                border: `1.5px solid ${activeUser.role === '개발자' ? '#fda4af' : (activeUser.role === '관리자' ? '#fde68a' : '#bae6fd')}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                letterSpacing: '-0.2px'
+              }}>
+                {activeUser.role || '일반'}
+              </div>
+            ) : (
+              <div style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: '#f1f5f9',
+                color: '#64748b',
+                fontWeight: '700',
+                fontSize: '11.5px',
+                border: '1.5px solid #cbd5e1'
+              }}>
+                게스트
+              </div>
+            )}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
                 {activeUser ? `${activeUser.name} ${activeUser.rank || ''}` : '미로그인 사용자'}
-                {activeUser && (
-                  <span style={{
-                    fontSize: '9px',
-                    padding: '2px 6px',
-                    borderRadius: '6px',
-                    background: activeUser.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(14, 165, 233, 0.12)',
-                    color: activeUser.role === '관리자' ? '#d97706' : '#0284c7',
-                    fontWeight: '800',
-                    border: `1.5px solid ${activeUser.role === '관리자' ? '#fde68a' : '#7dd3fc'}`
-                  }}>
-                    {activeUser.role || '일반'}
-                  </span>
-                )}
               </span>
-              <span style={{ fontSize: '10px', color: '#64748b' }}>
+              <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}>
                 {activeUser ? `${activeUser.division || ''} • ${activeUser.team || ''}` : '로그인 필요'}
               </span>
             </div>

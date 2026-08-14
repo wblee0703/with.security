@@ -4,7 +4,7 @@ let migrationChecked = false;
 async function ensureSiteColumns() {
   if (migrationChecked) return;
   try {
-    // Check existing columns using INFORMATION_SCHEMA to avoid MySQL syntax/duplicate errors
+    // Check existing columns using INFORMATION_SCHEMA to drop legacy app columns if present
     const existingCols = await query(`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
@@ -16,11 +16,11 @@ async function ensureSiteColumns() {
       : [];
 
     if (colNames.length > 0) {
-      if (!colNames.includes('app_name')) {
-        await query(`ALTER TABLE security_site ADD COLUMN app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 앱명'`).catch(() => {});
+      if (colNames.includes('app_name')) {
+        await query(`ALTER TABLE security_site DROP COLUMN app_name`).catch(() => {});
       }
-      if (!colNames.includes('app_url')) {
-        await query(`ALTER TABLE security_site ADD COLUMN app_url TEXT COMMENT '연동 모바일 보안 앱 링크/스킴'`).catch(() => {});
+      if (colNames.includes('app_url')) {
+        await query(`ALTER TABLE security_site DROP COLUMN app_url`).catch(() => {});
       }
     }
     migrationChecked = true;
@@ -35,13 +35,12 @@ async function ensureSiteColumns() {
 export async function getSecuritySites() {
   await ensureSiteColumns();
 
-  const sql = 'SELECT id, type, name, address, site_name, app_name, app_url FROM security_site ORDER BY id ASC';
+  const sql = 'SELECT id, type, name, address, site_name FROM security_site ORDER BY id ASC';
   let results;
   try {
     results = await query(sql);
   } catch (err) {
-    // If table does not exist or column error, fallback to basic query
-    results = await query('SELECT id, type, name, address, site_name FROM security_site ORDER BY id ASC').catch(() => []);
+    results = [];
   }
 
   // 기본 사업장이 하나도 없으면 자동 초기 생성(Seed Data)
@@ -51,25 +50,19 @@ export async function getSecuritySites() {
         id: 'site-001',
         type: '보안앱O',
         name: '삼성전자 평택캠퍼스 P4 라인',
-        address: '경기도 평택시 고덕면 삼성로 114',
-        appName: '삼성 Knox / MDM 모바일 보안',
-        appUrl: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end'
+        address: '경기도 평택시 고덕면 삼성로 114'
       });
       await createSecuritySite({
         id: 'site-002',
         type: '보안앱O',
         name: 'SK하이닉스 이천 M16 공장',
-        address: '경기도 이천시 부발읍 경충대로 2091',
-        appName: 'SK하이닉스 SSM',
-        appUrl: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end'
+        address: '경기도 이천시 부발읍 경충대로 2091'
       });
       await createSecuritySite({
         id: 'site-003',
         type: '보안앱X',
         name: '일반 협력사 물류센터 (보안앱 예외)',
-        address: '경기도 용인시 처인구 백암면 원설로 123',
-        appName: '보안앱 예외 구역',
-        appUrl: ''
+        address: '경기도 용인시 처인구 백암면 원설로 123'
       });
       results = await query(sql);
     } catch (seedErr) {
@@ -81,8 +74,6 @@ export async function getSecuritySites() {
     const sName = String(s.name || '').trim();
     const sAddr = String(s.address || '').trim();
     const fullSiteName = s.site_name || (sAddr ? `${sName} ${sAddr}` : sName);
-    const appName = String(s.app_name || s.appName || '').trim();
-    const appUrl = String(s.app_url || s.appUrl || '').trim();
 
     return {
       id: String(s.id || '').toLowerCase(),
@@ -90,11 +81,7 @@ export async function getSecuritySites() {
       name: sName,
       address: sAddr,
       site_name: fullSiteName,
-      siteName: fullSiteName,
-      appName: appName,
-      app_name: appName,
-      appUrl: appUrl,
-      app_url: appUrl
+      siteName: fullSiteName
     };
   });
 }
@@ -105,12 +92,12 @@ export async function getSecuritySites() {
 export async function getSecuritySiteById(id) {
   await ensureSiteColumns();
 
-  const sql = 'SELECT id, type, name, address, site_name, app_name, app_url FROM security_site WHERE id = ? LIMIT 1';
+  const sql = 'SELECT id, type, name, address, site_name FROM security_site WHERE id = ? LIMIT 1';
   let results;
   try {
     results = await query(sql, [id]);
   } catch (e) {
-    results = await query('SELECT id, type, name, address, site_name FROM security_site WHERE id = ? LIMIT 1', [id]).catch(() => []);
+    results = [];
   }
 
   if (results && results.length > 0) {
@@ -118,8 +105,6 @@ export async function getSecuritySiteById(id) {
     const sName = String(s.name || '').trim();
     const sAddr = String(s.address || '').trim();
     const fullSiteName = s.site_name || (sAddr ? `${sName} ${sAddr}` : sName);
-    const appName = String(s.app_name || s.appName || '').trim();
-    const appUrl = String(s.app_url || s.appUrl || '').trim();
 
     return {
       id: String(s.id || '').toLowerCase(),
@@ -127,18 +112,14 @@ export async function getSecuritySiteById(id) {
       name: sName,
       address: sAddr,
       site_name: fullSiteName,
-      siteName: fullSiteName,
-      appName: appName,
-      app_name: appName,
-      appUrl: appUrl,
-      app_url: appUrl
+      siteName: fullSiteName
     };
   }
   return null;
 }
 
 /**
- * 현장 등록 / 수정 (site_name 및 app_name, app_url 컬럼 함께 저장)
+ * 현장 등록 / 수정 (순수 사업장 정보만 DB 관리)
  */
 export async function createSecuritySite(data = {}) {
   await ensureSiteColumns();
@@ -156,36 +137,18 @@ export async function createSecuritySite(data = {}) {
   const name = String(data.name || '').trim();
   const address = String(data.address || '').trim();
   const siteName = String(data.site_name || data.siteName || (address ? `${name} ${address}` : name)).trim();
-  const appName = String(data.app_name || data.appName || '').trim();
-  const appUrl = String(data.app_url || data.appUrl || '').trim();
 
   const sql = `
-    INSERT INTO security_site (id, type, name, address, site_name, app_name, app_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO security_site (id, type, name, address, site_name)
+    VALUES (?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       type = VALUES(type),
       name = VALUES(name),
       address = VALUES(address),
-      site_name = VALUES(site_name),
-      app_name = VALUES(app_name),
-      app_url = VALUES(app_url)
+      site_name = VALUES(site_name)
   `;
 
-  try {
-    await query(sql, [siteId, type, name, address, siteName, appName, appUrl]);
-  } catch (err) {
-    // Fallback in case columns were not migrated
-    const fallbackSql = `
-      INSERT INTO security_site (id, type, name, address, site_name)
-      VALUES (?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        type = VALUES(type),
-        name = VALUES(name),
-        address = VALUES(address),
-        site_name = VALUES(site_name)
-    `;
-    await query(fallbackSql, [siteId, type, name, address, siteName]);
-  }
+  await query(sql, [siteId, type, name, address, siteName]);
 
   return {
     id: siteId,
@@ -193,11 +156,7 @@ export async function createSecuritySite(data = {}) {
     name,
     address,
     site_name: siteName,
-    siteName,
-    app_name: appName,
-    appName,
-    app_url: appUrl,
-    appUrl
+    siteName
   };
 }
 
