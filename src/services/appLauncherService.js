@@ -64,15 +64,19 @@ export async function launchApp(targetScheme) {
 
       // Attempt launch via Native Java Plugin
       NativeAppLauncher.launchApp({ target: cleanScheme })
-        .then(() => {})
+        .then((res) => {
+          appOpened = true;
+        })
         .catch((err) => {
           console.warn('NativeAppLauncher.launchApp failed, trying Capacitor AppLauncher fallback:', err);
           if (cleanScheme.startsWith('intent://') || cleanScheme.includes('://')) {
-            AppLauncher.openUrl({ url: cleanScheme }).catch(() => {});
+            AppLauncher.openUrl({ url: cleanScheme })
+              .then(() => { appOpened = true; })
+              .catch(() => {});
           }
         });
 
-      // Wait 1200ms to verify if OS transferred focus to the newly opened app (B app)
+      // Wait 1000ms to verify if OS transferred focus to the newly opened app (B app)
       setTimeout(() => {
         window.removeEventListener('blur', handleAppBlur);
         document.removeEventListener('visibilitychange', handleAppBlur);
@@ -83,10 +87,10 @@ export async function launchApp(targetScheme) {
           resolve({ 
             success: false, 
             method: 'native-not-opened', 
-            reason: '어플이 핸드폰에 설치되어 있지 않거나 모바일 화면에 열리지 않았습니다.' 
+            reason: '앱이 핸드폰에 설치되어 있지 않거나 모바일 화면에 열리지 않았습니다.' 
           });
         }
-      }, 1200);
+      }, 1000);
     });
   }
 
@@ -94,6 +98,6 @@ export async function launchApp(targetScheme) {
   return { 
     success: false, 
     method: 'web-disabled', 
-    reason: '타 어플 실행 기능은 모바일 전용 설치형 앱(APK)에서만 지원됩니다.' 
+    reason: '타 앱 실행 기능은 모바일 전용 설치형 앱(APK)에서만 지원됩니다.' 
   };
 }

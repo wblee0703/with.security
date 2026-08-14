@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
+import { useModalBack } from '../../services/modalBackHandler';
 import WorkLogCalendar from '../common/WorkLogCalendar';
 
 export default function WorkLogTab({ onTriggerToast }) {
@@ -28,6 +29,9 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [filterCategory, setFilterCategory] = useState('전체'); // '전체' | '사내 업무' | '출장 업무'
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Hook for back-button popup dismissal
+  useModalBack(isModalOpen, () => setIsModalOpen(false), 'worklog-form-modal');
   const [editingLogId, setEditingLogId] = useState(null);
   const [extraTasks, setExtraTasks] = useState([]); // Multiple tasks state
 
@@ -35,7 +39,12 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [inlineEditingId, setInlineEditingId] = useState(null);
   const [inlineForm, setInlineForm] = useState({ title: '', details: '' });
 
+  // Inline adding state for adding new task directly inside list card without modal
+  const [inlineAddingCardKey, setInlineAddingCardKey] = useState(null);
+  const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '' });
+
   const handleStartInlineEdit = (item) => {
+    setInlineAddingCardKey(null);
     setInlineEditingId(item.id);
     setInlineForm({
       title: item.title || '',
@@ -70,10 +79,58 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
+  const handleStartInlineAdd = (logItem, cardKey) => {
+    setInlineEditingId(null);
+    setInlineAddingCardKey(cardKey);
+    setInlineNewForm({ title: '', details: '' });
+  };
+
+  const handleCancelInlineAdd = () => {
+    setInlineAddingCardKey(null);
+    setInlineNewForm({ title: '', details: '' });
+  };
+
+  const handleSaveInlineAdd = async (primaryLog) => {
+    if (!inlineNewForm.title.trim()) {
+      if (onTriggerToast) onTriggerToast('추가할 업무명을 입력해 주세요.', 'warning');
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = `${primaryLog.date || getTodayIsoDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const newLogItem = {
+      id: `worklog-${Date.now().toString().slice(-6)}`,
+      category: primaryLog.category || '사내 업무',
+      date: primaryLog.date || getTodayIsoDate(),
+      title: inlineNewForm.title.trim(),
+      details: inlineNewForm.details.trim(),
+      siteName: primaryLog.siteName || primaryLog.site_name || '',
+      site_name: primaryLog.siteName || primaryLog.site_name || '',
+      authorName: currentUser?.name || primaryLog.authorName || '작성자',
+      authorTeam: currentUser?.team || currentUser?.department || primaryLog.authorTeam || '운영팀',
+      authorRank: currentUser?.rank || primaryLog.authorRank || '대리',
+      authorUsername: currentUser?.username || primaryLog.authorUsername || '',
+      authorDivision: currentUser?.division || primaryLog.authorDivision || '',
+      authorRole: currentUser?.role || primaryLog.authorRole || '일반',
+      createdAt: timeStr
+    };
+
+    const updatedLogs = await dbService.saveWorkLog(newLogItem);
+    setWorkLogs(updatedLogs);
+    setInlineAddingCardKey(null);
+    setInlineNewForm({ title: '', details: '' });
+
+    if (onTriggerToast) {
+      onTriggerToast(`'${newLogItem.title}' 업무가 추가되었습니다.`, 'success');
+    }
+  };
+
   // Deletion Password Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTargetLog, setDeleteTargetLog] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
+  useModalBack(isDeleteModalOpen, () => setIsDeleteModalOpen(false), 'worklog-delete-modal');
 
   // Today local ISO date (YYYY-MM-DD)
   const getTodayIsoDate = () => {
@@ -409,25 +466,26 @@ export default function WorkLogTab({ onTriggerToast }) {
         {/* Left Column: Header Banner, Date Navigation, Search Filter, & Work Log List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
           {/* Header Banner */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid rgba(0, 242, 254, 0.25)' }}>
+          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{
                   width: '46px',
                   height: '46px',
                   borderRadius: '14px',
-                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  border: '1.5px solid #38bdf8',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#050b14',
-                  boxShadow: '0 0 18px rgba(0, 242, 254, 0.4)',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
                   flexShrink: 0
                 }}>
                   <ClipboardList size={24} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
                     업무 일지 관리
                   </div>
                 </div>
@@ -446,7 +504,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: '0 4px 14px rgba(0, 242, 254, 0.3)'
+                  border: '1px solid #0284c7',
+                  boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)'
                 }}
               >
                 <Plus size={16} /> 업무 등록
@@ -458,12 +517,13 @@ export default function WorkLogTab({ onTriggerToast }) {
           <div className="glass-panel" style={{
             padding: '16px 20px',
             borderRadius: '18px',
-            background: 'rgba(0, 242, 254, 0.05)',
-            border: '1px solid rgba(0, 242, 254, 0.25)',
+            background: '#ffffff',
+            border: '1.5px solid #cbd5e1',
             display: 'flex',
             flexDirection: 'column',
             gap: '14px',
-            width: '100%'
+            width: '100%',
+            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
           }}>
             {/* Line 1: [Left Arrow] --- [Date Display + Picker] --- [Right Arrow] */}
             <div style={{
@@ -478,28 +538,25 @@ export default function WorkLogTab({ onTriggerToast }) {
                 onClick={handlePrevDay}
                 title="이전 날짜"
                 style={{
-                  width: '38px',
+                  flex: '0 0 38px',
                   height: '38px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(0, 242, 254, 0.4)',
-                  background: 'rgba(0, 242, 254, 0.12)',
-                  color: '#00f2fe',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#0f172a',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  flexShrink: 0,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                 }}
               >
                 <ChevronLeft size={20} />
               </button>
 
               {/* Interactive Date Picker Button (Entire Area Clickable -> Triggers Calendar Popup) */}
-              <button
-                type="button"
-                onClick={handleTriggerDatePicker}
-                title="클릭하여 달력에서 날짜 선택"
+              <div
                 style={{
                   position: 'relative',
                   display: 'inline-flex',
@@ -507,9 +564,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                   justifyContent: 'center',
                   padding: '8px 16px',
                   borderRadius: '10px',
-                  background: 'rgba(0, 242, 254, 0.12)',
-                  border: '1px solid rgba(0, 242, 254, 0.4)',
-                  boxShadow: '0 0 12px rgba(0, 242, 254, 0.2)',
+                  background: '#f0f9ff',
+                  border: '1.5px solid #7dd3fc',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
                   cursor: 'pointer',
                   overflow: 'hidden'
                 }}
@@ -519,12 +576,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  color: '#fff',
+                  color: '#0284c7',
                   fontSize: '13px',
                   fontWeight: '800',
                   pointerEvents: 'none'
                 }}>
-                  <Calendar size={15} color="#00f2fe" />
+                  <Calendar size={15} color="#0284c7" />
                   <span>{viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}</span>
                 </div>
 
@@ -551,25 +608,25 @@ export default function WorkLogTab({ onTriggerToast }) {
                     zIndex: 10
                   }}
                 />
-              </button>
+              </div>
 
               <button
                 type="button"
                 onClick={handleNextDay}
                 title="다음 날짜"
                 style={{
-                  width: '38px',
+                  flex: '0 0 38px',
                   height: '38px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(0, 242, 254, 0.4)',
-                  background: 'rgba(0, 242, 254, 0.12)',
-                  color: '#00f2fe',
+                  border: '1.5px solid #cbd5e1',
+                  background: '#ffffff',
+                  color: '#0f172a',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: 'pointer',
-                  flexShrink: 0,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                 }}
               >
                 <ChevronRight size={20} />
@@ -583,7 +640,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               justifyContent: 'space-between',
               width: '100%',
               paddingTop: '10px',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              borderTop: '1.5px solid #e2e8f0',
               gap: '12px',
               flexWrap: 'wrap'
             }}>
@@ -594,12 +651,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                   padding: '7px 16px',
                   borderRadius: '10px',
                   border: selectedDate === getTodayIsoDate() && !viewAllDates
-                    ? '1px solid #00f2fe'
-                    : '1px solid rgba(255, 255, 255, 0.15)',
+                    ? '1.5px solid #0284c7'
+                    : '1.5px solid #cbd5e1',
                   background: selectedDate === getTodayIsoDate() && !viewAllDates
-                    ? 'rgba(0, 242, 254, 0.2)'
-                    : 'rgba(255, 255, 255, 0.05)',
-                  color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#00f2fe' : '#94a3b8',
+                    ? 'rgba(2, 132, 199, 0.1)'
+                    : '#f8fafc',
+                  color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#0284c7' : '#64748b',
                   fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer',
@@ -609,8 +666,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                 오늘
               </button>
 
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#cbd5e1', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#00f2fe', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#0284c7', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
               </div>
 
               <button
@@ -619,9 +676,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   padding: '7px 16px',
                   borderRadius: '10px',
-                  border: viewAllDates ? '1px solid #a78bfa' : '1px solid rgba(255, 255, 255, 0.15)',
-                  background: viewAllDates ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                  color: viewAllDates ? '#a78bfa' : '#94a3b8',
+                  border: viewAllDates ? '1.5px solid #7c3aed' : '1.5px solid #cbd5e1',
+                  background: viewAllDates ? 'rgba(124, 58, 237, 0.1)' : '#f8fafc',
+                  color: viewAllDates ? '#7c3aed' : '#64748b',
                   fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer',
@@ -633,25 +690,26 @@ export default function WorkLogTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* Filter Bar & Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', width: '100%', flexWrap: 'wrap' }}>
+          {/* Filter Bar & Search (Single Row Matching Layout) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', flexWrap: 'nowrap' }}>
             {/* Category Segmented Control */}
-            <div style={{ display: 'flex', background: 'rgba(255, 255, 255, 0.04)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)', flexShrink: 0 }}>
+            <div style={{ display: 'flex', background: '#ffffff', padding: '4px', borderRadius: '12px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
               {['전체', '사내 업무', '출장 업무'].map(cat => (
                 <button
                   key={cat}
                   type="button"
                   onClick={() => setFilterCategory(cat)}
                   style={{
-                    padding: '6px 14px',
+                    padding: '6px 12px',
                     borderRadius: '8px',
                     fontSize: '12px',
                     fontWeight: '800',
-                    border: 'none',
-                    background: filterCategory === cat ? 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)' : 'transparent',
-                    color: filterCategory === cat ? '#050b14' : '#94a3b8',
+                    border: filterCategory === cat ? '1px solid #e2e8f0' : '1px solid transparent',
+                    background: filterCategory === cat ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)' : 'transparent',
+                    color: filterCategory === cat ? '#ffffff' : '#334155',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap'
                   }}
                 >
                   {cat === '사내 업무' && '🏢 '}
@@ -661,24 +719,25 @@ export default function WorkLogTab({ onTriggerToast }) {
               ))}
             </div>
 
-            {/* Search Bar (Expanded right to match remaining width) */}
-            <div style={{ position: 'relative', flex: 1, minWidth: '180px' }}>
-              <Search size={15} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            {/* Search Bar (Auto-expanded to fill remaining right width in single row) */}
+            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+              <Search size={15} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
               <input
                 type="text"
-                placeholder="업무명 또는 내용 검색..."
+                placeholder="업무명&내용 검색"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{
                   width: '100%',
                   padding: '9px 12px 9px 34px',
                   borderRadius: '12px',
-                  background: '#0a0f1d',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: '#fff',
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#0f172a',
                   fontSize: '12px',
                   outline: 'none',
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                 }}
               />
             </div>
@@ -699,14 +758,22 @@ export default function WorkLogTab({ onTriggerToast }) {
             ) : (
               sortedDates.map(dateStr => (
                 <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {/* Date Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px' }}>
-                    <Calendar size={15} color="#00f2fe" />
-                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#00f2fe' }}>
+                  {/* Date Header (Crisp High-Contrast Colors) */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px', paddingTop: '4px' }}>
+                    <Calendar size={16} color="#0284c7" />
+                    <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px' }}>
                       {getFormattedKoreanDate(dateStr)}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>
-                      ({groupedByDate[dateStr].length}건)
+                    <span style={{
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      color: '#0284c7',
+                      background: 'rgba(14, 165, 233, 0.1)',
+                      border: '1px solid #bae6fd',
+                      padding: '2px 8px',
+                      borderRadius: '10px'
+                    }}>
+                      총 {groupedByDate[dateStr].length}건
                     </span>
                   </div>
 
@@ -743,7 +810,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                           style={{
                             padding: '18px 20px',
                             borderRadius: '16px',
-                            borderLeft: group.category === '출장 업무' ? '4px solid #a78bfa' : '4px solid #00f2fe',
+                            border: '1.5px solid #cbd5e1',
+                            borderLeft: group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #0284c7',
+                            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '12px'
@@ -757,9 +826,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 borderRadius: '6px',
                                 fontSize: '11px',
                                 fontWeight: '800',
-                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.18)' : 'rgba(0, 242, 254, 0.18)',
-                                color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
-                                border: `1px solid ${group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(0, 242, 254, 0.4)'}`
+                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(14, 165, 233, 0.12)',
+                                color: group.category === '출장 업무' ? '#7c3aed' : '#0284c7',
+                                border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#7dd3fc'}`
                               }}>
                                 {group.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
                               </span>
@@ -770,9 +839,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   borderRadius: '6px',
                                   fontSize: '11px',
                                   fontWeight: '700',
-                                  background: 'rgba(167, 139, 250, 0.15)',
-                                  color: '#c4b5fd',
-                                  border: '1px solid rgba(167, 139, 250, 0.35)',
+                                  background: 'rgba(167, 139, 250, 0.12)',
+                                  color: '#7c3aed',
+                                  border: '1.5px solid #c4b5fd',
                                   display: 'flex',
                                   alignItems: 'center',
                                   gap: '4px'
@@ -790,11 +859,11 @@ export default function WorkLogTab({ onTriggerToast }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                               <button
                                 type="button"
-                                onClick={() => handleOpenAddModalForCard(group.primaryLog)}
+                                onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
                                 style={{
-                                  background: 'rgba(0, 242, 254, 0.14)',
-                                  border: '1px solid rgba(0, 242, 254, 0.4)',
-                                  color: '#00f2fe',
+                                  background: '#f0f9ff',
+                                  border: '1.5px solid #7dd3fc',
+                                  color: '#0284c7',
                                   padding: '5px 10px',
                                   borderRadius: '8px',
                                   fontSize: '11.5px',
@@ -806,9 +875,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   alignItems: 'center',
                                   gap: '4px',
                                   transition: 'all 0.2s ease',
-                                  boxShadow: '0 2px 8px rgba(0, 242, 254, 0.15)'
+                                  boxShadow: '0 2px 6px rgba(14, 165, 233, 0.1)'
                                 }}
-                                title="이 카드의 업무 분류/날짜/사업장에 새 업무 추가"
+                                title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
                               >
                                 <Plus size={13} /> 추가
                               </button>
@@ -816,12 +885,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                           </div>
 
                           {/* Author & Info Line (Rendered once per card) */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#94a3b8', flexWrap: 'wrap', paddingTop: '2px', paddingBottom: '4px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
-                            <span style={{ color: '#fff', fontWeight: '700' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#64748b', flexWrap: 'wrap', paddingTop: '2px', paddingBottom: '4px', borderBottom: '1.5px solid #e2e8f0' }}>
+                            <span style={{ color: '#0f172a', fontWeight: '700' }}>
                               👤 {group.authorName} {group.authorRank || ''}
                             </span>
                             <span>|</span>
-                            <span style={{ color: '#00f2fe', fontWeight: '600' }}>
+                            <span style={{ color: '#0284c7', fontWeight: '700' }}>
                               {formatOnlyTeam(group.authorTeam)}
                             </span>
                             <span>|</span>
@@ -839,138 +908,105 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   <div
                                     key={item.id}
                                     style={{
-                                      background: isEditingThis ? 'rgba(0, 242, 254, 0.07)' : 'rgba(0, 0, 0, 0.2)',
-                                      border: isEditingThis ? '1px solid rgba(0, 242, 254, 0.45)' : '1px solid rgba(255, 255, 255, 0.06)',
+                                      background: isEditingThis ? '#f0f9ff' : '#f8fafc',
+                                      border: `1.5px solid ${isEditingThis ? '#7dd3fc' : '#cbd5e1'}`,
                                       borderRadius: '12px',
                                       padding: '12px 14px',
                                       display: 'flex',
                                       flexDirection: 'column',
                                       gap: '8px',
-                                      transition: 'all 0.2s ease',
-                                      boxShadow: isEditingThis ? '0 0 16px rgba(0, 242, 254, 0.15)' : 'none'
+                                      transition: 'all 0.2s ease'
                                     }}
                                   >
                                     {isEditingThis ? (
                                       /* Inline Editing Mode */
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
-                                            <span style={{
-                                              color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
-                                              fontWeight: '800',
-                                              fontSize: '12px',
-                                              flexShrink: 0
-                                            }}>
-                                              #{itemIdx + 1}
-                                            </span>
-                                            <input
-                                              type="text"
-                                              value={inlineForm.title}
-                                              onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
-                                              placeholder="업무명 입력"
-                                              autoFocus
-                                              style={{
-                                                width: '100%',
-                                                padding: '6px 10px',
-                                                borderRadius: '8px',
-                                                background: '#0a0f1d',
-                                                border: '1px solid #00f2fe',
-                                                color: '#fff',
-                                                fontSize: '13.5px',
-                                                fontWeight: '700',
-                                                outline: 'none',
-                                                boxShadow: '0 0 10px rgba(0, 242, 254, 0.25)'
-                                              }}
-                                            />
-                                          </div>
-
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleSaveInlineEdit(item)}
-                                              style={{
-                                                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-                                                border: 'none',
-                                                color: '#050b14',
-                                                padding: '5px 12px',
-                                                borderRadius: '8px',
-                                                fontSize: '11.5px',
-                                                fontWeight: '800',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '4px',
-                                                boxShadow: '0 2px 10px rgba(0, 242, 254, 0.3)'
-                                              }}
-                                              title="수정 사항 저장"
-                                            >
-                                              <CheckCircle2 size={13} /> 저장
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={handleCancelInlineEdit}
-                                              style={{
-                                                background: 'rgba(255, 255, 255, 0.08)',
-                                                border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                color: '#cbd5e1',
-                                                padding: '5px 10px',
-                                                borderRadius: '8px',
-                                                fontSize: '11.5px',
-                                                fontWeight: '700',
-                                                cursor: 'pointer'
-                                              }}
-                                              title="수정 취소"
-                                            >
-                                              취소
-                                            </button>
-                                          </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0284c7' }}>
+                                            #{itemIdx + 1}
+                                          </span>
+                                          <input
+                                            type="text"
+                                            value={inlineForm.title}
+                                            onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
+                                            style={{
+                                              flex: 1,
+                                              padding: '6px 10px',
+                                              borderRadius: '8px',
+                                              background: '#ffffff',
+                                              border: '1px solid #3b82f6',
+                                              color: '#0f172a',
+                                              fontSize: '12.5px',
+                                              fontWeight: '700',
+                                              outline: 'none'
+                                            }}
+                                            placeholder="업무명을 입력하세요"
+                                          />
                                         </div>
 
                                         <textarea
-                                          rows={Math.max(3, (inlineForm.details || '').split('\n').length)}
+                                          rows={2}
                                           value={inlineForm.details}
                                           onChange={(e) => setInlineForm({ ...inlineForm, details: e.target.value })}
-                                          onInput={(e) => {
-                                            e.target.style.height = 'auto';
-                                            e.target.style.height = `${e.target.scrollHeight}px`;
-                                          }}
-                                          placeholder="세부 업무 내용 작성 (선택)"
                                           style={{
                                             width: '100%',
-                                            minHeight: '75px',
-                                            padding: '10px 12px',
+                                            padding: '8px 10px',
                                             borderRadius: '8px',
-                                            background: '#0a0f1d',
-                                            border: '1px solid rgba(0, 242, 254, 0.35)',
-                                            color: '#cbd5e1',
-                                            fontSize: '12.5px',
+                                            background: '#ffffff',
+                                            border: '1px solid #cbd5e1',
+                                            color: '#334155',
+                                            fontSize: '12px',
                                             outline: 'none',
                                             resize: 'vertical',
-                                            lineHeight: '1.55',
-                                            overflowY: 'hidden'
+                                            lineHeight: '1.4'
                                           }}
+                                          placeholder="세부 업무 내용을 입력하세요 (선택)"
                                         />
+
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+                                          <button
+                                            type="button"
+                                            onClick={handleCancelInlineEdit}
+                                            style={{
+                                              padding: '5px 10px',
+                                              borderRadius: '6px',
+                                              background: '#ffffff',
+                                              border: '1px solid #cbd5e1',
+                                              color: '#64748b',
+                                              fontSize: '11px',
+                                              fontWeight: '700',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            취소
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveInlineEdit(item)}
+                                            style={{
+                                              padding: '5px 12px',
+                                              borderRadius: '6px',
+                                              background: '#0284c7',
+                                              border: '1px solid transparent',
+                                              color: '#ffffff',
+                                              fontSize: '11px',
+                                              fontWeight: '800',
+                                              cursor: 'pointer'
+                                            }}
+                                          >
+                                            저장
+                                          </button>
+                                        </div>
                                       </div>
                                     ) : (
-                                      /* Normal Display Mode */
+                                      /* Normal View Mode */
                                       <>
-                                        {/* Task Title Line + Individual Edit & Delete Buttons */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-                                          <div style={{
-                                            fontSize: '14px',
-                                            fontWeight: '700',
-                                            color: '#fff',
-                                            lineHeight: '1.4',
-                                            wordBreak: 'break-word',
-                                            display: 'flex',
-                                            alignItems: 'flex-start',
-                                            gap: '6px'
-                                          }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <span style={{
-                                              color: group.category === '출장 업무' ? '#a78bfa' : '#00f2fe',
+                                              fontSize: '11px',
                                               fontWeight: '800',
-                                              fontSize: '12px',
-                                              flexShrink: 0,
+                                              color: group.category === '출장 업무' ? '#7c3aed' : '#0284c7',
                                               paddingTop: '1px'
                                             }}>
                                               #{itemIdx + 1}
@@ -984,9 +1020,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                 type="button"
                                                 onClick={() => handleStartInlineEdit(item)}
                                                 style={{
-                                                  background: 'rgba(255, 255, 255, 0.06)',
-                                                  border: '1px solid rgba(255, 255, 255, 0.18)',
-                                                  color: '#cbd5e1',
+                                                  background: '#ffffff',
+                                                  border: '1px solid #cbd5e1',
+                                                  color: '#0f172a',
                                                   padding: '3px 8px',
                                                   borderRadius: '6px',
                                                   fontSize: '11px',
@@ -994,7 +1030,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   cursor: 'pointer',
                                                   display: 'flex',
                                                   alignItems: 'center',
-                                                  gap: '3px'
+                                                  gap: '3px',
+                                                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                                                 }}
                                                 title="이 업무 바로 수정"
                                               >
@@ -1004,9 +1041,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                 type="button"
                                                 onClick={() => handleInitiateDeleteLog(item)}
                                                 style={{
-                                                  background: 'rgba(244, 63, 94, 0.12)',
-                                                  border: '1px solid rgba(244, 63, 94, 0.35)',
-                                                  color: '#f43f5e',
+                                                  background: '#ffffff',
+                                                  border: '1px solid #fecaca',
+                                                  color: '#dc2626',
                                                   padding: '3px 8px',
                                                   borderRadius: '6px',
                                                   fontSize: '11px',
@@ -1014,7 +1051,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   cursor: 'pointer',
                                                   display: 'flex',
                                                   alignItems: 'center',
-                                                  gap: '3px'
+                                                  gap: '3px',
+                                                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
                                                 }}
                                                 title="이 업무 삭제"
                                               >
@@ -1027,12 +1065,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         {/* Log Details Box (Only rendered if details exist) */}
                                         {item.details && item.details.trim() !== '' && (
                                           <div style={{
-                                            background: 'rgba(0, 0, 0, 0.25)',
-                                            border: '1px solid rgba(255, 255, 255, 0.06)',
+                                            border: '1px solid #e2e8f0',
+                                            background: '#ffffff',
                                             padding: '10px 12px',
                                             borderRadius: '8px',
                                             fontSize: '12px',
-                                            color: '#cbd5e1',
+                                            color: '#475569',
                                             whiteSpace: 'pre-wrap',
                                             lineHeight: '1.5'
                                           }}>
@@ -1044,6 +1082,105 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   </div>
                                 );
                               })}
+
+                            {/* Inline Adding New Task Box directly inside this Card */}
+                            {inlineAddingCardKey === group.key && (
+                              <div style={{
+                                background: '#f0f9ff',
+                                border: '1.5px solid #7dd3fc',
+                                borderRadius: '12px',
+                                padding: '12px 14px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px',
+                                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0284c7' }}>
+                                    #{group.items.length + 1}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    autoFocus
+                                    value={inlineNewForm.title}
+                                    onChange={(e) => setInlineNewForm({ ...inlineNewForm, title: e.target.value })}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleSaveInlineAdd(group.primaryLog);
+                                      }
+                                    }}
+                                    style={{
+                                      flex: 1,
+                                      padding: '6px 10px',
+                                      borderRadius: '8px',
+                                      background: '#ffffff',
+                                      border: '1.5px solid #38bdf8',
+                                      color: '#0f172a',
+                                      fontSize: '12.5px',
+                                      fontWeight: '700',
+                                      outline: 'none'
+                                    }}
+                                    placeholder="추가할 업무명을 입력하세요."
+                                  />
+                                </div>
+
+                                <textarea
+                                  rows={2}
+                                  value={inlineNewForm.details}
+                                  onChange={(e) => setInlineNewForm({ ...inlineNewForm, details: e.target.value })}
+                                  style={{
+                                    width: '100%',
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    background: '#ffffff',
+                                    border: '1px solid #cbd5e1',
+                                    color: '#334155',
+                                    fontSize: '12px',
+                                    outline: 'none',
+                                    resize: 'vertical',
+                                    lineHeight: '1.4'
+                                  }}
+                                  placeholder="세부 업무 내용을 입력하세요 (선택)"
+                                />
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelInlineAdd}
+                                    style={{
+                                      padding: '5px 10px',
+                                      borderRadius: '6px',
+                                      background: '#ffffff',
+                                      border: '1px solid #cbd5e1',
+                                      color: '#64748b',
+                                      fontSize: '11px',
+                                      fontWeight: '700',
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveInlineAdd(group.primaryLog)}
+                                    style={{
+                                      padding: '5px 14px',
+                                      borderRadius: '6px',
+                                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                                      border: 'none',
+                                      color: '#ffffff',
+                                      fontSize: '11.5px',
+                                      fontWeight: '800',
+                                      cursor: 'pointer',
+                                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                    }}
+                                  >
+                                    추가 완료
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ));
@@ -1090,8 +1227,9 @@ export default function WorkLogTab({ onTriggerToast }) {
             maxWidth: '520px',
             borderRadius: '24px',
             padding: '24px',
-            border: '1px solid rgba(0, 242, 254, 0.4)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(0, 242, 254, 0.2)',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.15)',
             display: 'flex',
             flexDirection: 'column',
             gap: '18px'
@@ -1103,19 +1241,20 @@ export default function WorkLogTab({ onTriggerToast }) {
                   width: '38px',
                   height: '38px',
                   borderRadius: '12px',
-                  background: 'rgba(0, 242, 254, 0.15)',
-                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  border: '1px solid rgba(255, 255, 255, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  color: '#ffffff'
                 }}>
-                  <ClipboardList size={20} color="#00f2fe" />
+                  <ClipboardList size={20} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
                     {editingLogId ? '업무 일지 수정' : '신규 업무 일지 등록'}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#00f2fe', fontWeight: '700' }}>
+                  <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
                     작성자: {currentUser?.name || '사용자'} {currentUser?.rank || '대리'} ({currentUser?.team || '운영팀'})
                   </div>
                 </div>
@@ -1135,7 +1274,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               {/* Category & Date in 1:1 ratio Grid */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
                     업무 분류 *
                   </label>
                   <select
@@ -1144,10 +1283,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#0a0f1d',
-                      border: '1px solid rgba(0, 242, 254, 0.4)',
-                      color: '#fff',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
                       fontSize: '13px',
                       outline: 'none',
                       cursor: 'pointer'
@@ -1159,7 +1298,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
                     업무 날짜 *
                   </label>
                   <input
@@ -1169,10 +1308,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#0a0f1d',
-                      border: '1px solid rgba(255, 255, 255, 0.15)',
-                      color: '#fff',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
                       fontSize: '13px',
                       outline: 'none'
                     }}
@@ -1183,7 +1322,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               {/* Site Selection Field for Business Trip (출장 업무) */}
               {form.category === '출장 업무' && (
                 <div>
-                  <label style={{ fontSize: '12px', color: '#a78bfa', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                  <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
                     🚗 출장 방문 사업장 선택 *
                   </label>
                   <select
@@ -1192,10 +1331,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#0a0f1d',
-                      border: '1px solid rgba(167, 139, 250, 0.5)',
-                      color: '#fff',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
                       fontSize: '13px',
                       outline: 'none',
                       cursor: 'pointer'
@@ -1216,7 +1355,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* Title Input */}
               <div>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
                   업무명 *
                 </label>
                 <input
@@ -1227,10 +1366,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: '#0a0f1d',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#fff',
+                    borderRadius: '10px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
                     fontSize: '13px',
                     outline: 'none'
                   }}
@@ -1239,7 +1378,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* Details Textarea (Optional) */}
               <div>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
                   세부 업무 기록 (선택)
                 </label>
                 <textarea
@@ -1250,10 +1389,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    borderRadius: '12px',
-                    background: '#0a0f1d',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#fff',
+                    borderRadius: '10px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
                     fontSize: '13px',
                     outline: 'none',
                     resize: 'vertical',
@@ -1265,16 +1404,16 @@ export default function WorkLogTab({ onTriggerToast }) {
               {/* Dynamic Extra Tasks List (When adding 2 or more tasks at once) */}
               {!editingLogId && extraTasks.map((tItem, idx) => (
                 <div key={idx} style={{
-                  background: 'rgba(0, 242, 254, 0.05)',
-                  border: '1px solid rgba(0, 242, 254, 0.25)',
-                  borderRadius: '16px',
+                  background: '#f0f9ff',
+                  border: '1px solid #bae6fd',
+                  borderRadius: '14px',
                   padding: '14px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#00f2fe', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Plus size={14} /> 추가 업무 항목 #{idx + 2}
                     </span>
                     <button
@@ -1303,9 +1442,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                       width: '100%',
                       padding: '10px 14px',
                       borderRadius: '10px',
-                      background: '#0a0f1d',
-                      border: '1px solid rgba(0, 242, 254, 0.3)',
-                      color: '#fff',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
                       fontSize: '13px',
                       outline: 'none'
                     }}
@@ -1324,9 +1463,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                       width: '100%',
                       padding: '8px 12px',
                       borderRadius: '10px',
-                      background: '#0a0f1d',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      color: '#cbd5e1',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#334155',
                       fontSize: '12px',
                       outline: 'none',
                       resize: 'vertical'
@@ -1343,9 +1482,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     padding: '10px 14px',
                     borderRadius: '12px',
-                    background: 'rgba(0, 242, 254, 0.08)',
-                    border: '1px dashed rgba(0, 242, 254, 0.4)',
-                    color: '#00f2fe',
+                    background: '#f0f9ff',
+                    border: '1px dashed #bae6fd',
+                    color: '#0284c7',
                     fontSize: '12px',
                     fontWeight: '800',
                     cursor: 'pointer',
@@ -1412,8 +1551,9 @@ export default function WorkLogTab({ onTriggerToast }) {
             maxWidth: '420px',
             borderRadius: '24px',
             padding: '24px',
-            border: '1px solid rgba(239, 68, 68, 0.4)',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(239, 68, 68, 0.2)',
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.15)',
             display: 'flex',
             flexDirection: 'column',
             gap: '16px'
@@ -1424,8 +1564,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                   width: '38px',
                   height: '38px',
                   borderRadius: '12px',
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
@@ -1433,10 +1573,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                   <Lock size={20} color="#ef4444" />
                 </div>
                 <div>
-                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
                     업무 일지 삭제 검증
                   </div>
-                  <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: '700' }}>
+                  <div style={{ fontSize: '11px', color: '#dc2626', fontWeight: '700' }}>
                     본인 인증 비밀번호 입력 필수
                   </div>
                 </div>
@@ -1450,13 +1590,13 @@ export default function WorkLogTab({ onTriggerToast }) {
               </button>
             </div>
 
-            <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.5' }}>
+            <div style={{ fontSize: '13px', color: '#475569', lineHeight: '1.5' }}>
               '<strong>{deleteTargetLog?.title}</strong>' 업무 일지를 삭제하시려면 작성자(본인) 비밀번호를 입력해 주세요.
             </div>
 
             <form onSubmit={handleConfirmDeleteWithPassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
                   작성자 비밀번호 *
                 </label>
                 <input
@@ -1468,10 +1608,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    borderRadius: '12px',
-                    background: '#0a0f1d',
-                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                    color: '#fff',
+                    borderRadius: '10px',
+                    background: '#ffffff',
+                    border: '1px solid #fecaca',
+                    color: '#0f172a',
                     fontSize: '14px',
                     outline: 'none'
                   }}

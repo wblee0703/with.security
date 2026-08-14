@@ -1,13 +1,15 @@
 import { hashPassword } from './cryptoUtil';
 
-// Server Base URL Management Helper
+// Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
+export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
+
 export function getServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
   if (url) return url;
   if (import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
   }
-  return 'http://localhost:4000';
+  return DEFAULT_PUBLIC_URL;
 }
 
 export function setServerUrl(url) {
@@ -561,27 +563,55 @@ class SecurityDatabase {
   }
 
   async getRegisteredUsers() {
+    let usersList = [];
+
     try {
       const res = await safeFetchApi('/api/security-users');
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
+          usersList = remoteData;
           localStorage.setItem('with_security_users_db', JSON.stringify(remoteData));
           try {
             for (const u of remoteData) await this.putItem('users', u);
           } catch (e) {}
-          return remoteData;
         }
       }
     } catch (e) {}
 
-    try {
-      const dbUsers = await this.getAll('users');
-      if (dbUsers && dbUsers.length > 0) return dbUsers;
-    } catch (e) {}
+    if (!usersList || usersList.length === 0) {
+      try {
+        const dbUsers = await this.getAll('users');
+        if (dbUsers && dbUsers.length > 0) usersList = dbUsers;
+      } catch (e) {}
+    }
 
-    return [];
+    // Ensure default admin user always exists
+    const adminExists = usersList.some(u => u.username === 'admin');
+    if (!adminExists) {
+      const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
+      const defaultAdminHash = await hashPassword(defaultAdminPass);
+      const defaultAdmin = {
+        username: 'admin',
+        password: defaultAdminHash,
+        passwordHash: defaultAdminHash,
+        name: '이원배',
+        role: '개발자',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'ALL',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr'
+      };
+      usersList.unshift(defaultAdmin);
+      try {
+        await this.putItem('users', defaultAdmin);
+      } catch (e) {}
+    }
+
+    return usersList;
   }
 
   async getUsers() {

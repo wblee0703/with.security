@@ -18,6 +18,26 @@ export default function App() {
   });
   const [platform, setPlatform] = useState('ios');
   const [toastMessage, setToastMessage] = useState(null);
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  // Network Offline / Online live detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      showToast('🌐 인터넷이 다시 연결되었습니다. 실시간 동기화를 시작합니다.');
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // First-Time Initial Server URL Guard State
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
@@ -189,8 +209,57 @@ export default function App() {
   };
 
   return (
-    <div style={{ position: 'relative', width: '100vw', minHeight: '100vh', background: '#03060d' }}>
+    <div style={{ position: 'relative', width: '100vw', minHeight: '100vh', background: '#f8fafc' }}>
       
+      {/* Offline Internet Connection Required Floating Banner */}
+      {isOffline && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
+          color: '#ffffff',
+          padding: '12px 16px',
+          zIndex: 99999,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
+          boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)',
+          paddingTop: 'max(env(safe-area-inset-top), 12px)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', fontWeight: '700' }}>
+            <span style={{ fontSize: '16px' }}>📶</span>
+            <span>인터넷 연결이 필요합니다. 실시간 동기화를 위해 Wi-Fi 또는 모바일 데이터를 켜주세요.</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (navigator.onLine) {
+                setIsOffline(false);
+                window.location.reload();
+              } else {
+                showToast('❌ 아직 인터넷에 연결되지 않았습니다. 네트워크 설정을 확인해 주세요.');
+              }
+            }}
+            style={{
+              padding: '5px 12px',
+              borderRadius: '8px',
+              background: '#ffffff',
+              border: 'none',
+              color: '#b91c1c',
+              fontSize: '11.5px',
+              fontWeight: '800',
+              cursor: 'pointer'
+            }}
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* Toast Floating Alert Banner */}
       {toastMessage && (
         <div style={{
@@ -199,20 +268,20 @@ export default function App() {
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 300,
-          background: 'rgba(15, 23, 42, 0.95)',
-          border: '1px solid rgba(0, 242, 254, 0.4)',
-          color: '#fff',
+          background: 'rgba(255, 255, 255, 0.98)',
+          border: '1px solid rgba(14, 165, 233, 0.4)',
+          color: '#0f172a',
           padding: '10px 18px',
           borderRadius: '24px',
-          boxShadow: '0 8px 32px rgba(0, 242, 254, 0.25)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 0 16px rgba(14, 165, 233, 0.15)',
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          fontSize: '12px',
-          fontWeight: '600',
+          fontSize: '12.5px',
+          fontWeight: '700',
           animation: 'float 0.3s ease-out'
         }}>
-          <Bell size={16} color="#00f2fe" />
+          <Bell size={16} color="#0284c7" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -226,9 +295,9 @@ export default function App() {
             top: '20px',
             right: '20px',
             zIndex: 100,
-            background: 'rgba(0, 242, 254, 0.15)',
-            border: '1px solid rgba(0, 242, 254, 0.4)',
-            color: '#00f2fe',
+            background: 'rgba(255, 255, 255, 0.95)',
+            border: '1px solid rgba(14, 165, 233, 0.4)',
+            color: '#0284c7',
             padding: '8px 14px',
             borderRadius: '20px',
             fontSize: '12px',
@@ -237,7 +306,7 @@ export default function App() {
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            boxShadow: '0 4px 16px rgba(0, 242, 254, 0.2)'
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)'
           }}
         >
           <Monitor size={16} /> 데스크톱 웹 브라우저 뷰 전환
@@ -289,8 +358,8 @@ export default function App() {
           position: 'fixed',
           inset: 0,
           zIndex: 500,
-          background: 'rgba(3, 6, 13, 0.95)',
-          backdropFilter: 'blur(20px)',
+          background: 'rgba(15, 23, 42, 0.45)',
+          backdropFilter: 'blur(16px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -301,9 +370,9 @@ export default function App() {
             width: '100%',
             padding: '28px',
             borderRadius: '24px',
-            border: '1px solid rgba(0, 242, 254, 0.3)',
-            background: 'rgba(10, 15, 26, 0.95)',
-            boxShadow: '0 20px 60px rgba(0, 242, 254, 0.2)',
+            border: '1px solid rgba(14, 165, 233, 0.3)',
+            background: '#ffffff',
+            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
             display: 'flex',
             flexDirection: 'column',
             gap: '18px'
@@ -314,36 +383,36 @@ export default function App() {
                 width: '48px',
                 height: '48px',
                 borderRadius: '16px',
-                background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#050b14',
-                boxShadow: '0 0 20px rgba(0, 242, 254, 0.4)'
+                color: '#ffffff',
+                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.3)'
               }}>
                 <Globe size={26} />
               </div>
               <div>
-                <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
+                <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
                   호스팅 서버 및 실시간 앱 업데이트 설정
                 </div>
-                <div style={{ fontSize: '12px', color: '#00f2fe', fontWeight: '600', marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: '700', marginTop: '2px' }}>
                   WithSecurity 웹 & 모바일 자동 동기화
                 </div>
               </div>
             </div>
 
-            <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', margin: 0 }}>
+            <p style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', margin: 0 }}>
               앱 실행 시 연결할 <strong>호스팅 서버 주소(웹/API URL)</strong>를 등록해 주세요. 등록하면 모바일 앱이 호스팅 서버와 실시간으로 연동되며, <strong>호스팅 서버가 업데이트될 때 모바일 앱도 실시간으로 최신 버전이 자동 반영</strong>됩니다.
             </p>
 
             {/* Input Field */}
             <div>
-              <label style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', display: 'block', marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '8px' }}>
                 서버 URL (API Base URL) *
               </label>
               <div style={{ position: 'relative' }}>
-                <Server size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#00f2fe' }} />
+                <Server size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7' }} />
                 <input
                   type="text"
                   placeholder="예: https://wblee0703.github.io/with.security 또는 http://192.168.0.15:4000"
@@ -353,12 +422,11 @@ export default function App() {
                     width: '100%',
                     padding: '12px 14px 12px 42px',
                     borderRadius: '14px',
-                    background: '#04070e',
-                    border: '1px solid rgba(0, 242, 254, 0.4)',
-                    color: '#fff',
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#0f172a',
                     fontSize: '13px',
-                    outline: 'none',
-                    boxShadow: '0 0 10px rgba(0, 242, 254, 0.1)'
+                    outline: 'none'
                   }}
                 />
               </div>
@@ -370,7 +438,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInitialServerUrl('https://wblee0703.github.io/with.security')}
-                style={{ padding: '6px 14px', borderRadius: '8px', background: 'rgba(0, 242, 254, 0.15)', border: '1px solid rgba(0, 242, 254, 0.4)', color: '#00f2fe', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                style={{ padding: '6px 14px', borderRadius: '8px', background: 'rgba(14, 165, 233, 0.12)', border: '1px solid rgba(14, 165, 233, 0.4)', color: '#0284c7', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
               >
                 🌐 GitHub Pages (wblee0703)
               </button>
@@ -386,9 +454,9 @@ export default function App() {
                   width: '100%',
                   padding: '14px',
                   borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                   border: 'none',
-                  color: '#050b14',
+                  color: '#ffffff',
                   fontSize: '14px',
                   fontWeight: '900',
                   cursor: isTestingInitialServer ? 'not-allowed' : 'pointer',
@@ -396,7 +464,7 @@ export default function App() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
-                  boxShadow: '0 6px 20px rgba(0, 242, 254, 0.35)'
+                  boxShadow: '0 4px 16px rgba(14, 165, 233, 0.3)'
                 }}
               >
                 {isTestingInitialServer ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={18} />}
@@ -412,7 +480,7 @@ export default function App() {
                   borderRadius: '12px',
                   background: 'transparent',
                   border: 'none',
-                  color: '#94a3b8',
+                  color: '#64748b',
                   fontSize: '12px',
                   fontWeight: '600',
                   cursor: 'pointer'

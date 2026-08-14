@@ -4,23 +4,28 @@ let migrationChecked = false;
 async function ensureSiteColumns() {
   if (migrationChecked) return;
   try {
-    // Add app_name and app_url columns if not present
-    await query(`
-      ALTER TABLE security_site 
-      ADD COLUMN IF NOT EXISTS app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 어플명',
-      ADD COLUMN IF NOT EXISTS app_url TEXT COMMENT '연동 모바일 보안 어플 링크/스킴'
-    `).catch(async () => {
-      // Fallback for MySQL versions without IF NOT EXISTS in ALTER TABLE
-      try {
-        await query(`ALTER TABLE security_site ADD COLUMN app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 어플명'`);
-      } catch (e) {}
-      try {
-        await query(`ALTER TABLE security_site ADD COLUMN app_url TEXT COMMENT '연동 모바일 보안 어플 링크/스킴'`);
-      } catch (e) {}
-    });
+    // Check existing columns using INFORMATION_SCHEMA to avoid MySQL syntax/duplicate errors
+    const existingCols = await query(`
+      SELECT COLUMN_NAME 
+      FROM INFORMATION_SCHEMA.COLUMNS 
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'security_site'
+    `).catch(() => []);
+
+    const colNames = Array.isArray(existingCols)
+      ? existingCols.map(c => (c.COLUMN_NAME || c.column_name || '').toLowerCase())
+      : [];
+
+    if (colNames.length > 0) {
+      if (!colNames.includes('app_name')) {
+        await query(`ALTER TABLE security_site ADD COLUMN app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 앱명'`).catch(() => {});
+      }
+      if (!colNames.includes('app_url')) {
+        await query(`ALTER TABLE security_site ADD COLUMN app_url TEXT COMMENT '연동 모바일 보안 앱 링크/스킴'`).catch(() => {});
+      }
+    }
     migrationChecked = true;
   } catch (err) {
-    // Ignore migration error if already exists or offline
+    // Ignore migration check error if table not ready
   }
 }
 
@@ -44,7 +49,7 @@ export async function getSecuritySites() {
     try {
       await createSecuritySite({
         id: 'site-001',
-        type: '보안어플O',
+        type: '보안앱O',
         name: '삼성전자 평택캠퍼스 P4 라인',
         address: '경기도 평택시 고덕면 삼성로 114',
         appName: '삼성 Knox / MDM 모바일 보안',
@@ -52,7 +57,7 @@ export async function getSecuritySites() {
       });
       await createSecuritySite({
         id: 'site-002',
-        type: '보안어플O',
+        type: '보안앱O',
         name: 'SK하이닉스 이천 M16 공장',
         address: '경기도 이천시 부발읍 경충대로 2091',
         appName: 'SK하이닉스 SSM',
@@ -60,15 +65,15 @@ export async function getSecuritySites() {
       });
       await createSecuritySite({
         id: 'site-003',
-        type: '보안어플X',
-        name: '위드텍 본사 통합관제센터',
-        address: '대전광역시 유성구 테크노2로 42',
-        appName: '',
+        type: '보안앱X',
+        name: '일반 협력사 물류센터 (보안앱 예외)',
+        address: '경기도 용인시 처인구 백암면 원설로 123',
+        appName: '보안앱 예외 구역',
         appUrl: ''
       });
-      results = await query(sql).catch(() => []);
-    } catch (e) {
-      console.warn('Auto site seed warning:', e.message);
+      results = await query(sql);
+    } catch (seedErr) {
+      console.warn('Seed initial security sites warning:', seedErr.message);
     }
   }
 

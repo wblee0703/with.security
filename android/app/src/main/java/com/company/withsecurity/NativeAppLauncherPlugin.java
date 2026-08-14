@@ -3,6 +3,7 @@ package com.company.withsecurity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -15,7 +16,9 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @CapacitorPlugin(name = "NativeAppLauncher")
 public class NativeAppLauncherPlugin extends Plugin {
@@ -42,6 +45,16 @@ public class NativeAppLauncherPlugin extends Plugin {
                 call.resolve(ret);
                 return;
             }
+        }
+
+        // Final fallback: search all installed launcher apps matching keywords
+        String fallbackPackage = findMatchingInstalledApp(pm, target);
+        if (fallbackPackage != null && tryLaunchPackage(context, pm, fallbackPackage)) {
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("launchedTarget", fallbackPackage);
+            call.resolve(ret);
+            return;
         }
 
         call.reject("Could not launch application for target: " + target);
@@ -90,6 +103,10 @@ public class NativeAppLauncherPlugin extends Plugin {
             }
         }
 
+        if (!installed) {
+            installed = findMatchingInstalledApp(pm, target) != null;
+        }
+
         JSObject ret = new JSObject();
         ret.put("installed", installed);
         call.resolve(ret);
@@ -100,15 +117,59 @@ public class NativeAppLauncherPlugin extends Plugin {
         Context context = getContext();
         PackageManager pm = context.getPackageManager();
         JSArray appsList = new JSArray();
+        Set<String> addedPackages = new HashSet<>();
 
         try {
+            // 1. Query all Launcher Activities
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
+
+            for (ResolveInfo ri : resolveInfos) {
+                if (ri.activityInfo == null) continue;
+                String pkgName = ri.activityInfo.packageName;
+                if (pkgName == null || addedPackages.contains(pkgName)) continue;
+
+                String pLower = pkgName.toLowerCase();
+                String label = "";
+                try {
+                    CharSequence cs = ri.loadLabel(pm);
+                    label = cs != null ? cs.toString() : pkgName;
+                } catch (Exception e) {
+                    label = pkgName;
+                }
+                String lLower = label.toLowerCase();
+
+                boolean isTarget = pLower.contains("ssm") || pLower.contains("hynix") ||
+                                  pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
+                                  pLower.contains("samsung") || pLower.contains("deviceon") || pLower.contains("lgd") ||
+                                  pLower.contains("lgdisplay") || pLower.contains("v3") || pLower.contains("ahnlab") ||
+                                  pLower.contains("security") || pLower.contains("guard") ||
+                                  lLower.contains("보안") || lLower.contains("ssm") || lLower.contains("knox") ||
+                                  lLower.contains("디바이스온") || lLower.contains("deviceon") || lLower.contains("mdm") ||
+                                  lLower.contains("출입");
+
+                if (isTarget) {
+                    addedPackages.add(pkgName);
+                    JSObject item = new JSObject();
+                    item.put("packageName", pkgName);
+                    item.put("label", label);
+                    item.put("scheme", "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=" + pkgName + ";end");
+                    appsList.put(item);
+                }
+            }
+
+            // 2. Query all installed packages
             List<PackageInfo> packages = pm.getInstalledPackages(0);
             for (PackageInfo pkg : packages) {
+                if (addedPackages.contains(pkg.packageName)) continue;
                 String pName = pkg.packageName.toLowerCase();
                 if (pName.contains("ssm") || pName.contains("hynix") || pName.contains("knox") ||
-                    pName.contains("samsung") || pName.contains("deviceon") || pName.contains("lgd") ||
-                    pName.contains("v3") || pName.contains("ahnlab") || pName.contains("security") ||
-                    pName.contains("sec") || pName.contains("guard") || pName.contains("mdm")) {
+                    pName.contains("sds") || pName.contains("mdm") || pName.contains("samsung.sec") ||
+                    pName.contains("deviceon") || pName.contains("lgd") || pName.contains("lgdisplay") ||
+                    pName.contains("v3") || pName.contains("ahnlab") || pName.contains("security")) {
+                    
+                    addedPackages.add(pkg.packageName);
                     JSObject item = new JSObject();
                     item.put("packageName", pkg.packageName);
                     try {
@@ -117,6 +178,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                     } catch (Exception e) {
                         item.put("label", pkg.packageName);
                     }
+                    item.put("scheme", "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=" + pkg.packageName + ";end");
                     appsList.put(item);
                 }
             }
@@ -136,7 +198,7 @@ public class NativeAppLauncherPlugin extends Plugin {
         try {
             Intent intent = null;
 
-            // 1. Try direct package name launching (handles both launcher and non-launcher activities)
+            // 1. Try direct package name launching
             String pkgName = extractPackageName(candidate);
             if (pkgName != null) {
                 if (tryLaunchPackage(context, pm, pkgName)) {
@@ -152,7 +214,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             }
 
-            // 3. Try custom scheme (e.g. ssm://, skhynixssm://, deviceon://, secapp://)
+            // 3. Try custom scheme (e.g. ssm://, deviceon://, knox://)
             if (intent == null && candidate.contains("://")) {
                 try {
                     intent = new Intent(Intent.ACTION_VIEW, Uri.parse(candidate));
@@ -197,7 +259,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                 }
             }
 
-            // C. If still null, inspect all PackageInfo activities and launch first/main activity
+            // C. If still null, inspect PackageInfo activities
             if (intent == null) {
                 try {
                     PackageInfo pkgInfo = pm.getPackageInfo(pkgName, PackageManager.GET_ACTIVITIES);
@@ -242,103 +304,75 @@ public class NativeAppLauncherPlugin extends Plugin {
 
         String lower = target != null ? target.toLowerCase() : "";
 
-        // 1. SK Hynix SSM candidates & dynamic scan
+        // 1. SK Hynix SSM candidates
         if (lower.contains("ssm") || lower.contains("skhynix") || lower.contains("하이닉스") || lower.contains("hynix")) {
             list.add("com.skhynix.ssm");
             list.add("com.skhynix.ssm.mobile");
             list.add("com.skhynix.mobile.ssm");
             list.add("com.skhynix.smartsecurity");
+            list.add("kr.co.skhynix.ssm");
             list.add("com.skhynix.sec");
             list.add("com.skhynix.ssm.agent");
             list.add("com.skhynix.ssm.android");
             list.add("com.skhynix.ssm2");
-            list.add("kr.co.skhynix.ssm");
             list.add("com.sk.ssm");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end");
             list.add("ssm://");
             list.add("skhynixssm://");
-
-            try {
-                List<PackageInfo> installed = pm.getInstalledPackages(0);
-                for (PackageInfo pkg : installed) {
-                    String pName = pkg.packageName.toLowerCase();
-                    if (pName.contains("ssm") || pName.contains("hynix")) {
-                        if (!list.contains(pkg.packageName)) {
-                            list.add(pkg.packageName);
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
         }
 
-        // 2. Samsung MDM / Knox candidates & dynamic scan
-        if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm")) {
+        // 2. Samsung MDM / Knox / SDS Enterprise candidates
+        if (lower.contains("knox") || lower.contains("secapp") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("sds")) {
+            list.add("com.sds.emp.mobile.mdm"); // Samsung SDS Mobile MDM (Most common contractor app)
+            list.add("com.sds.emp.mobile");
+            list.add("com.sds.mdm");
+            list.add("com.sds.emm.agent");
+            list.add("com.samsung.sec.android.mdm");
             list.add("com.sec.knox.app");
             list.add("com.samsung.klms");
-            list.add("com.sds.emp.mobile.mdm");
-            list.add("com.samsung.sec.android.mdm");
-            list.add("com.sec.enterprise.knox.attestation");
-            list.add("com.samsung.android.knox.containercore");
-            list.add("com.samsung.sec");
-            list.add("com.sds.mdm");
+            list.add("com.samsung.android.mdm");
             list.add("com.samsung.mdm");
             list.add("kr.co.samsung.mdm");
-            list.add("com.samsung.android.mdm");
-            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end");
+            list.add("com.sec.enterprise.knox.attestation");
+            list.add("com.sec.knox.kss");
+            list.add("com.sec.knox.switcher");
+            list.add("com.sec.android.app.controlagent");
+            list.add("com.samsung.knox.manage");
+            list.add("com.samsung.sec.mdm");
+            list.add("com.samsung.mobile.security");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sds.emp.mobile.mdm;end");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.sec.knox.app;end");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.samsung.sec.android.mdm;end");
             list.add("secapp://");
             list.add("knox://");
             list.add("samsungmdm://");
-
-            try {
-                List<PackageInfo> installed = pm.getInstalledPackages(0);
-                for (PackageInfo pkg : installed) {
-                    String pName = pkg.packageName.toLowerCase();
-                    if (pName.contains("knox") || pName.contains("secapp") || 
-                        (pName.contains("samsung") && (pName.contains("sec") || pName.contains("mdm") || pName.contains("agent"))) ||
-                        (pName.contains("sds") && pName.contains("mdm"))) {
-                        if (!list.contains(pkg.packageName)) {
-                            list.add(pkg.packageName);
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
         }
 
-        // 3. LGD DeviceOn (LG디스플레이 디바이스온) candidates & dynamic scan
-        if (lower.contains("lgd") || lower.contains("디바이스온") || lower.contains("deviceon") || lower.contains("lg") || lower.contains("엘지")) {
+        // 3. LGD DeviceOn (LG디스플레이 디바이스온) candidates
+        if (lower.contains("lgd") || lower.contains("디바이스온") || lower.contains("deviceon") || lower.contains("lg") || lower.contains("엘지") || lower.contains("lgdisplay")) {
             list.add("com.lgd.deviceon");
-            list.add("com.lgd.deviceon.mobile");
             list.add("com.lgdisplay.deviceon");
+            list.add("com.lgd.deviceon.mobile");
             list.add("kr.co.lgd.deviceon");
+            list.add("kr.co.lgdisplay.deviceon");
             list.add("com.lgd.security");
-            list.add("com.lg.deviceon");
             list.add("com.lgdisplay.security");
+            list.add("com.lgdisplay.mobile.deviceon");
+            list.add("com.lg.deviceon");
             list.add("com.lg.mdm");
             list.add("com.lgcns.deviceon");
+            list.add("com.lgcns.mdm");
+            list.add("com.lg.security");
+            list.add("com.lg.deviceguard");
+            list.add("com.lgcns.smartsecurity");
             list.add("com.lgd.mobile");
+            list.add("com.lgdisplay.mobile");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end");
+            list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgdisplay.deviceon;end");
             list.add("intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.security;end");
             list.add("deviceon://");
             list.add("lgddeviceon://");
             list.add("lgdsec://");
-
-            try {
-                List<PackageInfo> installed = pm.getInstalledPackages(0);
-                for (PackageInfo pkg : installed) {
-                    String pName = pkg.packageName.toLowerCase();
-                    if (pName.contains("deviceon") || pName.contains("lgd") || 
-                        (pName.contains("lgdisplay") && (pName.contains("sec") || pName.contains("mdm") || pName.contains("device"))) ||
-                        (pName.contains("lg") && (pName.contains("mdm") || pName.contains("security") || pName.contains("deviceon")))) {
-                        if (!list.contains(pkg.packageName)) {
-                            list.add(pkg.packageName);
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
         }
 
         // 4. AhnLab V3 Mobile Enterprise
@@ -347,34 +381,57 @@ public class NativeAppLauncherPlugin extends Plugin {
             list.add("com.ahnlab.v3mobileplus");
             list.add("com.ahnlab.v3mobileenterprise");
             list.add("v3mobile://");
-
-            try {
-                List<PackageInfo> installed = pm.getInstalledPackages(0);
-                for (PackageInfo pkg : installed) {
-                    String pName = pkg.packageName.toLowerCase();
-                    if (pName.contains("v3") || pName.contains("ahnlab")) {
-                        if (!list.contains(pkg.packageName)) {
-                            list.add(pkg.packageName);
-                        }
-                    }
-                }
-            } catch (Exception ignored) {
-            }
-        }
-
-        // 5. Hyundai HMG
-        if (lower.contains("hmg") || lower.contains("현대")) {
-            list.add("com.hmg.security");
-            list.add("hsec://");
-        }
-
-        // 6. POSCO
-        if (lower.contains("posco") || lower.contains("포스코")) {
-            list.add("com.posco.security");
-            list.add("pososec://");
         }
 
         return list;
+    }
+
+    private String findMatchingInstalledApp(PackageManager pm, String target) {
+        if (target == null || target.trim().isEmpty()) return null;
+        String lower = target.toLowerCase();
+
+        try {
+            Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+            mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
+
+            for (ResolveInfo ri : resolveInfos) {
+                if (ri.activityInfo == null) continue;
+                String pkgName = ri.activityInfo.packageName;
+                if (pkgName == null) continue;
+                String pLower = pkgName.toLowerCase();
+
+                CharSequence labelCs = ri.loadLabel(pm);
+                String label = labelCs != null ? labelCs.toString().toLowerCase() : "";
+
+                // Check Samsung Knox / MDM match
+                if (lower.contains("knox") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm")) {
+                    if (pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
+                        (pLower.contains("samsung") && (pLower.contains("sec") || pLower.contains("agent") || pLower.contains("security"))) ||
+                        label.contains("knox") || label.contains("mdm") || (label.contains("삼성") && label.contains("보안"))) {
+                        return pkgName;
+                    }
+                }
+
+                // Check LG Display DeviceOn match
+                if (lower.contains("lgd") || lower.contains("디바이스온") || lower.contains("deviceon") || lower.contains("lg")) {
+                    if (pLower.contains("deviceon") || pLower.contains("lgd") || pLower.contains("lgdisplay") ||
+                        label.contains("디바이스온") || label.contains("deviceon") || label.contains("lgd")) {
+                        return pkgName;
+                    }
+                }
+
+                // Check SK Hynix SSM match
+                if (lower.contains("ssm") || lower.contains("하이닉스") || lower.contains("hynix")) {
+                    if (pLower.contains("ssm") || pLower.contains("hynix") || label.contains("ssm") || label.contains("하이닉스")) {
+                        return pkgName;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 
     private String extractPackageName(String target) {

@@ -44,13 +44,16 @@ export async function getSecurityUsers() {
   const sql = 'SELECT id, username, password, name, role, division, team, `rank`, siteId, phone, email, created_at FROM security_user ORDER BY id ASC';
   let users = await query(sql);
   
-  // 기본 admin/wblee 계정이 없거나 기존 임시 정보인 경우 암호화된 초기 시드 데이터 생성
-  const adminUser = Array.isArray(users) && users.find(u => u.username === 'admin');
-  if (!adminUser || adminUser.name === '개발자 관리자' || !adminUser.division) {
+  const defaultAdminPass = process.env.ADMIN_DEFAULT_PASSWORD || 'withtech123!';
+  const defaultAdminUser = process.env.ADMIN_USERNAME || 'admin';
+
+  // 기본 admin 계정이 없거나 초기 생성 필요한 경우 암호화된 관리자 계정 생성
+  const adminUser = Array.isArray(users) && users.find(u => u.username === defaultAdminUser);
+  if (!adminUser || !adminUser.password) {
     try {
       await createSecurityUser({
-        username: 'admin',
-        password: hashPasswordServer('admin'),
+        username: defaultAdminUser,
+        password: hashPasswordServer(defaultAdminPass),
         name: '이원배',
         role: '개발자',
         division: '영업/운영사업부',
@@ -60,9 +63,19 @@ export async function getSecurityUsers() {
         phone: '010-9885-0393',
         email: 'wblee@withtech.co.kr'
       });
+      users = await query(sql);
+    } catch (e) {
+      console.warn('Auto admin account seed warning:', e.message);
+    }
+  }
+
+  // wblee 계정도 없을 경우 생성
+  const wbleeUser = Array.isArray(users) && users.find(u => u.username === 'wblee');
+  if (!wbleeUser) {
+    try {
       await createSecurityUser({
         username: 'wblee',
-        password: hashPasswordServer('1234'),
+        password: hashPasswordServer(defaultAdminPass),
         name: '이원배',
         role: '일반',
         division: '영업/운영사업부',
@@ -73,9 +86,7 @@ export async function getSecurityUsers() {
         email: 'wblee@withtech.co.kr'
       });
       users = await query(sql);
-    } catch (e) {
-      console.warn('Auto admin account seed warning:', e.message);
-    }
+    } catch (e) {}
   }
 
   // password를 passwordHash 속성으로도 맵핑하여 클라이언트 검증 호환성 보장

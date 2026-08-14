@@ -31,7 +31,7 @@ with.security/
 │   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (상단 로그아웃 버튼 포함)
 │   │   └── tabs/                 : 주요 보안 기능 탭 컴포넌트
 │   │       ├── EncryptedVaultTab.jsx      : 사업장 관리 (Admin) 탭 (사업장 신규 등록/삭제 관리)
-│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (보안어플O/X 검수, 동반자 관리)
+│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (보안앱O/X 검수, 동반자 관리)
 │   │       ├── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
 │   │       └── WorkLogTab.jsx             : 업무 일지 탭 (사내/출장 업무 일지 기록 및 관리)
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스

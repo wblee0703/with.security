@@ -82,8 +82,8 @@ export default function WebDesktopLayout({
     <div style={{
       width: '100vw',
       minHeight: '100vh',
-      background: '#04070f',
-      color: '#f8fafc',
+      background: '#f8fafc',
+      color: '#0f172a',
       display: 'flex',
       flexDirection: 'column'
     }}>
@@ -91,8 +91,8 @@ export default function WebDesktopLayout({
       {/* Top Desktop Web Navbar */}
       <header style={{
         height: '64px',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        background: 'rgba(10, 15, 26, 0.85)',
+        borderBottom: '1.5px solid #cbd5e1',
+        background: 'rgba(255, 255, 255, 0.95)',
         backdropFilter: 'blur(16px)',
         padding: '0 24px',
         display: 'flex',
@@ -100,134 +100,109 @@ export default function WebDesktopLayout({
         justifyContent: 'space-between',
         position: 'sticky',
         top: 0,
-        zIndex: 100
+        zIndex: 100,
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.03)'
       }}>
         {/* Brand Logo & View Mode Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 15px rgba(0, 242, 254, 0.4)'
-            }}>
-              <ShieldCheck size={22} color="#050b14" />
-            </div>
-            <div>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff', letterSpacing: '-0.3px' }}>
-                WithSecurity <span style={{ fontSize: '11px', color: '#00f2fe', fontWeight: '600', marginLeft: '4px' }}>Web & Mobile Portal</span>
+            <img
+              src="./LOGO+WITHTECH.png"
+              alt="WITHTECH"
+              style={{
+                height: '28px',
+                objectFit: 'contain',
+                display: 'block'
+              }}
+            />
+            <div style={{ borderLeft: '1.5px solid #cbd5e1', paddingLeft: '10px' }}>
+              <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                WITH Sharing <span style={{ fontSize: '10px', color: '#0284c7', fontWeight: '700' }}>Portal</span>
               </div>
-              <div style={{ fontSize: '10px', color: '#64748b' }}>회사 통합 웹/모바일 보안 통제 시스템</div>
             </div>
           </div>
 
           {/* Device View Mode Switcher (Web Desktop vs Mobile Frame) */}
           <div style={{
             display: 'flex',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
+            background: '#ffffff',
+            border: '1.5px solid #cbd5e1',
             borderRadius: '12px',
-            padding: '3px'
+            padding: '3px',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
           }}>
             <button
               onClick={() => onToggleViewMode('web')}
               style={{
                 padding: '6px 12px',
                 borderRadius: '8px',
-                border: 'none',
-                background: viewMode === 'web' ? 'rgba(0, 242, 254, 0.2)' : 'transparent',
-                color: viewMode === 'web' ? '#00f2fe' : '#94a3b8',
+                border: viewMode === 'web' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
+                background: viewMode === 'web' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
+                color: viewMode === 'web' ? '#0284c7' : '#64748b',
                 fontSize: '11px',
                 fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
               }}
             >
-              <Monitor size={14} /> 데스크톱 웹 모드
+              <Monitor size={14} /> 웹 모드
             </button>
             <button
               onClick={() => onToggleViewMode('mobile')}
               style={{
                 padding: '6px 12px',
                 borderRadius: '8px',
-                border: 'none',
-                background: viewMode === 'mobile' ? 'rgba(0, 242, 254, 0.2)' : 'transparent',
-                color: viewMode === 'mobile' ? '#00f2fe' : '#94a3b8',
+                border: viewMode === 'mobile' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
+                background: viewMode === 'mobile' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
+                color: viewMode === 'mobile' ? '#0284c7' : '#64748b',
                 fontSize: '11px',
                 fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
               }}
             >
-              <Smartphone size={14} /> 모바일 앱 프레임 모드
+              <Smartphone size={14} /> 모바일 모드
             </button>
           </div>
         </div>
 
-        {/* Search Bar & User Profile */}
+        {/* User Profile */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Search Box */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            padding: '6px 14px',
-            borderRadius: '20px',
-            width: '240px'
-          }}>
-            <Search size={14} color="#64748b" />
-            <input
-              type="text"
-              placeholder="보안 항목, 토큰 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#fff',
-                fontSize: '12px',
-                outline: 'none',
-                width: '100%'
-              }}
-            />
-          </div>
-
-          {/* User Profile */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
               width: '34px',
               height: '34px',
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
-              color: '#050b14',
+              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+              border: '1.5px solid #38bdf8',
+              color: '#ffffff',
               fontWeight: '800',
               fontSize: '12px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              boxShadow: '0 2px 6px rgba(14, 165, 233, 0.2)'
             }}>
               {activeUser ? (activeUser.name ? activeUser.name.slice(0, 2) : 'US') : 'GUEST'}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '4px' }}>
                 {activeUser ? `${activeUser.name} ${activeUser.rank || ''}` : '미로그인 사용자'}
                 {activeUser && (
                   <span style={{
                     fontSize: '9px',
-                    padding: '1px 5px',
-                    borderRadius: '4px',
-                    background: activeUser.role === '관리자' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(0, 242, 254, 0.15)',
-                    color: activeUser.role === '관리자' ? '#f59e0b' : '#00f2fe'
+                    padding: '2px 6px',
+                    borderRadius: '6px',
+                    background: activeUser.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(14, 165, 233, 0.12)',
+                    color: activeUser.role === '관리자' ? '#d97706' : '#0284c7',
+                    fontWeight: '800',
+                    border: `1.5px solid ${activeUser.role === '관리자' ? '#fde68a' : '#7dd3fc'}`
                   }}>
                     {activeUser.role || '일반'}
                   </span>
@@ -239,7 +214,7 @@ export default function WebDesktopLayout({
             </div>
           </div>
 
-          {/* Logout Button (Rendered on top-right to the right of User Profile) */}
+          {/* Logout Button */}
           {activeUser && (
             <button
               onClick={handleLogout}
@@ -249,9 +224,9 @@ export default function WebDesktopLayout({
                 gap: '6px',
                 padding: '6px 12px',
                 borderRadius: '10px',
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
-                color: '#ef4444',
+                background: '#fff1f2',
+                border: '1.5px solid #fda4af',
+                color: '#e11d48',
                 fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
@@ -275,10 +250,10 @@ export default function WebDesktopLayout({
           flexDirection: 'column',
           gap: '8px',
           paddingRight: '24px',
-          borderRight: '1px solid rgba(255, 255, 255, 0.08)'
+          borderRight: '1.5px solid #cbd5e1'
         }}>
-          <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '8px' }}>
-            Main Security Menu
+          <div style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', paddingLeft: '8px' }}>
+            Main Menu
           </div>
 
           {navItems.map((item) => {
@@ -295,17 +270,17 @@ export default function WebDesktopLayout({
                   justifyContent: 'space-between',
                   padding: '12px 14px',
                   borderRadius: '14px',
-                  border: 'none',
-                  background: isActive ? 'rgba(0, 242, 254, 0.12)' : 'transparent',
-                  color: isActive ? '#00f2fe' : '#94a3b8',
+                  border: isActive ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
+                  background: isActive ? 'rgba(14, 165, 233, 0.1)' : 'transparent',
+                  color: isActive ? '#0284c7' : '#475569',
                   fontSize: '13px',
-                  fontWeight: isActive ? '700' : '500',
+                  fontWeight: isActive ? '800' : '600',
                   cursor: 'pointer',
                   transition: 'all 0.2s ease'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <IconComp size={18} color={isActive ? '#00f2fe' : '#64748b'} />
+                  <IconComp size={18} color={isActive ? '#0284c7' : '#64748b'} />
                   <span>{item.label}</span>
                 </div>
               </button>

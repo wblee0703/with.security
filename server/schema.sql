@@ -31,12 +31,12 @@ CREATE TABLE IF NOT EXISTS security_user (
 -- 2. 작업 현장 정보 테이블 (security_site)
 CREATE TABLE IF NOT EXISTS security_site (
   id VARCHAR(100) PRIMARY KEY COMMENT 'site-000 형식 현장 ID',
-  type VARCHAR(100) DEFAULT '보안어플O' COMMENT '분류 (보안어플O / 보안어플X)',
+  type VARCHAR(100) DEFAULT '보안앱O' COMMENT '분류 (보안앱O / 보안앱X)',
   name VARCHAR(200) NOT NULL COMMENT '회사명 / 사업장명',
   address VARCHAR(255) DEFAULT '' COMMENT '사업장 위치',
   site_name VARCHAR(255) DEFAULT '' COMMENT '사업장 전체명',
-  app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 어플명',
-  app_url TEXT COMMENT '연동 모바일 보안 어플 링크/스킴'
+  app_name VARCHAR(100) DEFAULT '' COMMENT '연동 모바일 보안 앱명',
+  app_url TEXT COMMENT '연동 모바일 보안 앱 링크/스킴'
 );
 
 -- 3. 보안서약 관리 테이블 (security_log)
@@ -84,13 +84,12 @@ CREATE TABLE IF NOT EXISTS work_log (
 -- 초기 데이터 (Seed Data)
 -- ==========================================
 
--- 1. 기본 관리자 및 사용자 계정 추가 (SHA-256 암호화된 비밀번호)
+-- 1. 기본 관리자 및 사용자 계정 추가 (비밀번호: .env ADMIN_DEFAULT_PASSWORD / withtech123!)
 INSERT INTO security_user (username, password, name, role, division, team, `rank`, siteId, phone, email)
 VALUES 
-  ('admin', 'd68e2e25808044e471e01da6bf4ef8dc8fd56de3c4fa590b34b86b7c86fef899', '이원배', '개발자', '영업/운영사업부', '운영1팀', '대리', 'ALL', '010-9885-0393', 'wblee@withtech.co.kr'),
-  ('wblee', 'd68e2e25808044e471e01da6bf4ef8dc8fd56de3c4fa590b34b86b7c86fef899', '이원배', '일반', '영업/운영사업부', '운영1팀', '대리', 'SITE-001', '010-9885-0393', 'wblee@withtech.co.kr')
+  ('admin', 'withtech123!', '이원배', '개발자', '영업/운영사업부', '운영1팀', '대리', 'ALL', '010-9885-0393', 'wblee@withtech.co.kr'),
+  ('wblee', 'withtech123!', '이원배', '일반', '영업/운영사업부', '운영1팀', '대리', 'SITE-001', '010-9885-0393', 'wblee@withtech.co.kr')
 ON DUPLICATE KEY UPDATE
-  password = VALUES(password),
   name = VALUES(name),
   role = VALUES(role),
   division = VALUES(division),

@@ -18,14 +18,14 @@ public class MainActivity extends BridgeActivity {
             Window window = getWindow();
             window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            window.setStatusBarColor(Color.parseColor("#04070e"));
-            window.setNavigationBarColor(Color.parseColor("#070c17"));
+            window.setStatusBarColor(Color.parseColor("#ffffff"));
+            window.setNavigationBarColor(Color.parseColor("#f8fafc"));
 
             WindowInsetsControllerCompat insetsController = WindowCompat.getInsetsController(window, window.getDecorView());
             if (insetsController != null) {
-                // false = light (white) text/icons for status bar & navigation bar on dark background
-                insetsController.setAppearanceLightStatusBars(false);
-                insetsController.setAppearanceLightNavigationBars(false);
+                // true = dark text/icons for status bar & navigation bar on light (white) background
+                insetsController.setAppearanceLightStatusBars(true);
+                insetsController.setAppearanceLightNavigationBars(true);
             }
         } catch (Exception e) {
             e.printStackTrace();

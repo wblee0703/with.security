@@ -58,7 +58,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
       position: 'absolute',
       inset: 0,
       zIndex: 100,
-      background: 'rgba(5, 8, 16, 0.96)',
+      background: 'rgba(255, 255, 255, 0.98)',
       backdropFilter: 'blur(24px)',
       display: 'flex',
       flexDirection: 'column',
@@ -72,8 +72,8 @@ export default function PinLockModal({ isLocked, onUnlock }) {
           width: '64px',
           height: '64px',
           borderRadius: '20px',
-          background: error ? 'rgba(244, 63, 94, 0.15)' : isSuccess ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 242, 254, 0.12)',
-          border: `1px solid ${error ? 'rgba(244, 63, 94, 0.4)' : isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(0, 242, 254, 0.3)'}`,
+          background: error ? 'rgba(244, 63, 94, 0.12)' : isSuccess ? 'rgba(16, 185, 129, 0.12)' : 'rgba(14, 165, 233, 0.12)',
+          border: `1px solid ${error ? 'rgba(244, 63, 94, 0.4)' : isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -81,17 +81,17 @@ export default function PinLockModal({ isLocked, onUnlock }) {
           transition: 'all 0.3s ease'
         }}>
           {isSuccess ? (
-            <CheckCircle2 size={32} color="#10b981" />
+            <CheckCircle2 size={32} color="#059669" />
           ) : error ? (
-            <AlertCircle size={32} color="#f43f5e" />
+            <AlertCircle size={32} color="#e11d48" />
           ) : (
-            <Shield size={32} color="#00f2fe" />
+            <Shield size={32} color="#0284c7" />
           )}
         </div>
-        <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
           {isSuccess ? '보안 인증 완료' : 'WithSecurity 인증'}
         </h2>
-        <p style={{ fontSize: '13px', color: error ? '#f43f5e' : '#94a3b8' }}>
+        <p style={{ fontSize: '13px', color: error ? '#e11d48' : '#64748b' }}>
           {error ? '잘못된 PIN 번호입니다 (테스트 PIN: 123456)' : '생체 인증 또는 보안 PIN 6자리를 입력하세요'}
         </p>
       </div>
@@ -107,9 +107,9 @@ export default function PinLockModal({ isLocked, onUnlock }) {
                 width: '16px',
                 height: '16px',
                 borderRadius: '50%',
-                background: filled ? (error ? '#f43f5e' : '#00f2fe') : 'rgba(255, 255, 255, 0.15)',
-                boxShadow: filled ? `0 0 12px ${error ? 'rgba(244, 63, 94, 0.8)' : 'rgba(0, 242, 254, 0.8)'}` : 'none',
-                border: filled ? 'none' : '1px solid rgba(255, 255, 255, 0.2)',
+                background: filled ? (error ? '#e11d48' : '#0284c7') : '#f1f5f9',
+                boxShadow: filled ? `0 0 10px ${error ? 'rgba(225, 29, 72, 0.5)' : 'rgba(2, 132, 199, 0.5)'}` : 'none',
+                border: filled ? 'none' : '1px solid #cbd5e1',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             />
@@ -132,19 +132,20 @@ export default function PinLockModal({ isLocked, onUnlock }) {
               style={{
                 height: '64px',
                 borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                color: '#fff',
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                color: '#0f172a',
                 fontSize: '22px',
-                fontWeight: '600',
+                fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
               }}
-              onMouseDown={(e) => e.currentTarget.style.background = 'rgba(0, 242, 254, 0.2)'}
-              onMouseUp={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'}
+              onMouseDown={(e) => e.currentTarget.style.background = '#e0f2fe'}
+              onMouseUp={(e) => e.currentTarget.style.background = '#f8fafc'}
             >
               {num}
             </button>
@@ -156,13 +157,14 @@ export default function PinLockModal({ isLocked, onUnlock }) {
             style={{
               height: '64px',
               borderRadius: '50%',
-              background: 'rgba(0, 242, 254, 0.1)',
-              border: '1px solid rgba(0, 242, 254, 0.3)',
-              color: '#00f2fe',
+              background: '#f0f9ff',
+              border: '1px solid #bae6fd',
+              color: '#0284c7',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
             }}
             title="Face ID / Touch ID"
           >
@@ -175,15 +177,16 @@ export default function PinLockModal({ isLocked, onUnlock }) {
             style={{
               height: '64px',
               borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#fff',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              color: '#0f172a',
               fontSize: '22px',
-              fontWeight: '600',
+              fontWeight: '700',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
             }}
           >
             0
@@ -195,15 +198,16 @@ export default function PinLockModal({ isLocked, onUnlock }) {
             style={{
               height: '64px',
               borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              color: '#94a3b8',
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              color: '#64748b',
               fontSize: '14px',
-              fontWeight: '500',
+              fontWeight: '600',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
             }}
           >
             지우기
@@ -212,7 +216,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
 
         {/* Demo Hint */}
         <div style={{ textAlign: 'center', fontSize: '11px', color: '#64748b' }}>
-          * 테스트용 PIN: <span className="mono-font" style={{ color: '#00f2fe' }}>123456</span> 또는 지문 아이콘 클릭
+          * 테스트용 PIN: <span className="mono-font" style={{ color: '#0284c7', fontWeight: '700' }}>123456</span> 또는 지문 아이콘 클릭
         </div>
       </div>
     </div>
