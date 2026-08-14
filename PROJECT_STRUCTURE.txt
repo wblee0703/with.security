@@ -6,53 +6,61 @@
 
 with.security/
 ├── .agents/                      : 개발 에이전트 및 프로젝트 자동화 규칙
-│   └── AGENTS.md                 : 단일 src/ 구조, 데이터 보존 및 개발 가이드라인
+│   └── AGENTS.md                 : 단일 src/ 구조, 크로스 플랫폼, 권한 분리 및 개발 가이드라인
 ├── android/                      : Android 네이티브 모바일 앱 프로젝트 (Capacitor)
+│   └── app/src/main/java/com/company/withsecurity/
+│       ├── MainActivity.java         : Capacitor 메인 액티비티
+│       └── NativeAppLauncherPlugin.java : 네이티브 외부 보안 앱 / 카메라 앱 실행 Intent 플러그인
 ├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
 ├── node_modules/                 : npm 의존성 라이브러리 폴더
 ├── public/                       : Web & PWA 정적 자원 (manifest.json, 앱 아이콘 등)
 ├── server/                       : 백엔드 Node.js & MySQL 연동 서버 (Port 4000)
 │   ├── db.js                     : REST API 라우팅 서버 메인 엔트리
+│   ├── init_db.js                : 데이터베이스 초기화 스크립트
 │   ├── mysql.js                  : MySQL 데이터베이스 커넥션 풀 (dateStrings 지원)
-│   ├── schema.sql                : MySQL 데이터베이스 테이블 DDL 스키마
+│   ├── schema.sql                : MySQL 데이터베이스 기본 테이블 DDL 스키마
+│   ├── schema_logs.sql           : 보안 서약 및 감사 로그 DDL 스키마
 │   └── db_modules/               : 모듈별 DB 쿼리 서비스
-│       ├── securityLog.log.js    : 보안 서약(security_log) CRUD
+│       ├── securityLog.js        : 사업장 출입 보안 서약(security_log) CRUD
 │       ├── securitySite.js       : 출입 사업장(security_site) CRUD
 │       ├── securityUser.js       : 사용자 계정(security_user) CRUD
-│       ├── workLog.js            : 업무 일지(work_log) CRUD
-│       └── vault.js              : 암호화 Vault CRUD
+│       └── workLog.js            : 업무 일지(work_log) CRUD
 ├── src/                          : [단일 소스 통합 폴더 (Single Source of Truth)]
 │   ├── components/               : React UI 컴포넌트 모음
 │   │   ├── common/               : 재사용 가능한 공통 UI 컴포넌트
-│   │   │   └── SignatureCanvas.jsx : 터치/마우스 전자 서명 캔버스 컴포넌트
+│   │   │   └── WorkLogCalendar.jsx : 업무 일지 월간 캘린더 및 일정 뷰 컴포넌트
 │   │   ├── layout/               : 메인 쉘 및 레이아웃 컴포넌트
-│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 하단 탭바 레이아웃 (권한/로그인 제어)
+│   │   │   ├── MobileContainer.jsx  : 모바일 전용 프레임 & 상/하단 레이아웃 (계정구분 뱃지, Safe Area 지원)
 │   │   │   ├── PinLockModal.jsx     : PIN 번호 & 지문인증 잠금 화면 모달
-│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 & 사이드바 레이아웃 (상단 로그아웃 버튼 포함)
-│   │   └── tabs/                 : 주요 보안 기능 탭 컴포넌트
-│   │       ├── EncryptedVaultTab.jsx      : 사업장 관리 (Admin) 탭 (사업장 신규 등록/삭제 관리)
-│   │       ├── SiteSecurityChecklistTab.jsx: 사업장 출입 보안 서약 탭 (보안앱O/X 검수, 동반자 관리)
-│   │       ├── UserProfileTab.jsx         : 사용자 정보 탭 (로그인, 프로필 인증 수정, 비밀번호 변경, 3단계 권한 제어)
-│   │       └── WorkLogTab.jsx             : 업무 일지 탭 (사내/출장 업무 일지 기록 및 관리)
+│   │   │   └── WebDesktopLayout.jsx : 데스크톱 웹 포털 레이아웃 (상단 헤더 계정구분 뱃지, 뷰모드 전환, 사이드바)
+│   │   └── tabs/                 : 주요 기능 탭 컴포넌트
+│   │       ├── SecurityChecklistTab.jsx : 사업장 출입 보안 서약 탭 (보안앱 검수, 카메라 검수/실행, 자재/문서 체크, 전자서약서, 동반 서약자)
+│   │       ├── SiteSettingTab.jsx       : 사업장 관리 탭 (출입 사업장 목록, 신규 등록, 단말기 앱 찾기 및 패키지 연동)
+│   │       ├── UserSettingTab.jsx       : 사용자 관리 탭 (로그인/회원가입, 상세 프로필 수정, 비밀번호 변경, 3단계 계정 권한 제어, 자동 전화번호 포맷)
+│   │       ├── WorkLogTab.jsx           : 업무 일지 탭 (사내/출장 업무 일지 기록 및 캘린더 연동 관리)
+│   │       └── WorkSummaryTab.jsx       : 업무 요약 탭 (월별/일별 업무 통계 및 현황 요약)
 │   ├── services/                 : 데이터베이스 및 백엔드 유틸리티 서비스
+│   │   ├── appLauncherService.js : 모바일 외부 보안 앱 / 카메라 앱 실행 및 포커스 감지 검증 서비스
 │   │   ├── cryptoUtil.js         : Web Crypto API (SHA-256 / AES-256) 암호화 유틸리티
 │   │   ├── dbMigrationService.js : IndexedDB 데이터 마이그레이션 서비스
-│   │   ├── dbService.js          : MySQL API & IndexedDB 통합 데이터 영속성 서비스
-│   │   └── userMatcher.js        : 사용자 성명/소속 매칭 유틸리티
-│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (로그인 필수 가드 및 탭 제어)
-│   ├── index.css                 : 통합 디자인 토큰 & 애니메이션 CSS
+│   │   ├── dbService.js          : MySQL REST API & IndexedDB 통합 데이터 영속성 서비스
+│   │   ├── modalBackHandler.js   : Android 물리/제스처 뒤로가기 키 모달 제어 훅 (useModalBack)
+│   │   └── userMatcher.js        : 사용자 부서/팀/직급 기준 매칭 및 동일인 판정 유틸리티
+│   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (로그인 가드, 뷰모드 제어, 탭 라우팅)
+│   ├── index.css                 : 통합 디자인 토큰, 현대적 유리모피즘 및 애니메이션 CSS
 │   ├── index.html                : 앱 메인 HTML 엔트리 문서 (src 내부 통합 관리)
+│   ├── LOGO+WITHTECH.png         : 위드텍 공식 로고 이미지 자원
 │   └── main.jsx                  : React DOM 렌더링 진입점 (Entry Point)
 ├── capacitor.config.json         : Capacitor 모바일 앱 빌드 설정
 ├── package.json                  : 의존성 패키지 및 npm 스크립트 실행 명령어
-└── vite.config.js                : Vite 개발 서버 및 Node.js 백엔드 서버 자동 시작 미들웨어 설정
+└── vite.config.js                : Vite 개발 서버 및 Node.js 백엔드 서버 통합 미들웨어 설정
 
 ======================================================================
 [2. 주요 계정 체계 및 권한 구조]
 
 1) 계정 구분 (3단계):
-   - 개발자 (Developer): admin 계정 기본 권한. 전체 시스템 및 사용자 권한(개발자/관리자/일반) 지정 가능.
-   - 관리자 (Admin): 사업장 관리(Admin 탭) 및 사용자 권한(관리자/일반) 관리 가능.
+   - 개발자 (Developer): admin 계정 기본 권한. 전체 시스템 관리, 모든 사용자 권한(개발자/관리자/일반) 지정 가능.
+   - 관리자 (Admin): 사업장 관리 및 사용자 권한(관리자/일반) 관리 가능.
    - 일반 (General): 표준 사용자 계정.
 
 2) 기본 개발자 계정:
@@ -73,14 +81,14 @@ with.security/
    npm run cap:sync
 
 ======================================================================
+[4. Android 네이티브 앱 관련]
 
-[4. Android 앱 관련]
-1) 앱 동기화
- - 수정된 사항 commit 진행
- - PowerShell에 npm run cap:sync 입력
+1) 앱 동기화:
+   - 소스코드 수정 완료 후
+   - 터미널에 `npm run cap:sync` 입력
 
-2) 앱 만들기
- - android studio > Build > Build Bundle(s) / APK(s) > Build APK(s)
+2) APK 앱 빌드:
+   - Android Studio 실행 > Build > Build Bundle(s) / APK(s) > Build APK(s)
 
-3) 앱 설치 파일 위치
- - C:\Users\USER\Desktop\with.security\android\app\build\outputs\apk\debug
+3) APK 설치 파일 생성 경로:
+   - with.security\android\app\build\outputs\apk\debug\app-debug.apk
