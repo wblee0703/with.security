@@ -407,7 +407,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         color: '#ef4444',
         badgeBg: 'rgba(239, 68, 68, 0.15)',
         desc: '⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.',
-        isChecklistMode: true
+        isChecklistMode: false
       };
     }
 
@@ -2815,43 +2815,45 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       </div>
                     </div>
 
-                    {/* Target Security App Card */}
-                    {!formData.site && (
+                    {/* Step 2 Content: 1. No Site Selected -> Selection Guide / 2. 보안앱X -> Checklist / 3. 보안앱O -> App Verification */}
+                    {!formData.site ? (
                       <div style={{
                         background: '#fff1f2',
                         border: '1.5px solid #fda4af',
-                        padding: '12px 16px',
-                        borderRadius: '12px',
+                        padding: '24px 20px',
+                        borderRadius: '16px',
                         color: '#e11d48',
-                        fontSize: '12px',
+                        fontSize: '13px',
                         fontWeight: '700',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '10px'
+                        justifyContent: 'center',
+                        gap: '12px',
+                        textAlign: 'center'
                       }}>
-                        <span>⚠️ 사업장을 먼저 선택해 주세요.</span>
+                        <div style={{ fontSize: '15px', fontWeight: '800' }}>⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.</div>
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>선택하신 사업장의 보안 정책(보안앱 가동 또는 수동 셀프 체크)에 따라 2단계 검수 절차가 자동으로 결정됩니다.</div>
                         <button
                           type="button"
                           onClick={() => setActiveStep(1)}
                           style={{
-                            padding: '6px 12px',
-                            borderRadius: '8px',
-                            background: '#e11d48',
+                            marginTop: '6px',
+                            padding: '10px 20px',
+                            borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                             color: '#fff',
                             border: 'none',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            cursor: 'pointer'
+                            fontSize: '12.5px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(14, 165, 233, 0.25)'
                           }}
                         >
-                          1단계로 이동
+                          ← 1단계: 사업장 선택하기
                         </button>
                       </div>
-                    )}
-
-                    {/* Step 2 Content: Checklist Mode vs MDM Scan Mode */}
-                    {targetApp.isChecklistMode ? (
+                    ) : targetApp.isChecklistMode ? (
                       <div style={{
                         background: '#f8fafc',
                         border: `1.5px solid #cbd5e1`,
@@ -3299,6 +3301,11 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       <button
                         type="button"
                         onClick={() => {
+                          if (!formData.site || !formData.site.trim()) {
+                            if (onTriggerToast) onTriggerToast('❌ [필수 선택] 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
+                            setActiveStep(1);
+                            return;
+                          }
                           if (targetApp.isChecklistMode) {
                             const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked;
                             if (!isAll) {
