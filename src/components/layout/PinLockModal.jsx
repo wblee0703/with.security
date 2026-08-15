@@ -71,7 +71,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
         <div style={{
           width: '64px',
           height: '64px',
-          borderRadius: '20px',
+          borderRadius: '4px',
           background: error ? 'rgba(244, 63, 94, 0.12)' : isSuccess ? 'rgba(16, 185, 129, 0.12)' : 'rgba(14, 165, 233, 0.12)',
           border: `1px solid ${error ? 'rgba(244, 63, 94, 0.4)' : isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
           display: 'flex',

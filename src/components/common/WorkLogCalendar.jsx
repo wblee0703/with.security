@@ -129,7 +129,7 @@ export default function WorkLogCalendar({
     <div
       className="glass-panel"
       style={{
-        borderRadius: '20px',
+        borderRadius: '2px',
         border: '1.5px solid #cbd5e1',
         background: '#ffffff',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -160,7 +160,7 @@ export default function WorkLogCalendar({
             style={{
               width: '38px',
               height: '38px',
-              borderRadius: '12px',
+              borderRadius: '4px',
               background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
               border: '1.5px solid #38bdf8',
               display: 'flex',

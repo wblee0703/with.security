@@ -1803,13 +1803,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Header Title Banner */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
               width: '46px',
               height: '46px',
-              borderRadius: '14px',
+              borderRadius: '4px',
               background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
               border: '1px solid rgba(255, 255, 255, 0.3)',
               display: 'flex',
@@ -1880,7 +1880,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       {/* Interactive Date Selector Navigation Bar (Proportionally Spaced & Balanced) */}
       <div className="glass-panel" style={{
         padding: '14px 20px',
-        borderRadius: '18px',
+        borderRadius: '2px',
         background: '#ffffff',
         border: '1.5px solid #cbd5e1',
         display: 'flex',
@@ -1947,7 +1947,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       {/* Checklist Registrations Data List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {filteredList.length === 0 ? (
-          <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '18px', border: '1.5px solid #cbd5e1', color: '#64748b' }}>
+          <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '2px', border: '1.5px solid #cbd5e1', color: '#64748b' }}>
             <ShieldCheck size={36} color="#94a3b8" style={{ marginBottom: '10px' }} />
             <div style={{ fontSize: '14px', fontWeight: '700' }}>선택하신 날짜에 등록된 보안 서약 내역이 없습니다.</div>
           </div>
@@ -1961,7 +1961,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 className="glass-panel"
                 style={{
                   padding: '18px 20px',
-                  borderRadius: '18px',
+                  borderRadius: '2px',
                   border: '1.5px solid #cbd5e1',
                   borderLeft: '4px solid #0284c7',
                   boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -2320,7 +2320,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             maxWidth: '440px',
             maxHeight: '92vh',
             overflowY: 'auto',
-            borderRadius: '20px',
+            borderRadius: '4px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             boxShadow: '0 20px 40px -10px rgba(15, 23, 42, 0.25)',
@@ -3695,7 +3695,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           <div className="glass-panel" style={{
             width: '100%',
             maxWidth: '520px',
-            borderRadius: '24px',
+            borderRadius: '4px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             padding: '24px',
@@ -3720,7 +3720,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   color: '#64748b',
                   width: '32px',
                   height: '32px',
-                  borderRadius: '8px',
+                  borderRadius: '4px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -3735,7 +3735,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             <div style={{
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '20px',
+              borderRadius: '4px',
               padding: '20px',
               display: 'flex',
               flexDirection: 'column',
@@ -3903,7 +3903,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             width: '100%',
             maxWidth: '520px',
             maxHeight: '90vh',
-            borderRadius: '24px',
+            borderRadius: '4px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             padding: '24px',

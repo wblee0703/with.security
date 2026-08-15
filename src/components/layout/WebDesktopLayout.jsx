@@ -122,7 +122,7 @@ export default function WebDesktopLayout({
             display: 'flex',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '12px',
+            borderRadius: '4px',
             padding: '3px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
           }}>
@@ -130,7 +130,7 @@ export default function WebDesktopLayout({
               onClick={() => onToggleViewMode('web')}
               style={{
                 padding: '6px 12px',
-                borderRadius: '8px',
+                borderRadius: '3px',
                 border: viewMode === 'web' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
                 background: viewMode === 'web' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
                 color: viewMode === 'web' ? '#0284c7' : '#64748b',
@@ -149,7 +149,7 @@ export default function WebDesktopLayout({
               onClick={() => onToggleViewMode('mobile')}
               style={{
                 padding: '6px 12px',
-                borderRadius: '8px',
+                borderRadius: '3px',
                 border: viewMode === 'mobile' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
                 background: viewMode === 'mobile' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
                 color: viewMode === 'mobile' ? '#0284c7' : '#64748b',
@@ -219,7 +219,7 @@ export default function WebDesktopLayout({
                 alignItems: 'center',
                 gap: '6px',
                 padding: '6px 12px',
-                borderRadius: '10px',
+                borderRadius: '4px',
                 background: '#fff1f2',
                 border: '1.5px solid #fda4af',
                 color: '#e11d48',
@@ -265,7 +265,7 @@ export default function WebDesktopLayout({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '12px 14px',
-                  borderRadius: '14px',
+                  borderRadius: '4px',
                   border: isActive ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
                   background: isActive ? 'rgba(14, 165, 233, 0.1)' : 'transparent',
                   color: isActive ? '#0284c7' : '#475569',

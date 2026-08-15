@@ -483,13 +483,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* Top Banner Header */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1px solid #e2e8f0' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
               width: '46px',
               height: '46px',
-              borderRadius: '14px',
+              borderRadius: '4px',
               background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
               border: '1px solid rgba(255, 255, 255, 0.3)',
               display: 'flex',
@@ -565,13 +565,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       {currentUser ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Active User Card Banner */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', background: 'rgba(0, 242, 254, 0.04)' }}>
+          <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', background: 'rgba(0, 242, 254, 0.04)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                 <div style={{
                   width: '50px',
                   height: '50px',
-                  borderRadius: '16px',
+                  borderRadius: '4px',
                   background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
                   display: 'flex',
                   alignItems: 'center',
@@ -609,7 +609,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           </div>
 
           {/* Profile Edit Form */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
+          <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <User size={18} color="#0284c7" /> 사용자 상세 정보 수정 및 관리
@@ -1124,7 +1124,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         </div>
       ) : (
         /* Mode 2: Logged Out State (Login / Signup Tabs) */
-        <div className="glass-panel" style={{ padding: '24px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
+        <div className="glass-panel" style={{ padding: '24px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
           {/* Tab Selection */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
             <button
@@ -1503,7 +1503,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
       {/* Remote Backend Server Configuration Card (Visible ONLY for Developer Role) */}
       {currentUser?.role === '개발자' && (
-        <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #7dd3fc', background: '#f0f9ff', marginTop: '10px' }}>
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #7dd3fc', background: '#f0f9ff', marginTop: '10px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ fontSize: '15px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Globe size={18} /> 호스팅 백엔드 서버 연동 설정 (개발자 전용)

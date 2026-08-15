@@ -377,7 +377,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       {/* Top Main Banner */}
       <div className="glass-panel" style={{
         padding: '20px 24px',
-        borderRadius: '20px',
+        borderRadius: '2px',
         background: '#ffffff',
         border: '1.5px solid #cbd5e1',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -391,7 +391,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           <div style={{
             width: '46px',
             height: '46px',
-            borderRadius: '14px',
+            borderRadius: '4px',
             background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
             border: '1.5px solid #38bdf8',
             display: 'flex',
@@ -425,12 +425,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
 
           {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '16px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '2px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
                 width: '44px',
                 height: '44px',
-                borderRadius: '14px',
+                borderRadius: '4px',
                 background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                 border: '1.5px solid #38bdf8',
                 display: 'flex',
@@ -504,7 +504,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           </div>
 
           {/* Daily Date Controller Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
@@ -533,7 +533,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   gap: '4px',
                   cursor: 'pointer',
                   padding: '2px 6px',
-                  borderRadius: '6px',
+                  borderRadius: '2px',
                   transition: 'background 0.2s ease',
                   userSelect: 'none'
                 }}
@@ -584,7 +584,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 fontSize: '11px',
                 fontWeight: '800',
                 padding: '4px 10px',
-                borderRadius: '8px',
+                borderRadius: '2px',
                 cursor: 'pointer'
               }}
             >
@@ -596,7 +596,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           <div style={{
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '16px',
+            borderRadius: '2px',
             padding: '20px',
             display: 'flex',
             flexDirection: 'column',
@@ -619,7 +619,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               gridTemplateColumns: 'repeat(3, 1fr)',
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '10px',
+              borderRadius: '2px',
               overflow: 'hidden'
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
@@ -762,12 +762,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minWidth: 0 }}>
 
           {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '16px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '2px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
                 width: '44px',
                 height: '44px',
-                borderRadius: '14px',
+                borderRadius: '4px',
                 background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                 border: '1.5px solid #c4b5fd',
                 display: 'flex',
@@ -841,7 +841,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           </div>
 
           {/* Week Controls Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
@@ -876,7 +876,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 fontSize: '11px',
                 fontWeight: '800',
                 padding: '4px 10px',
-                borderRadius: '8px',
+                borderRadius: '2px',
                 cursor: 'pointer'
               }}
             >
@@ -888,7 +888,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           <div style={{
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '16px',
+            borderRadius: '2px',
             padding: '20px',
             display: 'flex',
             flexDirection: 'column',
@@ -911,7 +911,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               gridTemplateColumns: 'repeat(3, 1fr)',
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '10px',
+              borderRadius: '2px',
               overflow: 'hidden'
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>

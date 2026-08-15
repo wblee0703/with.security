@@ -255,13 +255,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
       {/* Header Banner */}
-      <div className="glass-panel" style={{ padding: '20px 24px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
+      <div className="glass-panel" style={{ padding: '20px 24px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
               width: '46px',
               height: '46px',
-              borderRadius: '14px',
+              borderRadius: '4px',
               background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
               border: '1.5px solid #38bdf8',
               display: 'flex',
@@ -284,7 +284,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
 
       {/* Add New Site Card Form (Visible ONLY for Developer Role) */}
       {isDevUser && (
-        <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#0284c7', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus size={16} /> 신규 출입 사업장 등록
           </div>
@@ -432,7 +432,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
       )}
 
       {/* Registered Sites List */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
+      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Building2 size={16} color="#0284c7" /> 등록된 출입 사업장 목록 ({sites.length}개)
@@ -451,7 +451,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   background: '#ffffff',
                   border: '1.5px solid #cbd5e1',
                   padding: '14px 16px',
-                  borderRadius: '14px',
+                  borderRadius: '2px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -673,7 +673,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '24px', borderRadius: '24px', border: '1.5px solid #38bdf8', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '24px', borderRadius: '4px', border: '1.5px solid #38bdf8', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ fontSize: '16px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Edit3 size={18} /> 출입 사업장 정보 수정
@@ -861,7 +861,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
             maxWidth: '540px',
             maxHeight: '85vh',
             padding: '24px',
-            borderRadius: '24px',
+            borderRadius: '4px',
             border: '1.5px solid #cbd5e1',
             background: '#ffffff',
             display: 'flex',
@@ -1078,7 +1078,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '24px', borderRadius: '24px', border: '1.5px solid #fda4af', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '24px', borderRadius: '4px', border: '1.5px solid #fda4af', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ fontSize: '16px', fontWeight: '800', color: '#e11d48', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Lock size={18} /> 출입 사업장 삭제 권한 인증

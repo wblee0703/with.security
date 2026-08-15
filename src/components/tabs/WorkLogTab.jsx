@@ -668,7 +668,7 @@ export default function WorkLogTab({ onTriggerToast }) {
           {/* Interactive Date Selector Navigation Bar (2-Row Layout) */}
           <div className="glass-panel" style={{
             padding: '16px 20px',
-            borderRadius: '18px',
+            borderRadius: '2px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             display: 'flex',
@@ -898,7 +898,7 @@ export default function WorkLogTab({ onTriggerToast }) {
           {/* Date-Grouped Work Logs List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
             {sortedDates.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '40px 24px', textAlign: 'center', borderRadius: '20px', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div className="glass-panel" style={{ padding: '40px 24px', textAlign: 'center', borderRadius: '2px', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <ClipboardList size={36} color="#0284c7" style={{ marginBottom: '10px' }} />
                 <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
                   {viewAllDates ? '등록된 업무 일지가 없습니다.' : `${getFormattedKoreanDate(selectedDate)}에 등록된 업무 일지가 없습니다.`}
@@ -1005,7 +1005,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                           className="glass-panel"
                           style={{
                             padding: '18px 20px',
-                            borderRadius: '16px',
+                            borderRadius: '2px',
                             border: '1.5px solid #cbd5e1',
                             borderLeft: group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #0284c7',
                             boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -1104,13 +1104,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   <div
                                     key={item.id}
                                     style={{
-                                      background: isEditingThis ? '#f0f9ff' : '#f8fafc',
-                                      border: `1.5px solid ${isEditingThis ? '#7dd3fc' : '#cbd5e1'}`,
-                                      borderRadius: '12px',
+                                      background: isEditingThis ? '#ffffff' : '#f8fafc',
+                                      border: isEditingThis ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
+                                      borderRadius: '2px',
                                       padding: '12px 14px',
                                       display: 'flex',
                                       flexDirection: 'column',
                                       gap: '8px',
+                                      boxShadow: isEditingThis ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
                                       transition: 'all 0.2s ease'
                                     }}
                                   >
@@ -1128,7 +1129,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             style={{
                                               flex: 1,
                                               padding: '7px 10px',
-                                              borderRadius: '8px',
+                                              borderRadius: '2px',
                                               background: '#ffffff',
                                               border: '1px solid #3b82f6',
                                               color: '#0f172a',
@@ -1147,7 +1148,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           style={{
                                             width: '100%',
                                             padding: '8px 10px',
-                                            borderRadius: '8px',
+                                            borderRadius: '2px',
                                             background: '#ffffff',
                                             border: '1px solid #cbd5e1',
                                             color: '#334155',
@@ -1165,7 +1166,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             onClick={handleCancelInlineEdit}
                                             style={{
                                               padding: '5px 10px',
-                                              borderRadius: '6px',
+                                              borderRadius: '2px',
                                               background: '#ffffff',
                                               border: '1px solid #cbd5e1',
                                               color: '#64748b',
@@ -1181,7 +1182,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             onClick={() => handleSaveInlineEdit(item)}
                                             style={{
                                               padding: '5px 12px',
-                                              borderRadius: '6px',
+                                              borderRadius: '2px',
                                               background: '#0284c7',
                                               border: '1px solid transparent',
                                               color: '#ffffff',
@@ -1220,7 +1221,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   border: '1px solid #cbd5e1',
                                                   color: '#0f172a',
                                                   padding: '3px 8px',
-                                                  borderRadius: '6px',
+                                                  borderRadius: '2px',
                                                   fontSize: '11px',
                                                   fontWeight: '700',
                                                   cursor: 'pointer',
@@ -1241,7 +1242,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   border: '1px solid #fecaca',
                                                   color: '#dc2626',
                                                   padding: '3px 8px',
-                                                  borderRadius: '6px',
+                                                  borderRadius: '2px',
                                                   fontSize: '11px',
                                                   fontWeight: '700',
                                                   cursor: 'pointer',
@@ -1264,7 +1265,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             border: '1px solid #e2e8f0',
                                             background: '#ffffff',
                                             padding: '11px 13px',
-                                            borderRadius: '8px',
+                                            borderRadius: '2px',
                                             fontSize: '13.5px',
                                             color: '#334155',
                                             whiteSpace: 'pre-wrap',
@@ -1282,13 +1283,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                             {/* Inline Adding New Task Box directly inside this Card */}
                             {inlineAddingCardKey === group.key && (
                               <div style={{
-                                background: '#f0f9ff',
-                                border: '1.5px solid #7dd3fc',
-                                borderRadius: '12px',
-                                padding: '12px 14px',
+                                marginTop: '8px',
+                                padding: '14px',
+                                background: '#ffffff',
+                                border: '1.5px dashed #0284c7',
+                                borderRadius: '2px',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '8px',
+                                gap: '10px',
                                 boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1309,7 +1311,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     style={{
                                       flex: 1,
                                       padding: '7px 10px',
-                                      borderRadius: '8px',
+                                      borderRadius: '2px',
                                       background: '#ffffff',
                                       border: '1.5px solid #38bdf8',
                                       color: '#0f172a',
@@ -1328,7 +1330,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   style={{
                                     width: '100%',
                                     padding: '8px 10px',
-                                    borderRadius: '8px',
+                                    borderRadius: '2px',
                                     background: '#ffffff',
                                     border: '1px solid #cbd5e1',
                                     color: '#334155',
@@ -1346,7 +1348,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     onClick={handleCancelInlineAdd}
                                     style={{
                                       padding: '5px 10px',
-                                      borderRadius: '6px',
+                                      borderRadius: '2px',
                                       background: '#ffffff',
                                       border: '1px solid #cbd5e1',
                                       color: '#64748b',
@@ -1362,7 +1364,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     onClick={() => handleSaveInlineAdd(group.primaryLog)}
                                     style={{
                                       padding: '5px 14px',
-                                      borderRadius: '6px',
+                                      borderRadius: '2px',
                                       background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
                                       border: 'none',
                                       color: '#ffffff',
@@ -1418,17 +1420,18 @@ export default function WorkLogTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-          <div className="glass-panel" style={{
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
             width: '100%',
             maxWidth: '520px',
-            borderRadius: '24px',
+            borderRadius: '4px',
             padding: '24px',
             background: '#ffffff',
-            border: '1px solid #e2e8f0',
+            border: '1.5px solid #cbd5e1',
             boxShadow: '0 20px 50px rgba(15, 23, 42, 0.15)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '18px'
+            gap: '18px',
+            animation: 'modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
           }}>
             {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1436,7 +1439,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 <div style={{
                   width: '38px',
                   height: '38px',
-                  borderRadius: '12px',
+                  borderRadius: '4px',
                   background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                   border: '1px solid rgba(255, 255, 255, 0.3)',
                   display: 'flex',
@@ -1479,7 +1482,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '10px',
+                      borderRadius: '4px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#0f172a',
@@ -1504,7 +1507,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '10px',
+                      borderRadius: '4px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#0f172a',
@@ -1527,7 +1530,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      borderRadius: '10px',
+                      borderRadius: '4px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#0f172a',
@@ -1562,7 +1565,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '11px 14px',
-                    borderRadius: '10px',
+                    borderRadius: '4px',
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
                     color: '#0f172a',
@@ -1585,7 +1588,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '12px 14px',
-                    borderRadius: '10px',
+                    borderRadius: '4px',
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
                     color: '#0f172a',
@@ -1602,7 +1605,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 <div key={idx} style={{
                   background: '#f0f9ff',
                   border: '1px solid #bae6fd',
-                  borderRadius: '14px',
+                  borderRadius: '4px',
                   padding: '14px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -1637,7 +1640,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '11px 14px',
-                      borderRadius: '10px',
+                      borderRadius: '4px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#0f172a',
@@ -1658,7 +1661,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       width: '100%',
                       padding: '10px 12px',
-                      borderRadius: '10px',
+                      borderRadius: '4px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#334155',
@@ -1678,7 +1681,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   onClick={() => setExtraTasks([...extraTasks, { title: '', details: '' }])}
                   style={{
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '4px',
                       fontWeight: '800',
                       cursor: 'pointer',
                       display: 'flex',
@@ -1699,7 +1702,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     type="button"
                     onClick={() => setIsModalOpen(false)}
                     className="glass-button"
-                    style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer' }}
+                    style={{ flex: 1, padding: '12px', borderRadius: '4px', cursor: 'pointer' }}
                   >
                     취소
                   </button>
@@ -1709,7 +1712,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     style={{
                       flex: 1.5,
                       padding: '12px',
-                      borderRadius: '12px',
+                      borderRadius: '4px',
                       fontSize: '13px',
                       fontWeight: '800',
                       cursor: 'pointer'
@@ -1739,12 +1742,12 @@ export default function WorkLogTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-            <div className="glass-panel" style={{
+            <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
               width: '100%',
               maxWidth: '620px',
               maxHeight: '85vh',
               padding: '24px',
-              borderRadius: '24px',
+              borderRadius: '4px',
               border: '1.5px solid #cbd5e1',
               background: '#ffffff',
               display: 'flex',
@@ -1758,7 +1761,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   <div style={{
                     width: '42px',
                     height: '42px',
-                    borderRadius: '14px',
+                    borderRadius: '4px',
                     background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)',
                     display: 'flex',
                     alignItems: 'center',
@@ -1771,7 +1774,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   <div>
                     <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span>이전 업무 불러오기 & 복사</span>
-                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: '#e0f2fe', color: '#0369a1', fontWeight: '700' }}>
+                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1', fontWeight: '700' }}>
                         대상일: {selectedDate}
                       </span>
                     </div>
@@ -1801,7 +1804,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       style={{
                         width: '100%',
                         padding: '10px 12px 10px 36px',
-                        borderRadius: '12px',
+                        borderRadius: '4px',
                         background: '#f8fafc',
                         border: '1.5px solid #cbd5e1',
                         fontSize: '13px',
@@ -1832,7 +1835,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                           onClick={() => setPastFilterCategory(cat)}
                           style={{
                             padding: '6px 12px',
-                            borderRadius: '8px',
+                            borderRadius: '4px',
                             fontSize: '12px',
                             fontWeight: isCatActive ? '800' : '600',
                             background: isCatActive ? '#0284c7' : '#f1f5f9',
