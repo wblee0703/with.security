@@ -195,14 +195,33 @@ export default function App() {
   };
 
   // Global event listener for custom toast events (e.g. from native double-back exit warning)
+  const [exitPromptMessage, setExitPromptMessage] = useState(null);
+
   useEffect(() => {
     const handleCustomToast = (e) => {
       if (e?.detail?.message) {
         showToast(e.detail.message);
       }
     };
+
+    let exitTimer = null;
+    const handleExitPrompt = (e) => {
+      const msg = e?.detail?.message || '취소(뒤로가기) 버튼을 한 번 더 누르면 앱이 종료됩니다.';
+      setExitPromptMessage(msg);
+      if (exitTimer) clearTimeout(exitTimer);
+      exitTimer = setTimeout(() => {
+        setExitPromptMessage(null);
+      }, 3000);
+    };
+
     window.addEventListener('with_security_toast', handleCustomToast);
-    return () => window.removeEventListener('with_security_toast', handleCustomToast);
+    window.addEventListener('with_security_exit_prompt', handleExitPrompt);
+
+    return () => {
+      window.removeEventListener('with_security_toast', handleCustomToast);
+      window.removeEventListener('with_security_exit_prompt', handleExitPrompt);
+      if (exitTimer) clearTimeout(exitTimer);
+    };
   }, []);
 
   return (
@@ -280,6 +299,38 @@ export default function App() {
         }}>
           <Bell size={16} color="#0284c7" />
           <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Bottom-Center App Exit Prompt Popup on Back Button Press */}
+      {exitPromptMessage && (
+        <div style={{
+          position: 'fixed',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 85px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1.5px solid rgba(255, 255, 255, 0.18)',
+          color: '#ffffff',
+          padding: '12px 22px',
+          borderRadius: '28px',
+          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(14, 165, 233, 0.25)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '9px',
+          fontSize: '13px',
+          fontWeight: '800',
+          letterSpacing: '-0.2px',
+          whiteSpace: 'nowrap',
+          maxWidth: '90vw',
+          pointerEvents: 'none',
+          animation: 'float 0.25s ease-out'
+        }}>
+          <span style={{ fontSize: '15px' }}>🚪</span>
+          <span>{exitPromptMessage}</span>
         </div>
       )}
 

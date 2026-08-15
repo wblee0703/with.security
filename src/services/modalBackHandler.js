@@ -28,11 +28,11 @@ class ModalBackHandler {
         return false;
       }
 
-      // First press -> record timestamp and show toast warning for 3 seconds
+      // First press -> record timestamp and show exit prompt warning for 3 seconds
       this.lastBackPressTime = now;
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('with_security_toast', {
-          detail: { message: "'뒤로' 버튼을 한 번 더 누르면 앱이 종료됩니다.", type: 'info' }
+        window.dispatchEvent(new CustomEvent('with_security_exit_prompt', {
+          detail: { message: "취소(뒤로가기) 버튼을 한 번 더 누르면 앱이 종료됩니다." }
         }));
       }
       return true;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
   ShieldCheck,
@@ -7,7 +7,9 @@ import {
   Settings,
   UserCheck,
   ClipboardList,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw,
+  ArrowDown
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 
@@ -22,6 +24,13 @@ export default function MobileContainer({
 }) {
   const [time, setTime] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Pull to Refresh State
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const contentRef = useRef(null);
+  const startYRef = useRef(0);
+  const isPullingRef = useRef(false);
 
   useEffect(() => {
     async function loadUser() {
@@ -56,6 +65,66 @@ export default function MobileContainer({
       return;
     }
     setActiveTab(targetTabId);
+  };
+
+  // --- Pull to Refresh Touch Handlers ---
+  const handleTouchStart = (e) => {
+    if (!contentRef.current || isRefreshing) return;
+    if (contentRef.current.scrollTop <= 0) {
+      startYRef.current = e.touches[0].clientY;
+      isPullingRef.current = true;
+    } else {
+      isPullingRef.current = false;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isPullingRef.current || isRefreshing || !contentRef.current) return;
+    if (contentRef.current.scrollTop <= 0) {
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - startYRef.current;
+      if (diff > 0) {
+        const pull = Math.min(diff * 0.45, 80);
+        setPullDistance(pull);
+      } else {
+        setPullDistance(0);
+        isPullingRef.current = false;
+      }
+    } else {
+      setPullDistance(0);
+      isPullingRef.current = false;
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (!isPullingRef.current) return;
+    isPullingRef.current = false;
+
+    if (pullDistance >= 50 && !isRefreshing) {
+      setIsRefreshing(true);
+      setPullDistance(50);
+
+      try {
+        // Trigger global data refresh & server sync
+        window.dispatchEvent(new CustomEvent('with_security_data_changed'));
+        const serverUrl = dbService.getServerUrl();
+        if (serverUrl) {
+          await dbService.syncAllWithServer(serverUrl);
+        }
+        window.dispatchEvent(new CustomEvent('with_security_toast', {
+          detail: { message: '🔄 데이터를 최신 상태로 새로고침했습니다.' }
+        }));
+      } catch (err) {
+        console.warn('Pull-to-refresh error:', err);
+      } finally {
+        setTimeout(() => {
+          setIsRefreshing(false);
+          setPullDistance(0);
+        }, 600);
+      }
+    } else {
+      setPullDistance(0);
+    }
   };
 
   return (
@@ -159,8 +228,43 @@ export default function MobileContainer({
         )}
       </div>
 
+      {/* Pull to Refresh Animated Indicator */}
+      {(pullDistance > 0 || isRefreshing) && (
+        <div style={{
+          height: `${pullDistance}px`,
+          maxHeight: '60px',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(14, 165, 233, 0.08)',
+          borderBottom: '1px solid rgba(14, 165, 233, 0.2)',
+          transition: isPullingRef.current ? 'none' : 'all 0.3s ease',
+          gap: '8px',
+          color: '#0284c7',
+          fontSize: '12px',
+          fontWeight: '800'
+        }}>
+          <RefreshCw
+            size={16}
+            style={{
+              animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none',
+              transform: `rotate(${pullDistance * 4}deg)`,
+              transition: isPullingRef.current ? 'none' : 'transform 0.3s ease'
+            }}
+          />
+          <span>{isRefreshing ? '데이터 새로고침 중...' : (pullDistance >= 50 ? '손을 놓으면 새로고침' : '아래로 당겨서 새로고침')}</span>
+        </div>
+      )}
+
       {/* Main Tab Content */}
-      <div className="app-content">
+      <div
+        ref={contentRef}
+        className="app-content"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         {children}
       </div>
 

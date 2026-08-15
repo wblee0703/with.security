@@ -147,6 +147,7 @@ public class NativeAppLauncherPlugin extends Plugin {
         JSArray appsList = new JSArray();
         Set<String> addedPackages = new HashSet<>();
 
+        List<JSObject> rawList = new ArrayList<>();
         try {
             // 1. Query all Launcher Activities
             Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
@@ -184,7 +185,7 @@ public class NativeAppLauncherPlugin extends Plugin {
                     item.put("packageName", pkgName);
                     item.put("label", label);
                     item.put("scheme", "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=" + pkgName + ";end");
-                    appsList.put(item);
+                    rawList.add(item);
                 }
             }
 
@@ -209,8 +210,37 @@ public class NativeAppLauncherPlugin extends Plugin {
                         item.put("label", pkg.packageName);
                     }
                     item.put("scheme", "intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=" + pkg.packageName + ";end");
-                    appsList.put(item);
+                    rawList.add(item);
                 }
+            }
+
+            // Sort: Prioritize '협력사 MDM' and 'com.moplus.samsung.semi.user' at the very top
+            Collections.sort(rawList, new Comparator<JSObject>() {
+                @Override
+                public int compare(JSObject a, JSObject b) {
+                    String labelA = a.optString("label", "").toLowerCase();
+                    String labelB = b.optString("label", "").toLowerCase();
+                    String pkgA = a.optString("packageName", "").toLowerCase();
+                    String pkgB = b.optString("packageName", "").toLowerCase();
+
+                    int scoreA = getPriorityScore(labelA, pkgA);
+                    int scoreB = getPriorityScore(labelB, pkgB);
+                    return Integer.compare(scoreB, scoreA);
+                }
+
+                private int getPriorityScore(String label, String pkg) {
+                    if (label.contains("협력사 mdm") || label.contains("협력사mdm")) return 100;
+                    if (pkg.equals("com.moplus.samsung.semi.user")) return 90;
+                    if (label.contains("협력사")) return 80;
+                    if (pkg.contains("com.moplus.samsung")) return 70;
+                    if (pkg.contains("ssm") || label.contains("ssm")) return 60;
+                    if (pkg.contains("deviceon") || label.contains("디바이스온")) return 50;
+                    return 10;
+                }
+            });
+
+            for (JSObject obj : rawList) {
+                appsList.put(obj);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -448,6 +478,37 @@ public class NativeAppLauncherPlugin extends Plugin {
             mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
             List<ResolveInfo> resolveInfos = pm.queryIntentActivities(mainIntent, 0);
 
+            // 1. Prioritized match for Samsung MDM (1st priority: Label contains '협력사 MDM', 2nd priority: com.moplus.samsung.semi.user)
+            if (lower.contains("knox") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("협력사") || lower.contains("moplus") || lower.contains("semi")) {
+                String fallbackPkg = null;
+                for (ResolveInfo ri : resolveInfos) {
+                    if (ri.activityInfo == null) continue;
+                    String pkgName = ri.activityInfo.packageName;
+                    if (pkgName == null) continue;
+                    String pLower = pkgName.toLowerCase();
+
+                    CharSequence labelCs = ri.loadLabel(pm);
+                    String label = labelCs != null ? labelCs.toString().toLowerCase() : "";
+
+                    // Highest priority 1: App label contains '협력사 MDM' or '협력사'
+                    if (label.contains("협력사 mdm") || label.contains("협력사mdm") || (label.contains("협력사") && (label.contains("mdm") || label.contains("보안") || label.contains("삼성")))) {
+                        return pkgName;
+                    }
+
+                    // Highest priority 2: Exact Samsung partner MDM package
+                    if (pLower.equals("com.moplus.samsung.semi.user")) {
+                        return pkgName;
+                    }
+
+                    if (pLower.contains("com.moplus.samsung.semi.user") || pLower.contains("moplus")) {
+                        fallbackPkg = pkgName;
+                    } else if (fallbackPkg == null && (pLower.contains("knox") || pLower.contains("sds.emp.mobile.mdm") || pLower.contains("samsung.sec.android.mdm") || label.contains("knox") || label.contains("mdm"))) {
+                        fallbackPkg = pkgName;
+                    }
+                }
+                if (fallbackPkg != null) return fallbackPkg;
+            }
+
             for (ResolveInfo ri : resolveInfos) {
                 if (ri.activityInfo == null) continue;
                 String pkgName = ri.activityInfo.packageName;
@@ -456,17 +517,6 @@ public class NativeAppLauncherPlugin extends Plugin {
 
                 CharSequence labelCs = ri.loadLabel(pm);
                 String label = labelCs != null ? labelCs.toString().toLowerCase() : "";
-
-                // Check Samsung Knox / MDM / 협력사 MDM match
-                if (lower.contains("knox") || lower.contains("삼성") || lower.contains("samsung") || lower.contains("mdm") || lower.contains("협력사") || lower.contains("moplus") || lower.contains("semi")) {
-                    if (pLower.contains("com.moplus.samsung.semi.user") || pLower.contains("moplus") ||
-                        label.contains("협력사 mdm") || label.contains("협력사mdm") || label.contains("협력사") ||
-                        pLower.contains("knox") || pLower.contains("sds") || pLower.contains("mdm") ||
-                        (pLower.contains("samsung") && (pLower.contains("sec") || pLower.contains("agent") || pLower.contains("security") || pLower.contains("semi"))) ||
-                        label.contains("knox") || label.contains("mdm") || (label.contains("삼성") && label.contains("보안"))) {
-                        return pkgName;
-                    }
-                }
 
                 // Check LG Display DeviceOn match
                 if (lower.contains("lgd") || lower.contains("디바이스온") || lower.contains("deviceon") || lower.contains("lg")) {

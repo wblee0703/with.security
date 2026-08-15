@@ -415,13 +415,57 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     const isAppRequired = !isAppX;
 
     if (isAppRequired) {
+      const isSamsung = cleanSiteName.includes('삼성') || cleanSiteName.includes('samsung') || (foundSite && foundSite.name && (foundSite.name.includes('삼성') || foundSite.name.toLowerCase().includes('samsung')));
+      const isHynix = cleanSiteName.includes('하이닉스') || cleanSiteName.includes('hynix') || cleanSiteName.includes('sk') || (foundSite && foundSite.name && (foundSite.name.includes('하이닉스') || foundSite.name.toLowerCase().includes('hynix')));
+      const isLgd = cleanSiteName.includes('lg') || cleanSiteName.includes('디스플레이') || cleanSiteName.includes('lgd') || (foundSite && foundSite.name && (foundSite.name.includes('LG') || foundSite.name.includes('디스플레이')));
+
+      if (isSamsung) {
+        return {
+          appName: '협력사 MDM (삼성)',
+          appCode: 'SAMSUNG_PARTNER_MDM',
+          shortName: '협력사 MDM',
+          packageName: 'com.moplus.samsung.semi.user',
+          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
+          company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
+          color: '#0284c7',
+          badgeBg: 'rgba(2, 132, 199, 0.15)',
+          desc: '협력사 MDM (com.moplus.samsung.semi.user) 보안앱 실행 및 카메라 차단 검수',
+          isChecklistMode: false
+        };
+      } else if (isHynix) {
+        return {
+          appName: 'SK하이닉스 SSM',
+          appCode: 'SKHYNIX_SSM',
+          shortName: 'SSM',
+          packageName: 'com.skhynix.ssm',
+          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
+          company: 'SK하이닉스 이천/청주',
+          color: '#dc2626',
+          badgeBg: 'rgba(220, 38, 38, 0.15)',
+          desc: 'SK하이닉스 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
+          isChecklistMode: false
+        };
+      } else if (isLgd) {
+        return {
+          appName: 'LGD 디바이스온 (LG디스플레이)',
+          appCode: 'LGD_DEVICEON',
+          shortName: '디바이스온',
+          packageName: 'com.lgd.deviceon',
+          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
+          company: 'LG디스플레이 파주/구미',
+          color: '#e11d48',
+          badgeBg: 'rgba(225, 29, 72, 0.15)',
+          desc: 'LG디스플레이 디바이스온 모바일 보안 앱 실행 및 카메라 차단 검수',
+          isChecklistMode: false
+        };
+      }
+
       return {
         appName: '사내 모바일 보안 앱',
         appCode: 'SECURITY_APP',
         shortName: '보안앱O',
-        packageName: 'com.withsecurity.app',
-        scheme: 'sec-app://',
-        intentUri: 'intent://#Intent;scheme=sec-app;end',
+        packageName: 'com.moplus.samsung.semi.user',
+        scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
         tokenPrefix: 'SEC-APP-',
         company: '보안앱O 사업장',
         color: '#34d399',
@@ -2934,14 +2978,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                   return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
                                 });
 
-                                const registeredAppUrl = selectedSiteObj?.appUrl || selectedSiteObj?.app_url || '';
+                                const registeredAppUrl = selectedSiteObj?.appUrl || selectedSiteObj?.app_url || targetApp?.scheme || targetApp?.packageName || 'com.moplus.samsung.semi.user';
                                 const siteName = selectedSiteObj?.name || formData.site || '출입 사업장';
-
-                                if (!registeredAppUrl || !registeredAppUrl.trim()) {
-                                  setSecAppVerified(false);
-                                  setSecAppFailed(true);
-                                  return;
-                                }
 
                                 const targetScheme = registeredAppUrl.trim();
                                 const result = await launchApp(targetScheme);
