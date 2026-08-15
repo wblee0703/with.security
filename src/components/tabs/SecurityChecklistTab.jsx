@@ -406,113 +406,138 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         company: '사업장 미선택',
         color: '#ef4444',
         badgeBg: 'rgba(239, 68, 68, 0.15)',
-        desc: '⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.'
-      };
-    }
-
-    const cleanSiteName = siteName.trim().toLowerCase();
-
-    const foundSite = sites.find(s => {
-      const displayName = (s.address ? `${s.name} (${s.address})` : s.name).trim().toLowerCase();
-      const sName = (s.name || '').trim().toLowerCase();
-      return displayName === cleanSiteName ||
-        sName === cleanSiteName ||
-        cleanSiteName.includes(sName) ||
-        (s.address && cleanSiteName.includes(s.address.trim().toLowerCase()));
-    });
-
-    const isAppX = cleanSiteName.includes('보안앱x') ||
-      cleanSiteName.includes('보안어플x') ||
-      (foundSite && (foundSite.type === '보안앱X' || foundSite.type === '보안어플X' || foundSite.type === '수동체크'));
-
-    const isAppRequired = !isAppX;
-
-    if (isAppRequired) {
-      const appUrlLower = (foundSite?.appUrl || '').toLowerCase();
-      const appNameLower = (foundSite?.appName || '').toLowerCase();
-      const siteNameLower = cleanSiteName;
-
-      // 1. Samsung MDM Match (Samsung site, Samsung app name, or Samsung MDM package)
-      const isSamsung = siteNameLower.includes('삼성') || siteNameLower.includes('samsung') ||
-        appNameLower.includes('삼성') || appNameLower.includes('samsung') || appNameLower.includes('mdm') || appNameLower.includes('협력사') ||
-        appUrlLower.includes('moplus') || appUrlLower.includes('samsung') || appUrlLower.includes('knox') || appUrlLower.includes('semi');
-
-      // 2. SK Hynix SSM Match (Hynix site, Hynix app name, or SSM package)
-      const isHynix = siteNameLower.includes('하이닉스') || siteNameLower.includes('hynix') || siteNameLower.includes('sk') ||
-        appNameLower.includes('하이닉스') || appNameLower.includes('hynix') || appNameLower.includes('ssm') ||
-        appUrlLower.includes('skhynix') || appUrlLower.includes('ssm');
-
-      // 3. LG Display DeviceOn Match (LGD site, LGD app name, or DeviceOn package)
-      const isLgd = siteNameLower.includes('lg') || siteNameLower.includes('디스플레이') || siteNameLower.includes('lgd') || siteNameLower.includes('디바이스온') ||
-        appNameLower.includes('lg') || appNameLower.includes('디스플레이') || appNameLower.includes('lgd') || appNameLower.includes('디바이스온') || appNameLower.includes('deviceon') ||
-        appUrlLower.includes('lgd') || appUrlLower.includes('deviceon') || appUrlLower.includes('lgdisplay');
-
-      if (isSamsung) {
-        return {
-          appName: '삼성 MDM',
-          appCode: 'SAMSUNG_MDM',
-          shortName: '삼성 MDM',
-          packageName: 'com.moplus.samsung.semi.user',
-          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
-          company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
-          color: '#0284c7',
-          badgeBg: 'rgba(2, 132, 199, 0.15)',
-          desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user) 모바일 보안 앱 실행 및 카메라 차단 검수',
-          isChecklistMode: false
-        };
-      } else if (isHynix) {
-        return {
-          appName: 'SK하이닉스 SSM',
-          appCode: 'SKHYNIX_SSM',
-          shortName: 'SK하이닉스 SSM',
-          packageName: 'com.skhynix.ssm',
-          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
-          company: 'SK하이닉스 이천 / 청주사업장',
-          color: '#dc2626',
-          badgeBg: 'rgba(220, 38, 38, 0.15)',
-          desc: 'SK하이닉스 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
-          isChecklistMode: false
-        };
-      } else if (isLgd) {
-        return {
-          appName: 'LG디스플레이 디바이스온',
-          appCode: 'LGD_DEVICEON',
-          shortName: 'LGD 디바이스온',
-          packageName: 'com.lgd.deviceon',
-          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
-          company: 'LG디스플레이 파주 / 구미사업장',
-          color: '#e11d48',
-          badgeBg: 'rgba(225, 29, 72, 0.15)',
-          desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱 실행 및 카메라 차단 검수',
-          isChecklistMode: false
-        };
-      }
-
-      return {
-        appName: foundSite?.appName || '사내 모바일 보안 앱',
-        appCode: 'SECURITY_APP',
-        shortName: foundSite?.appName || '보안앱O',
-        packageName: 'com.moplus.samsung.semi.user',
-        scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
-        tokenPrefix: 'SEC-APP-',
-        company: foundSite?.name || '보안앱O 사업장',
-        color: '#34d399',
-        badgeBg: 'rgba(16, 185, 129, 0.15)',
-        desc: `${foundSite?.appName || '사업장 출입 보안 앱'} 실행 및 카메라 차단 검수`,
-        isChecklistMode: false
-      };
-    } else {
-      return {
-        appName: '보안 앱 예외 사업장 (수동 서약)',
-        appCode: 'NO_APP_REQUIRED',
-        shortName: '보안앱X',
-        company: '보안앱X 사업장',
-        color: '#f87171',
-        badgeBg: 'rgba(239, 68, 68, 0.15)',
-        desc: '본 사업장은 보안 앱 가동 예외 구역입니다. 수동 보안 체크리스트로 진행합니다.',
+        desc: '⚠️ 1단계에서 출입 대상 사업장을 먼저 선택해 주세요.',
         isChecklistMode: true
       };
     }
+
+    const rawInput = siteName.trim();
+    const cleanSiteName = rawInput.toLowerCase().replace(/\[.*?\]/g, '').trim();
+
+    const foundSite = sites.find(s => {
+      const sName = (s.name || '').trim().toLowerCase();
+      const sAddr = (s.address || '').trim().toLowerCase();
+      const sDisplay = (s.address ? `${s.name} (${s.address})` : s.name).trim().toLowerCase();
+      const rawLower = rawInput.toLowerCase();
+
+      return sDisplay === rawLower ||
+        sName === rawLower ||
+        sDisplay === cleanSiteName ||
+        sName === cleanSiteName ||
+        cleanSiteName === sName ||
+        (sAddr && cleanSiteName.includes(sAddr)) ||
+        (sName && (cleanSiteName.includes(sName) || rawLower.includes(sName)));
+    });
+
+    // Determine if this is a No-App (보안앱X / 수동 체크리스트) Site
+    const siteTypeStr = String(foundSite?.type || foundSite?.category || '').trim().toUpperCase().replace(/\s+/g, '');
+    const isSiteTypeX = siteTypeStr.includes('보안앱X') ||
+      siteTypeStr.includes('보안어플X') ||
+      siteTypeStr.includes('수동체크') ||
+      siteTypeStr.includes('수동') ||
+      siteTypeStr.includes('일반구역') ||
+      siteTypeStr.includes('미운영') ||
+      siteTypeStr.includes('예외') ||
+      siteTypeStr.includes('NOAPP') ||
+      siteTypeStr.includes('APPX');
+
+    const isInputTextX = rawInput.includes('보안앱X') ||
+      rawInput.includes('보안앱x') ||
+      rawInput.includes('보안어플X') ||
+      rawInput.includes('보안어플x') ||
+      rawInput.includes('보안앱 X') ||
+      rawInput.includes('보안앱 x');
+
+    const isAppX = isSiteTypeX || isInputTextX;
+
+    // If it's a No-App site (보안앱X), IMMEDIATELY return checklist mode!
+    if (isAppX) {
+      return {
+        appName: '보안 앱 예외 사업장 (수동 셀프 체크)',
+        appCode: 'NO_APP_REQUIRED',
+        shortName: '보안앱X',
+        company: foundSite ? (foundSite.name || '보안앱X 사업장') : '보안앱X 사업장',
+        color: '#0284c7',
+        badgeBg: 'rgba(2, 132, 199, 0.12)',
+        desc: '본 사업장은 모바일 보안 앱 가동 예외 사업장입니다. 카메라 스티커 부착 셀프 체크리스트로 진행합니다.',
+        isChecklistMode: true
+      };
+    }
+
+    // Otherwise, it is a Security App Required Site (보안앱O)
+    const appUrlLower = (foundSite?.appUrl || '').toLowerCase();
+    const appNameLower = (foundSite?.appName || '').toLowerCase();
+    const siteNameLower = (foundSite?.name || cleanSiteName).toLowerCase();
+
+    // 1. Samsung MDM Match (Samsung site, Samsung app name, or Samsung MDM package)
+    const isSamsung = siteNameLower.includes('삼성') || siteNameLower.includes('samsung') ||
+      appNameLower.includes('삼성') || appNameLower.includes('samsung') || appNameLower.includes('mdm') || appNameLower.includes('협력사') ||
+      appUrlLower.includes('moplus') || appUrlLower.includes('samsung') || appUrlLower.includes('knox') || appUrlLower.includes('semi');
+
+    // 2. SK Hynix SSM Match (Hynix site, Hynix app name, or SSM package)
+    const isHynix = siteNameLower.includes('하이닉스') || siteNameLower.includes('hynix') || siteNameLower.includes('sk') ||
+      appNameLower.includes('하이닉스') || appNameLower.includes('hynix') || appNameLower.includes('ssm') ||
+      appUrlLower.includes('skhynix') || appUrlLower.includes('ssm');
+
+    // 3. LG Display DeviceOn Match (LGD site, LGD app name, or DeviceOn package)
+    const isLgd = siteNameLower.includes('lg') || siteNameLower.includes('디스플레이') || siteNameLower.includes('lgd') || siteNameLower.includes('디바이스온') ||
+      appNameLower.includes('lg') || appNameLower.includes('디스플레이') || appNameLower.includes('lgd') || appNameLower.includes('디바이스온') || appNameLower.includes('deviceon') ||
+      appUrlLower.includes('lgd') || appUrlLower.includes('deviceon') || appUrlLower.includes('lgdisplay');
+
+    if (isSamsung) {
+      return {
+        appName: '삼성 MDM',
+        appCode: 'SAMSUNG_MDM',
+        shortName: '삼성 MDM',
+        packageName: 'com.moplus.samsung.semi.user',
+        scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
+        company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
+        color: '#0284c7',
+        badgeBg: 'rgba(2, 132, 199, 0.15)',
+        desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user) 모바일 보안 앱 실행 및 카메라 차단 검수',
+        isChecklistMode: false
+      };
+    } else if (isHynix) {
+      return {
+        appName: 'SK하이닉스 SSM',
+        appCode: 'SKHYNIX_SSM',
+        shortName: 'SK하이닉스 SSM',
+        packageName: 'com.skhynix.ssm',
+        scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
+        company: 'SK하이닉스 이천 / 청주사업장',
+        color: '#dc2626',
+        badgeBg: 'rgba(220, 38, 38, 0.15)',
+        desc: 'SK하이닉스 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
+        isChecklistMode: false
+      };
+    } else if (isLgd) {
+      return {
+        appName: 'LG디스플레이 디바이스온',
+        appCode: 'LGD_DEVICEON',
+        shortName: 'LGD 디바이스온',
+        packageName: 'com.lgd.deviceon',
+        scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
+        company: 'LG디스플레이 파주 / 구미사업장',
+        color: '#e11d48',
+        badgeBg: 'rgba(225, 29, 72, 0.15)',
+        desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱 실행 및 카메라 차단 검수',
+        isChecklistMode: false
+      };
+    }
+
+    return {
+      appName: foundSite?.appName || '사내 모바일 보안 앱',
+      appCode: 'SECURITY_APP',
+      shortName: foundSite?.appName || '보안앱O',
+      packageName: 'com.moplus.samsung.semi.user',
+      scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
+      tokenPrefix: 'SEC-APP-',
+      company: foundSite?.name || '보안앱O 사업장',
+      color: '#34d399',
+      badgeBg: 'rgba(16, 185, 129, 0.15)',
+      desc: `${foundSite?.appName || '사업장 출입 보안 앱'} 실행 및 카메라 차단 검수`,
+      isChecklistMode: false
+    };
   };
 
   // Mobile Device Detector Helper
