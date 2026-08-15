@@ -25,8 +25,11 @@ import {
   FileCode
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
+import { Capacitor } from '@capacitor/core';
+import { shareReportText } from '../../services/appLauncherService';
 
 export default function WorkSummaryTab({ onTriggerToast }) {
+  const isNative = Capacitor.isNativePlatform();
   const [workLogs, setWorkLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const dailyDateInputRef = useRef(null);
@@ -224,27 +227,18 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const handleShareText = async (text, title) => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `[with.security] ${title}`,
-          text: text,
-        });
+    try {
+      const res = await shareReportText({ title, text });
+      if (res && res.success) {
         if (onTriggerToast) {
-          onTriggerToast(`🔗 [${title}] 공유 완료`, 'success');
+          onTriggerToast(`🔗 [${title}] 공유창이 열렸습니다.`, 'success');
         }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          // Fallback to copy if share fails
-          handleCopyText(text, title);
-        }
+      } else if (!res?.aborted) {
+        handleCopyText(text, title);
       }
-    } else {
-      // Fallback to copy if Web Share API is not supported
+    } catch (err) {
+      console.warn('handleShareText error:', err);
       handleCopyText(text, title);
-      if (onTriggerToast) {
-        onTriggerToast(`📋 공유 기능 미지원 브라우저입니다. 클립보드에 복사되었습니다.`, 'info');
-      }
     }
   };
 
@@ -587,28 +581,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               >
                 <Copy size={13} /> 복사
               </button>
-              <button
-                type="button"
-                onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
-                style={{
-                  background: '#0284c7',
-                  border: '1.5px solid #0284c7',
-                  color: '#ffffff',
-                  padding: '6px 11px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
-                }}
-                title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
-              >
-                <Share2 size={13} /> 공유
-              </button>
+              {isNative && (
+                <button
+                  type="button"
+                  onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                  style={{
+                    background: '#0284c7',
+                    border: '1.5px solid #0284c7',
+                    color: '#ffffff',
+                    padding: '6px 11px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
+                  }}
+                  title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                >
+                  <Share2 size={13} /> 공유
+                </button>
+              )}
             </div>
           </div>
 
@@ -666,28 +662,28 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 {/* Section 1: 🏢 사내 업무 보고 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0284c7', paddingLeft: '8px' }}>
+                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0284c7', paddingLeft: '8px' }}>
                       1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
                     </div>
                     {dailyInternalLogs.length > 0 && (
-                      <span style={{ fontSize: '11.5px', color: '#475569', paddingRight: '4px' }}>
+                      <span style={{ fontSize: '12.5px', color: '#475569', paddingRight: '4px' }}>
                         담당자: <strong style={{ color: '#0f172a' }}>{dailyInternalAuthorsText}</strong>
                       </span>
                     )}
                   </div>
 
                   {dailyInternalLogs.length === 0 ? (
-                    <div style={{ fontSize: '12px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
                       {dailyInternalLogs.map((item, idx) => (
-                        <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ color: '#0284c7', fontWeight: '800', fontSize: '11px' }}>▪ ({idx + 1})</span>
+                        <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px' }}>
+                          <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                            <span style={{ color: '#0284c7', fontWeight: '800', fontSize: '12px' }}>▪ ({idx + 1})</span>
                             <span>{item.title}</span>
                           </div>
                           {item.details && (
-                            <div style={{ fontSize: '12px', color: '#334155', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                            <div style={{ fontSize: '13.5px', color: '#334155', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                               {item.details}
                             </div>
                           )}
@@ -699,12 +695,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
                 {/* Section 2: 🚗 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
                     2. 출장 및 현장 지원 실적 ({dailyInitialTripCount}건)
                   </div>
 
                   {dailyTripLogs.length === 0 ? (
-                    <div style={{ fontSize: '12px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
+                    <div style={{ fontSize: '13px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
                   ) : (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>
                       {Object.keys(dailyTripGroupedBySite).map((siteKey, sIdx) => {
@@ -728,13 +724,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
 
                         return (
-                          <div key={siteKey || sIdx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '12px 14px' }}>
+                          <div key={siteKey || sIdx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px' }}>
                             {/* Site Header & Combined Authors */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
-                              <span style={{ color: '#6d28d9', fontSize: '12.5px', fontWeight: '800', background: 'rgba(124, 58, 237, 0.1)', border: '1.5px solid #c4b5fd', padding: '3px 8px', borderRadius: '6px' }}>
+                              <span style={{ color: '#6d28d9', fontSize: '13.5px', fontWeight: '800', background: 'rgba(124, 58, 237, 0.1)', border: '1.5px solid #c4b5fd', padding: '3px 8px', borderRadius: '6px' }}>
                                 📍 {siteKey}
                               </span>
-                              <span style={{ fontSize: '11.5px', color: '#475569' }}>
+                              <span style={{ fontSize: '12.5px', color: '#475569' }}>
                                 출장자: <strong style={{ color: '#0f172a' }}>{authorsText}</strong>
                               </span>
                             </div>
@@ -743,12 +739,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                               {siteLogs.map((item, tIdx) => (
                                 <div key={item.id || tIdx} style={{ paddingLeft: '4px' }}>
-                                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ color: '#7c3aed', fontWeight: '800', fontSize: '11px' }}>▪ ({tIdx + 1})</span>
+                                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                                    <span style={{ color: '#7c3aed', fontWeight: '800', fontSize: '12px' }}>▪ ({tIdx + 1})</span>
                                     <span>{item.title}</span>
                                   </div>
                                   {item.details && (
-                                    <div style={{ fontSize: '12px', color: '#334155', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                    <div style={{ fontSize: '13.5px', color: '#334155', marginTop: '5px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                       {item.details}
                                     </div>
                                   )}
@@ -764,10 +760,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
                 {/* Section 3: 📋 종합 총평 */}
                 <div style={{ borderTop: '1.5px dashed #cbd5e1', paddingTop: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#334155', marginBottom: '6px' }}>
                     3. 종합 총평
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#0f172a', lineHeight: '1.5', background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                  <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
                     ▪ 금일 등록된 총 {dailyTotalInitialCount}건의 사내 및 출장 업무 조치 사항이 모두 정상적으로 완수되었습니다.
                   </div>
                 </div>
@@ -779,7 +775,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         {/* ========================================================================= */}
         {/* RIGHT COLUMN: 주간 업무 보고서 (Official Weekly Report Sheet) */}
         {/* ========================================================================= */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minWidth: 0 }}>
 
           {/* Header Bar */}
           <div className="glass-panel" style={{ padding: '16px 20px', borderRadius: '16px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -877,28 +873,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               >
                 <Copy size={13} /> 복사
               </button>
-              <button
-                type="button"
-                onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
-                style={{
-                  background: '#7c3aed',
-                  border: '1.5px solid #7c3aed',
-                  color: '#ffffff',
-                  padding: '6px 11px',
-                  borderRadius: '10px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
-                }}
-                title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
-              >
-                <Share2 size={13} /> 공유
-              </button>
+              {isNative && (
+                <button
+                  type="button"
+                  onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                  style={{
+                    background: '#7c3aed',
+                    border: '1.5px solid #7c3aed',
+                    color: '#ffffff',
+                    padding: '6px 11px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                  }}
+                  title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+                >
+                  <Share2 size={13} /> 공유
+                </button>
+              )}
             </div>
           </div>
 
@@ -955,7 +953,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               <>
                 {/* Section 1: 📅 요일별 상세 보고 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#7c3aed', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#7c3aed', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
                     1. 요일별 상세 업무 보고
                   </div>
 
@@ -964,22 +962,22 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       const dayLogs = weeklyGroupedByDate[dStr] || [];
                       const dayInitialGroups = getInitialWorkGroups(dayLogs);
                       return (
-                        <div key={dStr} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#6d28d9', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '4px', marginBottom: '6px' }}>
+                        <div key={dStr} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '11px 14px' }}>
+                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#6d28d9', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '5px', marginBottom: '8px' }}>
                             ■ {getFormattedKoreanDate(dStr)} (총 {dayInitialGroups.length}건)
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                             {dayLogs.map((item, idx) => (
-                              <div key={item.id || idx} style={{ fontSize: '12px', color: '#334155', paddingLeft: '4px' }}>
-                                <div style={{ fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ color: item.category === '출장 업무' ? '#7c3aed' : '#0284c7', fontSize: '11px', fontWeight: '800' }}>
+                              <div key={item.id || idx} style={{ color: '#334155', paddingLeft: '4px' }}>
+                                <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                                  <span style={{ color: item.category === '출장 업무' ? '#7c3aed' : '#0284c7', fontSize: '12px', fontWeight: '800' }}>
                                     ({idx + 1})
                                   </span>
                                   <span>[{item.category}] {item.title}</span>
-                                  {item.siteName && <span style={{ fontSize: '10.5px', color: '#7c3aed', fontWeight: '700' }}>@{item.siteName}</span>}
+                                  {item.siteName && <span style={{ fontSize: '11.5px', color: '#7c3aed', fontWeight: '700' }}>@{item.siteName}</span>}
                                 </div>
                                 {item.details && (
-                                  <div style={{ fontSize: '11.5px', color: '#475569', paddingLeft: '14px', marginTop: '2px', lineHeight: '1.45', whiteSpace: 'pre-wrap' }}>
+                                  <div style={{ fontSize: '13px', color: '#475569', paddingLeft: '16px', marginTop: '4px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                     {item.details}
                                   </div>
                                 )}
@@ -994,10 +992,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
                 {/* Section 2: 📌 주간 종합 총평 및 시사점 */}
                 <div style={{ borderTop: '1.5px dashed #cbd5e1', paddingTop: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#334155', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#334155', marginBottom: '6px' }}>
                     2. 주간 종합 총평 및 시사점
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#0f172a', lineHeight: '1.5', background: '#f8fafc', padding: '8px 10px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                  <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
                     ▪ 금주 총 {weeklyTotalInitialCount}건의 업무(사내 {weeklyInitialInternalCount}건, 출장 {weeklyInitialTripCount}건)가 안전 규정에 따라 정상적으로 추진되었습니다.
                   </div>
                 </div>

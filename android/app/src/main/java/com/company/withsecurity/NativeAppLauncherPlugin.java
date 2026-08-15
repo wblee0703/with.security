@@ -24,6 +24,34 @@ import java.util.Set;
 public class NativeAppLauncherPlugin extends Plugin {
 
     @PluginMethod
+    public void shareText(PluginCall call) {
+        String text = call.getString("text");
+        String title = call.getString("title", "업무 보고서 공유");
+        if (text == null || text.trim().isEmpty()) {
+            call.reject("Text parameter is required");
+            return;
+        }
+
+        try {
+            Intent sendIntent = new Intent();
+            sendIntent.setAction(Intent.ACTION_SEND);
+            sendIntent.putExtra(Intent.EXTRA_TEXT, text);
+            sendIntent.putExtra(Intent.EXTRA_SUBJECT, title);
+            sendIntent.setType("text/plain");
+
+            Intent shareIntent = Intent.createChooser(sendIntent, title);
+            shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(shareIntent);
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Share failed: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
     public void launchApp(PluginCall call) {
         String target = call.getString("target");
         if (target == null || target.trim().isEmpty()) {

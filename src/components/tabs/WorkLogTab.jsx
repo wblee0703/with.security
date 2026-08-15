@@ -1120,12 +1120,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
                                             style={{
                                               flex: 1,
-                                              padding: '6px 10px',
+                                              padding: '7px 10px',
                                               borderRadius: '8px',
                                               background: '#ffffff',
                                               border: '1px solid #3b82f6',
                                               color: '#0f172a',
-                                              fontSize: '12.5px',
+                                              fontSize: '14px',
                                               fontWeight: '700',
                                               outline: 'none'
                                             }}
@@ -1144,10 +1144,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             background: '#ffffff',
                                             border: '1px solid #cbd5e1',
                                             color: '#334155',
-                                            fontSize: '12px',
+                                            fontSize: '13.5px',
                                             outline: 'none',
                                             resize: 'vertical',
-                                            lineHeight: '1.4'
+                                            lineHeight: '1.5'
                                           }}
                                           placeholder="세부 업무 내용을 입력하세요 (선택)"
                                         />
@@ -1191,9 +1191,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       /* Normal View Mode */
                                       <>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
                                             <span style={{
-                                              fontSize: '11px',
+                                              fontSize: '12px',
                                               fontWeight: '800',
                                               color: group.category === '출장 업무' ? '#7c3aed' : '#0284c7',
                                               paddingTop: '1px'
@@ -1256,12 +1256,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           <div style={{
                                             border: '1px solid #e2e8f0',
                                             background: '#ffffff',
-                                            padding: '10px 12px',
+                                            padding: '11px 13px',
                                             borderRadius: '8px',
-                                            fontSize: '12px',
-                                            color: '#475569',
+                                            fontSize: '13.5px',
+                                            color: '#334155',
                                             whiteSpace: 'pre-wrap',
-                                            lineHeight: '1.5'
+                                            lineHeight: '1.6'
                                           }}>
                                             {item.details}
                                           </div>
@@ -1285,7 +1285,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0284c7' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7' }}>
                                     #{group.items.length + 1}
                                   </span>
                                   <input
@@ -1301,12 +1301,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     }}
                                     style={{
                                       flex: 1,
-                                      padding: '6px 10px',
+                                      padding: '7px 10px',
                                       borderRadius: '8px',
                                       background: '#ffffff',
                                       border: '1.5px solid #38bdf8',
                                       color: '#0f172a',
-                                      fontSize: '12.5px',
+                                      fontSize: '14px',
                                       fontWeight: '700',
                                       outline: 'none'
                                     }}
@@ -1325,10 +1325,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     background: '#ffffff',
                                     border: '1px solid #cbd5e1',
                                     color: '#334155',
-                                    fontSize: '12px',
+                                    fontSize: '13.5px',
                                     outline: 'none',
                                     resize: 'vertical',
-                                    lineHeight: '1.4'
+                                    lineHeight: '1.5'
                                   }}
                                   placeholder="세부 업무 내용을 입력하세요 (선택)"
                                 />
@@ -1544,7 +1544,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* Title Input */}
               <div>
-                <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
+                <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
                   업무명 *
                 </label>
                 <input
@@ -1554,12 +1554,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   style={{
                     width: '100%',
-                    padding: '10px 14px',
+                    padding: '11px 14px',
                     borderRadius: '10px',
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
                     color: '#0f172a',
-                    fontSize: '13px',
+                    fontSize: '14px',
                     outline: 'none'
                   }}
                 />
@@ -1567,7 +1567,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* Details Textarea (Optional) */}
               <div>
-                <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '600' }}>
+                <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
                   세부 업무 기록 (선택)
                 </label>
                 <textarea
@@ -1582,10 +1582,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                     background: '#ffffff',
                     border: '1px solid #cbd5e1',
                     color: '#0f172a',
-                    fontSize: '13px',
+                    fontSize: '13.5px',
                     outline: 'none',
                     resize: 'vertical',
-                    lineHeight: '1.5'
+                    lineHeight: '1.6'
                   }}
                 />
               </div>
@@ -1602,7 +1602,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   gap: '10px'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Plus size={14} /> 추가 업무 항목 #{idx + 2}
                     </span>
                     <button
@@ -1629,12 +1629,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                     }}
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
+                      padding: '11px 14px',
                       borderRadius: '10px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#0f172a',
-                      fontSize: '13px',
+                      fontSize: '14px',
                       outline: 'none'
                     }}
                   />
@@ -1650,14 +1650,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                     }}
                     style={{
                       width: '100%',
-                      padding: '8px 12px',
+                      padding: '10px 12px',
                       borderRadius: '10px',
                       background: '#ffffff',
                       border: '1px solid #cbd5e1',
                       color: '#334155',
-                      fontSize: '12px',
+                      fontSize: '13.5px',
                       outline: 'none',
-                      resize: 'vertical'
+                      resize: 'vertical',
+                      lineHeight: '1.5'
                     }}
                   />
                 </div>
@@ -1972,16 +1973,16 @@ export default function WorkLogTab({ onTriggerToast }) {
                             </div>
 
                             {/* Title */}
-                            <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.4' }}>
+                            <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.4' }}>
                               {item.title}
                             </div>
 
                             {/* Details snippet */}
                             {item.details && (
                               <div style={{
-                                fontSize: '12px',
+                                fontSize: '13px',
                                 color: '#64748b',
-                                lineHeight: '1.4',
+                                lineHeight: '1.45',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap'

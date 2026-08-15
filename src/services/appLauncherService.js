@@ -101,3 +101,36 @@ export async function launchApp(targetScheme) {
     reason: '타 앱 실행 기능은 모바일 전용 설치형 앱(APK)에서만 지원됩니다.' 
   };
 }
+
+/**
+ * Share text via Native Share Intent (KakaoTalk, SMS, Email, etc.) or Web Share API
+ * @param {{ title: string, text: string }} options
+ * @returns {Promise<{ success: boolean, aborted?: boolean }>}
+ */
+export async function shareReportText({ title, text }) {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await NativeAppLauncher.shareText({ title, text });
+      return { success: true };
+    } catch (e) {
+      console.warn('NativeAppLauncher.shareText error, trying navigator.share fallback:', e);
+      if (navigator.share) {
+        try {
+          await navigator.share({ title, text });
+          return { success: true };
+        } catch (shareErr) {
+          if (shareErr.name === 'AbortError') return { success: false, aborted: true };
+        }
+      }
+    }
+  } else if (navigator.share) {
+    try {
+      await navigator.share({ title, text });
+      return { success: true };
+    } catch (shareErr) {
+      if (shareErr.name === 'AbortError') return { success: false, aborted: true };
+    }
+  }
+  return { success: false };
+}
+
