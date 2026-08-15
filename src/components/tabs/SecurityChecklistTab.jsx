@@ -393,6 +393,94 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     setDeletePassword('');
   };
 
+  // Helper: Find site accurately by Display Name or Site Name + Address (Rule #6 compliant)
+  const findSiteByDisplayNameOrName = (siteQuery, siteList = sites) => {
+    if (!siteQuery || !siteList || siteList.length === 0) return null;
+    const raw = String(siteQuery).trim();
+    const rawLower = raw.toLowerCase();
+    const clean = rawLower.replace(/\[.*?\]/g, '').trim();
+
+    // 1. Exact match by full display name `name (address)` or `name`
+    let found = siteList.find(s => {
+      const dName = (s.address ? `${s.name} (${s.address})` : s.name).trim().toLowerCase();
+      const sName = (s.name || '').trim().toLowerCase();
+      return dName === rawLower || dName === clean || sName === rawLower || sName === clean;
+    });
+    if (found) return found;
+
+    // 2. Exact match combining site name AND address present in query
+    found = siteList.find(s => {
+      const sName = (s.name || '').trim().toLowerCase();
+      const sAddr = (s.address || '').trim().toLowerCase();
+      if (sName && sAddr && (clean.includes(sName) || rawLower.includes(sName)) && (clean.includes(sAddr) || rawLower.includes(sAddr))) {
+        return true;
+      }
+      return false;
+    });
+    if (found) return found;
+
+    // 3. Substring matching - sort candidates by name length descending to avoid false partial match
+    const candidates = siteList
+      .filter(s => {
+        const sName = (s.name || '').trim().toLowerCase();
+        return sName && (clean.includes(sName) || rawLower.includes(sName) || sName.includes(clean));
+      })
+      .sort((a, b) => (b.name || '').length - (a.name || '').length);
+
+    return candidates[0] || null;
+  };
+
+  // Helper: Check if site is classified as 보안앱X (Manual Checklist / No App Required)
+  const isSiteSecurityAppDisabled = (siteObj, rawQuery = '') => {
+    const queryStr = String(rawQuery || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (
+      queryStr.includes('보안앱X') ||
+      queryStr.includes('보안어플X') ||
+      queryStr.includes('NOAPP') ||
+      queryStr.includes('NO_APP') ||
+      queryStr.includes('APPX') ||
+      queryStr.includes('수동체크') ||
+      queryStr.includes('보안앱예외') ||
+      queryStr.includes('앱미운영')
+    ) {
+      return true;
+    }
+
+    if (!siteObj) return false;
+
+    const typeStr = String(siteObj.type || siteObj.category || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (
+      typeStr.includes('보안앱X') ||
+      typeStr.includes('보안어플X') ||
+      typeStr.includes('수동체크') ||
+      typeStr.includes('수동') ||
+      typeStr.includes('일반구역') ||
+      typeStr.includes('미운영') ||
+      typeStr.includes('예외') ||
+      typeStr.includes('NOAPP') ||
+      typeStr.includes('NO_APP') ||
+      typeStr.includes('APPX') ||
+      typeStr === 'X' ||
+      typeStr === 'NONE' ||
+      typeStr === 'OFF' ||
+      typeStr === 'FALSE'
+    ) {
+      return true;
+    }
+
+    const sName = String(siteObj.name || '').toUpperCase().replace(/\s+/g, '');
+    if (sName.includes('보안앱X') || sName.includes('보안어플X') || sName.includes('보안앱예외') || sName.includes('수동체크')) {
+      return true;
+    }
+
+    // If type is explicitly 보안앱X / 보안어플X
+    if (siteObj.type && (siteObj.type === '보안앱X' || siteObj.type === '보안어플X')) {
+      return true;
+    }
+
+    return false;
+  };
+
   // Mobile Security App Detection Helper (보안앱O: 보안앱 검수, 보안앱X: 수동 체크리스트)
   const getTargetSecurityAppInfo = (siteName = '') => {
     if (!siteName || !siteName.trim()) {
@@ -414,41 +502,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     const rawInput = siteName.trim();
     const cleanSiteName = rawInput.toLowerCase().replace(/\[.*?\]/g, '').trim();
 
-    const foundSite = sites.find(s => {
-      const sName = (s.name || '').trim().toLowerCase();
-      const sAddr = (s.address || '').trim().toLowerCase();
-      const sDisplay = (s.address ? `${s.name} (${s.address})` : s.name).trim().toLowerCase();
-      const rawLower = rawInput.toLowerCase();
-
-      return sDisplay === rawLower ||
-        sName === rawLower ||
-        sDisplay === cleanSiteName ||
-        sName === cleanSiteName ||
-        cleanSiteName === sName ||
-        (sAddr && cleanSiteName.includes(sAddr)) ||
-        (sName && (cleanSiteName.includes(sName) || rawLower.includes(sName)));
-    });
-
-    // Determine if this is a No-App (보안앱X / 수동 체크리스트) Site
-    const siteTypeStr = String(foundSite?.type || foundSite?.category || '').trim().toUpperCase().replace(/\s+/g, '');
-    const isSiteTypeX = siteTypeStr.includes('보안앱X') ||
-      siteTypeStr.includes('보안어플X') ||
-      siteTypeStr.includes('수동체크') ||
-      siteTypeStr.includes('수동') ||
-      siteTypeStr.includes('일반구역') ||
-      siteTypeStr.includes('미운영') ||
-      siteTypeStr.includes('예외') ||
-      siteTypeStr.includes('NOAPP') ||
-      siteTypeStr.includes('APPX');
-
-    const isInputTextX = rawInput.includes('보안앱X') ||
-      rawInput.includes('보안앱x') ||
-      rawInput.includes('보안어플X') ||
-      rawInput.includes('보안어플x') ||
-      rawInput.includes('보안앱 X') ||
-      rawInput.includes('보안앱 x');
-
-    const isAppX = isSiteTypeX || isInputTextX;
+    const foundSite = findSiteByDisplayNameOrName(siteName, sites);
+    const isAppX = isSiteSecurityAppDisabled(foundSite, siteName);
 
     // If it's a No-App site (보안앱X), IMMEDIATELY return checklist mode!
     if (isAppX) {
@@ -1373,10 +1428,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     // 중복 서약 방지 검증: 오늘 동일 사업장에 이미 서약이 완료된 경우 방지
     if (!formData.isEditMode && !formData.isCompanionMode && formData.site) {
-      const selectedSiteObj = sites.find(s => {
-        const dName = s.address ? `${s.name} (${s.address})` : s.name;
-        return dName === formData.site || s.name === formData.site || formData.site.includes(s.name);
-      });
+      const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
 
       const targetName = formData.visitorName || currentUser?.name || '';
       const targetPhone = formData.phone || currentUser?.phone || '';
@@ -2346,11 +2398,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   formData.purposeType && formData.purposeType.trim() &&
                   (formData.purposeType !== '기타' || formData.customPurpose?.trim())
                 );
-                const selSite = sites.find(s => {
-                  const dName = s.address ? `${s.name} (${s.address})` : s.name;
-                  return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
-                });
-                const isSecSite = selSite ? (selSite.type !== '보안앱X' && selSite.type !== '보안어플X') : true;
+                const selSite = findSiteByDisplayNameOrName(formData.site, sites);
+                const isSecSite = selSite ? !isSiteSecurityAppDisabled(selSite, formData.site) : true;
                 const isStep2Done = isSecSite
                   ? (secAppVerified && cameraCheckVerified)
                   : Boolean(cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked);
@@ -2500,10 +2549,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           value={formData.site}
                           onChange={(e) => {
                             const val = e.target.value;
-                            const selectedSiteObj = sites.find(s => {
-                              const dName = s.address ? `${s.name} (${s.address})` : s.name;
-                              return dName === val || s.name === val;
-                            });
+                            const selectedSiteObj = findSiteByDisplayNameOrName(val, sites);
 
                             const targetName = formData.visitorName || currentUser?.name || '';
                             const targetPhone = formData.phone || currentUser?.phone || '';
@@ -2798,20 +2844,20 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         fontWeight: '800'
                       }}
                     >
-                      다음: 모바일 보안 앱 검수 <ChevronRight size={16} />
+                      다음: {getTargetSecurityAppInfo(formData.site).isChecklistMode ? '카메라 보안 체크리스트' : '모바일 보안 앱 검수'} <ChevronRight size={16} />
                     </button>
                   </div>
                 );
               })()}
 
-              {/* STEP 2: Mobile Security App Verification (Samsung MDM & SK Hynix SSM) */}
+              {/* STEP 2: Mobile Security App Verification (Samsung MDM & SK Hynix SSM) or Camera Checklist */}
               {activeStep === 2 && (() => {
                 const targetApp = getTargetSecurityAppInfo(formData.site);
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        📱 Step 2. 모바일 보안 앱 실행 확인
+                        📱 Step 2. {targetApp.isChecklistMode ? '카메라 보안 체크리스트 확인' : '모바일 보안 앱 실행 확인'}
                       </div>
                     </div>
 
@@ -3084,10 +3130,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             <button
                               type="button"
                               onClick={async () => {
-                                const selectedSiteObj = sites.find(s => {
-                                  const dName = s.address ? `${s.name} (${s.address})` : s.name;
-                                  return dName === formData.site || s.name === formData.site || (formData.site && formData.site.includes(s.name));
-                                });
+                                const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
 
                                 const registeredAppUrl = selectedSiteObj?.appUrl || selectedSiteObj?.app_url || targetApp?.scheme || targetApp?.packageName || 'com.moplus.samsung.semi.user';
                                 const siteName = selectedSiteObj?.name || formData.site || '출입 사업장';
