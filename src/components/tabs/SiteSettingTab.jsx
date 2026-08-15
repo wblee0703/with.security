@@ -387,7 +387,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     style={{
                       padding: '10px 14px',
                       borderRadius: '6px',
-                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                      background: '#1e3a8a',
                       border: '1px solid #1e3a8a',
                       color: '#ffffff',
                       fontSize: '12px',
@@ -604,7 +604,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                             }
                           }}
                           style={{
-                            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                            background: '#1e3a8a',
                             border: '1px solid #1e3a8a',
                             color: '#ffffff',
                             padding: '5px 10px',
@@ -777,7 +777,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       style={{
                         padding: '10px 14px',
                         borderRadius: '6px',
-                        background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                        background: '#1e3a8a',
                         border: '1px solid #1e3a8a',
                         color: '#ffffff',
                         fontSize: '12px',
@@ -819,7 +819,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     flex: 1,
                     padding: '12px',
                     borderRadius: '6px',
-                    background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                    background: '#1e3a8a',
                     border: 'none',
                     color: '#ffffff',
                     fontSize: '13px',
@@ -968,7 +968,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     <button
                       type="button"
                       style={{
-                        background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                        background: '#1e3a8a',
                         border: 'none',
                         color: '#ffffff',
                         padding: '8px 14px',
@@ -1036,7 +1036,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       <button
                         type="button"
                         style={{
-                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          background: '#059669',
                           border: 'none',
                           color: '#fff',
                           padding: '6px 12px',
@@ -1143,7 +1143,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     flex: 1,
                     padding: '12px',
                     borderRadius: '6px',
-                    background: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)',
+                    background: '#e11d48',
                     border: 'none',
                     color: '#fff',
                     fontSize: '13px',

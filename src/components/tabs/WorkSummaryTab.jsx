@@ -270,7 +270,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const generateDailyReportText = () => {
     let t = `============================================\n`;
-    t += `   [ 일일 업무 수행 보고서 ]\n`;
+    t += `   [ 일일 업무 일지 ]\n`;
     t += `============================================\n`;
     t += `• 보고 일자: ${getFormattedKoreanDate(dailyDate)}\n`;
     t += `• 총 업무 실적: 총 ${dailyTotalInitialCount}건 (사내 ${dailyInitialInternalCount}건 / 출장 ${dailyInitialTripCount}건)\n\n`;
@@ -339,7 +339,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const generateWeeklyReportText = () => {
     let t = `============================================\n`;
-    t += `   [ WithSecurity 주간 업무 종합 보고서 ]\n`;
+    t += `   [ WithSecurity 주간 업무 일지 ]\n`;
     t += `============================================\n`;
     t += `• 대상 주차: ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n`;
     t += `• 주간 총 실적: 총 ${weeklyTotalInitialCount}건 (사내 ${weeklyInitialInternalCount}건 / 출장 ${weeklyInitialTripCount}건)\n`;
@@ -402,7 +402,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             <FileSpreadsheet size={22} />
           </div>
           <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-            업무 정리 레포트
+            업무 정리 보고서
           </div>
         </div>
       </div>
@@ -410,123 +410,53 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       {/* 1:1 Responsive Split Executive Report Grid */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
         gap: '10px',
         alignItems: 'start'
       }}>
 
         {/* ========================================================================= */}
-        {/* LEFT COLUMN: 일일 업무 수행 보고서 (Executive Report Layout) */}
+        {/* LEFT COLUMN: 일일 업무 보고서 (Unified Daily Report Card) */}
         {/* ========================================================================= */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-
-          {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="glass-panel" style={{
+          padding: '16px 18px',
+          borderRadius: '6px',
+          border: '1.5px solid #cbd5e1',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
+          minWidth: 0
+        }}>
+          {/* Header Bar Row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{
-                width: '38px',
-                height: '38px',
+                width: '40px',
+                height: '40px',
                 borderRadius: '6px',
-                background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-                border: '1.5px solid #1e3a8a',
+                background: '#475569',
+                border: '1.5px solid #475569',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff',
-                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+                boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
                 flexShrink: 0
               }}>
                 <CalendarDays size={22} />
               </div>
-              <div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
-                  일일 업무 수행 보고
-                </div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                  일일 단위 업무 추진 실적 및 요약
-                </div>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                일일 업무
               </div>
-            </div>
 
-            {/* Action Buttons: Copy & Share */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
-                style={{
-                  background: '#eff6ff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#1e3a8a',
-                  padding: '7px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
-                }}
-                title="일일 업무 보고서 텍스트 복사"
-              >
-                <Copy size={13} /> 복사
-              </button>
-              {isNative && (
-                <button
-                  type="button"
-                  onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
-                  style={{
-                    background: '#1e3a8a',
-                    border: '1.5px solid #1e3a8a',
-                    color: '#ffffff',
-                    padding: '7px 12px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
-                  }}
-                  title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
-                >
-                  <Share2 size={13} /> 공유
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Report Sheet Document Frame (Daily Work Log) */}
-          <div style={{
-            background: '#ffffff',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '6px',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '14px',
-            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
-          }}>
-            {/* Report Document Title Header Block */}
-            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
-                일일 업무 일지
-              </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                작성일: {getFormattedKoreanDate(dailyDate)}
-              </div>
-            </div>
-
-            {/* Daily Date Controller Bar (Inside Report Card) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', width: '100%', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {/* Daily Date Controller (Right next to 일일 업무) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px' }}>
                 <button
                   type="button"
                   onClick={handlePrevDay}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                   title="이전일"
                 >
                   <ChevronLeft size={16} />
@@ -547,17 +477,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     position: 'relative',
                     display: 'inline-flex',
                     alignItems: 'center',
-                    gap: '4px',
                     cursor: 'pointer',
-                    padding: '2px 6px',
+                    padding: '2px 4px',
                     borderRadius: '2px',
-                    transition: 'background 0.2s ease',
                     userSelect: 'none'
                   }}
                   title="클릭하여 달력에서 날짜 선택"
                 >
-                  <Calendar size={13} color="#1e3a8a" style={{ flexShrink: 0 }} />
-                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', whiteSpace: 'nowrap' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
                     {getFormattedKoreanDate(dailyDate)}
                   </span>
                   <input
@@ -584,204 +511,276 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 <button
                   type="button"
                   onClick={handleNextDay}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
                   title="다음일"
                 >
                   <ChevronRight size={16} />
                 </button>
               </div>
+            </div>
 
+            {/* Action Buttons: Copy & Share */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <button
                 type="button"
-                onClick={handleToday}
+                onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
                 style={{
-                  background: 'rgba(30, 58, 138, 0.08)',
+                  background: '#eff6ff',
                   border: '1.5px solid #cbd5e1',
-                  color: '#1e3a8a',
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  padding: '4px 10px',
-                  borderRadius: '5px',
-                  cursor: 'pointer'
+                  color: '#0f172a',
+                  padding: '7px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                 }}
+                title="일일 업무 보고서 텍스트 복사"
               >
-                오늘
+                <Copy size={13} />
               </button>
+              {isNative && (
+                <button
+                  type="button"
+                  onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                  style={{
+                    background: '#1e3a8a',
+                    border: '1.5px solid #1e3a8a',
+                    color: '#ffffff',
+                    padding: '7px 12px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                  }}
+                  title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                >
+                  <Share2 size={13} />
+                </button>
+              )}
             </div>
-
-            {/* Official Report Summary Table Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              background: '#f8fafc',
-              border: '1.5px solid #cbd5e1',
-              borderRadius: '6px',
-              overflow: 'hidden'
-            }}>
-              <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>총 수행 건수</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{dailyTotalInitialCount}건</div>
-              </div>
-              <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>사내 업무</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{dailyInitialInternalCount}건</div>
-              </div>
-              <div style={{ padding: '8px 10px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>출장 업무</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#7c3aed', marginTop: '2px' }}>{dailyInitialTripCount}건</div>
-              </div>
-            </div>
-
-            {dailyLogs.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
-                <Clock size={32} color="#94a3b8" style={{ marginBottom: '8px' }} />
-                <div style={{ fontSize: '13px', fontWeight: '700' }}>선택일자에 등록된 업무 기록이 없습니다.</div>
-              </div>
-            ) : (
-              <>
-                {/* Section 1: 🏢 사내 업무 보고 */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #1e3a8a', paddingLeft: '8px' }}>
-                      1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
-                    </div>
-                    {dailyInternalLogs.length > 0 && (
-                      <span style={{ fontSize: '12.5px', color: '#475569', paddingRight: '4px' }}>
-                        담당자: <strong style={{ color: '#0f172a' }}>{dailyInternalAuthorsText}</strong>
-                      </span>
-                    )}
-                  </div>
-
-                  {dailyInternalLogs.length === 0 ? (
-                    <div style={{ fontSize: '13px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
-                      {dailyInternalLogs.map((item, idx) => (
-                        <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px' }}>
-                          <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                            <span style={{ color: '#1e3a8a', fontWeight: '800', fontSize: '12px' }}>▪ ({idx + 1})</span>
-                            <span>{item.title}</span>
-                          </div>
-                          {item.details && (
-                            <div style={{ fontSize: '13.5px', color: '#334155', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                              {item.details}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Section 2: 🚗 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
-                    2. 출장 및 현장 지원 실적 ({dailyInitialTripCount}건)
-                  </div>
-
-                  {dailyTripLogs.length === 0 ? (
-                    <div style={{ fontSize: '13px', color: '#64748b', paddingLeft: '12px' }}>- 해당 내역 없음</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>
-                      {Object.keys(dailyTripGroupedBySite).map((siteKey, sIdx) => {
-                        const siteLogs = dailyTripGroupedBySite[siteKey];
-                        const authorSet = new Set();
-                        siteLogs.forEach(l => {
-                          const a = l.authorName || l.name || '';
-                          const tm = l.authorTeam || l.team || '';
-                          const rk = l.authorRank || l.rank || '';
-                          let nameLabel = a;
-                          if (rk && !nameLabel.includes(rk)) nameLabel += ` ${rk}`;
-                          if (tm && !nameLabel.includes(tm)) nameLabel += ` (${tm})`;
-                          if (nameLabel) authorSet.add(nameLabel);
-
-                          if (l.companionNames && Array.isArray(l.companionNames)) {
-                            l.companionNames.forEach(c => c && authorSet.add(c));
-                          } else if (typeof l.companionNames === 'string' && l.companionNames.trim()) {
-                            l.companionNames.split(',').forEach(c => c.trim() && authorSet.add(c.trim()));
-                          }
-                        });
-                        const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
-
-                        return (
-                          <div key={siteKey || sIdx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px' }}>
-                            {/* Site Header & Combined Authors */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
-                              <span style={{ color: '#6d28d9', fontSize: '13.5px', fontWeight: '800', background: 'rgba(124, 58, 237, 0.1)', border: '1.5px solid #c4b5fd', padding: '3px 8px', borderRadius: '6px' }}>
-                                📍 {siteKey}
-                              </span>
-                              <span style={{ fontSize: '12.5px', color: '#475569' }}>
-                                출장자: <strong style={{ color: '#0f172a' }}>{authorsText}</strong>
-                              </span>
-                            </div>
-
-                            {/* Task Items under this Site */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {siteLogs.map((item, tIdx) => (
-                                <div key={item.id || tIdx} style={{ paddingLeft: '4px' }}>
-                                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                                    <span style={{ color: '#7c3aed', fontWeight: '800', fontSize: '12px' }}>▪ ({tIdx + 1})</span>
-                                    <span>{item.title}</span>
-                                  </div>
-                                  {item.details && (
-                                    <div style={{ fontSize: '13.5px', color: '#334155', marginTop: '5px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                      {item.details}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Section 3: 📋 종합 총평 */}
-                <div style={{ borderTop: '1.5px dashed #cbd5e1', paddingTop: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#334155', marginBottom: '6px' }}>
-                    3. 종합 총평
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
-                    ▪ 금일 등록된 총 {dailyTotalInitialCount}건의 사내 및 출장 업무 조치 사항이 모두 정상적으로 완수되었습니다.
-                  </div>
-                </div>
-              </>
-            )}
           </div>
+
+          {/* Official Report Summary Table Grid */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            background: '#f8fafc',
+            border: '1.5px solid #cbd5e1',
+            borderRadius: '6px',
+            overflow: 'hidden',
+            width: '100%'
+          }}>
+            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>총 수행</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyTotalInitialCount}건</div>
+            </div>
+            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>사내</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyInitialInternalCount}건</div>
+            </div>
+            <div className="summary-stat-cell" style={{ textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>출장</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyInitialTripCount}건</div>
+            </div>
+          </div>
+
+          {dailyLogs.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#0f172a' }}>
+              <Clock size={32} color="#0f172a" style={{ marginBottom: '8px' }} />
+              <div style={{ fontSize: '13px', fontWeight: '700' }}>선택일자에 등록된 업무 기록이 없습니다.</div>
+            </div>
+          ) : (
+            <>
+              {/* Section 1: 🏢 사내 업무 보고 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                    1. 사내 업무 추진 실적
+                  </div>
+                  {dailyInternalLogs.length > 0 && (
+                    <span style={{ fontSize: '12.5px', color: '#0f172a', paddingRight: '4px' }}>
+                      작성자: <strong style={{ color: '#0f172a' }}>{dailyInternalAuthorsText}</strong>
+                    </span>
+                  )}
+                </div>
+
+                {dailyInternalLogs.length === 0 ? (
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                    - 해당 내역 없음
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
+                    {dailyInternalLogs.map((item, idx) => (
+                      <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px' }}>
+                        <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                          <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14.5px' }}>{idx + 1})</span>
+                          <span>{item.title}</span>
+                        </div>
+                        {item.details && (
+                          <div style={{ fontSize: '13.5px', color: '#0f172a', marginTop: '6px', paddingLeft: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                            {item.details}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2: 🚗 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                  2. 출장 및 현장 지원 실적 ({dailyInitialTripCount}건)
+                </div>
+
+                {dailyTripLogs.length === 0 ? (
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                    - 해당 내역 없음
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>
+                    {Object.keys(dailyTripGroupedBySite).map((siteKey, sIdx) => {
+                      const siteLogs = dailyTripGroupedBySite[siteKey];
+                      const authorSet = new Set();
+                      siteLogs.forEach(l => {
+                        const a = l.authorName || l.name || '';
+                        const tm = l.authorTeam || l.team || '';
+                        const rk = l.authorRank || l.rank || '';
+                        let nameLabel = a;
+                        if (rk && !nameLabel.includes(rk)) nameLabel += ` ${rk}`;
+                        if (tm && !nameLabel.includes(tm)) nameLabel += ` (${tm})`;
+                        if (nameLabel) authorSet.add(nameLabel);
+
+                        if (l.companionNames && Array.isArray(l.companionNames)) {
+                          l.companionNames.forEach(c => c && authorSet.add(c));
+                        } else if (typeof l.companionNames === 'string' && l.companionNames.trim()) {
+                          l.companionNames.split(',').forEach(c => c.trim() && authorSet.add(c.trim()));
+                        }
+                      });
+                      const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
+
+                      return (
+                        <div key={siteKey || sIdx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px' }}>
+                          {/* Site Header & Combined Authors */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
+                            <span style={{ color: '#0f172a', fontSize: '13.5px', fontWeight: '800', background: '#f1f5f9', border: '1.5px solid #cbd5e1', padding: '3px 8px', borderRadius: '6px' }}>
+                              📍 {siteKey}
+                            </span>
+                            <span style={{ fontSize: '12.5px', color: '#0f172a' }}>
+                              출장자: <strong style={{ color: '#0f172a' }}>{authorsText}</strong>
+                            </span>
+                          </div>
+
+                          {/* Task Items under this Site */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {siteLogs.map((item, tIdx) => (
+                              <div key={item.id || tIdx} style={{ paddingLeft: '4px' }}>
+                                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                                  <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14.5px' }}>{tIdx + 1})</span>
+                                  <span>{item.title}</span>
+                                </div>
+                                {item.details && (
+                                  <div style={{ fontSize: '13.5px', color: '#0f172a', marginTop: '5px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                    {item.details}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 3: 📋 종합 총평 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                  3. 종합 총평
+                </div>
+                <div style={{ fontSize: '13.5px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '11px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                  ▪ 금일 등록된 총 {dailyTotalInitialCount}건의 사내 및 출장 업무 조치 사항이 모두 정상적으로 완수되었습니다.
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ========================================================================= */}
-        {/* RIGHT COLUMN: 주간 업무 보고서 (Official Weekly Report Sheet) */}
+        {/* RIGHT COLUMN: 주간 업무 보고서 (Unified Weekly Report Card) */}
         {/* ========================================================================= */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minWidth: 0 }}>
-
-          {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="glass-panel" style={{
+          padding: '16px 18px',
+          borderRadius: '6px',
+          border: '1.5px solid #cbd5e1',
+          background: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          flex: 1,
+          boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
+          minWidth: 0
+        }}>
+          {/* Header Bar Row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{
-                width: '38px',
-                height: '38px',
+                width: '40px',
+                height: '40px',
                 borderRadius: '6px',
-                background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
-                border: '1.5px solid #c4b5fd',
+                background: '#475569',
+                border: '1.5px solid #475569',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff',
-                boxShadow: '0 2px 10px rgba(124, 58, 237, 0.25)',
+                boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
                 flexShrink: 0
               }}>
                 <FileSpreadsheet size={22} />
               </div>
-              <div>
-                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
-                  주간 업무 종합 보고
-                </div>
-                <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                  주간 단위 업무 추진 실적 및 요약
-                </div>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                주간 업무
+              </div>
+
+              {/* Week Controls (Right next to 주간 업무) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handlePrevWeek}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  title="이전주"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', padding: '0 2px', whiteSpace: 'nowrap' }}>
+                  {getWeekText(weeklyMonday)}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleNextWeek}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  title="다음주"
+                >
+                  <ChevronRight size={16} />
+                </button>
+
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', marginLeft: '4px' }}>
+                  {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
+                </span>
               </div>
             </div>
 
@@ -793,7 +792,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 style={{
                   background: 'rgba(124, 58, 237, 0.08)',
                   border: '1.5px solid #c4b5fd',
-                  color: '#7c3aed',
+                  color: '#0f172a',
                   padding: '7px 12px',
                   borderRadius: '6px',
                   fontSize: '12px',
@@ -807,7 +806,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 }}
                 title="주간 업무 보고서 텍스트 복사"
               >
-                <Copy size={13} /> 복사
+                <Copy size={13} />
               </button>
               {isNative && (
                 <button
@@ -830,158 +829,93 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   }}
                   title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
                 >
-                  <Share2 size={13} /> 공유
+                  <Share2 size={13} />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Report Sheet Document Frame (Weekly Work Report) */}
+          {/* Official Report Summary Table Grid */}
           <div style={{
-            background: '#ffffff',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            background: '#f8fafc',
             border: '1.5px solid #cbd5e1',
             borderRadius: '6px',
-            padding: '16px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '14px',
-            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
+            overflow: 'hidden',
+            width: '100%'
           }}>
-            {/* Report Document Title Header Block */}
-            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', textAlign: 'center' }}>
-              <div style={{ fontSize: '16px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
-                주간 업무 보고서
-              </div>
-              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
-                기간: {weeklyRange.monIso} ~ {weeklyRange.sunIso}
-              </div>
+            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>총 실적</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyTotalInitialCount}건</div>
             </div>
-
-            {/* Week Controls Bar (Inside Report Card) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', width: '100%', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button
-                  type="button"
-                  onClick={handlePrevWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                  title="이전주"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-
-                <span style={{ fontSize: '12px', fontWeight: '800', color: '#7c3aed', padding: '0 4px' }}>
-                  {getWeekText(weeklyMonday)}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={handleNextWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                  title="다음주"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleThisWeek}
-                style={{
-                  background: 'rgba(124, 58, 237, 0.12)',
-                  border: '1.5px solid #e9d5ff',
-                  color: '#7c3aed',
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  padding: '4px 10px',
-                  borderRadius: '2px',
-                  cursor: 'pointer'
-                }}
-              >
-                이번주
-              </button>
+            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>활동 일수</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyActiveDaysCount}일</div>
             </div>
-
-            {/* Official Report Summary Table Grid */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
-              background: '#f8fafc',
-              border: '1.5px solid #cbd5e1',
-              borderRadius: '6px',
-              overflow: 'hidden'
-            }}>
-              <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>주간 총 실적</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#7c3aed', marginTop: '2px' }}>{weeklyTotalInitialCount}건</div>
-              </div>
-              <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>활동 일수</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{weeklyActiveDaysCount}일</div>
-              </div>
-              <div style={{ padding: '8px 10px', textAlign: 'center' }}>
-                <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>참여 인원</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#059669', marginTop: '2px' }}>{weeklyAuthors.length}명</div>
-              </div>
+            <div className="summary-stat-cell" style={{ textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>참여 인원</div>
+              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyAuthors.length}명</div>
             </div>
-
-            {weeklyLogs.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#64748b' }}>
-                <Clock size={32} color="#94a3b8" style={{ marginBottom: '8px' }} />
-                <div style={{ fontSize: '13px', fontWeight: '700' }}>해당 주차에 등록된 업무 기록이 없습니다.</div>
-              </div>
-            ) : (
-              <>
-                {/* Section 1: 📅 요일별 상세 보고 */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#7c3aed', borderLeft: '3px solid #7c3aed', paddingLeft: '8px' }}>
-                    1. 요일별 상세 업무 보고
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '4px' }}>
-                    {sortedWeeklyDates.map(dStr => {
-                      const dayLogs = weeklyGroupedByDate[dStr] || [];
-                      const dayInitialGroups = getInitialWorkGroups(dayLogs);
-                      return (
-                        <div key={dStr} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '11px 14px' }}>
-                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#6d28d9', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '5px', marginBottom: '8px' }}>
-                            ■ {getFormattedKoreanDate(dStr)} (총 {dayInitialGroups.length}건)
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {dayLogs.map((item, idx) => (
-                              <div key={item.id || idx} style={{ color: '#334155', paddingLeft: '4px' }}>
-                                <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                                  <span style={{ color: item.category === '출장 업무' ? '#7c3aed' : '#1e3a8a', fontSize: '12px', fontWeight: '800' }}>
-                                    ({idx + 1})
-                                  </span>
-                                  <span>[{item.category}] {item.title}</span>
-                                  {item.siteName && <span style={{ fontSize: '11.5px', color: '#7c3aed', fontWeight: '700' }}>@{item.siteName}</span>}
-                                </div>
-                                {item.details && (
-                                  <div style={{ fontSize: '13px', color: '#475569', paddingLeft: '16px', marginTop: '4px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                    {item.details}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Section 2: 📌 주간 종합 총평 및 시사점 */}
-                <div style={{ borderTop: '1.5px dashed #cbd5e1', paddingTop: '10px', marginTop: '6px' }}>
-                  <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#334155', marginBottom: '6px' }}>
-                    2. 주간 종합 총평 및 시사점
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
-                    ▪ 금주 총 {weeklyTotalInitialCount}건의 업무(사내 {weeklyInitialInternalCount}건, 출장 {weeklyInitialTripCount}건)가 안전 규정에 따라 정상적으로 추진되었습니다.
-                  </div>
-                </div>
-              </>
-            )}
           </div>
+
+          {weeklyLogs.length === 0 ? (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#0f172a' }}>
+              <Clock size={32} color="#0f172a" style={{ marginBottom: '8px' }} />
+              <div style={{ fontSize: '13px', fontWeight: '700' }}>해당 주차에 등록된 업무 기록이 없습니다.</div>
+            </div>
+          ) : (
+            <>
+              {/* Section 1: 📅 요일별 상세 보고 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                  1. 요일별 상세 업무 보고
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingLeft: '4px' }}>
+                  {sortedWeeklyDates.map(dStr => {
+                    const dayLogs = weeklyGroupedByDate[dStr] || [];
+                    const dayInitialGroups = getInitialWorkGroups(dayLogs);
+                    return (
+                      <div key={dStr} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '11px 14px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '5px', marginBottom: '8px' }}>
+                          ■ {getFormattedKoreanDate(dStr)} (총 {dayInitialGroups.length}건)
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {dayLogs.map((item, idx) => (
+                            <div key={item.id || idx} style={{ color: '#0f172a', paddingLeft: '4px' }}>
+                              <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
+                                <span style={{ color: '#0f172a', fontSize: '14px', fontWeight: '800' }}>
+                                  {idx + 1})
+                                </span>
+                                <span>[{item.category}] {item.title}</span>
+                                {item.siteName && <span style={{ fontSize: '11.5px', color: '#0f172a', fontWeight: '700' }}>@{item.siteName}</span>}
+                              </div>
+                              {item.details && (
+                                <div style={{ fontSize: '13px', color: '#0f172a', paddingLeft: '16px', marginTop: '4px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                  {item.details}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section 2: 📌 주간 종합 총평 및 시사점 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
+                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                  2. 주간 종합 총평 및 시사점
+                </div>
+                <div style={{ fontSize: '13.5px', color: '#0f172a', lineHeight: '1.6', background: '#f8fafc', padding: '11px 14px', borderRadius: '8px', border: '1.5px solid #cbd5e1' }}>
+                  ▪ 금주 총 {weeklyTotalInitialCount}건의 업무(사내 {weeklyInitialInternalCount}건, 출장 {weeklyInitialTripCount}건)가 안전 규정에 따라 정상적으로 추진되었습니다.
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
       </div>

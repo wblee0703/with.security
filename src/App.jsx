@@ -295,7 +295,7 @@ export default function App() {
           gap: '10px',
           fontSize: '12.5px',
           fontWeight: '700',
-          animation: 'float 0.3s ease-out'
+          animation: 'staticFadeIn 0.18s ease-in-out forwards'
         }}>
           <Bell size={16} color="#1e3a8a" />
           <span>{toastMessage}</span>
@@ -503,8 +503,8 @@ export default function App() {
                 style={{
                   width: '100%',
                   padding: '14px',
-                  borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  borderRadius: '6px',
+                  background: '#1e3a8a',
                   border: 'none',
                   color: '#ffffff',
                   fontSize: '14px',

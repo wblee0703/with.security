@@ -315,7 +315,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     return () => window.removeEventListener('with_security_data_changed', handleDataChange);
   }, []);
 
-  // Helper for Korean Date Formatting (e.g. 2026년 08월 11일 (화요일))
+  // Helper for Korean Date Formatting (e.g. 2026년 08월 11일 (화))
   const getFormattedKoreanDate = (dateStr) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -324,7 +324,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const m = parseInt(parts[1], 10);
     const d = parseInt(parts[2], 10);
     const dateObj = new Date(y, m - 1, d);
-    const dayNames = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const dayName = dayNames[dateObj.getDay()];
     return `${y}년 ${String(m).padStart(2, '0')}월 ${String(d).padStart(2, '0')}일 (${dayName})`;
   };
@@ -634,7 +634,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 }}
                 title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
               >
-                <Copy size={14} /> 이전 업무 추가
+                <Copy size={14} /> 불러오기
               </button>
 
               <button
@@ -657,7 +657,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   whiteSpace: 'nowrap'
                 }}
               >
-                <Plus size={15} /> 업무 추가
+                <Plus size={15} /> 추가
               </button>
             </div>
           </div>
@@ -709,29 +709,31 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   position: 'relative',
                   display: 'inline-flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '8px 16px',
-                  borderRadius: '6px',
-                  background: '#eff6ff',
-                  border: '1.5px solid #bfdbfe',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
+                  padding: '2px 8px',
+                  background: 'transparent',
+                  border: 'none',
+                  boxShadow: 'none',
                   cursor: 'pointer',
                   overflow: 'hidden'
                 }}
               >
-                {/* Visual Button Text & Icon */}
+                {/* Visual Button Text */}
                 <div style={{
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '6px',
-                  color: '#1e3a8a',
-                  fontSize: '13px',
-                  fontWeight: '800',
+                  gap: '2px',
                   pointerEvents: 'none'
                 }}>
-                  <Calendar size={15} color="#1e3a8a" />
-                  <span>{viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}</span>
+                  <span style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>
+                    {viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>
+                    {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#1e3a8a', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+                  </span>
                 </div>
 
                 {/* Transparent Calendar Input spanning 100% width & height with full-clickable-datepicker */}
@@ -782,7 +784,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* Line 2 (Below Line): [Today Button] --- [Count Display] --- [View All Toggle Button] */}
+            {/* Line 2 (Below Line): [Today Button] --- [View All Toggle Button] */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -814,10 +816,6 @@ export default function WorkLogTab({ onTriggerToast }) {
               >
                 오늘
               </button>
-
-              <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
-              </div>
 
               <button
                 type="button"
@@ -854,7 +852,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     fontSize: '12px',
                     fontWeight: '800',
                     border: filterCategory === cat ? '1px solid #e2e8f0' : '1px solid transparent',
-                    background: filterCategory === cat ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' : 'transparent',
+                    background: filterCategory === cat ? '#1e3a8a' : 'transparent',
                     color: filterCategory === cat ? '#ffffff' : '#334155',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
@@ -898,10 +896,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               <div className="glass-panel" style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '6px', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <ClipboardList size={36} color="#1e3a8a" style={{ marginBottom: '10px' }} />
                 <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
-                  {viewAllDates ? '등록된 업무 일지가 없습니다.' : `${getFormattedKoreanDate(selectedDate)}에 등록된 업무 일지가 없습니다.`}
-                </div>
-                <div style={{ fontSize: '12px', marginTop: '6px', color: '#64748b' }}>
-                  이전에 작성했던 업무를 그대로 가져오거나 새로운 업무를 등록해 보세요.
+                  {viewAllDates ? '등록된 업무 일지가 없습니다.' : `등록된 업무 일지가 없습니다.`}
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -923,7 +918,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                     }}
                   >
-                    <Copy size={14} /> 이전 업무 가져오기
+                    <Copy size={14} /> 불러오기
                   </button>
 
                   <button
@@ -931,10 +926,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                     onClick={handleOpenAddModal}
                     style={{
                       padding: '9px 16px',
-                      borderRadius: '12px',
+                      borderRadius: '6px',
                       fontSize: '12.5px',
                       fontWeight: '800',
-                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                      background: '#1e3a8a',
                       border: 'none',
                       color: '#ffffff',
                       cursor: 'pointer',
@@ -944,7 +939,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
                     }}
                   >
-                    <Plus size={14} /> 신규 업무 등록
+                    <Plus size={14} /> 추가
                   </button>
                 </div>
               </div>
@@ -1229,7 +1224,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                 }}
                                                 title="이 업무 바로 수정"
                                               >
-                                                <Edit3 size={12} /> 수정
+                                                <Edit3 size={12} />
                                               </button>
                                               <button
                                                 type="button"
@@ -1361,8 +1356,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     onClick={() => handleSaveInlineAdd(group.primaryLog)}
                                     style={{
                                       padding: '5px 14px',
-                                      borderRadius: '2px',
-                                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                                      borderRadius: '4px',
+                                      background: '#1e3a8a',
                                       border: 'none',
                                       color: '#ffffff',
                                       fontSize: '11.5px',
@@ -1427,8 +1422,7 @@ export default function WorkLogTab({ onTriggerToast }) {
             boxShadow: '0 20px 50px rgba(15, 23, 42, 0.15)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '18px',
-            animation: 'modalPop 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+            gap: '18px'
           }}>
             {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1556,7 +1550,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="간단하게 업무명을 입력해 주세요."
+                  placeholder="업무명을 작성해 주세요."
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
                   style={{
@@ -1671,57 +1665,36 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
               ))}
 
-              {/* Add Extra Task Button in Modal */}
-              {!editingLogId && (
+
+              {/* Submit / Cancel Buttons */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
                 <button
                   type="button"
-                  onClick={() => setExtraTasks([...extraTasks, { title: '', details: '' }])}
+                  onClick={() => setIsModalOpen(false)}
+                  className="glass-button"
+                  style={{ flex: 1, padding: '12px', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="glass-button-primary"
                   style={{
-                    padding: '10px 14px',
+                    flex: 1.5,
+                    padding: '12px',
                     borderRadius: '4px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '10px',
-                      transition: 'all 0.2s ease',
-                      marginTop: '2px'
-                    }}
-                  >
-                    <Plus size={14} /> 업무 항목 추가 (+1개 더 작성)
-                  </button>
-                )}
-
-                {/* Submit / Cancel Buttons */}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="glass-button"
-                    style={{ flex: 1, padding: '12px', borderRadius: '4px', cursor: 'pointer' }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="submit"
-                    className="glass-button-primary"
-                    style={{
-                      flex: 1.5,
-                      padding: '12px',
-                      borderRadius: '4px',
-                      fontSize: '13px',
-                      fontWeight: '800',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {editingLogId ? '수정 완료' : '업무 일지 저장'}
-                  </button>
-                </div>
-              </form>
-            </div>
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {editingLogId ? '수정 완료' : '저장'}
+                </button>
+              </div>
+            </form>
           </div>
-        )}
+        </div>
+      )}
 
       {/* Modal: Past Work Copy and Import Modal */}
       {isPastWorkModalOpen && (
@@ -1739,361 +1712,322 @@ export default function WorkLogTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-            <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
-              width: '100%',
-              maxWidth: '620px',
-              maxHeight: '85vh',
-              padding: '24px',
-              borderRadius: '14px',
-              border: '1.5px solid #cbd5e1',
-              background: '#ffffff',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)'
-            }}>
-              {/* Modal Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{
-                    width: '42px',
-                    height: '42px',
-                    borderRadius: '4px',
-                    background: 'rgba(30, 58, 138, 0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '1.5px solid #cbd5e1',
-                    color: '#1e3a8a'
-                  }}>
-                    <Copy size={22} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>이전 업무 불러오기 & 복사</span>
-                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#1e3a8a', fontWeight: '700' }}>
-                        대상일: {selectedDate}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                      과거 작성된 업무를 선택하여 <strong>[{selectedDate}]</strong> 일자로 복사 등록합니다.
-                    </div>
+          <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
+            width: '100%',
+            maxWidth: '620px',
+            maxHeight: '85vh',
+            padding: '24px',
+            borderRadius: '14px',
+            border: '1.5px solid #cbd5e1',
+            background: '#ffffff',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '4px',
+                  background: 'rgba(30, 58, 138, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#1e3a8a'
+                }}>
+                  <Copy size={22} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>이전 업무 추가</span>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#1e3a8a', fontWeight: '700' }}>
+                      대상일: {selectedDate}
+                    </span>
                   </div>
                 </div>
-                <button
-                  onClick={() => setIsPastWorkModalOpen(false)}
-                  style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
-                >
-                  <X size={20} />
-                </button>
               </div>
+              <button
+                onClick={() => setIsPastWorkModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-              {/* Search & Category Filter Bar */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <div style={{ position: 'relative', flex: 1 }}>
-                    <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-                    <input
-                      type="text"
-                      placeholder="업무 제목, 상세 내용, 사업장, 작성자 검색..."
-                      value={pastSearchQuery}
-                      onChange={(e) => setPastSearchQuery(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px 10px 36px',
-                        borderRadius: '4px',
-                        background: '#f8fafc',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        color: '#0f172a',
-                        outline: 'none'
-                      }}
-                    />
-                    {pastSearchQuery && (
-                      <button
-                        onClick={() => setPastSearchQuery('')}
-                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                  {/* Category Pills */}
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    {['전체', '사내 업무', '출장 업무'].map(cat => {
-                      const isCatActive = pastFilterCategory === cat;
-                      return (
-                        <button
-                          key={cat}
-                          type="button"
-                          onClick={() => setPastFilterCategory(cat)}
-                          style={{
-                            padding: '6px 12px',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            fontWeight: isCatActive ? '800' : '600',
-                            background: isCatActive ? '#1e3a8a' : '#f1f5f9',
-                            color: isCatActive ? '#ffffff' : '#475569',
-                            border: isCatActive ? '1px solid #1e3a8a' : '1px solid #cbd5e1',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          {cat}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Multi Select All Toggle */}
-                  {filteredPastLogs.length > 0 && (
+            {/* Search & Category Filter Bar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <Search size={16} color="#94a3b8" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+                  <input
+                    type="text"
+                    placeholder="업무 제목, 상세 내용, 사업장, 작성자 검색..."
+                    value={pastSearchQuery}
+                    onChange={(e) => setPastSearchQuery(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px 10px 36px',
+                      borderRadius: '4px',
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      fontSize: '13px',
+                      color: '#0f172a',
+                      outline: 'none'
+                    }}
+                  />
+                  {pastSearchQuery && (
                     <button
-                      type="button"
-                      onClick={() => handleToggleSelectAllPastLogs(filteredPastLogs)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        background: 'none',
-                        border: 'none',
-                        color: '#1e3a8a',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        padding: '4px 8px'
-                      }}
+                      onClick={() => setPastSearchQuery('')}
+                      style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
                     >
-                      {isAllPastLogsSelected ? <CheckSquare size={16} color="#1e3a8a" /> : <Square size={16} color="#94a3b8" />}
-                      전체 선택 ({filteredPastLogs.length}건)
+                      <X size={14} />
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Scrollable Work Logs List */}
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                overflowY: 'auto',
-                maxHeight: '48vh',
-                paddingRight: '4px'
-              }}>
-                {filteredPastLogs.length === 0 ? (
-                  <div style={{
-                    padding: '36px 20px',
-                    textAlign: 'center',
-                    color: '#64748b',
-                    fontSize: '13px',
-                    background: '#f8fafc',
-                    borderRadius: '16px',
-                    border: '1.5px dashed #cbd5e1',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}>
-                    <FileText size={28} color="#94a3b8" />
-                    <span>조건에 맞는 이전 업무 일지 내역이 없습니다.</span>
-                  </div>
-                ) : (
-                  filteredPastLogs.map(item => {
-                    const isSelected = selectedPastLogIds.includes(item.id);
-                    const isBusinessTrip = item.category === '출장 업무';
-                    const siteLabel = item.siteName || item.site_name;
-
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                {/* Category Pills */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {['전체', '사내 업무', '출장 업무'].map(cat => {
+                    const isCatActive = pastFilterCategory === cat;
                     return (
-                      <div
-                        key={item.id}
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setPastFilterCategory(cat)}
                         style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px',
-                          padding: '12px 14px',
-                          borderRadius: '14px',
-                          background: isSelected ? '#eff6ff' : '#ffffff',
-                          border: isSelected ? '1.5px solid #1e3a8a' : '1.5px solid #e2e8f0',
-                          boxShadow: isSelected ? '0 2px 8px rgba(15, 23, 42, 0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
-                          transition: 'all 0.2s ease',
-                          cursor: 'pointer'
+                          padding: '6px 12px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: isCatActive ? '800' : '600',
+                          background: isCatActive ? '#1e3a8a' : '#f1f5f9',
+                          color: isCatActive ? '#ffffff' : '#475569',
+                          border: isCatActive ? '1px solid #1e3a8a' : '1px solid #cbd5e1',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease'
                         }}
-                        onClick={() => handleToggleSelectPastLog(item.id)}
                       >
-                        {/* Left: Checkbox & Log Content */}
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', minWidth: 0, flex: 1 }}>
-                          <div style={{ paddingTop: '2px', color: isSelected ? '#1e3a8a' : '#94a3b8', flexShrink: 0 }}>
-                            {isSelected ? <CheckSquare size={18} color="#1e3a8a" /> : <Square size={18} />}
-                          </div>
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
-                            {/* Badges row: Date, Category, Site, Author */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                {/* Multi Select All Toggle */}
+                {filteredPastLogs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleSelectAllPastLogs(filteredPastLogs)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: 'none',
+                      border: 'none',
+                      color: '#1e3a8a',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      padding: '4px 8px'
+                    }}
+                  >
+                    {isAllPastLogsSelected ? <CheckSquare size={16} color="#1e3a8a" /> : <Square size={16} color="#94a3b8" />}
+                    전체 선택 ({filteredPastLogs.length}건)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Scrollable Work Logs List */}
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              overflowY: 'auto',
+              maxHeight: '48vh',
+              paddingRight: '4px'
+            }}>
+              {filteredPastLogs.length === 0 ? (
+                <div style={{
+                  padding: '36px 20px',
+                  textAlign: 'center',
+                  color: '#64748b',
+                  fontSize: '13px',
+                  background: '#f8fafc',
+                  borderRadius: '16px',
+                  border: '1.5px dashed #cbd5e1',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <FileText size={28} color="#94a3b8" />
+                  <span>조건에 맞는 이전 업무 일지 내역이 없습니다.</span>
+                </div>
+              ) : (
+                filteredPastLogs.map(item => {
+                  const isSelected = selectedPastLogIds.includes(item.id);
+                  const isBusinessTrip = item.category === '출장 업무';
+                  const siteLabel = item.siteName || item.site_name;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        padding: '12px 14px',
+                        borderRadius: '14px',
+                        background: isSelected ? '#eff6ff' : '#ffffff',
+                        border: isSelected ? '1.5px solid #1e3a8a' : '1.5px solid #e2e8f0',
+                        boxShadow: isSelected ? '0 2px 8px rgba(15, 23, 42, 0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
+                        transition: 'all 0.2s ease',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => handleToggleSelectPastLog(item.id)}
+                    >
+                      {/* Left: Checkbox & Log Content */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', minWidth: 0, flex: 1 }}>
+                        <div style={{ paddingTop: '2px', color: isSelected ? '#1e3a8a' : '#94a3b8', flexShrink: 0 }}>
+                          {isSelected ? <CheckSquare size={18} color="#1e3a8a" /> : <Square size={18} />}
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
+                          {/* Badges row: Date, Category, Site, Author */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              color: '#475569',
+                              background: '#f1f5f9',
+                              padding: '2px 6px',
+                              borderRadius: '5px'
+                            }}>
+                              📅 {item.date}
+                            </span>
+
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              padding: '2px 6px',
+                              borderRadius: '5px',
+                              background: isBusinessTrip ? 'rgba(245, 158, 11, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+                              color: isBusinessTrip ? '#d97706' : '#1e3a8a',
+                              border: isBusinessTrip ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(30, 58, 138, 0.25)'
+                            }}>
+                              {isBusinessTrip ? '🚗 출장' : '🏢 사내'}
+                            </span>
+
+                            {isBusinessTrip && siteLabel && (
                               <span style={{
                                 fontSize: '11px',
                                 fontWeight: '700',
-                                color: '#475569',
-                                background: '#f1f5f9',
-                                padding: '2px 6px',
-                                borderRadius: '5px'
-                              }}>
-                                📅 {item.date}
-                              </span>
-
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: '700',
+                                color: '#0f172a',
+                                background: '#fef3c7',
                                 padding: '2px 6px',
                                 borderRadius: '5px',
-                                background: isBusinessTrip ? 'rgba(245, 158, 11, 0.12)' : 'rgba(30, 58, 138, 0.08)',
-                                color: isBusinessTrip ? '#d97706' : '#1e3a8a',
-                                border: isBusinessTrip ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(30, 58, 138, 0.25)'
-                              }}>
-                                {isBusinessTrip ? '🚗 출장' : '🏢 사내'}
-                              </span>
-
-                              {isBusinessTrip && siteLabel && (
-                                <span style={{
-                                  fontSize: '11px',
-                                  fontWeight: '700',
-                                  color: '#0f172a',
-                                  background: '#fef3c7',
-                                  padding: '2px 6px',
-                                  borderRadius: '5px',
-                                  maxWidth: '180px',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}>
-                                  📍 {siteLabel}
-                                </span>
-                              )}
-
-                              {item.authorName && (
-                                <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                  👤 {item.authorName}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Title */}
-                            <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.4' }}>
-                              {item.title}
-                            </div>
-
-                            {/* Details snippet */}
-                            {item.details && (
-                              <div style={{
-                                fontSize: '13px',
-                                color: '#64748b',
-                                lineHeight: '1.45',
+                                maxWidth: '180px',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap'
                               }}>
-                                {item.details}
-                              </div>
+                                📍 {siteLabel}
+                              </span>
+                            )}
+
+                            {item.authorName && (
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                👤 {item.authorName}
+                              </span>
                             )}
                           </div>
+
+                          {/* Title */}
+                          <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.4' }}>
+                            {item.title}
+                          </div>
+
+                          {/* Details snippet */}
+                          {item.details && (
+                            <div style={{
+                              fontSize: '13px',
+                              color: '#64748b',
+                              lineHeight: '1.45',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {item.details}
+                            </div>
+                          )}
                         </div>
-
-                        {/* Right: Quick 1-Click Copy Button */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopySinglePastLog(item);
-                          }}
-                          style={{
-                            padding: '7px 12px',
-                            borderRadius: '10px',
-                            background: '#eff6ff',
-                            border: '1.5px solid #cbd5e1',
-                            color: '#1e3a8a',
-                            fontSize: '12px',
-                            fontWeight: '800',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            flexShrink: 0,
-                            transition: 'all 0.2s ease',
-                            whiteSpace: 'nowrap'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#1e3a8a';
-                            e.currentTarget.style.color = '#ffffff';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#eff6ff';
-                            e.currentTarget.style.color = '#1e3a8a';
-                          }}
-                          title={`'${item.title}' 업무를 [${selectedDate}]로 바로 복사`}
-                        >
-                          <Copy size={13} /> 복사
-                        </button>
                       </div>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Modal Footer Actions */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1.5px solid #e2e8f0', paddingTop: '14px', marginTop: '4px' }}>
-                <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '600' }}>
-                  선택된 항목: <strong style={{ color: selectedPastLogIds.length > 0 ? '#1e3a8a' : '#0f172a' }}>{selectedPastLogIds.length}</strong>건
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button
-                    type="button"
-                    onClick={() => setIsPastWorkModalOpen(false)}
-                    style={{
-                      padding: '10px 16px',
-                      borderRadius: '12px',
-                      background: '#f1f5f9',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#475569',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    닫기
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleCopySelectedPastLogs}
-                    disabled={selectedPastLogIds.length === 0}
-                    style={{
-                      padding: '10px 18px',
-                      borderRadius: '12px',
-                      background: selectedPastLogIds.length > 0
-                        ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)'
-                        : '#cbd5e1',
-                      border: 'none',
-                      color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: '800',
-                      cursor: selectedPastLogIds.length > 0 ? 'pointer' : 'not-allowed',
-                      boxShadow: selectedPastLogIds.length > 0 ? '0 4px 12px rgba(15, 23, 42, 0.25)' : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <Copy size={15} /> 선택한 {selectedPastLogIds.length > 0 ? `${selectedPastLogIds.length}건 ` : ''}복사 등록
-                  </button>
-                </div>
-              </div>
-
+                    </div>
+                  );
+                })
+              )}
             </div>
+
+            {/* Modal Footer Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1.5px solid #e2e8f0', paddingTop: '14px', marginTop: '4px' }}>
+              <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '600' }}>
+                선택된 항목: <strong style={{ color: selectedPastLogIds.length > 0 ? '#1e3a8a' : '#0f172a' }}>{selectedPastLogIds.length}</strong>건
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsPastWorkModalOpen(false)}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '12px',
+                    background: '#f1f5f9',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  닫기
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopySelectedPastLogs}
+                  disabled={selectedPastLogIds.length === 0}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '6px',
+                    background: selectedPastLogIds.length > 0
+                      ? '#1e3a8a'
+                      : '#cbd5e1',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    cursor: selectedPastLogIds.length > 0 ? 'pointer' : 'not-allowed',
+                    boxShadow: selectedPastLogIds.length > 0 ? '0 4px 12px rgba(15, 23, 42, 0.25)' : 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Copy size={15} /> {selectedPastLogIds.length > 0 ? `${selectedPastLogIds.length}건 ` : ''} 등록
+                </button>
+              </div>
+            </div>
+
           </div>
-        )}
+        </div>
+      )}
 
       {/* Modal: Simple Confirmation for Deletion */}
       {isDeleteModalOpen && (
@@ -2175,10 +2109,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   flex: 1.2,
                   padding: '12px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   fontSize: '13px',
                   fontWeight: '800',
-                  background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                  background: '#ef4444',
                   color: '#ffffff',
                   border: 'none',
                   boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',

@@ -54,7 +54,7 @@ const formatPhoneNumber = (value) => {
 const formatToMinutePrecision = (dateVal) => {
   if (!dateVal) return '';
   const str = String(dateVal).trim();
-  
+
   // Format like "2026. 8. 15. 16:35:12" or "2026-08-15 16:35:12" -> "2026. 8. 15. 16:35" or "2026-08-15 16:35"
   const timeSecMatch = str.match(/(:\d{2}):\d{2}/);
   if (timeSecMatch) {
@@ -863,6 +863,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     return () => clearInterval(intervalId);
   }, []);
 
+  const datePickerRef = useRef(null);
+
   // Date Shift Handlers (Left/Right Arrow Navigation)
   const handlePrevDay = () => {
     const parts = selectedDate.split('-');
@@ -884,15 +886,16 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
   const getFormattedKoreanDate = (dateStr) => {
     try {
+      if (!dateStr) return '';
       const parts = dateStr.split('-');
-      if (parts.length < 3) return dateStr;
-      const year = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10);
-      const day = parseInt(parts[2], 10);
-      const d = new Date(year, month - 1, day);
-      const days = ['일', '월', '화', '수', '목', '금', '토'];
-      const dayName = days[d.getDay()];
-      return `${parts[0]}년 ${parts[1]}월 ${parts[2]}일 (${dayName})`;
+      if (parts.length !== 3) return dateStr;
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      const d = parseInt(parts[2], 10);
+      const dateObj = new Date(y, m - 1, d);
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+      const dayName = dayNames[dateObj.getDay()];
+      return `${y}년 ${String(m).padStart(2, '0')}월 ${String(d).padStart(2, '0')}일 (${dayName})`;
     } catch (e) {
       return dateStr;
     }
@@ -1887,7 +1890,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         alignItems: 'center',
         justifyContent: 'space-between',
         width: '100%',
-        gap: '16px',
+        gap: '12px',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
       }}>
         <button
@@ -1912,13 +1915,60 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           <ChevronLeft size={20} />
         </button>
 
-        <div style={{ flex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
-          <span style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-            {getFormattedKoreanDate(selectedDate)}
-          </span>
-          <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            해당 날짜 서약: <strong style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>{filteredList.length}건</strong>
-          </span>
+        {/* Interactive Date Picker Button (Entire Area Clickable -> Triggers Calendar Popup) */}
+        <div
+          style={{
+            position: 'relative',
+            display: 'inline-flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2px 8px',
+            background: 'transparent',
+            border: 'none',
+            boxShadow: 'none',
+            cursor: 'pointer',
+            overflow: 'hidden'
+          }}
+        >
+          {/* Visual Button Text */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '2px',
+            pointerEvents: 'none'
+          }}>
+            <span style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>
+              {getFormattedKoreanDate(selectedDate)}
+            </span>
+            <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>
+              해당 날짜 서약: <strong style={{ color: '#1e3a8a', fontWeight: '800' }}>{filteredList.length}건</strong>
+            </span>
+          </div>
+
+          {/* Transparent Calendar Input spanning 100% width & height with full-clickable-datepicker */}
+          <input
+            ref={datePickerRef}
+            type="date"
+            className="full-clickable-datepicker"
+            value={selectedDate}
+            onChange={(e) => {
+              if (e.target.value) {
+                setSelectedDate(e.target.value);
+              }
+            }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0,
+              cursor: 'pointer',
+              zIndex: 10
+            }}
+          />
         </div>
 
         <button
@@ -2000,7 +2050,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         transition: 'all 0.2s ease'
                       }}
                     >
-                      <UserPlus size={13} /> 동행 등록
+                      <UserPlus size={13} />
                     </button>
 
                     {(() => {
@@ -2204,10 +2254,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                     style={{
                                       width: '100%',
                                       padding: '9px 12px',
-                                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                                      background: '#1e3a8a',
                                       color: '#ffffff',
                                       border: 'none',
-                                      borderRadius: '10px',
+                                      borderRadius: '6px',
                                       fontSize: '12.5px',
                                       fontWeight: '800',
                                       cursor: 'pointer',
@@ -2886,8 +2936,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           style={{
                             marginTop: '6px',
                             padding: '10px 20px',
-                            borderRadius: '10px',
-                            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                            borderRadius: '6px',
+                            background: '#1e3a8a',
                             color: '#fff',
                             border: 'none',
                             fontSize: '12.5px',
@@ -4086,8 +4136,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 style={{
                   flex: 2,
                   padding: '12px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  borderRadius: '6px',
+                  background: '#1e3a8a',
                   color: '#ffffff',
                   border: 'none',
                   fontSize: '13px',

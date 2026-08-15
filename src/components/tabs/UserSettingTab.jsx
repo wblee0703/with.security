@@ -573,21 +573,23 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       {currentUser ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {/* Active User Card Banner */}
-          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', background: 'rgba(30, 58, 138, 0.04)' }}>
+          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
-                  width: '46px',
-                  height: '46px',
+                  width: '40px',
+                  height: '40px',
                   borderRadius: '6px',
                   background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  border: '1.5px solid #1e3a8a',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#ffffff',
                   fontWeight: '900',
-                  fontSize: '20px',
-                  boxShadow: '0 4px 16px rgba(15, 23, 42, 0.3)'
+                  fontSize: '18px',
+                  boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+                  flexShrink: 0
                 }}>
                   {currentUser.name ? currentUser.name.slice(0, 1) : 'U'}
                 </div>
@@ -976,39 +978,6 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 </div>
               </div>
 
-              {isEditUnlocked ? (
-                <button
-                  type="submit"
-                  className="glass-button-primary"
-                  style={{
-                    padding: '12px',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: '700',
-                    fontSize: '13px',
-                    marginTop: '8px'
-                  }}
-                >
-                  <Save size={16} /> 사용자 정보 업데이트 저장
-                </button>
-              ) : (
-                <div style={{
-                  textAlign: 'center',
-                  fontSize: '12.5px',
-                  color: '#64748b',
-                  padding: '14px',
-                  background: '#f8fafc',
-                  borderRadius: '12px',
-                  border: '1.5px dashed #cbd5e1',
-                  marginTop: '6px'
-                }}>
-                  🔒 상단 <strong>[정보 수정]</strong> 버튼을 클릭하여 비밀번호를 인증해야 정보를 수정할 수 있습니다.
-                </div>
-              )}
             </form>
           </div>
 
@@ -1653,8 +1622,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 disabled={isTestingServer}
                 style={{
                   padding: '10px 18px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  borderRadius: '6px',
+                  background: '#1e3a8a',
                   border: 'none',
                   color: '#ffffff',
                   fontSize: '12.5px',
@@ -2002,8 +1971,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   style={{
                     flex: 1.4,
                     padding: '10px',
-                    borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                    borderRadius: '6px',
+                    background: '#1e3a8a',
                     border: 'none',
                     color: '#ffffff',
                     fontSize: '12.5px',
