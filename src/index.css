@@ -434,3 +434,17 @@ option {
     width: 100% !important;
   }
 }
+
+/* Static In-Place Fade In Animation (No sliding or moving) */
+@keyframes staticFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.static-fade-in {
+  animation: staticFadeIn 0.2s ease-in-out forwards;
+}

@@ -586,12 +586,12 @@ export default function WorkLogTab({ onTriggerToast }) {
         {/* Left Column: Header Banner, Date Navigation, Search Filter, & Work Log List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
           {/* Header Banner */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '20px', border: '1.5px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '18px', border: '1.5px solid #cbd5e1' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '46px',
-                  height: '46px',
+                  width: '44px',
+                  height: '44px',
                   borderRadius: '14px',
                   background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
                   border: '1.5px solid #38bdf8',
@@ -602,37 +602,41 @@ export default function WorkLogTab({ onTriggerToast }) {
                   boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
                   flexShrink: 0
                 }}>
-                  <ClipboardList size={24} />
+                  <ClipboardList size={22} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
                     업무 일지 관리
                   </div>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Action Buttons: Stacked Vertically with Equal Width */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '124px', flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={handleOpenPastWorkModal}
                   style={{
-                    padding: '10px 15px',
-                    borderRadius: '12px',
-                    fontSize: '13px',
+                    width: '100%',
+                    padding: '7px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
                     fontWeight: '800',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    justifyContent: 'center',
+                    gap: '5px',
                     background: '#f0f9ff',
                     border: '1.5px solid #7dd3fc',
                     color: '#0284c7',
-                    boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)',
-                    transition: 'all 0.2s ease'
+                    boxShadow: '0 2px 6px rgba(14, 165, 233, 0.1)',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap'
                   }}
                   title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
                 >
-                  <Copy size={15} /> 이전 업무 추가
+                  <Copy size={13} /> 이전 업무 추가
                 </button>
 
                 <button
@@ -640,19 +644,22 @@ export default function WorkLogTab({ onTriggerToast }) {
                   onClick={handleOpenAddModal}
                   className="glass-button-primary"
                   style={{
-                    padding: '10px 18px',
-                    borderRadius: '12px',
-                    fontSize: '13px',
+                    width: '100%',
+                    padding: '7px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12px',
                     fontWeight: '800',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    justifyContent: 'center',
+                    gap: '5px',
                     border: '1px solid #0284c7',
-                    boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)'
+                    boxShadow: '0 3px 10px rgba(14, 165, 233, 0.22)',
+                    whiteSpace: 'nowrap'
                   }}
                 >
-                  <Plus size={16} /> 업무 등록
+                  <Plus size={14} /> 업무 추가
                 </button>
               </div>
             </div>

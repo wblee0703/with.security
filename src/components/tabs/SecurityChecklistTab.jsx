@@ -50,6 +50,19 @@ const formatPhoneNumber = (value) => {
   }
 };
 
+// Helper: Format date/time string to minute precision (stripping seconds)
+const formatToMinutePrecision = (dateVal) => {
+  if (!dateVal) return '';
+  const str = String(dateVal).trim();
+  
+  // Format like "2026. 8. 15. 16:35:12" or "2026-08-15 16:35:12" -> "2026. 8. 15. 16:35" or "2026-08-15 16:35"
+  const timeSecMatch = str.match(/(:\d{2}):\d{2}/);
+  if (timeSecMatch) {
+    return str.replace(/(:\d{2}):\d{2}/, timeSecMatch[1]);
+  }
+  return str;
+};
+
 export default function SecurityChecklistTab({ onTriggerToast }) {
   const [checklistList, setChecklistList] = useState([]);
 
@@ -415,31 +428,46 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     const isAppRequired = !isAppX;
 
     if (isAppRequired) {
-      const isSamsung = cleanSiteName.includes('삼성') || cleanSiteName.includes('samsung') || (foundSite && foundSite.name && (foundSite.name.includes('삼성') || foundSite.name.toLowerCase().includes('samsung')));
-      const isHynix = cleanSiteName.includes('하이닉스') || cleanSiteName.includes('hynix') || cleanSiteName.includes('sk') || (foundSite && foundSite.name && (foundSite.name.includes('하이닉스') || foundSite.name.toLowerCase().includes('hynix')));
-      const isLgd = cleanSiteName.includes('lg') || cleanSiteName.includes('디스플레이') || cleanSiteName.includes('lgd') || (foundSite && foundSite.name && (foundSite.name.includes('LG') || foundSite.name.includes('디스플레이')));
+      const appUrlLower = (foundSite?.appUrl || '').toLowerCase();
+      const appNameLower = (foundSite?.appName || '').toLowerCase();
+      const siteNameLower = cleanSiteName;
+
+      // 1. Samsung MDM Match (Samsung site, Samsung app name, or Samsung MDM package)
+      const isSamsung = siteNameLower.includes('삼성') || siteNameLower.includes('samsung') ||
+        appNameLower.includes('삼성') || appNameLower.includes('samsung') || appNameLower.includes('mdm') || appNameLower.includes('협력사') ||
+        appUrlLower.includes('moplus') || appUrlLower.includes('samsung') || appUrlLower.includes('knox') || appUrlLower.includes('semi');
+
+      // 2. SK Hynix SSM Match (Hynix site, Hynix app name, or SSM package)
+      const isHynix = siteNameLower.includes('하이닉스') || siteNameLower.includes('hynix') || siteNameLower.includes('sk') ||
+        appNameLower.includes('하이닉스') || appNameLower.includes('hynix') || appNameLower.includes('ssm') ||
+        appUrlLower.includes('skhynix') || appUrlLower.includes('ssm');
+
+      // 3. LG Display DeviceOn Match (LGD site, LGD app name, or DeviceOn package)
+      const isLgd = siteNameLower.includes('lg') || siteNameLower.includes('디스플레이') || siteNameLower.includes('lgd') || siteNameLower.includes('디바이스온') ||
+        appNameLower.includes('lg') || appNameLower.includes('디스플레이') || appNameLower.includes('lgd') || appNameLower.includes('디바이스온') || appNameLower.includes('deviceon') ||
+        appUrlLower.includes('lgd') || appUrlLower.includes('deviceon') || appUrlLower.includes('lgdisplay');
 
       if (isSamsung) {
         return {
-          appName: '협력사 MDM (삼성)',
-          appCode: 'SAMSUNG_PARTNER_MDM',
-          shortName: '협력사 MDM',
+          appName: '삼성 MDM',
+          appCode: 'SAMSUNG_MDM',
+          shortName: '삼성 MDM',
           packageName: 'com.moplus.samsung.semi.user',
-          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
+          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
           company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
           color: '#0284c7',
           badgeBg: 'rgba(2, 132, 199, 0.15)',
-          desc: '협력사 MDM (com.moplus.samsung.semi.user) 보안앱 실행 및 카메라 차단 검수',
+          desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user) 모바일 보안 앱 실행 및 카메라 차단 검수',
           isChecklistMode: false
         };
       } else if (isHynix) {
         return {
           appName: 'SK하이닉스 SSM',
           appCode: 'SKHYNIX_SSM',
-          shortName: 'SSM',
+          shortName: 'SK하이닉스 SSM',
           packageName: 'com.skhynix.ssm',
-          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
-          company: 'SK하이닉스 이천/청주',
+          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
+          company: 'SK하이닉스 이천 / 청주사업장',
           color: '#dc2626',
           badgeBg: 'rgba(220, 38, 38, 0.15)',
           desc: 'SK하이닉스 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
@@ -447,30 +475,30 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         };
       } else if (isLgd) {
         return {
-          appName: 'LGD 디바이스온 (LG디스플레이)',
+          appName: 'LG디스플레이 디바이스온',
           appCode: 'LGD_DEVICEON',
-          shortName: '디바이스온',
+          shortName: 'LGD 디바이스온',
           packageName: 'com.lgd.deviceon',
-          scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
-          company: 'LG디스플레이 파주/구미',
+          scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
+          company: 'LG디스플레이 파주 / 구미사업장',
           color: '#e11d48',
           badgeBg: 'rgba(225, 29, 72, 0.15)',
-          desc: 'LG디스플레이 디바이스온 모바일 보안 앱 실행 및 카메라 차단 검수',
+          desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱 실행 및 카메라 차단 검수',
           isChecklistMode: false
         };
       }
 
       return {
-        appName: '사내 모바일 보안 앱',
+        appName: foundSite?.appName || '사내 모바일 보안 앱',
         appCode: 'SECURITY_APP',
-        shortName: '보안앱O',
+        shortName: foundSite?.appName || '보안앱O',
         packageName: 'com.moplus.samsung.semi.user',
-        scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
+        scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
         tokenPrefix: 'SEC-APP-',
-        company: '보안앱O 사업장',
+        company: foundSite?.name || '보안앱O 사업장',
         color: '#34d399',
         badgeBg: 'rgba(16, 185, 129, 0.15)',
-        desc: '사업장 출입 보안 앱 상태 확인 (카메라 차단 검수)',
+        desc: `${foundSite?.appName || '사업장 출입 보안 앱'} 실행 및 카메라 차단 검수`,
         isChecklistMode: false
       };
     } else {
@@ -567,7 +595,41 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     setSecAppFailed(false);
     setCameraCheckVerified(false);
     setStep2Attempted(false);
-    setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+    setFormData(prev => ({
+      ...prev,
+      mdmVerified: false,
+      cameraLocked: false,
+      docChecklist: { gateApproved: false, docSecVerified: false, preCheckVerified: false },
+      materials: [],
+      agreedToTerms: false
+    }));
+  };
+
+  // Reset all steps 2, 3, 4 completely when entrance site is changed
+  const resetAllPostSiteSteps = (newSiteVal) => {
+    setStep1Attempted(false);
+    setAppCheckState({ isChecking: false, isVerified: false });
+    setCameraCheckState({ isTesting: false, isVerified: false, result: null, message: '' });
+    setAppScanState({ isScanning: false, status: 'NOT_INSTALLED', lastScannedAt: null, scanLog: [] });
+    setCameraSelfChecklist({ stickerAttached: false, noPhotoAgreed: false, cameraChecked: false });
+    setSecAppVerified(false);
+    setSecAppFailed(false);
+    setCameraCheckVerified(false);
+    setStep2Attempted(false);
+
+    setFormData(prev => ({
+      ...prev,
+      site: newSiteVal,
+      mdmVerified: false,
+      cameraLocked: false,
+      docChecklist: {
+        gateApproved: false,
+        docSecVerified: false,
+        preCheckVerified: false
+      },
+      materials: [],
+      agreedToTerms: false
+    }));
   };
 
   // Close Security Pledge Modal & Force Security App Re-verification
@@ -797,8 +859,23 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   // Back button hook for main pledge modal
   useModalBack(isModalOpen, handleCloseModal, 'security-pledge-modal');
 
-  // Step Navigation Handler (Allows free step navigation)
+  // Step Navigation Handler with Validation Guards
   const handleStepHeaderClick = (targetStep) => {
+    if (targetStep > 1 && (!formData.site || !formData.site.trim())) {
+      if (onTriggerToast) onTriggerToast('1단계: 출입 사업장을 먼저 선택해 주세요.', 'warning');
+      setActiveStep(1);
+      return;
+    }
+    const targetApp = getTargetSecurityAppInfo(formData.site);
+    const isStep2Done = targetApp.isChecklistMode
+      ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
+      : (secAppVerified && cameraCheckVerified);
+
+    if (targetStep > 2 && !isStep2Done) {
+      if (onTriggerToast) onTriggerToast('2단계: 모바일 보안 앱 검수를 먼저 완료해 주세요.', 'warning');
+      setActiveStep(2);
+      return;
+    }
     setActiveStep(targetStep);
   };
 
@@ -2137,7 +2214,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       📌 {item.purpose || '작업'}
                     </span>
                   </div>
-                  <div className="mono-font" style={{ fontSize: '11.5px', color: '#64748b' }}>등록일: {item.createdAt}</div>
+                  <div className="mono-font" style={{ fontSize: '11.5px', color: '#64748b' }}>등록일: {formatToMinutePrecision(item.createdAt || item.signature_date || item.signatureDate || item.signedAt)}</div>
                 </div>
               </div>
             );
@@ -2416,7 +2493,14 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               return;
                             }
 
-                            setFormData({ ...formData, site: val });
+                            const previousSite = formData.site;
+                            resetAllPostSiteSteps(val);
+
+                            if (previousSite && previousSite !== val) {
+                              if (onTriggerToast) {
+                                onTriggerToast(`🔄 사업장 변경: 보안앱 검수 및 체크리스트(2·3·4단계)가 초기화되었습니다. 다시 검수를 진행해 주세요.`, 'info');
+                              }
+                            }
                           }}
                           style={{
                             width: '100%',
@@ -2453,7 +2537,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                   color: isPledged ? '#94a3b8' : '#0f172a'
                                 }}
                               >
-                                [{(s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O'}] {displayName} {isPledged ? '⛔ (오늘 서약 완료됨)' : ''}
+                                [{(s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O'}] {displayName}
                               </option>
                             );
                           })}

@@ -111,9 +111,6 @@ export default function MobileContainer({
         if (serverUrl) {
           await dbService.syncAllWithServer(serverUrl);
         }
-        window.dispatchEvent(new CustomEvent('with_security_toast', {
-          detail: { message: '🔄 데이터를 최신 상태로 새로고침했습니다.' }
-        }));
       } catch (err) {
         console.warn('Pull-to-refresh error:', err);
       } finally {

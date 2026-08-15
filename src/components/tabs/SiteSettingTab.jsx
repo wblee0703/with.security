@@ -6,9 +6,9 @@ import { launchApp, scanInstalledSecurityApps } from '../../services/appLauncher
 import { useModalBack } from '../../services/modalBackHandler';
 
 const SECURITY_APP_CATALOG = [
-  { id: 'knox', name: '협력사 MDM (삼성)', company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end', desc: '협력사 MDM (com.moplus.samsung.semi.user)', badge: '삼성' },
+  { id: 'knox', name: '삼성 MDM', company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end', desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user)', badge: '삼성' },
   { id: 'ssm', name: 'SK하이닉스 SSM', company: 'SK하이닉스 이천 / 청주사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end', desc: 'SK하이닉스 Smart Security Manager', badge: 'SK하이닉스' },
-  { id: 'lgd', name: 'LGD 디바이스온 (LG디스플레이)', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end', desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱', badge: 'LGD' }
+  { id: 'lgd', name: 'LG디스플레이 디바이스온', company: 'LG디스플레이 파주 / 구미사업장', scheme: 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end', desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱', badge: 'LGD' }
 ];
 
 export default function SiteSettingTab({ onTriggerToast }) {

@@ -409,27 +409,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           </div>
         </div>
-
-        <button
-          onClick={loadData}
-          style={{
-            background: '#ffffff',
-            border: '1.5px solid #cbd5e1',
-            color: '#0f172a',
-            padding: '8px 14px',
-            borderRadius: '12px',
-            fontSize: '12px',
-            fontWeight: '700',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            transition: 'all 0.2s ease',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-          }}
-        >
-          <RefreshCw size={14} className={isLoading ? 'spin-anim' : ''} /> 새로고침
-        </button>
       </div>
 
       {/* 1:1 Responsive Split Executive Report Grid */}

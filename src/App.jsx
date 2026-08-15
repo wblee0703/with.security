@@ -302,33 +302,35 @@ export default function App() {
         </div>
       )}
 
-      {/* Bottom-Center App Exit Prompt Popup on Back Button Press */}
+      {/* Bottom-Center App Exit Prompt Popup on Back Button Press (In-Place Fade Appearance) */}
       {exitPromptMessage && (
-        <div style={{
-          position: 'fixed',
-          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 85px)',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 9999,
-          background: 'rgba(15, 23, 42, 0.95)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1.5px solid rgba(255, 255, 255, 0.18)',
-          color: '#ffffff',
-          padding: '12px 22px',
-          borderRadius: '28px',
-          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(14, 165, 233, 0.25)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '9px',
-          fontSize: '13px',
-          fontWeight: '800',
-          letterSpacing: '-0.2px',
-          whiteSpace: 'nowrap',
-          maxWidth: '90vw',
-          pointerEvents: 'none',
-          animation: 'float 0.25s ease-out'
-        }}>
+        <div
+          className="static-fade-in"
+          style={{
+            position: 'fixed',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 85px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.95)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1.5px solid rgba(255, 255, 255, 0.18)',
+            color: '#ffffff',
+            padding: '12px 22px',
+            borderRadius: '28px',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(14, 165, 233, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '9px',
+            fontSize: '13px',
+            fontWeight: '800',
+            letterSpacing: '-0.2px',
+            whiteSpace: 'nowrap',
+            maxWidth: '90vw',
+            pointerEvents: 'none'
+          }}
+        >
           <span style={{ fontSize: '15px' }}>🚪</span>
           <span>{exitPromptMessage}</span>
         </div>
