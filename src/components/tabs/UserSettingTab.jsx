@@ -480,106 +480,114 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Top Banner Header */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '4px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
-              flexShrink: 0
-            }}>
-              <UserCheck size={24} />
-            </div>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-                사용자 정보
-              </div>
-            </div>
+      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* Row 1: Title & Icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+            border: '1.5px solid #1e3a8a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+            flexShrink: 0
+          }}>
+            <UserCheck size={22} />
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-            {currentUser && (
-              <button
-                onClick={handleLogout}
-                style={{
-                  background: 'rgba(239, 68, 68, 0.08)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  color: '#dc2626',
-                  padding: '8px 16px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  width: '100%',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <LogOut size={14} /> 로그아웃
-              </button>
-            )}
-
-            {currentUser && (isDevUser || isManagerUser) && (
-              <button
-                onClick={handleOpenAccountMgmtModal}
-                style={{
-                  background: 'rgba(14, 165, 233, 0.1)',
-                  border: '1px solid rgba(14, 165, 233, 0.25)',
-                  color: '#0284c7',
-                  padding: '8px 16px',
-                  borderRadius: '12px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  width: '100%',
-                  boxShadow: '0 2px 8px rgba(14, 165, 233, 0.15)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Users size={14} /> 계정 관리
-              </button>
-            )}
+          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+            사용자 정보
           </div>
         </div>
+
+        {/* Row 2: Action Buttons (계정 관리 왼쪽, 로그아웃 오른쪽 1:1 너비) */}
+        {currentUser && (
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: (isDevUser || isManagerUser) ? '1fr 1fr' : '1fr',
+            gap: '8px',
+            width: '100%'
+          }}>
+            {(isDevUser || isManagerUser) && (
+              <button
+                type="button"
+                onClick={handleOpenAccountMgmtModal}
+                style={{
+                  width: '100%',
+                  background: 'rgba(30, 58, 138, 0.08)',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#1e3a8a',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Users size={15} /> 계정 관리
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                width: '100%',
+                background: '#fff1f2',
+                border: '1.5px solid #fda4af',
+                color: '#e11d48',
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(225, 29, 72, 0.08)',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <LogOut size={15} /> 로그아웃
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Mode 1: Logged In User Profile Console */}
       {currentUser ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {/* Active User Card Banner */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', background: 'rgba(0, 242, 254, 0.04)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', background: 'rgba(30, 58, 138, 0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
-                  width: '50px',
-                  height: '50px',
-                  borderRadius: '4px',
-                  background: 'linear-gradient(135deg, #00f2fe 0%, #3b82f6 100%)',
+                  width: '46px',
+                  height: '46px',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#050b14',
+                  color: '#ffffff',
                   fontWeight: '900',
                   fontSize: '20px',
-                  boxShadow: '0 4px 16px rgba(0, 242, 254, 0.3)'
+                  boxShadow: '0 4px 16px rgba(15, 23, 42, 0.3)'
                 }}>
                   {currentUser.name ? currentUser.name.slice(0, 1) : 'U'}
                 </div>
@@ -593,15 +601,15 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       borderRadius: '6px',
                       fontSize: '10px',
                       fontWeight: '700',
-                      background: currentUser.role === '개발자' ? 'rgba(14, 165, 233, 0.15)' : currentUser.role === '관리자' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                      color: currentUser.role === '개발자' ? '#0284c7' : currentUser.role === '관리자' ? '#d97706' : '#059669',
-                      border: currentUser.role === '개발자' ? '1px solid rgba(14, 165, 233, 0.3)' : currentUser.role === '관리자' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                      background: currentUser.role === '개발자' ? 'rgba(30, 58, 138, 0.12)' : currentUser.role === '관리자' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                      color: currentUser.role === '개발자' ? '#1e3a8a' : currentUser.role === '관리자' ? '#d97706' : '#059669',
+                      border: currentUser.role === '개발자' ? '1px solid rgba(30, 58, 138, 0.25)' : currentUser.role === '관리자' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
                     }}>
                       구분: {currentUser.role || '일반'}
                     </span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                    <span style={{ color: '#0284c7', fontWeight: '700' }}>{currentUser.division}</span> • {currentUser.team} • ID: <strong style={{ color: '#0284c7' }}>{currentUser.username}</strong>
+                    <span style={{ color: '#1e3a8a', fontWeight: '700' }}>{currentUser.division}</span> • {currentUser.team} • ID: <strong style={{ color: '#1e3a8a' }}>{currentUser.username}</strong>
                   </div>
                 </div>
               </div>
@@ -609,10 +617,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           </div>
 
           {/* Profile Edit Form */}
-          <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
+          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <User size={18} color="#0284c7" /> 사용자 상세 정보 수정 및 관리
+                <User size={18} color="#1e3a8a" /> 사용자 상세 정보 수정 및 관리
               </div>
 
               {/* Edit Mode Toggle / Verify Button */}
@@ -621,17 +629,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 onClick={handleOpenVerifyModal}
                 style={{
                   padding: '7px 14px',
-                  borderRadius: '10px',
-                  border: isEditUnlocked ? '1.5px solid #fda4af' : '1.5px solid #7dd3fc',
-                  background: isEditUnlocked ? '#fff1f2' : '#f0f9ff',
-                  color: isEditUnlocked ? '#e11d48' : '#0284c7',
+                  borderRadius: '6px',
+                  border: isEditUnlocked ? '1.5px solid #fda4af' : '1.5px solid #cbd5e1',
+                  background: isEditUnlocked ? '#fff1f2' : '#eff6ff',
+                  color: isEditUnlocked ? '#e11d48' : '#1e3a8a',
                   fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: isEditUnlocked ? '0 2px 6px rgba(244, 63, 94, 0.15)' : '0 2px 6px rgba(14, 165, 233, 0.15)',
+                  boxShadow: isEditUnlocked ? '0 2px 6px rgba(244, 63, 94, 0.15)' : '0 2px 6px rgba(15, 23, 42, 0.1)',
                   transition: 'all 0.2s ease'
                 }}
               >
@@ -664,7 +672,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         padding: '10px 14px',
                         borderRadius: '12px',
                         background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
                         color: isEditUnlocked ? '#0f172a' : '#64748b',
                         fontWeight: '700',
                         fontSize: '13px',
@@ -685,9 +693,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         width: '100%',
                         padding: '10px 14px',
                         borderRadius: '12px',
-                        background: isEditUnlocked ? '#0a0f1d' : 'rgba(255, 255, 255, 0.04)',
-                        border: isEditUnlocked ? '1px solid rgba(255, 255, 255, 0.4)' : '1px solid rgba(255, 255, 255, 0.1)',
-                        color: isEditUnlocked ? '#f59e0b' : '#94a3b8',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
                         fontWeight: '700',
                         fontSize: '13px',
                         outline: 'none',
@@ -706,9 +714,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         width: '100%',
                         padding: '10px 14px',
                         borderRadius: '12px',
-                        background: 'rgba(255, 255, 255, 0.04)',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        color: '#94a3b8',
+                        background: '#f1f5f9',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#64748b',
                         fontSize: '13px',
                         outline: 'none',
                         cursor: 'not-allowed'
@@ -738,7 +746,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -771,7 +779,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -801,7 +809,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -833,7 +841,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -865,7 +873,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -890,7 +898,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       padding: '10px 14px',
                       borderRadius: '12px',
                       background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                      border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
                       color: isEditUnlocked ? '#0f172a' : '#64748b',
                       fontSize: '13px',
                       fontWeight: '700',
@@ -903,16 +911,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
               {/* Password Change Section (Optional) */}
               <div style={{
-                background: isEditUnlocked ? '#f0f9ff' : '#f8fafc',
-                border: isEditUnlocked ? '1.5px solid #7dd3fc' : '1.5px solid #e2e8f0',
+                background: isEditUnlocked ? '#eff6ff' : '#f8fafc',
+                border: isEditUnlocked ? '1.5px solid #bfdbfe' : '1.5px solid #e2e8f0',
                 padding: '16px',
                 borderRadius: '16px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '12px'
               }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: isEditUnlocked ? '#0284c7' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Key size={15} color={isEditUnlocked ? '#0284c7' : '#64748b'} /> 계정 비밀번호 변경 (선택 사항)
+                <div style={{ fontSize: '13px', fontWeight: '800', color: isEditUnlocked ? '#1e3a8a' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Key size={15} color={isEditUnlocked ? '#1e3a8a' : '#64748b'} /> 계정 비밀번호 변경 (선택 사항)
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -931,7 +939,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         padding: '10px 14px',
                         borderRadius: '12px',
                         background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
                         color: isEditUnlocked ? '#0f172a' : '#64748b',
                         fontSize: '13px',
                         fontWeight: '700',
@@ -956,7 +964,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         padding: '10px 14px',
                         borderRadius: '12px',
                         background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #38bdf8' : '1.5px solid #cbd5e1',
+                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
                         color: isEditUnlocked ? '#0f172a' : '#64748b',
                         fontSize: '13px',
                         fontWeight: '700',
@@ -1025,7 +1033,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 maxWidth: '400px',
                 borderRadius: '24px',
                 overflow: 'hidden',
-                border: '1.5px solid #38bdf8',
+                border: '1.5px solid #3b82f6',
                 background: '#ffffff',
                 boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)',
                 padding: '24px'
@@ -1036,13 +1044,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       width: '38px',
                       height: '38px',
                       borderRadius: '12px',
-                      background: 'rgba(2, 132, 199, 0.15)',
-                      border: '1.5px solid #bae6fd',
+                      background: 'rgba(30, 58, 138, 0.08)',
+                      border: '1.5px solid #cbd5e1',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center'
                     }}>
-                      <Key size={20} color="#0284c7" />
+                      <Key size={20} color="#1e3a8a" />
                     </div>
                     <div>
                       <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
@@ -1076,7 +1084,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       style={{
                         width: '100%',
                         padding: '12px 14px',
-                        borderRadius: '12px',
+                        borderRadius: '6px',
                         background: '#ffffff',
                         border: '1.5px solid #cbd5e1',
                         color: '#0f172a',
@@ -1094,7 +1102,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       style={{
                         flex: 1,
                         padding: '10px',
-                        borderRadius: '12px',
+                        borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '700',
                         cursor: 'pointer'
@@ -1108,7 +1116,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       style={{
                         flex: 1,
                         padding: '10px',
-                        borderRadius: '12px',
+                        borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '700',
                         cursor: 'pointer'
@@ -1124,7 +1132,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         </div>
       ) : (
         /* Mode 2: Logged Out State (Login / Signup Tabs) */
-        <div className="glass-panel" style={{ padding: '24px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
           {/* Tab Selection */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
             <button
@@ -1133,12 +1141,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 flex: 1,
                 padding: '10px',
                 borderRadius: '12px',
-                border: authMode === 'login' ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                border: authMode === 'login' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                 fontSize: '13px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                background: authMode === 'login' ? 'rgba(2, 132, 199, 0.1)' : '#ffffff',
-                color: authMode === 'login' ? '#0284c7' : '#64748b',
+                background: authMode === 'login' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                color: authMode === 'login' ? '#1e3a8a' : '#64748b',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1154,12 +1162,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 flex: 1,
                 padding: '10px',
                 borderRadius: '12px',
-                border: authMode === 'signup' ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                border: authMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                 fontSize: '13px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                background: authMode === 'signup' ? 'rgba(2, 132, 199, 0.1)' : '#ffffff',
-                color: authMode === 'signup' ? '#0284c7' : '#64748b',
+                background: authMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                color: authMode === 'signup' ? '#1e3a8a' : '#64748b',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -1503,9 +1511,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
       {/* Remote Backend Server Configuration Card (Visible ONLY for Developer Role) */}
       {currentUser?.role === '개발자' && (
-        <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #7dd3fc', background: '#f0f9ff', marginTop: '10px' }}>
+        <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1', background: '#eff6ff', marginTop: '2px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-            <div style={{ fontSize: '15px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Globe size={18} /> 호스팅 백엔드 서버 연동 설정 (개발자 전용)
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1530,13 +1538,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           <p style={{ fontSize: '12px', color: '#475569', marginBottom: '14px', lineHeight: '1.5' }}>
             {isServerLocked ? (
               <>
-                현재 앱은 <strong style={{ color: '#0284c7' }}>{activeServerUrl || '기본 도메인(wblee0703.github.io)'}</strong>으로 안전하게 고정되어 있습니다.<br />
+                현재 앱은 <strong style={{ color: '#1e3a8a' }}>{activeServerUrl || '기본 도메인(wblee0703.github.io)'}</strong>으로 안전하게 고정되어 있습니다.<br />
                 향후 가비아 호스팅 등으로 서버 도메인을 이전할 때만 <strong>[수정 잠금 해제]</strong>를 진행해 주세요.
               </>
             ) : (
               <>
                 모바일 APK 설치 후 맨 처음 접속 시 백엔드 DB 주소를 연결합니다.<br />
-                - 가비아 호스팅 이전 기본 주소: <code style={{ color: '#0284c7', background: '#ffffff', padding: '1px 4px', borderRadius: '4px', border: '1px solid #bae6fd' }}>https://wblee0703.github.io/with.security</code><br />
+                - 가비아 호스팅 이전 기본 주소: <code style={{ color: '#1e3a8a', background: '#ffffff', padding: '1px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>https://wblee0703.github.io/with.security</code><br />
                 - 저장을 완료하면 이후 실수로 변경되지 않도록 <strong>자동으로 수정 방지 잠금</strong>이 적용됩니다.
               </>
             )}
@@ -1549,7 +1557,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             </label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
-                <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7' }} />
+                <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#1e3a8a' }} />
                 <input
                   type="text"
                   disabled={isServerLocked}
@@ -1561,7 +1569,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     padding: '10px 14px 10px 38px',
                     borderRadius: '12px',
                     background: isServerLocked ? '#f1f5f9' : '#ffffff',
-                    border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #7dd3fc',
+                    border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #1e3a8a',
                     color: '#0f172a',
                     fontSize: '13px',
                     fontWeight: '700',
@@ -1580,7 +1588,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               <button
                 type="button"
                 onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
-                style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #7dd3fc', color: '#0284c7', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#1e3a8a', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
               >
                 🌐 기본 호스팅 주소 (wblee0703.github.io)
               </button>
@@ -1646,7 +1654,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 style={{
                   padding: '10px 18px',
                   borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                   border: 'none',
                   color: '#ffffff',
                   fontSize: '12.5px',
@@ -1655,7 +1663,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                  boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
                 }}
               >
                 <Save size={14} /> 초기 설정 완료 및 영구 고정(잠금)
@@ -1721,11 +1729,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
               <div>
                 <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Users size={20} color="#0284c7" /> 사내 계정 관리 센터
+                  <Users size={20} color="#1e3a8a" /> 사내 계정 관리 센터
                 </div>
                 <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   {isDevUser ? (
-                    <span style={{ color: '#0284c7', fontWeight: '700' }}>[전체 사내 계정 조회 및 관리 - 개발자 권한]</span>
+                    <span style={{ color: '#1e3a8a', fontWeight: '700' }}>[전체 사내 계정 조회 및 관리 - 개발자 권한]</span>
                   ) : (
                     <span style={{ color: '#d97706', fontWeight: '700' }}>[{currentUser?.division || '소속'} 소속 계정 조회 및 관리 - 관리자 권한]</span>
                   )}
@@ -1806,7 +1814,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         width: '42px',
                         height: '42px',
                         borderRadius: '12px',
-                        background: u.role === '개발자' ? 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)' :
+                        background: u.role === '개발자' ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' :
                           u.role === '관리자' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' :
                             '#e2e8f0',
                         display: 'flex',
@@ -1833,9 +1841,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                 borderRadius: '6px',
                                 fontSize: '11px',
                                 fontWeight: '700',
-                                background: u.role === '개발자' ? '#f0f9ff' : u.role === '관리자' ? '#fffbeb' : '#ecfdf5',
-                                border: u.role === '개발자' ? '1.5px solid #7dd3fc' : u.role === '관리자' ? '1.5px solid #fde68a' : '1.5px solid #a7f3d0',
-                                color: u.role === '개발자' ? '#0284c7' : u.role === '관리자' ? '#d97706' : '#059669',
+                                background: u.role === '개발자' ? '#eff6ff' : u.role === '관리자' ? '#fffbeb' : '#ecfdf5',
+                                border: u.role === '개발자' ? '1.5px solid #cbd5e1' : u.role === '관리자' ? '1.5px solid #fde68a' : '1.5px solid #a7f3d0',
+                                color: u.role === '개발자' ? '#1e3a8a' : u.role === '관리자' ? '#d97706' : '#059669',
                                 cursor: u.username === 'admin' ? 'not-allowed' : 'pointer',
                                 outline: 'none'
                               }}
@@ -1850,9 +1858,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               borderRadius: '4px',
                               fontSize: '10px',
                               fontWeight: '700',
-                              background: u.role === '개발자' ? 'rgba(2, 132, 199, 0.12)' : u.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                              color: u.role === '개발자' ? '#0284c7' : u.role === '관리자' ? '#d97706' : '#059669',
-                              border: u.role === '개발자' ? '1px solid #7dd3fc' : u.role === '관리자' ? '1px solid #fde68a' : '1px solid #a7f3d0'
+                              background: u.role === '개발자' ? 'rgba(30, 58, 138, 0.12)' : u.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                              color: u.role === '개발자' ? '#1e3a8a' : u.role === '관리자' ? '#d97706' : '#059669',
+                              border: u.role === '개발자' ? '1px solid #cbd5e1' : u.role === '관리자' ? '1px solid #fde68a' : '1px solid #a7f3d0'
                             }}>
                               {u.role || '일반'}
                             </span>
@@ -1865,7 +1873,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                           <span>•</span>
                           <span className="mono-font">{u.phone || '연락처 미등록'}</span>
                           <span>•</span>
-                          <span>ID: <strong style={{ color: '#0284c7' }}>{u.username}</strong></span>
+                          <span>ID: <strong style={{ color: '#1e3a8a' }}>{u.username}</strong></span>
                         </div>
                       </div>
                     </div>
@@ -1932,7 +1940,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
-                <Key size={18} color="#0284c7" /> 서버 연동 수정 잠금 해제
+                <Key size={18} color="#1e3a8a" /> 서버 연동 수정 잠금 해제
               </div>
               <button
                 type="button"
@@ -1995,13 +2003,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     flex: 1.4,
                     padding: '10px',
                     borderRadius: '10px',
-                    background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                    background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                     border: 'none',
                     color: '#ffffff',
                     fontSize: '12.5px',
                     fontWeight: '800',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
                   }}
                 >
                   잠금 해제

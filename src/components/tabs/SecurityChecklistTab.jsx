@@ -512,8 +512,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         appCode: 'NO_APP_REQUIRED',
         shortName: '보안앱X',
         company: foundSite ? (foundSite.name || '보안앱X 사업장') : '보안앱X 사업장',
-        color: '#0284c7',
-        badgeBg: 'rgba(2, 132, 199, 0.12)',
+        color: '#1e3a8a',
+        badgeBg: 'rgba(30, 58, 138, 0.08)',
         desc: '본 사업장은 모바일 보안 앱 가동 예외 사업장입니다. 카메라 스티커 부착 셀프 체크리스트로 진행합니다.',
         isChecklistMode: true
       };
@@ -547,8 +547,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         packageName: 'com.moplus.samsung.semi.user',
         scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.moplus.samsung.semi.user;end',
         company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
-        color: '#0284c7',
-        badgeBg: 'rgba(2, 132, 199, 0.15)',
+        color: '#1d4ed8',
+        badgeBg: 'rgba(29, 78, 216, 0.15)',
         desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user) 모바일 보안 앱 실행 및 카메라 차단 검수',
         isChecklistMode: false
       };
@@ -1800,32 +1800,32 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Header Title Banner */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '4px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1px solid rgba(255, 255, 255, 0.3)',
+              width: '40px',
+              height: '40px',
+              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+              border: '1.5px solid #1e3a8a',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#ffffff',
-              boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
+              boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
               flexShrink: 0
             }}>
-              <ShieldCheck size={24} />
+              <ShieldCheck size={22} />
             </div>
             <div>
-              <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', margin: 0 }}>
+              <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', margin: 0 }}>
                 사업장 출입 보안 서약
-              </h2>
-              <p style={{ fontSize: '12px', color: '#64748b', margin: '2px 0 0 0' }}>
+              </div>
+              <p style={{ fontSize: '11.5px', color: '#64748b', margin: '2px 0 0 0' }}>
                 모바일 보안 앱 · 자재&문서 확인 · 전자 서약서
               </p>
             </div>
@@ -1839,8 +1839,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 className="glass-button-primary"
                 style={{
                   width: '100%',
-                  padding: '12px 18px',
-                  borderRadius: '14px',
+                  padding: '11px 18px',
+                  borderRadius: '6px',
                   fontSize: '13.5px',
                   fontWeight: '700',
                   display: 'flex',
@@ -1849,7 +1849,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   gap: '8px',
                   border: '1px solid transparent',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)'
+                  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
                 }}
               >
                 <Plus size={18} /> 사업장 출입 체크리스트 & 보안 서약
@@ -1857,8 +1857,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             ) : (
               <div style={{
                 width: '100%',
-                padding: '12px 16px',
-                borderRadius: '12px',
+                padding: '11px 16px',
+                borderRadius: '6px',
                 background: '#f1f5f9',
                 border: '1.5px solid #cbd5e1',
                 color: '#475569',
@@ -1869,7 +1869,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 justifyContent: 'center',
                 gap: '8px'
               }}>
-                <Smartphone size={16} color="#0284c7" />
+                <Smartphone size={16} color="#1e3a8a" />
                 <span>사업장 출입 보안 서약 작성은 <strong>현장 모바일 앱(APK)</strong>에서만 가능합니다.</span>
               </div>
             )}
@@ -1879,8 +1879,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
       {/* Interactive Date Selector Navigation Bar (Proportionally Spaced & Balanced) */}
       <div className="glass-panel" style={{
-        padding: '14px 20px',
-        borderRadius: '2px',
+        padding: '12px 16px',
+        borderRadius: '6px',
         background: '#ffffff',
         border: '1.5px solid #cbd5e1',
         display: 'flex',
@@ -1897,7 +1897,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           style={{
             flex: '0 0 38px',
             height: '38px',
-            borderRadius: '12px',
+            borderRadius: '6px',
             border: '1.5px solid #cbd5e1',
             background: '#ffffff',
             color: '#0f172a',
@@ -1917,7 +1917,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             {getFormattedKoreanDate(selectedDate)}
           </span>
           <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            해당 날짜 서약: <strong style={{ color: '#0284c7', fontSize: '15px', fontWeight: '800' }}>{filteredList.length}건</strong>
+            해당 날짜 서약: <strong style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>{filteredList.length}건</strong>
           </span>
         </div>
 
@@ -1928,7 +1928,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           style={{
             flex: '0 0 38px',
             height: '38px',
-            borderRadius: '12px',
+            borderRadius: '6px',
             border: '1.5px solid #cbd5e1',
             background: '#ffffff',
             color: '#0f172a',
@@ -1945,9 +1945,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       </div>
 
       {/* Checklist Registrations Data List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {filteredList.length === 0 ? (
-          <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', borderRadius: '2px', border: '1.5px solid #cbd5e1', color: '#64748b' }}>
+          <div className="glass-panel" style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '6px', border: '1.5px solid #cbd5e1', color: '#64748b' }}>
             <ShieldCheck size={36} color="#94a3b8" style={{ marginBottom: '10px' }} />
             <div style={{ fontSize: '14px', fontWeight: '700' }}>선택하신 날짜에 등록된 보안 서약 내역이 없습니다.</div>
           </div>
@@ -1960,21 +1960,21 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 key={item.id}
                 className="glass-panel"
                 style={{
-                  padding: '18px 20px',
-                  borderRadius: '2px',
+                  padding: '16px 18px',
+                  borderRadius: '6px',
                   border: '1.5px solid #cbd5e1',
-                  borderLeft: '4px solid #0284c7',
+                  borderLeft: '4px solid #1e3a8a',
                   boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '12px',
+                  gap: '10px',
                   transition: 'all 0.2s ease'
                 }}
               >
                 {/* Row Header: Site Title & Companion Register Button */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Building2 size={18} color="#0284c7" />
+                    <Building2 size={18} color="#1e3a8a" />
                     <span style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
                       {item.site}
                     </span>
@@ -1985,18 +1985,18 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       type="button"
                       onClick={() => handleOpenCompanionRegisterModal(item)}
                       style={{
-                        background: '#f0f9ff',
-                        border: '1.5px solid #7dd3fc',
-                        color: '#0284c7',
+                        background: '#eff6ff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#1e3a8a',
                         padding: '6px 12px',
-                        borderRadius: '10px',
+                        borderRadius: '6px',
                         fontSize: '11.5px',
                         fontWeight: '700',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '5px',
-                        boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)',
+                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)',
                         transition: 'all 0.2s ease'
                       }}
                     >
@@ -2022,7 +2022,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             border: '1.5px solid #fda4af',
                             color: '#e11d48',
                             padding: '6px 10px',
-                            borderRadius: '10px',
+                            borderRadius: '6px',
                             fontSize: '11.5px',
                             fontWeight: '700',
                             cursor: 'pointer',
@@ -2044,7 +2044,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   background: '#f8fafc',
                   border: '1.5px solid #cbd5e1',
                   padding: '12px 14px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   fontSize: '11.5px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -2054,7 +2054,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   {/* Top Line: Primary Visitor Info & Status Badge */}
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                      <span style={{ color: '#0284c7', fontWeight: '700', fontSize: '11.5px' }}>
+                      <span style={{ color: '#1e3a8a', fontWeight: '700', fontSize: '11.5px' }}>
                         {item.team || (item.department ? (item.department.includes(' ') ? item.department.split(' ').slice(1).join(' ') : item.department) : '') || '소속팀 미지정'}
                       </span>
                       <span style={{ color: '#cbd5e1' }}>|</span>
@@ -2100,10 +2100,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           width: '100%',
                           marginTop: '2px',
                           padding: '9px 14px',
-                          background: '#f0f9ff',
-                          color: '#0284c7',
-                          border: '1.5px solid #7dd3fc',
-                          borderRadius: '10px',
+                          background: '#eff6ff',
+                          color: '#1e3a8a',
+                          border: '1.5px solid #cbd5e1',
+                          borderRadius: '6px',
                           fontSize: '12.5px',
                           fontWeight: '800',
                           cursor: 'pointer',
@@ -2111,7 +2111,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           alignItems: 'center',
                           justifyContent: 'center',
                           gap: '6px',
-                          boxShadow: '0 2px 8px rgba(2, 132, 199, 0.1)',
+                          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)',
                           transition: 'all 0.2s ease'
                         }}
                       >
@@ -2136,10 +2136,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         <div
                           key={comp.id || idx}
                           style={{
-                            background: isCurrentCompanion ? '#f0f9ff' : '#f8fafc',
-                            border: isCurrentCompanion ? '1.5px solid #7dd3fc' : '1.5px solid #cbd5e1',
+                            background: isCurrentCompanion ? '#eff6ff' : '#f8fafc',
+                            border: isCurrentCompanion ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
                             padding: '10px 14px',
-                            borderRadius: '12px',
+                            borderRadius: '6px',
                             fontSize: '11.5px',
                             display: 'flex',
                             flexDirection: 'column',
@@ -2150,7 +2150,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           {/* Top Line: Companion Info & Status Badge & Delete Button */}
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              <span style={{ color: '#0284c7', fontWeight: '700', fontSize: '11.5px' }}>
+                              <span style={{ color: '#1e3a8a', fontWeight: '700', fontSize: '11.5px' }}>
                                 {comp.team || comp.department || '소속팀 미지정'}
                               </span>
                               <span style={{ color: '#cbd5e1' }}>|</span>
@@ -2204,14 +2204,14 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                     style={{
                                       width: '100%',
                                       padding: '9px 12px',
-                                      background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                                       color: '#ffffff',
                                       border: 'none',
                                       borderRadius: '10px',
                                       fontSize: '12.5px',
                                       fontWeight: '800',
                                       cursor: 'pointer',
-                                      boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)',
+                                      boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)',
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
@@ -2275,17 +2275,17 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                       background: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                         ? '#fffbeb'
                         : item.purpose?.includes('미팅') || item.purpose?.includes('방문') || item.purpose?.includes('회의')
-                          ? '#f0f9ff'
+                          ? '#eff6ff'
                           : '#faf5ff',
                       color: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                         ? '#d97706'
                         : item.purpose?.includes('미팅') || item.purpose?.includes('방문') || item.purpose?.includes('회의')
-                          ? '#0284c7'
+                          ? '#1e3a8a'
                           : '#7c3aed',
                       border: item.purpose?.includes('작업') || item.purpose?.includes('공사')
                         ? '1.5px solid #fde68a'
                         : item.purpose?.includes('미팅') || item.purpose?.includes('방문') || item.purpose?.includes('회의')
-                          ? '1.5px solid #7dd3fc'
+                          ? '1.5px solid #cbd5e1'
                           : '1.5px solid #c4b5fd'
                     }}>
                       📌 {item.purpose || '작업'}
@@ -2320,7 +2320,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             maxWidth: '440px',
             maxHeight: '92vh',
             overflowY: 'auto',
-            borderRadius: '4px',
+            borderRadius: '10px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             boxShadow: '0 20px 40px -10px rgba(15, 23, 42, 0.25)',
@@ -2340,14 +2340,14 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 <div style={{
                   width: '36px',
                   height: '36px',
-                  borderRadius: '10px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                  border: '1.5px solid #38bdf8',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  border: '1.5px solid #1e3a8a',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#ffffff',
-                  boxShadow: '0 2px 6px rgba(14, 165, 233, 0.25)',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)',
                   flexShrink: 0
                 }}>
                   <ShieldCheck size={20} />
@@ -2434,10 +2434,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   let badgeText = s.step;
 
                   if (isActive) {
-                    borderColor = isMissing ? '#fda4af' : '#0284c7';
+                    borderColor = isMissing ? '#fda4af' : '#1e3a8a';
                     bgColor = '#ffffff';
-                    textColor = isMissing ? '#e11d48' : '#0284c7';
-                    badgeBg = isMissing ? '#e11d48' : '#0284c7';
+                    textColor = isMissing ? '#e11d48' : '#1e3a8a';
+                    badgeBg = isMissing ? '#e11d48' : '#1e3a8a';
                     badgeText = s.step;
                   } else if (isMissing) {
                     borderColor = '#fda4af';
@@ -2537,7 +2537,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             borderRadius: '12px',
                             background: '#f1f5f9',
                             border: '1.5px solid #cbd5e1',
-                            color: '#0284c7',
+                            color: '#1e3a8a',
                             fontWeight: '800',
                             fontSize: '13px',
                             outline: 'none',
@@ -2632,7 +2632,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             borderRadius: '12px',
                             background: '#f1f5f9',
                             border: '1.5px solid #cbd5e1',
-                            color: '#0284c7',
+                            color: '#1e3a8a',
                             fontWeight: '800',
                             fontSize: '13px',
                             outline: 'none',
@@ -2856,7 +2856,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         📱 Step 2. {targetApp.isChecklistMode ? '카메라 보안 체크리스트 확인' : '모바일 보안 앱 실행 확인'}
                       </div>
                     </div>
@@ -2887,13 +2887,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             marginTop: '6px',
                             padding: '10px 20px',
                             borderRadius: '10px',
-                            background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                             color: '#fff',
                             border: 'none',
                             fontSize: '12.5px',
                             fontWeight: '800',
                             cursor: 'pointer',
-                            boxShadow: '0 2px 8px rgba(14, 165, 233, 0.25)'
+                            boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
                           }}
                         >
                           ← 1단계: 사업장 선택하기
@@ -2943,7 +2943,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           flexDirection: 'column',
                           gap: '12px'
                         }}>
-                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', marginBottom: '2px' }}>
+                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', marginBottom: '2px' }}>
                             📋 1단계: 카메라 보안 상태 셀프 체크
                           </div>
 
@@ -2958,7 +2958,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                 const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
                                 setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                               }}
-                              style={{ width: '16px', height: '16px', accentColor: '#0284c7', marginTop: '2px' }}
+                              style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
                             />
                             <span>[필수] 스마트폰 카메라 렌즈에 보안 스티커 부착</span>
                           </label>
@@ -2974,7 +2974,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                 const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
                                 setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                               }}
-                              style={{ width: '16px', height: '16px', accentColor: '#0284c7', marginTop: '2px' }}
+                              style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
                             />
                             <span>[필수] 사업장 내 사진 및 동영상 무단 촬영 금지</span>
                           </label>
@@ -2992,7 +2992,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           transition: 'all 0.25s ease',
                           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
                         }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraSelfChecklist.cameraChecked ? '#059669' : '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span>📸 2단계: 스마트폰 기본 카메라 앱 실행</span>
                           </div>
 
@@ -3006,9 +3006,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               borderRadius: '12px',
                               fontSize: '13px',
                               fontWeight: '800',
-                              background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#f0f9ff',
-                              color: cameraSelfChecklist.cameraChecked ? '#059669' : '#0284c7',
-                              border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #7dd3fc',
+                              background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#eff6ff',
+                              color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a',
+                              border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
                               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                               cursor: 'pointer',
                               display: 'flex',
@@ -3120,7 +3120,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             <div style={{
                               fontSize: '12.5px',
                               fontWeight: '800',
-                              color: secAppVerified ? '#059669' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#e11d48' : '#0284c7',
+                              color: secAppVerified ? '#059669' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#e11d48' : '#1e3a8a',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '6px'
@@ -3160,13 +3160,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                   ? '#ecfdf5'
                                   : (!secAppVerified && (secAppFailed || step2Attempted))
                                     ? '#fff1f2'
-                                    : '#f0f9ff',
-                                color: secAppVerified ? '#059669' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#e11d48' : '#0284c7',
+                                    : '#eff6ff',
+                                color: secAppVerified ? '#059669' : (!secAppVerified && (secAppFailed || step2Attempted)) ? '#e11d48' : '#1e3a8a',
                                 border: secAppVerified
                                   ? '1.5px solid #a7f3d0'
                                   : (!secAppVerified && (secAppFailed || step2Attempted))
                                     ? '1.5px solid #fda4af'
-                                    : '1.5px solid #7dd3fc',
+                                    : '1.5px solid #cbd5e1',
                                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                                 cursor: 'pointer',
                                 display: 'flex',
@@ -3209,7 +3209,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             <div style={{
                               fontSize: '12.5px',
                               fontWeight: '800',
-                              color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#0284c7',
+                              color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#1e3a8a',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '6px'
@@ -3238,13 +3238,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                   ? '#ecfdf5'
                                   : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
                                     ? '#fff1f2'
-                                    : '#f0f9ff',
-                                color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#0284c7',
+                                    : '#eff6ff',
+                                color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#1e3a8a',
                                 border: cameraCheckVerified
                                   ? '1.5px solid #a7f3d0'
                                   : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
                                     ? '1.5px solid #fda4af'
-                                    : '1.5px solid #7dd3fc',
+                                    : '1.5px solid #cbd5e1',
                                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                                 cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
                                 display: 'flex',
@@ -3271,14 +3271,14 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         {(currentUser?.role === '개발자' || currentUser?.username === 'admin') && (
                           <div style={{
                             background: '#f1f5f9',
-                            border: '1.5px dashed #0284c7',
+                            border: '1.5px dashed #1e3a8a',
                             borderRadius: '12px',
                             padding: '12px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '8px'
                           }}>
-                            <div style={{ fontSize: '11px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '4px' }}>
                               🧪 [개발자 전용] 보안 상태 테스트 수동 전환
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -3403,7 +3403,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         📦 Step 3. 자재&문서 보안 확인
                       </div>
                     </div>
@@ -3416,10 +3416,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           docChecklist: { ...docChecklist, gateApproved: !docChecklist.gateApproved }
                         }))}
                         style={{
-                          background: docChecklist.gateApproved ? '#f0f9ff' : '#f8fafc',
-                          border: docChecklist.gateApproved ? '1.5px solid #7dd3fc' : '1.5px solid #cbd5e1',
+                          background: docChecklist.gateApproved ? '#eff6ff' : '#f8fafc',
+                          border: docChecklist.gateApproved ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
                           padding: '14px',
-                          borderRadius: '14px',
+                          borderRadius: '6px',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
@@ -3428,7 +3428,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <PackageCheck size={20} color={docChecklist.gateApproved ? '#0284c7' : '#64748b'} />
+                          <PackageCheck size={20} color={docChecklist.gateApproved ? '#1e3a8a' : '#64748b'} />
                           <div>
                             <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
                               1. 지입 자재 물품 보안 검색대 승인
@@ -3442,7 +3442,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           type="checkbox"
                           checked={docChecklist.gateApproved}
                           readOnly
-                          style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
+                          style={{ width: '18px', height: '18px', accentColor: '#1e3a8a', cursor: 'pointer' }}
                         />
                       </div>
 
@@ -3453,8 +3453,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           docChecklist: { ...docChecklist, docSecVerified: !docChecklist.docSecVerified }
                         }))}
                         style={{
-                          background: docChecklist.docSecVerified ? '#f0f9ff' : '#f8fafc',
-                          border: docChecklist.docSecVerified ? '1.5px solid #7dd3fc' : '1.5px solid #cbd5e1',
+                          background: docChecklist.docSecVerified ? '#eff6ff' : '#f8fafc',
+                          border: docChecklist.docSecVerified ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
                           padding: '14px',
                           borderRadius: '14px',
                           display: 'flex',
@@ -3465,7 +3465,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <FileText size={20} color={docChecklist.docSecVerified ? '#0284c7' : '#64748b'} />
+                          <FileText size={20} color={docChecklist.docSecVerified ? '#1e3a8a' : '#64748b'} />
                           <div>
                             <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
                               2. 문서 보안 상태 확인
@@ -3479,7 +3479,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           type="checkbox"
                           checked={docChecklist.docSecVerified}
                           readOnly
-                          style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
+                          style={{ width: '18px', height: '18px', accentColor: '#1e3a8a', cursor: 'pointer' }}
                         />
                       </div>
 
@@ -3490,8 +3490,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           docChecklist: { ...docChecklist, preCheckVerified: !docChecklist.preCheckVerified }
                         }))}
                         style={{
-                          background: docChecklist.preCheckVerified ? '#f0f9ff' : '#f8fafc',
-                          border: docChecklist.preCheckVerified ? '1.5px solid #7dd3fc' : '1.5px solid #cbd5e1',
+                          background: docChecklist.preCheckVerified ? '#eff6ff' : '#f8fafc',
+                          border: docChecklist.preCheckVerified ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
                           padding: '14px',
                           borderRadius: '14px',
                           display: 'flex',
@@ -3502,7 +3502,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <ShieldCheck size={20} color={docChecklist.preCheckVerified ? '#0284c7' : '#64748b'} />
+                          <ShieldCheck size={20} color={docChecklist.preCheckVerified ? '#1e3a8a' : '#64748b'} />
                           <div>
                             <div style={{ fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
                               3. 보안 물품 반입 전 확인
@@ -3516,7 +3516,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           type="checkbox"
                           checked={docChecklist.preCheckVerified}
                           readOnly
-                          style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
+                          style={{ width: '18px', height: '18px', accentColor: '#1e3a8a', cursor: 'pointer' }}
                         />
                       </div>
                     </div>
@@ -3554,7 +3554,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
               {/* STEP 4: Digital Security Pledge & Signature */}
               {activeStep === 4 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     📜 Step 4. 사업장 정보보호 서약 및 전자 서명
                   </div>
 
@@ -3584,10 +3584,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                     padding: '14px 16px',
                     borderRadius: '14px',
                     border: formData.agreedToTerms
-                      ? '1.5px solid #7dd3fc'
+                      ? '1.5px solid #cbd5e1'
                       : '1.5px solid #fda4af',
                     background: formData.agreedToTerms
-                      ? '#f0f9ff'
+                      ? '#eff6ff'
                       : '#fff1f2',
                     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
                     transition: 'all 0.25s ease',
@@ -3600,9 +3600,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         type="checkbox"
                         checked={formData.agreedToTerms}
                         onChange={(e) => setFormData({ ...formData, agreedToTerms: e.target.checked })}
-                        style={{ width: '18px', height: '18px', accentColor: '#0284c7', cursor: 'pointer' }}
+                        style={{ width: '18px', height: '18px', accentColor: '#1e3a8a', cursor: 'pointer' }}
                       />
-                      <span style={{ fontSize: '12px', fontWeight: '800', color: formData.agreedToTerms ? '#0284c7' : '#e11d48' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: formData.agreedToTerms ? '#1e3a8a' : '#e11d48' }}>
                         위 사항을 숙지하였으며 성실히 이행할 것을 서약합니다.
                       </span>
                     </label>
@@ -3695,19 +3695,19 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           <div className="glass-panel" style={{
             width: '100%',
             maxWidth: '520px',
-            borderRadius: '4px',
+            borderRadius: '10px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            padding: '24px',
+            padding: '20px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '18px',
+            gap: '14px',
             boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)'
           }}>
             {/* Modal Top */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Award size={22} color="#0284c7" />
+                <Award size={22} color="#1e3a8a" />
                 <span style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
                   전자 출입 보안서약증 & 자재 승인표
                 </span>
@@ -3718,9 +3718,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   background: '#f1f5f9',
                   border: '1.5px solid #cbd5e1',
                   color: '#64748b',
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '4px',
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -3735,7 +3735,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             <div style={{
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '4px',
+              borderRadius: '8px',
               padding: '20px',
               display: 'flex',
               flexDirection: 'column',
@@ -3746,7 +3746,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             }}>
               {/* Top Watermark / Badge */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#0284c7' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a8a' }}>
                   {selectedPass.site}
                 </div>
                 <span className="badge-secure" style={{ fontSize: '10px' }}>
@@ -3791,13 +3791,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   <span style={{ color: '#64748b' }}>방문자/직급:</span> <strong style={{ color: '#0f172a' }}>{selectedPass.visitorName} {selectedPass.rank ? `(${selectedPass.rank})` : ''}</strong>
                 </div>
                 <div>
-                  <span style={{ color: '#64748b' }}>소속 부서:</span> <strong style={{ color: '#0284c7' }}>{selectedPass.department || selectedPass.company || '소속 미지정'}</strong>
+                  <span style={{ color: '#64748b' }}>소속 부서:</span> <strong style={{ color: '#1e3a8a' }}>{selectedPass.department || selectedPass.company || '소속 미지정'}</strong>
                 </div>
                 <div>
                   <span style={{ color: '#64748b' }}>연락처:</span> <strong style={{ color: '#0f172a' }}>{selectedPass.phone || '010-0000-0000'}</strong>
                 </div>
                 <div>
-                  <span style={{ color: '#64748b' }}>방문목적:</span> <strong style={{ color: '#0284c7' }}>{selectedPass.purpose || '작업'}</strong>
+                  <span style={{ color: '#64748b' }}>방문목적:</span> <strong style={{ color: '#1e3a8a' }}>{selectedPass.purpose || '작업'}</strong>
                 </div>
                 <div style={{ gridColumn: 'span 2' }}>
                   <span style={{ color: '#64748b' }}>유효기간:</span> <strong style={{ color: '#0f172a' }}>{selectedPass.visitDate}</strong>
@@ -3805,8 +3805,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
               </div>
 
               {/* Security Inspection Status List */}
-              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', padding: '12px', borderRadius: '12px' }}>
-                <div style={{ fontSize: '11px', fontWeight: '700', color: '#0284c7', marginBottom: '8px' }}>
+              <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px', borderRadius: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#1e3a8a', marginBottom: '8px' }}>
                   🔒 자재 및 문서 보안 검수 완료 상태 (3개 항목)
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', color: '#334155' }}>
@@ -3903,19 +3903,19 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             width: '100%',
             maxWidth: '520px',
             maxHeight: '90vh',
-            borderRadius: '4px',
+            borderRadius: '10px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            padding: '24px',
+            padding: '20px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
+            gap: '14px',
             boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)'
           }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <UserPlus size={22} color="#0284c7" />
+                <UserPlus size={22} color="#1e3a8a" />
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
                     동행인 서약 등록
@@ -3933,7 +3933,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   color: '#64748b',
                   width: '32px',
                   height: '32px',
-                  borderRadius: '8px',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
@@ -3951,10 +3951,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
               gap: '8px',
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '12px',
+              borderRadius: '6px',
               padding: '10px 14px'
             }}>
-              <Search size={16} color="#0284c7" />
+              <Search size={16} color="#1e3a8a" />
               <input
                 type="text"
                 placeholder="성명, 소속팀, 직급, 연락처로 사용자 검색..."
@@ -3983,7 +3983,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             {/* Select All Toggle Bar */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', padding: '0 4px' }}>
               <span style={{ color: '#64748b' }}>
-                선택됨: <strong style={{ color: '#059669' }}>{selectedCompanionUsernames.length}명</strong>
+                선택됨: <strong style={{ color: '#1e3a8a' }}>{selectedCompanionUsernames.length}명</strong>
               </span>
             </div>
 
@@ -4024,9 +4024,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         if (!isDisabled) handleToggleCompanionSelect(u.username);
                       }}
                       style={{
-                        background: isChecked ? '#f0f9ff' : isDisabled ? '#f8fafc' : '#ffffff',
-                        border: isChecked ? '1.5px solid #7dd3fc' : '1.5px solid #cbd5e1',
-                        borderRadius: '12px',
+                        background: isChecked ? '#eff6ff' : isDisabled ? '#f8fafc' : '#ffffff',
+                        border: isChecked ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
+                        borderRadius: '6px',
                         padding: '10px 14px',
                         display: 'flex',
                         alignItems: 'center',
@@ -4042,12 +4042,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           checked={isChecked || isDisabled}
                           disabled={isDisabled}
                           onChange={() => { }}
-                          style={{ width: '16px', height: '16px', accentColor: '#0284c7', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
+                          style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', cursor: isDisabled ? 'not-allowed' : 'pointer' }}
                         />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                           <div style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             {u.name}
-                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>({u.rank || '대리'})</span>
+                            <span style={{ fontSize: '11px', color: '#1e3a8a', fontWeight: '700' }}>({u.rank || '대리'})</span>
                             <span style={{ fontSize: '10px', color: '#059669', background: '#ecfdf5', padding: '1px 6px', borderRadius: '4px', border: '1px solid #a7f3d0', fontWeight: '700' }}>
                               {u.role || '일반'}
                             </span>
@@ -4087,13 +4087,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   flex: 2,
                   padding: '12px',
                   borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                   color: '#ffffff',
                   border: 'none',
                   fontSize: '13px',
                   fontWeight: '800',
                   cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(14, 165, 233, 0.25)'
+                  boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
                 }}
               >
                 선택한 {selectedCompanionUsernames.length}명 동행 등록
@@ -4134,14 +4134,14 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                 <div style={{
                   width: '38px',
                   height: '38px',
-                  borderRadius: '12px',
-                  background: '#f0f9ff',
-                  border: '1.5px solid #7dd3fc',
+                  borderRadius: '6px',
+                  background: '#eff6ff',
+                  border: '1.5px solid #cbd5e1',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <UserCheck size={20} color="#0284c7" />
+                  <UserCheck size={20} color="#1e3a8a" />
                 </div>
                 <div>
                   <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
@@ -4180,12 +4180,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   flex: 1,
                   padding: '8px',
                   borderRadius: '10px',
-                  border: inlineAuthMode === 'login' ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                  border: inlineAuthMode === 'login' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                   fontSize: '12px',
                   fontWeight: '700',
                   cursor: 'pointer',
-                  background: inlineAuthMode === 'login' ? 'rgba(2, 132, 199, 0.1)' : '#ffffff',
-                  color: inlineAuthMode === 'login' ? '#0284c7' : '#64748b',
+                  background: inlineAuthMode === 'login' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                  color: inlineAuthMode === 'login' ? '#1e3a8a' : '#64748b',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -4201,12 +4201,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   flex: 1,
                   padding: '8px',
                   borderRadius: '10px',
-                  border: inlineAuthMode === 'signup' ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                  border: inlineAuthMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                   fontSize: '12px',
                   fontWeight: '700',
                   cursor: 'pointer',
-                  background: inlineAuthMode === 'signup' ? 'rgba(2, 132, 199, 0.1)' : '#ffffff',
-                  color: inlineAuthMode === 'signup' ? '#0284c7' : '#64748b',
+                  background: inlineAuthMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                  color: inlineAuthMode === 'signup' ? '#1e3a8a' : '#64748b',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

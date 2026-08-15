@@ -372,41 +372,37 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', paddingBottom: '30px' }}>
 
       {/* Top Main Banner */}
       <div className="glass-panel" style={{
-        padding: '20px 24px',
-        borderRadius: '2px',
+        padding: '14px 18px',
+        borderRadius: '6px',
         background: '#ffffff',
         border: '1.5px solid #cbd5e1',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '14px'
+        gap: '10px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '4px',
-            background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-            border: '1.5px solid #38bdf8',
+            width: '40px',
+            height: '40px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+            border: '1.5px solid #1e3a8a',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#ffffff',
-            boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
+            boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
             flexShrink: 0
           }}>
-            <FileSpreadsheet size={24} />
+            <FileSpreadsheet size={22} />
           </div>
-          <div>
-            <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              업무 정리 레포트
-            </div>
+          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+            업무 정리 레포트
           </div>
         </div>
       </div>
@@ -415,29 +411,29 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-        gap: '20px',
+        gap: '10px',
         alignItems: 'start'
       }}>
 
         {/* ========================================================================= */}
         {/* LEFT COLUMN: 일일 업무 수행 보고서 (Executive Report Layout) */}
         {/* ========================================================================= */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
 
           {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '2px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '4px',
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                border: '1.5px solid #38bdf8',
+                width: '38px',
+                height: '38px',
+                borderRadius: '6px',
+                background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                border: '1.5px solid #1e3a8a',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff',
-                boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
                 flexShrink: 0
               }}>
                 <CalendarDays size={22} />
@@ -458,11 +454,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 type="button"
                 onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
                 style={{
-                  background: '#f0f9ff',
-                  border: '1.5px solid #7dd3fc',
-                  color: '#0284c7',
+                  background: '#eff6ff',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#1e3a8a',
                   padding: '7px 12px',
-                  borderRadius: '10px',
+                  borderRadius: '6px',
                   fontSize: '12px',
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -470,7 +466,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   alignItems: 'center',
                   gap: '4px',
                   transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)'
+                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                 }}
                 title="일일 업무 보고서 텍스트 복사"
               >
@@ -481,11 +477,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   type="button"
                   onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
                   style={{
-                    background: '#0284c7',
-                    border: '1.5px solid #0284c7',
+                    background: '#1e3a8a',
+                    border: '1.5px solid #1e3a8a',
                     color: '#ffffff',
                     padding: '7px 12px',
-                    borderRadius: '10px',
+                    borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: '700',
                     cursor: 'pointer',
@@ -493,7 +489,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     alignItems: 'center',
                     gap: '4px',
                     transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
                   }}
                   title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
                 >
@@ -503,114 +499,114 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* Daily Date Controller Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={handlePrevDay}
-                style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                title="이전일"
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              <div
-                onClick={() => {
-                  if (dailyDateInputRef.current) {
-                    if (typeof dailyDateInputRef.current.showPicker === 'function') {
-                      dailyDateInputRef.current.showPicker();
-                    } else {
-                      dailyDateInputRef.current.focus();
-                      dailyDateInputRef.current.click();
-                    }
-                  }
-                }}
-                style={{
-                  position: 'relative',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  cursor: 'pointer',
-                  padding: '2px 6px',
-                  borderRadius: '2px',
-                  transition: 'background 0.2s ease',
-                  userSelect: 'none'
-                }}
-                title="클릭하여 달력에서 날짜 선택"
-              >
-                <Calendar size={13} color="#0284c7" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7', whiteSpace: 'nowrap' }}>
-                  {getFormattedKoreanDate(dailyDate)}
-                </span>
-                <input
-                  ref={dailyDateInputRef}
-                  type="date"
-                  value={dailyDate}
-                  onChange={(e) => e.target.value && setDailyDate(e.target.value)}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    pointerEvents: 'none',
-                    border: 'none',
-                    outline: 'none',
-                    padding: 0,
-                    margin: 0
-                  }}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleNextDay}
-                style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                title="다음일"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleToday}
-              style={{
-                background: 'rgba(14, 165, 233, 0.12)',
-                border: '1.5px solid #bae6fd',
-                color: '#0284c7',
-                fontSize: '11px',
-                fontWeight: '800',
-                padding: '4px 10px',
-                borderRadius: '2px',
-                cursor: 'pointer'
-              }}
-            >
-              오늘
-            </button>
-          </div>
-
-          {/* Report Sheet Document Frame */}
+          {/* Report Sheet Document Frame (Daily Work Log) */}
           <div style={{
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '2px',
-            padding: '20px',
+            borderRadius: '6px',
+            padding: '16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
+            gap: '14px',
             boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
           }}>
             {/* Report Document Title Header Block */}
-            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '17px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
+            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
                 일일 업무 일지
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                 작성일: {getFormattedKoreanDate(dailyDate)}
               </div>
+            </div>
+
+            {/* Daily Date Controller Bar (Inside Report Card) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', width: '100%', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={handlePrevDay}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  title="이전일"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                <div
+                  onClick={() => {
+                    if (dailyDateInputRef.current) {
+                      if (typeof dailyDateInputRef.current.showPicker === 'function') {
+                        dailyDateInputRef.current.showPicker();
+                      } else {
+                        dailyDateInputRef.current.focus();
+                        dailyDateInputRef.current.click();
+                      }
+                    }
+                  }}
+                  style={{
+                    position: 'relative',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    cursor: 'pointer',
+                    padding: '2px 6px',
+                    borderRadius: '2px',
+                    transition: 'background 0.2s ease',
+                    userSelect: 'none'
+                  }}
+                  title="클릭하여 달력에서 날짜 선택"
+                >
+                  <Calendar size={13} color="#1e3a8a" style={{ flexShrink: 0 }} />
+                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a', whiteSpace: 'nowrap' }}>
+                    {getFormattedKoreanDate(dailyDate)}
+                  </span>
+                  <input
+                    ref={dailyDateInputRef}
+                    type="date"
+                    value={dailyDate}
+                    onChange={(e) => e.target.value && setDailyDate(e.target.value)}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: '100%',
+                      opacity: 0,
+                      pointerEvents: 'none',
+                      border: 'none',
+                      outline: 'none',
+                      padding: 0,
+                      margin: 0
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleNextDay}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  title="다음일"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToday}
+                style={{
+                  background: 'rgba(30, 58, 138, 0.08)',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#1e3a8a',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  padding: '4px 10px',
+                  borderRadius: '5px',
+                  cursor: 'pointer'
+                }}
+              >
+                오늘
+              </button>
             </div>
 
             {/* Official Report Summary Table Grid */}
@@ -619,16 +615,16 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               gridTemplateColumns: 'repeat(3, 1fr)',
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '2px',
+              borderRadius: '6px',
               overflow: 'hidden'
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>총 수행 건수</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#0284c7', marginTop: '2px' }}>{dailyTotalInitialCount}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{dailyTotalInitialCount}건</div>
               </div>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>사내 업무</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#0284c7', marginTop: '2px' }}>{dailyInitialInternalCount}건</div>
+                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{dailyInitialInternalCount}건</div>
               </div>
               <div style={{ padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>출장 업무</div>
@@ -646,7 +642,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 {/* Section 1: 🏢 사내 업무 보고 */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0284c7', paddingLeft: '8px' }}>
+                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #1e3a8a', paddingLeft: '8px' }}>
                       1. 사내 업무 추진 실적 ({dailyInitialInternalCount}건)
                     </div>
                     {dailyInternalLogs.length > 0 && (
@@ -663,7 +659,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       {dailyInternalLogs.map((item, idx) => (
                         <div key={item.id || idx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px' }}>
                           <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                            <span style={{ color: '#0284c7', fontWeight: '800', fontSize: '12px' }}>▪ ({idx + 1})</span>
+                            <span style={{ color: '#1e3a8a', fontWeight: '800', fontSize: '12px' }}>▪ ({idx + 1})</span>
                             <span>{item.title}</span>
                           </div>
                           {item.details && (
@@ -759,15 +755,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         {/* ========================================================================= */}
         {/* RIGHT COLUMN: 주간 업무 보고서 (Official Weekly Report Sheet) */}
         {/* ========================================================================= */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1, minWidth: 0 }}>
 
           {/* Header Bar */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '2px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+          <div className="glass-panel" style={{ padding: '12px 16px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
-                width: '44px',
-                height: '44px',
-                borderRadius: '4px',
+                width: '38px',
+                height: '38px',
+                borderRadius: '6px',
                 background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
                 border: '1.5px solid #c4b5fd',
                 display: 'flex',
@@ -795,11 +791,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 type="button"
                 onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
                 style={{
-                  background: '#faf5ff',
+                  background: 'rgba(124, 58, 237, 0.08)',
                   border: '1.5px solid #c4b5fd',
                   color: '#7c3aed',
                   padding: '7px 12px',
-                  borderRadius: '10px',
+                  borderRadius: '6px',
                   fontSize: '12px',
                   fontWeight: '700',
                   cursor: 'pointer',
@@ -822,7 +818,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     border: '1.5px solid #7c3aed',
                     color: '#ffffff',
                     padding: '7px 12px',
-                    borderRadius: '10px',
+                    borderRadius: '6px',
                     fontSize: '12px',
                     fontWeight: '700',
                     cursor: 'pointer',
@@ -840,69 +836,69 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* Week Controls Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#ffffff', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)', width: '100%', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={handlePrevWeek}
-                style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                title="이전주"
-              >
-                <ChevronLeft size={16} />
-              </button>
-
-              <span style={{ fontSize: '12px', fontWeight: '800', color: '#7c3aed', padding: '0 4px' }}>
-                {getWeekText(weeklyMonday)}
-              </span>
-
-              <button
-                type="button"
-                onClick={handleNextWeek}
-                style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
-                title="다음주"
-              >
-                <ChevronRight size={16} />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleThisWeek}
-              style={{
-                background: 'rgba(124, 58, 237, 0.12)',
-                border: '1.5px solid #e9d5ff',
-                color: '#7c3aed',
-                fontSize: '11px',
-                fontWeight: '800',
-                padding: '4px 10px',
-                borderRadius: '2px',
-                cursor: 'pointer'
-              }}
-            >
-              이번주
-            </button>
-          </div>
-
-          {/* Report Sheet Document Frame */}
+          {/* Report Sheet Document Frame (Weekly Work Report) */}
           <div style={{
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '2px',
-            padding: '20px',
+            borderRadius: '6px',
+            padding: '16px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
+            gap: '14px',
             boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
           }}>
             {/* Report Document Title Header Block */}
-            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '17px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
+            <div style={{ borderBottom: '2px solid #cbd5e1', paddingBottom: '10px', textAlign: 'center' }}>
+              <div style={{ fontSize: '16px', fontWeight: '900', color: '#0f172a', marginTop: '2px' }}>
                 주간 업무 보고서
               </div>
-              <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '4px' }}>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
                 기간: {weeklyRange.monIso} ~ {weeklyRange.sunIso}
               </div>
+            </div>
+
+            {/* Week Controls Bar (Inside Report Card) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '6px 12px', borderRadius: '6px', width: '100%', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button
+                  type="button"
+                  onClick={handlePrevWeek}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  title="이전주"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                <span style={{ fontSize: '12px', fontWeight: '800', color: '#7c3aed', padding: '0 4px' }}>
+                  {getWeekText(weeklyMonday)}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleNextWeek}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '4px 6px', display: 'flex', alignItems: 'center' }}
+                  title="다음주"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleThisWeek}
+                style={{
+                  background: 'rgba(124, 58, 237, 0.12)',
+                  border: '1.5px solid #e9d5ff',
+                  color: '#7c3aed',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  padding: '4px 10px',
+                  borderRadius: '2px',
+                  cursor: 'pointer'
+                }}
+              >
+                이번주
+              </button>
             </div>
 
             {/* Official Report Summary Table Grid */}
@@ -911,7 +907,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               gridTemplateColumns: 'repeat(3, 1fr)',
               background: '#f8fafc',
               border: '1.5px solid #cbd5e1',
-              borderRadius: '2px',
+              borderRadius: '6px',
               overflow: 'hidden'
             }}>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
@@ -920,7 +916,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               </div>
               <div style={{ padding: '8px 10px', borderRight: '1.5px solid #cbd5e1', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>활동 일수</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#0284c7', marginTop: '2px' }}>{weeklyActiveDaysCount}일</div>
+                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1e3a8a', marginTop: '2px' }}>{weeklyActiveDaysCount}일</div>
               </div>
               <div style={{ padding: '8px 10px', textAlign: 'center' }}>
                 <div style={{ fontSize: '10px', color: '#64748b', fontWeight: '700' }}>참여 인원</div>
@@ -954,7 +950,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             {dayLogs.map((item, idx) => (
                               <div key={item.id || idx} style={{ color: '#334155', paddingLeft: '4px' }}>
                                 <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                                  <span style={{ color: item.category === '출장 업무' ? '#7c3aed' : '#0284c7', fontSize: '12px', fontWeight: '800' }}>
+                                  <span style={{ color: item.category === '출장 업무' ? '#7c3aed' : '#1e3a8a', fontSize: '12px', fontWeight: '800' }}>
                                     ({idx + 1})
                                   </span>
                                   <span>[{item.category}] {item.title}</span>

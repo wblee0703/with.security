@@ -129,7 +129,7 @@ export default function WorkLogCalendar({
     <div
       className="glass-panel"
       style={{
-        borderRadius: '2px',
+        borderRadius: '6px',
         border: '1.5px solid #cbd5e1',
         background: '#ffffff',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -144,30 +144,30 @@ export default function WorkLogCalendar({
       {/* Calendar Top Header Bar */}
       <div
         style={{
-          padding: '16px 20px',
+          padding: '14px 16px',
           borderBottom: '1.5px solid #cbd5e1',
           background: '#f8fafc',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexWrap: 'wrap',
-          gap: '12px'
+          gap: '10px'
         }}
       >
         {/* Title & Month Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div
             style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '4px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1.5px solid #38bdf8',
+              width: '36px',
+              height: '36px',
+              borderRadius: '6px',
+              background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+              border: '1.5px solid #1e3a8a',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: '#ffffff',
-              boxShadow: '0 2px 8px rgba(14, 165, 233, 0.25)'
+              boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
             }}
           >
             <CalendarIcon size={20} />
@@ -177,7 +177,7 @@ export default function WorkLogCalendar({
               {currentYear}년 {currentMonth + 1}월
             </div>
             <div style={{ fontSize: '11px', color: '#64748b' }}>
-              월간 업무 일지 캘린더 <span style={{ color: '#0284c7', fontWeight: '800' }}>({monthlyLogs.length}건)</span>
+              월간 업무 일지 캘린더 <span style={{ color: '#1e3a8a', fontWeight: '800' }}>({monthlyLogs.length}건)</span>
             </div>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function WorkLogCalendar({
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: '8px',
+              borderRadius: '6px',
               border: '1.5px solid #cbd5e1',
               background: '#ffffff',
               color: '#0f172a',
@@ -210,10 +210,10 @@ export default function WorkLogCalendar({
             onClick={handleToday}
             style={{
               padding: '6px 12px',
-              borderRadius: '8px',
-              border: '1.5px solid #7dd3fc',
-              background: '#f0f9ff',
-              color: '#0284c7',
+              borderRadius: '6px',
+              border: '1.5px solid #cbd5e1',
+              background: '#eff6ff',
+              color: '#1e3a8a',
               fontSize: '12px',
               fontWeight: '700',
               cursor: 'pointer',
@@ -229,7 +229,7 @@ export default function WorkLogCalendar({
             style={{
               width: '32px',
               height: '32px',
-              borderRadius: '8px',
+              borderRadius: '6px',
               border: '1.5px solid #cbd5e1',
               background: '#ffffff',
               color: '#0f172a',
@@ -261,7 +261,7 @@ export default function WorkLogCalendar({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569', fontWeight: '600' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7', boxShadow: '0 0 0 1px rgba(2, 132, 199, 0.3)' }} /> 사내 업무
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e3a8a', boxShadow: '0 0 0 1px rgba(30, 58, 138, 0.3)' }} /> 사내 업무
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569', fontWeight: '600' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#7c3aed', boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.3)' }} /> 출장 업무
@@ -287,7 +287,7 @@ export default function WorkLogCalendar({
         {weekDays.map((wd, index) => {
           let color = '#64748b';
           if (index === 0) color = '#ef4444'; // Sun
-          if (index === 6) color = '#0284c7'; // Sat
+          if (index === 6) color = '#2563eb'; // Sat
           return (
             <div key={wd} style={{ padding: '10px 0', color }}>
               {wd}
@@ -325,7 +325,7 @@ export default function WorkLogCalendar({
               }}
               style={{
                 background: cell.isCurrentMonth
-                  ? (isSelected ? '#f0f9ff' : '#ffffff')
+                  ? (isSelected ? '#eff6ff' : '#ffffff')
                   : '#f8fafc',
                 opacity: cell.isCurrentMonth ? 1 : 0.45,
                 padding: '6px 6px',
@@ -335,7 +335,7 @@ export default function WorkLogCalendar({
                 position: 'relative',
                 cursor: cell.isCurrentMonth ? 'pointer' : 'default',
                 transition: 'all 0.15s ease',
-                outline: isSelected ? '2px solid #3b82f6' : 'none',
+                outline: isSelected ? '2px solid #1e3a8a' : 'none',
                 outlineOffset: '-2px',
                 minWidth: 0,
                 maxWidth: '100%',
@@ -359,22 +359,22 @@ export default function WorkLogCalendar({
                     fontSize: '12px',
                     fontWeight: isToday || isSelected ? '800' : '600',
                     color: isToday
-                      ? '#0284c7'
+                      ? '#1e3a8a'
                       : dayOfWeek === 0
                       ? '#ef4444'
                       : dayOfWeek === 6
-                      ? '#0284c7'
+                      ? '#2563eb'
                       : cell.isCurrentMonth
                       ? '#0f172a'
                       : '#94a3b8',
                     width: isToday ? '22px' : 'auto',
                     height: isToday ? '22px' : 'auto',
                     borderRadius: isToday ? '50%' : '0',
-                    background: isToday ? '#e0f2fe' : 'transparent',
+                    background: isToday ? '#eff6ff' : 'transparent',
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: isToday ? '1px solid #bae6fd' : 'none'
+                    border: isToday ? '1px solid #cbd5e1' : 'none'
                   }}
                 >
                   {cell.day}
@@ -387,9 +387,9 @@ export default function WorkLogCalendar({
                       fontWeight: '800',
                       padding: '1px 5px',
                       borderRadius: '6px',
-                      background: '#e0f2fe',
-                      border: '1px solid #bae6fd',
-                      color: '#0284c7',
+                      background: '#eff6ff',
+                      border: '1px solid #cbd5e1',
+                      color: '#1e3a8a',
                       flexShrink: 0
                     }}
                   >
@@ -414,9 +414,9 @@ export default function WorkLogCalendar({
               >
                 {dayLogs.map((log) => {
                   const isBusinessTrip = log.category === '출장 업무';
-                  const bg = isBusinessTrip ? '#faf5ff' : '#f0f9ff';
-                  const borderColor = isBusinessTrip ? '#e9d5ff' : '#bae6fd';
-                  const textColor = isBusinessTrip ? '#7c3aed' : '#0284c7';
+                  const bg = isBusinessTrip ? '#faf5ff' : '#eff6ff';
+                  const borderColor = isBusinessTrip ? '#e9d5ff' : '#cbd5e1';
+                  const textColor = isBusinessTrip ? '#7c3aed' : '#1e3a8a';
 
                   return (
                     <div

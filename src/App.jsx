@@ -285,11 +285,11 @@ export default function App() {
           transform: 'translateX(-50%)',
           zIndex: 300,
           background: 'rgba(255, 255, 255, 0.98)',
-          border: '1px solid rgba(14, 165, 233, 0.4)',
+          border: '1px solid rgba(30, 58, 138, 0.4)',
           color: '#0f172a',
-          padding: '10px 18px',
-          borderRadius: '4px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 0 16px rgba(14, 165, 233, 0.15)',
+          padding: '8px 14px',
+          borderRadius: '6px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 0 16px rgba(15, 23, 42, 0.15)',
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
@@ -297,7 +297,7 @@ export default function App() {
           fontWeight: '700',
           animation: 'float 0.3s ease-out'
         }}>
-          <Bell size={16} color="#0284c7" />
+          <Bell size={16} color="#1e3a8a" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -317,9 +317,9 @@ export default function App() {
             WebkitBackdropFilter: 'blur(16px)',
             border: '1.5px solid rgba(255, 255, 255, 0.18)',
             color: '#ffffff',
-            padding: '12px 22px',
-            borderRadius: '4px',
-            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(14, 165, 233, 0.25)',
+            padding: '10px 18px',
+            borderRadius: '6px',
+            boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(15, 23, 42, 0.25)',
             display: 'flex',
             alignItems: 'center',
             gap: '9px',
@@ -346,10 +346,10 @@ export default function App() {
             right: '20px',
             zIndex: 100,
             background: 'rgba(255, 255, 255, 0.95)',
-            border: '1px solid rgba(14, 165, 233, 0.4)',
-            color: '#0284c7',
-            padding: '8px 14px',
-            borderRadius: '4px',
+            border: '1px solid rgba(30, 58, 138, 0.4)',
+            color: '#1e3a8a',
+            padding: '6px 12px',
+            borderRadius: '6px',
             fontSize: '12px',
             fontWeight: '700',
             cursor: 'pointer',
@@ -418,27 +418,27 @@ export default function App() {
           <div className="glass-panel" style={{
             maxWidth: '460px',
             width: '100%',
-            padding: '28px',
-            borderRadius: '4px',
-            border: '1px solid rgba(14, 165, 233, 0.3)',
+            padding: '24px',
+            borderRadius: '10px',
+            border: '1px solid rgba(30, 58, 138, 0.3)',
             background: '#ffffff',
             boxShadow: '0 20px 60px rgba(0, 0, 0, 0.15)',
             display: 'flex',
             flexDirection: 'column',
-            gap: '18px'
+            gap: '14px'
           }}>
             {/* Modal Header */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: '16px',
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                width: '42px',
+                height: '42px',
+                borderRadius: '6px',
+                background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: '#ffffff',
-                boxShadow: '0 4px 14px rgba(14, 165, 233, 0.3)'
+                boxShadow: '0 4px 14px rgba(15, 23, 42, 0.3)'
               }}>
                 <Globe size={26} />
               </div>
@@ -446,7 +446,7 @@ export default function App() {
                 <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
                   호스팅 서버 및 실시간 앱 업데이트 설정
                 </div>
-                <div style={{ fontSize: '12px', color: '#0284c7', fontWeight: '700', marginTop: '2px' }}>
+                <div style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '700', marginTop: '2px' }}>
                   WithSecurity 웹 & 모바일 자동 동기화
                 </div>
               </div>
@@ -462,7 +462,7 @@ export default function App() {
                 서버 URL (API Base URL) *
               </label>
               <div style={{ position: 'relative' }}>
-                <Server size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#0284c7' }} />
+                <Server size={18} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#1e3a8a' }} />
                 <input
                   type="text"
                   placeholder="예: https://wblee0703.github.io/with.security 또는 http://192.168.0.15:4000"
@@ -488,7 +488,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setInitialServerUrl('https://wblee0703.github.io/with.security')}
-                style={{ padding: '6px 14px', borderRadius: '8px', background: 'rgba(14, 165, 233, 0.12)', border: '1px solid rgba(14, 165, 233, 0.4)', color: '#0284c7', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+                style={{ padding: '6px 14px', borderRadius: '8px', background: 'rgba(30, 58, 138, 0.08)', border: '1px solid rgba(30, 58, 138, 0.3)', color: '#1e3a8a', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
               >
                 🌐 GitHub Pages (wblee0703)
               </button>
@@ -504,7 +504,7 @@ export default function App() {
                   width: '100%',
                   padding: '14px',
                   borderRadius: '16px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                   border: 'none',
                   color: '#ffffff',
                   fontSize: '14px',
@@ -514,7 +514,7 @@ export default function App() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '8px',
-                  boxShadow: '0 4px 16px rgba(14, 165, 233, 0.3)'
+                  boxShadow: '0 4px 16px rgba(15, 23, 42, 0.25)'
                 }}
               >
                 {isTestingInitialServer ? <RefreshCw size={18} className="spin" /> : <CheckCircle2 size={18} />}

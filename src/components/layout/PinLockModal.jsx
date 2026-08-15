@@ -71,9 +71,9 @@ export default function PinLockModal({ isLocked, onUnlock }) {
         <div style={{
           width: '64px',
           height: '64px',
-          borderRadius: '4px',
-          background: error ? 'rgba(244, 63, 94, 0.12)' : isSuccess ? 'rgba(16, 185, 129, 0.12)' : 'rgba(14, 165, 233, 0.12)',
-          border: `1px solid ${error ? 'rgba(244, 63, 94, 0.4)' : isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(14, 165, 233, 0.3)'}`,
+          borderRadius: '6px',
+          background: error ? 'rgba(244, 63, 94, 0.12)' : isSuccess ? 'rgba(16, 185, 129, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+          border: `1px solid ${error ? 'rgba(244, 63, 94, 0.4)' : isSuccess ? 'rgba(16, 185, 129, 0.4)' : 'rgba(30, 58, 138, 0.25)'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -85,7 +85,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
           ) : error ? (
             <AlertCircle size={32} color="#e11d48" />
           ) : (
-            <Shield size={32} color="#0284c7" />
+            <Shield size={32} color="#1e3a8a" />
           )}
         </div>
         <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
@@ -107,9 +107,8 @@ export default function PinLockModal({ isLocked, onUnlock }) {
                 width: '16px',
                 height: '16px',
                 borderRadius: '50%',
-                background: filled ? (error ? '#e11d48' : '#0284c7') : '#f1f5f9',
-                boxShadow: filled ? `0 0 10px ${error ? 'rgba(225, 29, 72, 0.5)' : 'rgba(2, 132, 199, 0.5)'}` : 'none',
-                border: filled ? 'none' : '1px solid #cbd5e1',
+                background: filled ? (error ? '#e11d48' : '#1e3a8a') : '#f1f5f9',
+                border: filled ? `2px solid ${error ? '#e11d48' : '#1e3a8a'}` : '2px solid #cbd5e1',
                 transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
               }}
             />
@@ -144,7 +143,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
                 transition: 'all 0.15s ease',
                 boxShadow: '0 2px 6px rgba(0, 0, 0, 0.03)'
               }}
-              onMouseDown={(e) => e.currentTarget.style.background = '#e0f2fe'}
+              onMouseDown={(e) => e.currentTarget.style.background = '#dbeafe'}
               onMouseUp={(e) => e.currentTarget.style.background = '#f8fafc'}
             >
               {num}
@@ -157,9 +156,9 @@ export default function PinLockModal({ isLocked, onUnlock }) {
             style={{
               height: '64px',
               borderRadius: '50%',
-              background: '#f0f9ff',
-              border: '1px solid #bae6fd',
-              color: '#0284c7',
+              background: '#eff6ff',
+              border: '1px solid #bfdbfe',
+              color: '#1e3a8a',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -216,7 +215,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
 
         {/* Demo Hint */}
         <div style={{ textAlign: 'center', fontSize: '11px', color: '#64748b' }}>
-          * 테스트용 PIN: <span className="mono-font" style={{ color: '#0284c7', fontWeight: '700' }}>123456</span> 또는 지문 아이콘 클릭
+          * 테스트용 PIN: <span className="mono-font" style={{ color: '#1e3a8a', fontWeight: '700' }}>123456</span> 또는 지문 아이콘 클릭
         </div>
       </div>
     </div>

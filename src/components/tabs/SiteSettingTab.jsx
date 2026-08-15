@@ -253,39 +253,35 @@ export default function SiteSettingTab({ onTriggerToast }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
       {/* Header Banner */}
-      <div className="glass-panel" style={{ padding: '20px 24px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <div style={{
-              width: '46px',
-              height: '46px',
-              borderRadius: '4px',
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-              border: '1.5px solid #38bdf8',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
-              flexShrink: 0
-            }}>
-              <Building2 size={24} />
-            </div>
-            <div>
-              <div style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-                출입 사업장 관리
-              </div>
-            </div>
+      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+            border: '1.5px solid #1e3a8a',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ffffff',
+            boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+            flexShrink: 0
+          }}>
+            <Building2 size={22} />
+          </div>
+          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+            출입 사업장 관리
           </div>
         </div>
       </div>
 
       {/* Add New Site Card Form (Visible ONLY for Developer Role) */}
       {isDevUser && (
-        <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
-          <div style={{ fontSize: '14px', fontWeight: '700', color: '#0284c7', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e3a8a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus size={16} /> 신규 출입 사업장 등록
           </div>
 
@@ -301,7 +297,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -327,7 +323,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -349,7 +345,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -361,9 +357,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
             </div>
 
             {(newSiteForm.type === '보안앱O' || newSiteForm.type === '보안어플O') && (
-              <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontSize: '12px', color: '#0284c7', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <label style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     📱 모바일 보안 앱 바로가기 실행 링크
                   </label>
                 </div>
@@ -377,9 +373,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     style={{
                       flex: 1,
                       padding: '10px 14px',
-                      borderRadius: '10px',
+                      borderRadius: '6px',
                       background: '#ffffff',
-                      border: '1.5px solid #7dd3fc',
+                      border: '1.5px solid #cbd5e1',
                       color: '#0f172a',
                       fontSize: '12.5px',
                       outline: 'none'
@@ -390,9 +386,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     onClick={() => handleOpenAppPickerModal('new')}
                     style={{
                       padding: '10px 14px',
-                      borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                      border: '1px solid #0284c7',
+                      borderRadius: '6px',
+                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                      border: '1px solid #1e3a8a',
                       color: '#ffffff',
                       fontSize: '12px',
                       fontWeight: '800',
@@ -401,7 +397,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       alignItems: 'center',
                       gap: '5px',
                       flexShrink: 0,
-                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
                     }}
                   >
                     <Smartphone size={14} /> 📱 앱 선택
@@ -414,8 +410,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
               type="submit"
               className="glass-button-primary"
               style={{
-                padding: '12px',
-                borderRadius: '12px',
+                padding: '11px',
+                borderRadius: '6px',
                 cursor: 'pointer',
                 display: 'flex',
                 justifyContent: 'center',
@@ -432,14 +428,14 @@ export default function SiteSettingTab({ onTriggerToast }) {
       )}
 
       {/* Registered Sites List */}
-      <div className="glass-panel" style={{ padding: '20px', borderRadius: '2px', border: '1.5px solid #cbd5e1' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+      <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Building2 size={16} color="#0284c7" /> 등록된 출입 사업장 목록 ({sites.length}개)
+            <Building2 size={16} color="#1e3a8a" /> 등록된 출입 사업장 목록 ({sites.length}개)
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {sites.map((s) => {
             const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
             const displayType = isSecAppO ? '보안앱O' : '보안앱X';
@@ -450,8 +446,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
                 style={{
                   background: '#ffffff',
                   border: '1.5px solid #cbd5e1',
-                  padding: '14px 16px',
-                  borderRadius: '2px',
+                  padding: '12px 14px',
+                  borderRadius: '6px',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -481,9 +477,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       borderRadius: '6px',
                       fontSize: '11px',
                       fontWeight: '700',
-                      background: isSecAppO ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)',
-                      color: isSecAppO ? '#059669' : '#dc2626',
-                      border: isSecAppO ? '1.5px solid #6ee7b7' : '1.5px solid #fca5a5',
+                      background: isSecAppO ? 'rgba(30, 58, 138, 0.08)' : '#fff1f2',
+                      color: isSecAppO ? '#1e3a8a' : '#e11d48',
+                      border: isSecAppO ? '1.5px solid #cbd5e1' : '1.5px solid #fda4af',
                       flexShrink: 0
                     }}>
                       {displayType}
@@ -506,11 +502,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         type="button"
                         onClick={() => handleOpenEditModal(s)}
                         style={{
-                          background: '#f0f9ff',
-                          border: '1.5px solid #7dd3fc',
-                          color: '#0284c7',
+                          background: '#eff6ff',
+                          border: '1.5px solid #cbd5e1',
+                          color: '#1e3a8a',
                           padding: '5px 10px',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           fontSize: '12px',
                           fontWeight: '700',
                           cursor: 'pointer',
@@ -531,7 +527,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                           border: '1.5px solid #fda4af',
                           color: '#e11d48',
                           padding: '5px 10px',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           fontSize: '12px',
                           fontWeight: '700',
                           cursor: 'pointer',
@@ -565,9 +561,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       title={s.appUrl ? `연동 앱: ${s.appName || ''}\n경로: ${s.appUrl}` : '연동된 보안 앱이 없습니다.'}
                       style={{
                         fontSize: '11.5px',
-                        color: s.appUrl ? '#0369a1' : '#64748b',
-                        background: s.appUrl ? '#f0f9ff' : '#f8fafc',
-                        border: s.appUrl ? '1.5px solid #bae6fd' : '1.5px solid #cbd5e1',
+                        color: s.appUrl ? '#1e3a8a' : '#64748b',
+                        background: s.appUrl ? '#eff6ff' : '#f8fafc',
+                        border: s.appUrl ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1',
                         padding: '5px 10px',
                         borderRadius: '6px',
                         display: 'flex',
@@ -578,7 +574,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         overflow: 'hidden'
                       }}
                     >
-                      <Smartphone size={13} style={{ flexShrink: 0, color: s.appUrl ? '#0284c7' : '#64748b' }} />
+                      <Smartphone size={13} style={{ flexShrink: 0, color: s.appUrl ? '#1e3a8a' : '#64748b' }} />
                       <span style={{
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
@@ -608,18 +604,18 @@ export default function SiteSettingTab({ onTriggerToast }) {
                             }
                           }}
                           style={{
-                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                            border: '1px solid #059669',
+                            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                            border: '1px solid #1e3a8a',
                             color: '#ffffff',
                             padding: '5px 10px',
-                            borderRadius: '8px',
+                            borderRadius: '6px',
                             fontSize: '11.5px',
                             fontWeight: '800',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            boxShadow: '0 2px 6px rgba(16, 185, 129, 0.25)'
+                            boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
                           }}
                           title="연동된 모바일 앱 실행"
                         >
@@ -631,11 +627,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         type="button"
                         onClick={() => handleOpenAppPickerModal(s.id)}
                         style={{
-                          background: '#f0f9ff',
-                          border: '1.5px solid #7dd3fc',
-                          color: '#0284c7',
+                          background: '#eff6ff',
+                          border: '1.5px solid #cbd5e1',
+                          color: '#1e3a8a',
                           padding: '5px 10px',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           fontSize: '11.5px',
                           fontWeight: '700',
                           cursor: 'pointer',
@@ -673,9 +669,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '24px', borderRadius: '4px', border: '1.5px solid #38bdf8', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '440px', padding: '20px', borderRadius: '6px', border: '1.5px solid #cbd5e1', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ fontSize: '16px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Edit3 size={18} /> 출입 사업장 정보 수정
               </div>
               <button
@@ -697,7 +693,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -722,7 +718,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -743,7 +739,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     width: '100%',
                     padding: '10px 14px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#ffffff',
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
@@ -754,8 +750,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
               </div>
 
               {(editingSite.type === '보안앱O' || editingSite.type === '보안어플O') && (
-                <div style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', padding: '12px 14px', borderRadius: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <label style={{ fontSize: '12px', color: '#0284c7', fontWeight: '800' }}>
+                <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '800' }}>
                     📱 모바일 보안 앱 바로가기 실행 링크
                   </label>
                   <div style={{ display: 'flex', gap: '8px' }}>
@@ -767,9 +763,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       style={{
                         flex: 1,
                         padding: '10px 14px',
-                        borderRadius: '10px',
+                        borderRadius: '6px',
                         background: '#ffffff',
-                        border: '1.5px solid #7dd3fc',
+                        border: '1.5px solid #cbd5e1',
                         color: '#0f172a',
                         fontSize: '12.5px',
                         outline: 'none'
@@ -780,9 +776,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       onClick={() => handleOpenAppPickerModal('editing')}
                       style={{
                         padding: '10px 14px',
-                        borderRadius: '10px',
-                        background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
-                        border: '1px solid #0284c7',
+                        borderRadius: '6px',
+                        background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                        border: '1px solid #1e3a8a',
                         color: '#ffffff',
                         fontSize: '12px',
                         fontWeight: '800',
@@ -806,7 +802,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#f1f5f9',
                     border: '1.5px solid #cbd5e1',
                     color: '#475569',
@@ -822,14 +818,14 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    borderRadius: '12px',
-                    background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                    borderRadius: '6px',
+                    background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                     border: 'none',
                     color: '#ffffff',
                     fontSize: '13px',
                     fontWeight: '800',
                     cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
                   }}
                 >
                   저장 완료
@@ -860,13 +856,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
             width: '100%',
             maxWidth: '540px',
             maxHeight: '85vh',
-            padding: '24px',
-            borderRadius: '4px',
+            padding: '20px',
+            borderRadius: '6px',
             border: '1.5px solid #cbd5e1',
             background: '#ffffff',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
+            gap: '10px',
             boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)'
           }}>
             {/* Modal Header */}
@@ -876,13 +872,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   width: '38px',
                   height: '38px',
                   borderRadius: '12px',
-                  background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)',
+                  background: 'rgba(30, 58, 138, 0.08)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1.5px solid #bae6fd'
+                  border: '1.5px solid #cbd5e1'
                 }}>
-                  <Smartphone size={20} color="#0284c7" />
+                  <Smartphone size={20} color="#1e3a8a" />
                 </div>
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
@@ -912,8 +908,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
             }}>
               {/* 1. Official Standard Presets (주요 기업 지원 보안 앱 - First) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7', display: 'inline-block', boxShadow: '0 0 8px #0284c7' }} />
+                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e3a8a', display: 'inline-block', boxShadow: '0 0 8px #1e3a8a' }} />
                   📱 주요 기업 지원 보안 앱 (프리셋 선택)
                 </div>
 
@@ -924,7 +920,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     style={{
                       background: '#f8fafc',
                       border: '1.5px solid #cbd5e1',
-                      borderRadius: '14px',
+                      borderRadius: '6px',
                       padding: '14px 16px',
                       display: 'flex',
                       alignItems: 'center',
@@ -934,8 +930,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       transition: 'all 0.2s ease'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f0f9ff';
-                      e.currentTarget.style.borderColor = '#7dd3fc';
+                      e.currentTarget.style.background = '#eff6ff';
+                      e.currentTarget.style.borderColor = '#cbd5e1';
                     }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = '#f8fafc';
@@ -946,9 +942,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       <div style={{
                         width: '42px',
                         height: '42px',
-                        borderRadius: '12px',
+                        borderRadius: '6px',
                         background: '#f1f5f9',
-                        border: '1px solid #cbd5e1',
+                        border: '1.5px solid #cbd5e1',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -959,7 +955,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       <div>
                         <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span>{app.name}</span>
-                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(14,165,233,0.12)', color: '#0284c7', fontWeight: '700', border: '1px solid rgba(14,165,233,0.25)' }}>
+                          <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(30, 58, 138, 0.08)', color: '#1e3a8a', fontWeight: '700', border: '1.5px solid #cbd5e1' }}>
                             {app.badge}
                           </span>
                         </div>
@@ -972,11 +968,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     <button
                       type="button"
                       style={{
-                        background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                        background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                         border: 'none',
                         color: '#ffffff',
                         padding: '8px 14px',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         fontSize: '12px',
                         fontWeight: '800',
                         cursor: 'pointer',
@@ -997,11 +993,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
                 </div>
 
                 {isScanningApps ? (
-                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
                     스마트폰 설치 보안 앱 검색 중...
                   </div>
                 ) : scannedDeviceApps.length === 0 ? (
-                  <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                  <div style={{ padding: '14px', textAlign: 'center', color: '#64748b', fontSize: '12px', background: '#f8fafc', borderRadius: '6px', border: '1px dashed #cbd5e1' }}>
                     스마트폰에서 추가로 감지된 기타 보안 앱이 없습니다.
                   </div>
                 ) : (
@@ -1012,7 +1008,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       style={{
                         background: '#ecfdf5',
                         border: '1.5px solid #a7f3d0',
-                        borderRadius: '14px',
+                        borderRadius: '6px',
                         padding: '12px 14px',
                         display: 'flex',
                         alignItems: 'center',
@@ -1025,7 +1021,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       onMouseLeave={(e) => e.currentTarget.style.background = '#ecfdf5'}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                        <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
+                        <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', flexShrink: 0 }}>
                           📱
                         </div>
                         <div style={{ minWidth: 0 }}>
@@ -1044,7 +1040,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                           border: 'none',
                           color: '#fff',
                           padding: '6px 12px',
-                          borderRadius: '8px',
+                          borderRadius: '6px',
                           fontSize: '11.5px',
                           fontWeight: '800',
                           cursor: 'pointer',
@@ -1078,7 +1074,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
           alignItems: 'center',
           padding: '16px'
         }}>
-          <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '24px', borderRadius: '4px', border: '1.5px solid #fda4af', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
+          <div className="glass-panel" style={{ width: '100%', maxWidth: '420px', padding: '20px', borderRadius: '6px', border: '1.5px solid #fda4af', background: '#ffffff', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.2)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ fontSize: '16px', fontWeight: '800', color: '#e11d48', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Lock size={18} /> 출입 사업장 삭제 권한 인증
@@ -1108,7 +1104,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                 style={{
                   width: '100%',
                   padding: '12px 14px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   background: '#ffffff',
                   border: '1.5px solid #fda4af',
                   color: '#0f172a',
@@ -1130,7 +1126,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: '#f1f5f9',
                     border: '1.5px solid #cbd5e1',
                     color: '#475569',
@@ -1146,7 +1142,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                   style={{
                     flex: 1,
                     padding: '12px',
-                    borderRadius: '12px',
+                    borderRadius: '6px',
                     background: 'linear-gradient(135deg, #f43f5e 0%, #e11d48 100%)',
                     border: 'none',
                     color: '#fff',

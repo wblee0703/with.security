@@ -183,11 +183,11 @@ export default function MobileContainer({
             <div style={{
               padding: '2px 6px',
               borderRadius: '6px',
-              background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#f0f9ff'),
-              color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#0284c7'),
+              background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#eff6ff'),
+              color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#1e3a8a'),
               fontWeight: '800',
               fontSize: '10px',
-              border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#bae6fd')}`,
+              border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#cbd5e1')}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -211,10 +211,10 @@ export default function MobileContainer({
             onClick={() => setActiveTab('userProfile')}
             style={{
               padding: '4px 10px',
-              borderRadius: '8px',
-              background: '#f0f9ff',
-              border: '1.5px solid #7dd3fc',
-              color: '#0284c7',
+              borderRadius: '6px',
+              background: '#eff6ff',
+              border: '1.5px solid #cbd5e1',
+              color: '#1e3a8a',
               fontSize: '11px',
               fontWeight: '800',
               cursor: 'pointer'
@@ -234,11 +234,11 @@ export default function MobileContainer({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(14, 165, 233, 0.08)',
-          borderBottom: '1px solid rgba(14, 165, 233, 0.2)',
+          background: 'rgba(30, 58, 138, 0.08)',
+          borderBottom: '1px solid rgba(30, 58, 138, 0.2)',
           transition: isPullingRef.current ? 'none' : 'all 0.3s ease',
           gap: '8px',
-          color: '#0284c7',
+          color: '#1e3a8a',
           fontSize: '12px',
           fontWeight: '800'
         }}>

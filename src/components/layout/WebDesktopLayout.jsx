@@ -112,7 +112,7 @@ export default function WebDesktopLayout({
             />
             <div style={{ borderLeft: '1.5px solid #cbd5e1', paddingLeft: '10px' }}>
               <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                WITH Sharing <span style={{ fontSize: '10px', color: '#0284c7', fontWeight: '700' }}>Portal</span>
+                WITH Sharing <span style={{ fontSize: '10px', color: '#1e3a8a', fontWeight: '700' }}>Portal</span>
               </div>
             </div>
           </div>
@@ -122,7 +122,7 @@ export default function WebDesktopLayout({
             display: 'flex',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
-            borderRadius: '4px',
+            borderRadius: '6px',
             padding: '3px',
             boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
           }}>
@@ -130,10 +130,10 @@ export default function WebDesktopLayout({
               onClick={() => onToggleViewMode('web')}
               style={{
                 padding: '6px 12px',
-                borderRadius: '3px',
-                border: viewMode === 'web' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
-                background: viewMode === 'web' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
-                color: viewMode === 'web' ? '#0284c7' : '#64748b',
+                borderRadius: '5px',
+                border: viewMode === 'web' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
+                background: viewMode === 'web' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
+                color: viewMode === 'web' ? '#1e3a8a' : '#64748b',
                 fontSize: '11px',
                 fontWeight: '700',
                 display: 'flex',
@@ -149,10 +149,10 @@ export default function WebDesktopLayout({
               onClick={() => onToggleViewMode('mobile')}
               style={{
                 padding: '6px 12px',
-                borderRadius: '3px',
-                border: viewMode === 'mobile' ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
-                background: viewMode === 'mobile' ? 'rgba(14, 165, 233, 0.12)' : 'transparent',
-                color: viewMode === 'mobile' ? '#0284c7' : '#64748b',
+                borderRadius: '5px',
+                border: viewMode === 'mobile' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
+                background: viewMode === 'mobile' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
+                color: viewMode === 'mobile' ? '#1e3a8a' : '#64748b',
                 fontSize: '11px',
                 fontWeight: '700',
                 display: 'flex',
@@ -174,11 +174,11 @@ export default function WebDesktopLayout({
               <div style={{
                 padding: '4px 10px',
                 borderRadius: '8px',
-                background: activeUser.role === '개발자' ? '#fff1f2' : (activeUser.role === '관리자' ? '#fffbeb' : '#f0f9ff'),
-                color: activeUser.role === '개발자' ? '#e11d48' : (activeUser.role === '관리자' ? '#d97706' : '#0284c7'),
+                background: activeUser.role === '개발자' ? '#fff1f2' : (activeUser.role === '관리자' ? '#fffbeb' : '#eff6ff'),
+                color: activeUser.role === '개발자' ? '#e11d48' : (activeUser.role === '관리자' ? '#d97706' : '#1e3a8a'),
                 fontWeight: '800',
                 fontSize: '11.5px',
-                border: `1.5px solid ${activeUser.role === '개발자' ? '#fda4af' : (activeUser.role === '관리자' ? '#fde68a' : '#bae6fd')}`,
+                border: `1.5px solid ${activeUser.role === '개발자' ? '#fda4af' : (activeUser.role === '관리자' ? '#fde68a' : '#cbd5e1')}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -187,24 +187,12 @@ export default function WebDesktopLayout({
               }}>
                 {activeUser.role || '일반'}
               </div>
-            ) : (
-              <div style={{
-                padding: '4px 10px',
-                borderRadius: '8px',
-                background: '#f1f5f9',
-                color: '#64748b',
-                fontWeight: '700',
-                fontSize: '11.5px',
-                border: '1.5px solid #cbd5e1'
-              }}>
-                게스트
-              </div>
-            )}
+            ) : null}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+              <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
                 {activeUser ? `${activeUser.name} ${activeUser.rank || ''}` : '미로그인 사용자'}
               </span>
-              <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '500' }}>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>
                 {activeUser ? `${activeUser.division || ''} • ${activeUser.team || ''}` : '로그인 필요'}
               </span>
             </div>
@@ -219,7 +207,7 @@ export default function WebDesktopLayout({
                 alignItems: 'center',
                 gap: '6px',
                 padding: '6px 12px',
-                borderRadius: '4px',
+                borderRadius: '6px',
                 background: '#fff1f2',
                 border: '1.5px solid #fda4af',
                 color: '#e11d48',
@@ -265,10 +253,10 @@ export default function WebDesktopLayout({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '12px 14px',
-                  borderRadius: '4px',
-                  border: isActive ? '1.5px solid #7dd3fc' : '1.5px solid transparent',
-                  background: isActive ? 'rgba(14, 165, 233, 0.1)' : 'transparent',
-                  color: isActive ? '#0284c7' : '#475569',
+                  borderRadius: '6px',
+                  border: isActive ? '1.5px solid #cbd5e1' : '1.5px solid transparent',
+                  background: isActive ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
+                  color: isActive ? '#1e3a8a' : '#475569',
                   fontSize: '13px',
                   fontWeight: isActive ? '800' : '600',
                   cursor: 'pointer',
@@ -276,7 +264,7 @@ export default function WebDesktopLayout({
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <IconComp size={18} color={isActive ? '#0284c7' : '#64748b'} />
+                  <IconComp size={18} color={isActive ? '#1e3a8a' : '#64748b'} />
                   <span>{item.label}</span>
                 </div>
               </button>

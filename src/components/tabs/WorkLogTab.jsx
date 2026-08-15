@@ -573,107 +573,104 @@ export default function WorkLogTab({ onTriggerToast }) {
   const isAllPastLogsSelected = filteredPastLogs.length > 0 && filteredPastLogs.every(l => selectedPastLogIds.includes(l.id));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Main 2-Column Responsive Layout for Work Log Management & Desktop Calendar */}
       <div className="work-log-desktop-grid" style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1.3fr',
-        gap: '24px',
+        gap: '10px',
         alignItems: 'start',
         width: '100%'
       }}>
         {/* Left Column: Header Banner, Date Navigation, Search Filter, & Work Log List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
           {/* Header Banner */}
-          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '18px', border: '1.5px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '14px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                  border: '1.5px solid #38bdf8',
+          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Row 1: Title & Icon */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '6px',
+                background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                border: '1.5px solid #1e3a8a',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+                flexShrink: 0
+              }}>
+                <ClipboardList size={22} />
+              </div>
+              <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+                업무 일지 관리
+              </div>
+            </div>
+
+            {/* Row 2: 1:1 Equal Width Action Buttons (50% : 50%) */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+              <button
+                type="button"
+                onClick={handleOpenPastWorkModal}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#ffffff',
-                  boxShadow: '0 2px 10px rgba(14, 165, 233, 0.25)',
-                  flexShrink: 0
-                }}>
-                  <ClipboardList size={22} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-                    업무 일지 관리
-                  </div>
-                </div>
-              </div>
+                  gap: '6px',
+                  background: '#eff6ff',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#1e3a8a',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap'
+                }}
+                title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
+              >
+                <Copy size={14} /> 이전 업무 추가
+              </button>
 
-              {/* Action Buttons: Stacked Vertically with Equal Width */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '124px', flexShrink: 0 }}>
-                <button
-                  type="button"
-                  onClick={handleOpenPastWorkModal}
-                  style={{
-                    width: '100%',
-                    padding: '7px 12px',
-                    borderRadius: '10px',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px',
-                    background: '#f0f9ff',
-                    border: '1.5px solid #7dd3fc',
-                    color: '#0284c7',
-                    boxShadow: '0 2px 6px rgba(14, 165, 233, 0.1)',
-                    transition: 'all 0.2s ease',
-                    whiteSpace: 'nowrap'
-                  }}
-                  title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
-                >
-                  <Copy size={13} /> 이전 업무 추가
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenAddModal}
-                  className="glass-button-primary"
-                  style={{
-                    width: '100%',
-                    padding: '7px 12px',
-                    borderRadius: '10px',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px',
-                    border: '1px solid #0284c7',
-                    boxShadow: '0 3px 10px rgba(14, 165, 233, 0.22)',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <Plus size={14} /> 업무 추가
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleOpenAddModal}
+                className="glass-button-primary"
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  border: '1px solid #1e3a8a',
+                  boxShadow: '0 3px 10px rgba(15, 23, 42, 0.25)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                <Plus size={15} /> 업무 추가
+              </button>
             </div>
           </div>
 
           {/* Interactive Date Selector Navigation Bar (2-Row Layout) */}
           <div className="glass-panel" style={{
-            padding: '16px 20px',
-            borderRadius: '2px',
+            padding: '14px 16px',
+            borderRadius: '6px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
             display: 'flex',
             flexDirection: 'column',
-            gap: '14px',
+            gap: '10px',
             width: '100%',
             boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)'
           }}>
@@ -692,7 +689,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   flex: '0 0 38px',
                   height: '38px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   border: '1.5px solid #cbd5e1',
                   background: '#ffffff',
                   color: '#0f172a',
@@ -715,9 +712,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   padding: '8px 16px',
-                  borderRadius: '10px',
-                  background: '#f0f9ff',
-                  border: '1.5px solid #7dd3fc',
+                  borderRadius: '6px',
+                  background: '#eff6ff',
+                  border: '1.5px solid #bfdbfe',
                   boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)',
                   cursor: 'pointer',
                   overflow: 'hidden'
@@ -728,12 +725,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  color: '#0284c7',
+                  color: '#1e3a8a',
                   fontSize: '13px',
                   fontWeight: '800',
                   pointerEvents: 'none'
                 }}>
-                  <Calendar size={15} color="#0284c7" />
+                  <Calendar size={15} color="#1e3a8a" />
                   <span>{viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}</span>
                 </div>
 
@@ -769,7 +766,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   flex: '0 0 38px',
                   height: '38px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   border: '1.5px solid #cbd5e1',
                   background: '#ffffff',
                   color: '#0f172a',
@@ -801,14 +798,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                 onClick={handleToday}
                 style={{
                   padding: '7px 16px',
-                  borderRadius: '10px',
+                  borderRadius: '6px',
                   border: selectedDate === getTodayIsoDate() && !viewAllDates
-                    ? '1.5px solid #0284c7'
+                    ? '1.5px solid #1e3a8a'
                     : '1.5px solid #cbd5e1',
                   background: selectedDate === getTodayIsoDate() && !viewAllDates
-                    ? 'rgba(2, 132, 199, 0.1)'
+                    ? 'rgba(30, 58, 138, 0.08)'
                     : '#f8fafc',
-                  color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#0284c7' : '#64748b',
+                  color: selectedDate === getTodayIsoDate() && !viewAllDates ? '#1e3a8a' : '#64748b',
                   fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer',
@@ -819,7 +816,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               </button>
 
               <div style={{ fontSize: '13px', fontWeight: '700', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#0284c7', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+                {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>{filteredLogs.length}건</strong>
               </div>
 
               <button
@@ -827,7 +824,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 onClick={() => setViewAllDates(!viewAllDates)}
                 style={{
                   padding: '7px 16px',
-                  borderRadius: '10px',
+                  borderRadius: '6px',
                   border: viewAllDates ? '1.5px solid #7c3aed' : '1.5px solid #cbd5e1',
                   background: viewAllDates ? 'rgba(124, 58, 237, 0.1)' : '#f8fafc',
                   color: viewAllDates ? '#7c3aed' : '#64748b',
@@ -845,7 +842,7 @@ export default function WorkLogTab({ onTriggerToast }) {
           {/* Filter Bar & Search (Single Row Matching Layout) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', flexWrap: 'nowrap' }}>
             {/* Category Segmented Control */}
-            <div style={{ display: 'flex', background: '#ffffff', padding: '4px', borderRadius: '12px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', background: '#ffffff', padding: '3px', borderRadius: '6px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
               {['전체', '사내 업무', '출장 업무'].map(cat => (
                 <button
                   key={cat}
@@ -853,11 +850,11 @@ export default function WorkLogTab({ onTriggerToast }) {
                   onClick={() => setFilterCategory(cat)}
                   style={{
                     padding: '6px 12px',
-                    borderRadius: '8px',
+                    borderRadius: '5px',
                     fontSize: '12px',
                     fontWeight: '800',
                     border: filterCategory === cat ? '1px solid #e2e8f0' : '1px solid transparent',
-                    background: filterCategory === cat ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)' : 'transparent',
+                    background: filterCategory === cat ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' : 'transparent',
                     color: filterCategory === cat ? '#ffffff' : '#334155',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
@@ -882,7 +879,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 style={{
                   width: '100%',
                   padding: '9px 12px 9px 34px',
-                  borderRadius: '12px',
+                  borderRadius: '6px',
                   background: '#ffffff',
                   border: '1.5px solid #cbd5e1',
                   color: '#0f172a',
@@ -896,10 +893,10 @@ export default function WorkLogTab({ onTriggerToast }) {
           </div>
 
           {/* Date-Grouped Work Logs List */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {sortedDates.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '40px 24px', textAlign: 'center', borderRadius: '2px', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <ClipboardList size={36} color="#0284c7" style={{ marginBottom: '10px' }} />
+              <div className="glass-panel" style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '6px', color: '#64748b', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <ClipboardList size={36} color="#1e3a8a" style={{ marginBottom: '10px' }} />
                 <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
                   {viewAllDates ? '등록된 업무 일지가 없습니다.' : `${getFormattedKoreanDate(selectedDate)}에 등록된 업무 일지가 없습니다.`}
                 </div>
@@ -916,14 +913,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                       borderRadius: '12px',
                       fontSize: '12.5px',
                       fontWeight: '800',
-                      background: '#f0f9ff',
-                      border: '1.5px solid #7dd3fc',
-                      color: '#0284c7',
+                      background: '#eff6ff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#1e3a8a',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
-                      boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)'
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                     }}
                   >
                     <Copy size={14} /> 이전 업무 가져오기
@@ -937,14 +934,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                       borderRadius: '12px',
                       fontSize: '12.5px',
                       fontWeight: '800',
-                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                       border: 'none',
                       color: '#ffffff',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
-                      boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)'
+                      boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
                     }}
                   >
                     <Plus size={14} /> 신규 업무 등록
@@ -956,16 +953,16 @@ export default function WorkLogTab({ onTriggerToast }) {
                 <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {/* Date Header (Crisp High-Contrast Colors) */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px', paddingTop: '4px' }}>
-                    <Calendar size={16} color="#0284c7" />
+                    <Calendar size={16} color="#1e3a8a" />
                     <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px' }}>
                       {getFormattedKoreanDate(dateStr)}
                     </span>
                     <span style={{
                       fontSize: '11px',
                       fontWeight: '800',
-                      color: '#0284c7',
-                      background: 'rgba(14, 165, 233, 0.1)',
-                      border: '1px solid #bae6fd',
+                      color: '#1e3a8a',
+                      background: 'rgba(30, 58, 138, 0.08)',
+                      border: '1px solid #cbd5e1',
                       padding: '2px 8px',
                       borderRadius: '10px'
                     }}>
@@ -974,7 +971,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   </div>
 
                   {/* Logs Grid for this date */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {(() => {
                       const logsForDate = groupedByDate[dateStr] || [];
                       const cardGroupsMap = logsForDate.reduce((acc, log) => {
@@ -1004,14 +1001,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                           key={group.key}
                           className="glass-panel"
                           style={{
-                            padding: '18px 20px',
-                            borderRadius: '2px',
+                            padding: '16px 18px',
+                            borderRadius: '6px',
                             border: '1.5px solid #cbd5e1',
-                            borderLeft: group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #0284c7',
+                            borderLeft: group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #1e3a8a',
                             boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '12px'
+                            gap: '10px'
                           }}
                         >
                           {/* Log Header Row 1: Category Badge + Business Trip Site + Group Action Button */}
@@ -1022,9 +1019,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 borderRadius: '6px',
                                 fontSize: '11px',
                                 fontWeight: '800',
-                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(14, 165, 233, 0.12)',
-                                color: group.category === '출장 업무' ? '#7c3aed' : '#0284c7',
-                                border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#7dd3fc'}`
+                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+                                color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
+                                border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
                               }}>
                                 {group.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
                               </span>
@@ -1057,9 +1054,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 type="button"
                                 onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
                                 style={{
-                                  background: '#f0f9ff',
-                                  border: '1.5px solid #7dd3fc',
-                                  color: '#0284c7',
+                                  background: '#eff6ff',
+                                  border: '1.5px solid #cbd5e1',
+                                  color: '#1e3a8a',
                                   padding: '5px 10px',
                                   borderRadius: '8px',
                                   fontSize: '11.5px',
@@ -1071,7 +1068,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   alignItems: 'center',
                                   gap: '4px',
                                   transition: 'all 0.2s ease',
-                                  boxShadow: '0 2px 6px rgba(14, 165, 233, 0.1)'
+                                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
                                 }}
                                 title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
                               >
@@ -1086,7 +1083,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               👤 {group.authorName} {group.authorRank || ''}
                             </span>
                             <span>|</span>
-                            <span style={{ color: '#0284c7', fontWeight: '700' }}>
+                            <span style={{ color: '#1e3a8a', fontWeight: '700' }}>
                               {formatOnlyTeam(group.authorTeam)}
                             </span>
                             <span>|</span>
@@ -1105,13 +1102,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     key={item.id}
                                     style={{
                                       background: isEditingThis ? '#ffffff' : '#f8fafc',
-                                      border: isEditingThis ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
-                                      borderRadius: '2px',
+                                      border: isEditingThis ? '1.5px solid #1e3a8a' : '1.5px solid #e2e8f0',
+                                      borderRadius: '6px',
                                       padding: '12px 14px',
                                       display: 'flex',
                                       flexDirection: 'column',
                                       gap: '8px',
-                                      boxShadow: isEditingThis ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                                      boxShadow: isEditingThis ? '0 0 0 3px rgba(30, 58, 138, 0.15)' : 'none',
                                       transition: 'all 0.2s ease'
                                     }}
                                   >
@@ -1119,7 +1116,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       /* Inline Editing Mode */
                                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0284c7' }}>
+                                          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>
                                             #{itemIdx + 1}
                                           </span>
                                           <input
@@ -1131,7 +1128,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               padding: '7px 10px',
                                               borderRadius: '2px',
                                               background: '#ffffff',
-                                              border: '1px solid #3b82f6',
+                                              border: '1px solid #1e3a8a',
                                               color: '#0f172a',
                                               fontSize: '14px',
                                               fontWeight: '700',
@@ -1183,7 +1180,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             style={{
                                               padding: '5px 12px',
                                               borderRadius: '2px',
-                                              background: '#0284c7',
+                                              background: '#1e3a8a',
                                               border: '1px solid transparent',
                                               color: '#ffffff',
                                               fontSize: '11px',
@@ -1203,7 +1200,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             <span style={{
                                               fontSize: '12px',
                                               fontWeight: '800',
-                                              color: group.category === '출장 업무' ? '#7c3aed' : '#0284c7',
+                                              color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
                                               paddingTop: '1px'
                                             }}>
                                               #{itemIdx + 1}
@@ -1284,17 +1281,17 @@ export default function WorkLogTab({ onTriggerToast }) {
                             {inlineAddingCardKey === group.key && (
                               <div style={{
                                 marginTop: '8px',
-                                padding: '14px',
+                                padding: '12px',
                                 background: '#ffffff',
-                                border: '1.5px dashed #0284c7',
-                                borderRadius: '2px',
+                                border: '1.5px dashed #1e3a8a',
+                                borderRadius: '6px',
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: '10px',
-                                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.08)'
+                                boxShadow: '0 4px 14px rgba(15, 23, 42, 0.08)'
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7' }}>
+                                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a' }}>
                                     #{group.items.length + 1}
                                   </span>
                                   <input
@@ -1313,7 +1310,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       padding: '7px 10px',
                                       borderRadius: '2px',
                                       background: '#ffffff',
-                                      border: '1.5px solid #38bdf8',
+                                      border: '1.5px solid #1e3a8a',
                                       color: '#0f172a',
                                       fontSize: '14px',
                                       fontWeight: '700',
@@ -1365,13 +1362,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     style={{
                                       padding: '5px 14px',
                                       borderRadius: '2px',
-                                      background: 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)',
+                                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                                       border: 'none',
                                       color: '#ffffff',
                                       fontSize: '11.5px',
                                       fontWeight: '800',
                                       cursor: 'pointer',
-                                      boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
+                                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
                                     }}
                                   >
                                     추가 완료
@@ -1423,7 +1420,7 @@ export default function WorkLogTab({ onTriggerToast }) {
           <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
             width: '100%',
             maxWidth: '520px',
-            borderRadius: '4px',
+            borderRadius: '10px',
             padding: '24px',
             background: '#ffffff',
             border: '1.5px solid #cbd5e1',
@@ -1440,7 +1437,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   width: '38px',
                   height: '38px',
                   borderRadius: '4px',
-                  background: 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
                   border: '1px solid rgba(255, 255, 255, 0.3)',
                   display: 'flex',
                   alignItems: 'center',
@@ -1453,7 +1450,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a' }}>
                     {editingLogId ? '업무 일지 수정' : '신규 업무 일지 등록'}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                  <div style={{ fontSize: '11px', color: '#1e3a8a', fontWeight: '700' }}>
                     작성자: {currentUser?.name || '사용자'} {currentUser?.rank || '대리'} ({currentUser?.team || '운영팀'})
                   </div>
                 </div>
@@ -1603,8 +1600,8 @@ export default function WorkLogTab({ onTriggerToast }) {
               {/* Dynamic Extra Tasks List (When adding 2 or more tasks at once) */}
               {!editingLogId && extraTasks.map((tItem, idx) => (
                 <div key={idx} style={{
-                  background: '#f0f9ff',
-                  border: '1px solid #bae6fd',
+                  background: '#eff6ff',
+                  border: '1px solid #cbd5e1',
                   borderRadius: '4px',
                   padding: '14px',
                   display: 'flex',
@@ -1612,7 +1609,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   gap: '10px'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '12.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <Plus size={14} /> 추가 업무 항목 #{idx + 2}
                     </span>
                     <button
@@ -1687,7 +1684,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: '6px',
+                      gap: '10px',
                       transition: 'all 0.2s ease',
                       marginTop: '2px'
                     }}
@@ -1747,7 +1744,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               maxWidth: '620px',
               maxHeight: '85vh',
               padding: '24px',
-              borderRadius: '4px',
+              borderRadius: '14px',
               border: '1.5px solid #cbd5e1',
               background: '#ffffff',
               display: 'flex',
@@ -1762,19 +1759,19 @@ export default function WorkLogTab({ onTriggerToast }) {
                     width: '42px',
                     height: '42px',
                     borderRadius: '4px',
-                    background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)',
+                    background: 'rgba(30, 58, 138, 0.08)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '1.5px solid #bae6fd',
-                    color: '#0284c7'
+                    border: '1.5px solid #cbd5e1',
+                    color: '#1e3a8a'
                   }}>
                     <Copy size={22} />
                   </div>
                   <div>
                     <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span>이전 업무 불러오기 & 복사</span>
-                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#e0f2fe', color: '#0369a1', fontWeight: '700' }}>
+                      <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#1e3a8a', fontWeight: '700' }}>
                         대상일: {selectedDate}
                       </span>
                     </div>
@@ -1838,9 +1835,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                             borderRadius: '4px',
                             fontSize: '12px',
                             fontWeight: isCatActive ? '800' : '600',
-                            background: isCatActive ? '#0284c7' : '#f1f5f9',
+                            background: isCatActive ? '#1e3a8a' : '#f1f5f9',
                             color: isCatActive ? '#ffffff' : '#475569',
-                            border: isCatActive ? '1px solid #0284c7' : '1px solid #cbd5e1',
+                            border: isCatActive ? '1px solid #1e3a8a' : '1px solid #cbd5e1',
                             cursor: 'pointer',
                             transition: 'all 0.2s ease'
                           }}
@@ -1862,14 +1859,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                         gap: '6px',
                         background: 'none',
                         border: 'none',
-                        color: '#0284c7',
+                        color: '#1e3a8a',
                         fontSize: '12px',
                         fontWeight: '700',
                         cursor: 'pointer',
                         padding: '4px 8px'
                       }}
                     >
-                      {isAllPastLogsSelected ? <CheckSquare size={16} color="#0284c7" /> : <Square size={16} color="#94a3b8" />}
+                      {isAllPastLogsSelected ? <CheckSquare size={16} color="#1e3a8a" /> : <Square size={16} color="#94a3b8" />}
                       전체 선택 ({filteredPastLogs.length}건)
                     </button>
                   )}
@@ -1918,9 +1915,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                           gap: '12px',
                           padding: '12px 14px',
                           borderRadius: '14px',
-                          background: isSelected ? '#f0f9ff' : '#ffffff',
-                          border: isSelected ? '1.5px solid #0284c7' : '1.5px solid #e2e8f0',
-                          boxShadow: isSelected ? '0 2px 8px rgba(2, 132, 199, 0.12)' : '0 1px 3px rgba(0,0,0,0.02)',
+                          background: isSelected ? '#eff6ff' : '#ffffff',
+                          border: isSelected ? '1.5px solid #1e3a8a' : '1.5px solid #e2e8f0',
+                          boxShadow: isSelected ? '0 2px 8px rgba(15, 23, 42, 0.08)' : '0 1px 3px rgba(0,0,0,0.02)',
                           transition: 'all 0.2s ease',
                           cursor: 'pointer'
                         }}
@@ -1928,8 +1925,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                       >
                         {/* Left: Checkbox & Log Content */}
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', minWidth: 0, flex: 1 }}>
-                          <div style={{ paddingTop: '2px', color: isSelected ? '#0284c7' : '#94a3b8', flexShrink: 0 }}>
-                            {isSelected ? <CheckSquare size={18} color="#0284c7" /> : <Square size={18} />}
+                          <div style={{ paddingTop: '2px', color: isSelected ? '#1e3a8a' : '#94a3b8', flexShrink: 0 }}>
+                            {isSelected ? <CheckSquare size={18} color="#1e3a8a" /> : <Square size={18} />}
                           </div>
 
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0, flex: 1 }}>
@@ -1951,9 +1948,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 fontWeight: '700',
                                 padding: '2px 6px',
                                 borderRadius: '5px',
-                                background: isBusinessTrip ? 'rgba(245, 158, 11, 0.12)' : 'rgba(14, 165, 233, 0.12)',
-                                color: isBusinessTrip ? '#d97706' : '#0284c7',
-                                border: isBusinessTrip ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(14, 165, 233, 0.25)'
+                                background: isBusinessTrip ? 'rgba(245, 158, 11, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+                                color: isBusinessTrip ? '#d97706' : '#1e3a8a',
+                                border: isBusinessTrip ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(30, 58, 138, 0.25)'
                               }}>
                                 {isBusinessTrip ? '🚗 출장' : '🏢 사내'}
                               </span>
@@ -2013,9 +2010,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                           style={{
                             padding: '7px 12px',
                             borderRadius: '10px',
-                            background: '#f0f9ff',
-                            border: '1.5px solid #7dd3fc',
-                            color: '#0284c7',
+                            background: '#eff6ff',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#1e3a8a',
                             fontSize: '12px',
                             fontWeight: '800',
                             cursor: 'pointer',
@@ -2027,12 +2024,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                             whiteSpace: 'nowrap'
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#0284c7';
+                            e.currentTarget.style.background = '#1e3a8a';
                             e.currentTarget.style.color = '#ffffff';
                           }}
                           onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f0f9ff';
-                            e.currentTarget.style.color = '#0284c7';
+                            e.currentTarget.style.background = '#eff6ff';
+                            e.currentTarget.style.color = '#1e3a8a';
                           }}
                           title={`'${item.title}' 업무를 [${selectedDate}]로 바로 복사`}
                         >
@@ -2047,7 +2044,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               {/* Modal Footer Actions */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1.5px solid #e2e8f0', paddingTop: '14px', marginTop: '4px' }}>
                 <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '600' }}>
-                  선택된 항목: <strong style={{ color: selectedPastLogIds.length > 0 ? '#0284c7' : '#0f172a' }}>{selectedPastLogIds.length}</strong>건
+                  선택된 항목: <strong style={{ color: selectedPastLogIds.length > 0 ? '#1e3a8a' : '#0f172a' }}>{selectedPastLogIds.length}</strong>건
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -2076,14 +2073,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                       padding: '10px 18px',
                       borderRadius: '12px',
                       background: selectedPastLogIds.length > 0
-                        ? 'linear-gradient(135deg, #0284c7 0%, #2563eb 100%)'
+                        ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)'
                         : '#cbd5e1',
                       border: 'none',
                       color: '#ffffff',
                       fontSize: '13px',
                       fontWeight: '800',
                       cursor: selectedPastLogIds.length > 0 ? 'pointer' : 'not-allowed',
-                      boxShadow: selectedPastLogIds.length > 0 ? '0 4px 12px rgba(37, 99, 235, 0.25)' : 'none',
+                      boxShadow: selectedPastLogIds.length > 0 ? '0 4px 12px rgba(15, 23, 42, 0.25)' : 'none',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px'
