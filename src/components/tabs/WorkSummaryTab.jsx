@@ -17,6 +17,7 @@ import {
   CalendarDays,
   FileSpreadsheet,
   Copy,
+  Share2,
   Printer,
   Award,
   CheckSquare,
@@ -202,11 +203,48 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   });
   const sortedWeeklyDates = Object.keys(weeklyGroupedByDate).sort();
 
-  // --- Copy Report Helpers ---
+  // --- Copy & Share Report Helpers ---
   const handleCopyText = (text, title) => {
-    navigator.clipboard.writeText(text);
-    if (onTriggerToast) {
-      onTriggerToast(`📋 [${title}] 텍스트 보고서가 클립보드에 복사되었습니다.`, 'success');
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      if (onTriggerToast) {
+        onTriggerToast(`📋 [${title}] 텍스트 보고서가 클립보드에 복사되었습니다.`, 'success');
+      }
+    } else {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      if (onTriggerToast) {
+        onTriggerToast(`📋 [${title}] 텍스트 보고서가 복사되었습니다.`, 'success');
+      }
+    }
+  };
+
+  const handleShareText = async (text, title) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `[with.security] ${title}`,
+          text: text,
+        });
+        if (onTriggerToast) {
+          onTriggerToast(`🔗 [${title}] 공유 완료`, 'success');
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          // Fallback to copy if share fails
+          handleCopyText(text, title);
+        }
+      }
+    } else {
+      // Fallback to copy if Web Share API is not supported
+      handleCopyText(text, title);
+      if (onTriggerToast) {
+        onTriggerToast(`📋 공유 기능 미지원 브라우저입니다. 클립보드에 복사되었습니다.`, 'info');
+      }
     }
   };
 
@@ -526,27 +564,52 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 보고서')}
-              style={{
-                background: '#f0f9ff',
-                border: '1.5px solid #7dd3fc',
-                color: '#0284c7',
-                padding: '6px 12px',
-                borderRadius: '10px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)'
-              }}
-            >
-              <Copy size={13} /> 복사
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
+                style={{
+                  background: '#f0f9ff',
+                  border: '1.5px solid #7dd3fc',
+                  color: '#0284c7',
+                  padding: '6px 11px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(14, 165, 233, 0.12)'
+                }}
+                title="일일 업무 보고서 텍스트 복사"
+              >
+                <Copy size={13} /> 복사
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                style={{
+                  background: '#0284c7',
+                  border: '1.5px solid #0284c7',
+                  color: '#ffffff',
+                  padding: '6px 11px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(2, 132, 199, 0.25)'
+                }}
+                title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+              >
+                <Share2 size={13} /> 공유
+              </button>
+            </div>
           </div>
 
           {/* Report Sheet Document Frame */}
@@ -791,27 +854,52 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
-              style={{
-                background: '#faf5ff',
-                border: '1.5px solid #c4b5fd',
-                color: '#7c3aed',
-                padding: '6px 12px',
-                borderRadius: '10px',
-                fontSize: '12px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 8px rgba(124, 58, 237, 0.12)'
-              }}
-            >
-              <Copy size={13} /> 복사
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
+                style={{
+                  background: '#faf5ff',
+                  border: '1.5px solid #c4b5fd',
+                  color: '#7c3aed',
+                  padding: '6px 11px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.12)'
+                }}
+                title="주간 업무 보고서 텍스트 복사"
+              >
+                <Copy size={13} /> 복사
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                style={{
+                  background: '#7c3aed',
+                  border: '1.5px solid #7c3aed',
+                  color: '#ffffff',
+                  padding: '6px 11px',
+                  borderRadius: '10px',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                }}
+                title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+              >
+                <Share2 size={13} /> 공유
+              </button>
+            </div>
           </div>
 
           {/* Report Sheet Document Frame */}
