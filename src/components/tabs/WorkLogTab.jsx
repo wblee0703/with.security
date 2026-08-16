@@ -832,7 +832,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   transition: 'all 0.2s ease'
                 }}
               >
-                {viewAllDates ? '📅 날짜별 보기' : '🌐 전체 보기'}
+                {viewAllDates ? '날짜별 보기' : '전체 보기'}
               </button>
             </div>
           </div>
@@ -1817,29 +1817,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                     );
                   })}
                 </div>
-
-                {/* Multi Select All Toggle */}
-                {filteredPastLogs.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleToggleSelectAllPastLogs(filteredPastLogs)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      background: 'none',
-                      border: 'none',
-                      color: '#1e3a8a',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      padding: '4px 8px'
-                    }}
-                  >
-                    {isAllPastLogsSelected ? <CheckSquare size={16} color="#1e3a8a" /> : <Square size={16} color="#94a3b8" />}
-                    전체 선택 ({filteredPastLogs.length}건)
-                  </button>
-                )}
               </div>
             </div>
 
@@ -1910,7 +1887,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               padding: '2px 6px',
                               borderRadius: '5px'
                             }}>
-                              📅 {item.date}
+                              {item.date}
                             </span>
 
                             <span style={{
@@ -1939,12 +1916,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 whiteSpace: 'nowrap'
                               }}>
                                 {siteLabel}
-                              </span>
-                            )}
-
-                            {item.authorName && (
-                              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                👤 {item.authorName}
                               </span>
                             )}
                           </div>

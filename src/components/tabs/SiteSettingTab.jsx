@@ -629,7 +629,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                           }}
                           title="연동된 모바일 앱 실행"
                         >
-                          🚀 바로가기
+                          바로가기
                         </button>
                       )}
 
@@ -653,7 +653,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         }}
                         title="스마트폰 보안 앱 찾기 및 연동 등록"
                       >
-                        <Smartphone size={13} /> 앱 찾기
+                        앱 선택
                       </button>
                     </div>
                   </div>
