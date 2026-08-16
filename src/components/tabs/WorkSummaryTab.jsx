@@ -30,6 +30,23 @@ import { shareReportText } from '../../services/appLauncherService';
 
 export default function WorkSummaryTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
+  const [isMobile, setIsMobile] = useState(() => {
+    if (Capacitor.isNativePlatform()) return true;
+    return typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (Capacitor.isNativePlatform()) {
+        setIsMobile(true);
+      } else {
+        setIsMobile(window.innerWidth <= 768);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [workLogs, setWorkLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const dailyDateInputRef = useRef(null);
@@ -275,7 +292,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     t += `• 보고 일자: ${getFormattedKoreanDate(dailyDate)}\n`;
     t += `• 총 업무 실적: 총 ${dailyTotalInitialCount}건 (사내 ${dailyInitialInternalCount}건 / 출장 ${dailyInitialTripCount}건)\n\n`;
 
-    t += `1. 🏢 사내 업무 추진 현황\n`;
+    t += `1. 사내 업무\n`;
     if (dailyInternalLogs.length === 0) {
       t += `   - 사내 업무 기록 없음\n`;
     } else {
@@ -291,7 +308,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       });
     }
 
-    t += `\n2. 🚗 출장 및 현장 지원 현황\n`;
+    t += `\n2. 출장 및 현장 지원\n`;
     const siteKeys = Object.keys(dailyTripGroupedBySite);
     if (siteKeys.length === 0) {
       t += `   - 출장 업무 기록 없음\n`;
@@ -430,36 +447,101 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           minWidth: 0
         }}>
           {/* Header Bar Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '6px',
-                background: '#475569',
-                border: '1.5px solid #475569',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
-                flexShrink: 0
-              }}>
-                <CalendarDays size={22} />
-              </div>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                일일 업무
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+              {/* Row 1: Title (Icon + 일일 업무) on Left, Action Buttons (복사, 공유) on Right */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '6px',
+                    background: '#475569',
+                    border: '1.5px solid #475569',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ffffff',
+                    boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
+                    flexShrink: 0
+                  }}>
+                    <CalendarDays size={20} />
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                    일일 업무
+                  </div>
+                </div>
+
+                {/* Action Buttons: Copy & Share */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
+                    style={{
+                      background: '#eff6ff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#0f172a',
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
+                    }}
+                    title="일일 업무 보고서 텍스트 복사"
+                  >
+                    <Copy size={13} />
+                  </button>
+                  {isNative && (
+                    <button
+                      type="button"
+                      onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                      style={{
+                        background: '#1e3a8a',
+                        border: '1.5px solid #1e3a8a',
+                        color: '#ffffff',
+                        padding: '7px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                      }}
+                      title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                    >
+                      <Share2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Daily Date Controller (Right next to 일일 업무) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px' }}>
+              {/* Row 2: Daily Date Controller (그 다음 줄에 위치) */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#f8fafc',
+                border: '1.5px solid #cbd5e1',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}>
                 <button
                   type="button"
                   onClick={handlePrevDay}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
                   title="이전일"
                 >
-                  <ChevronLeft size={16} />
+                  <ChevronLeft size={18} />
                 </button>
 
                 <div
@@ -511,46 +593,113 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 <button
                   type="button"
                   onClick={handleNextDay}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
                   title="다음일"
                 >
-                  <ChevronRight size={16} />
+                  <ChevronRight size={18} />
                 </button>
               </div>
             </div>
-
-            {/* Action Buttons: Copy & Share */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
-                style={{
-                  background: '#eff6ff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#0f172a',
-                  padding: '7px 12px',
+          ) : (
+            /* Web Browser Mode: Current Horizontal Layout Preserved */
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
                   borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
+                  background: '#475569',
+                  border: '1.5px solid #475569',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
-                }}
-                title="일일 업무 보고서 텍스트 복사"
-              >
-                <Copy size={13} />
-              </button>
-              {isNative && (
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
+                  flexShrink: 0
+                }}>
+                  <CalendarDays size={22} />
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  일일 업무
+                </div>
+
+                {/* Daily Date Controller (Right next to 일일 업무) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '2px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevDay}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="이전일"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  <div
+                    onClick={() => {
+                      if (dailyDateInputRef.current) {
+                        if (typeof dailyDateInputRef.current.showPicker === 'function') {
+                          dailyDateInputRef.current.showPicker();
+                        } else {
+                          dailyDateInputRef.current.focus();
+                          dailyDateInputRef.current.click();
+                        }
+                      }
+                    }}
+                    style={{
+                      position: 'relative',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      padding: '2px 4px',
+                      borderRadius: '2px',
+                      userSelect: 'none'
+                    }}
+                    title="클릭하여 달력에서 날짜 선택"
+                  >
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                      {getFormattedKoreanDate(dailyDate)}
+                    </span>
+                    <input
+                      ref={dailyDateInputRef}
+                      type="date"
+                      value={dailyDate}
+                      onChange={(e) => e.target.value && setDailyDate(e.target.value)}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        opacity: 0,
+                        pointerEvents: 'none',
+                        border: 'none',
+                        outline: 'none',
+                        padding: 0,
+                        margin: 0
+                      }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextDay}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="다음일"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons: Copy & Share */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <button
                   type="button"
-                  onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                  onClick={() => handleCopyText(generateDailyReportText(), '일일 업무 일지')}
                   style={{
-                    background: '#1e3a8a',
-                    border: '1.5px solid #1e3a8a',
-                    color: '#ffffff',
+                    background: '#eff6ff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
                     padding: '7px 12px',
                     borderRadius: '6px',
                     fontSize: '12px',
@@ -560,15 +709,39 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     alignItems: 'center',
                     gap: '4px',
                     transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                   }}
-                  title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                  title="일일 업무 보고서 텍스트 복사"
                 >
-                  <Share2 size={13} />
+                  <Copy size={13} />
                 </button>
-              )}
+                {isNative && (
+                  <button
+                    type="button"
+                    onClick={() => handleShareText(generateDailyReportText(), '일일 업무 일지')}
+                    style={{
+                      background: '#1e3a8a',
+                      border: '1.5px solid #1e3a8a',
+                      color: '#ffffff',
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                    }}
+                    title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                  >
+                    <Share2 size={13} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Official Report Summary Table Grid */}
           <div style={{
@@ -601,11 +774,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           ) : (
             <>
-              {/* Section 1: 🏢 사내 업무 보고 */}
+              {/* Section 1: 사내 업무 보고 */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                   <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
-                    1. 사내 업무 추진 실적
+                    1. 사내 업무
                   </div>
                   {dailyInternalLogs.length > 0 && (
                     <span style={{ fontSize: '12.5px', color: '#0f172a', paddingRight: '4px' }}>
@@ -637,10 +810,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 )}
               </div>
 
-              {/* Section 2: 🚗 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
+              {/* Section 2: 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
                 <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
-                  2. 출장 및 현장 지원 실적 ({dailyInitialTripCount}건)
+                  2. 출장 및 현장 지원
                 </div>
 
                 {dailyTripLogs.length === 0 ? (
@@ -674,7 +847,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                           {/* Site Header & Combined Authors */}
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
                             <span style={{ color: '#0f172a', fontSize: '13.5px', fontWeight: '800', background: '#f1f5f9', border: '1.5px solid #cbd5e1', padding: '3px 8px', borderRadius: '6px' }}>
-                              📍 {siteKey}
+                              {siteKey}
                             </span>
                             <span style={{ fontSize: '12.5px', color: '#0f172a' }}>
                               출장자: <strong style={{ color: '#0f172a' }}>{authorsText}</strong>
@@ -733,89 +906,184 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           minWidth: 0
         }}>
           {/* Header Bar Row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '6px',
-                background: '#475569',
-                border: '1.5px solid #475569',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
-                flexShrink: 0
-              }}>
-                <FileSpreadsheet size={22} />
-              </div>
-              <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                주간 업무
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+              {/* Row 1: Title (Icon + 주간 업무) on Left, Action Buttons (복사, 공유) on Right */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '6px',
+                    background: '#475569',
+                    border: '1.5px solid #475569',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ffffff',
+                    boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
+                    flexShrink: 0
+                  }}>
+                    <FileSpreadsheet size={20} />
+                  </div>
+                  <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                    주간 업무
+                  </div>
+                </div>
+
+                {/* Action Buttons: Copy & Share */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
+                    style={{
+                      background: '#eff6ff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#0f172a',
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
+                    }}
+                    title="주간 업무 보고서 텍스트 복사"
+                  >
+                    <Copy size={13} />
+                  </button>
+                  {isNative && (
+                    <button
+                      type="button"
+                      onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                      style={{
+                        background: '#1e3a8a',
+                        border: '1.5px solid #1e3a8a',
+                        color: '#ffffff',
+                        padding: '7px 12px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                      }}
+                      title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+                    >
+                      <Share2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Week Controls (Right next to 주간 업무) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px', flexWrap: 'wrap' }}>
+              {/* Row 2: Week Controller (그 다음 줄에 위치) */}
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: '#f8fafc',
+                border: '1.5px solid #cbd5e1',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                width: '100%',
+                boxSizing: 'border-box'
+              }}>
                 <button
                   type="button"
                   onClick={handlePrevWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
                   title="이전주"
                 >
-                  <ChevronLeft size={16} />
+                  <ChevronLeft size={18} />
                 </button>
 
-                <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', padding: '0 2px', whiteSpace: 'nowrap' }}>
-                  {getWeekText(weeklyMonday)}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                    {getWeekText(weeklyMonday)}
+                  </span>
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', whiteSpace: 'nowrap' }}>
+                    ({weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)})
+                  </span>
+                </div>
 
                 <button
                   type="button"
                   onClick={handleNextWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
                   title="다음주"
                 >
-                  <ChevronRight size={16} />
+                  <ChevronRight size={18} />
                 </button>
-
-                <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', marginLeft: '4px' }}>
-                  {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
-                </span>
               </div>
             </div>
-
-            {/* Action Buttons: Copy & Share */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
-                style={{
-                  background: 'rgba(124, 58, 237, 0.08)',
-                  border: '1.5px solid #c4b5fd',
-                  color: '#0f172a',
-                  padding: '7px 12px',
+          ) : (
+            /* Web Browser Mode: Current Horizontal Layout Preserved */
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
                   borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: 'pointer',
+                  background: '#475569',
+                  border: '1.5px solid #475569',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 8px rgba(124, 58, 237, 0.12)'
-                }}
-                title="주간 업무 보고서 텍스트 복사"
-              >
-                <Copy size={13} />
-              </button>
-              {isNative && (
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
+                  flexShrink: 0
+                }}>
+                  <FileSpreadsheet size={22} />
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
+                  주간 업무
+                </div>
+
+                {/* Week Controls (Right next to 주간 업무) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevWeek}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="이전주"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+
+                  <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', padding: '0 2px', whiteSpace: 'nowrap' }}>
+                    {getWeekText(weeklyMonday)}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleNextWeek}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="다음주"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+
+                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', marginLeft: '4px' }}>
+                    {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons: Copy & Share */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <button
                   type="button"
-                  onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                  onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
                   style={{
-                    background: '#7c3aed',
-                    border: '1.5px solid #7c3aed',
-                    color: '#ffffff',
+                    background: '#eff6ff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
                     padding: '7px 12px',
                     borderRadius: '6px',
                     fontSize: '12px',
@@ -825,15 +1093,39 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     alignItems: 'center',
                     gap: '4px',
                     transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 8px rgba(124, 58, 237, 0.25)'
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                   }}
-                  title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+                  title="주간 업무 보고서 텍스트 복사"
                 >
-                  <Share2 size={13} />
+                  <Copy size={13} />
                 </button>
-              )}
+                {isNative && (
+                  <button
+                    type="button"
+                    onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                    style={{
+                      background: '#1e3a8a',
+                      border: '1.5px solid #1e3a8a',
+                      color: '#ffffff',
+                      padding: '7px 12px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                    }}
+                    title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+                  >
+                    <Share2 size={13} />
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Official Report Summary Table Grid */}
           <div style={{
@@ -886,7 +1178,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             <div key={item.id || idx} style={{ color: '#0f172a', paddingLeft: '4px' }}>
                               <div style={{ fontWeight: '800', color: '#0f172a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
                                 <span style={{ color: '#0f172a', fontSize: '14px', fontWeight: '800' }}>
-                                  {idx + 1})
+                                  {idx + 1}
                                 </span>
                                 <span>[{item.category}] {item.title}</span>
                                 {item.siteName && <span style={{ fontSize: '11.5px', color: '#0f172a', fontWeight: '700' }}>@{item.siteName}</span>}

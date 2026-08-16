@@ -859,8 +859,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                     whiteSpace: 'nowrap'
                   }}
                 >
-                  {cat === '사내 업무' && '🏢 '}
-                  {cat === '출장 업무' && '🚗 '}
+                  {cat === '사내 업무'}
+                  {cat === '출장 업무'}
                   {cat}
                 </button>
               ))}
@@ -1018,7 +1018,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
                                 border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
                               }}>
-                                {group.category === '출장 업무' ? '🚗 출장 업무' : '🏢 사내 업무'}
+                                {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
                               </span>
 
                               {group.category === '출장 업무' && group.siteName && (
@@ -1034,7 +1034,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   alignItems: 'center',
                                   gap: '4px'
                                 }}>
-                                  📍 {group.siteName}
+                                  {group.siteName}
                                 </span>
                               )}
 
@@ -1482,8 +1482,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                       cursor: 'pointer'
                     }}
                   >
-                    <option value="사내 업무">🏢 사내 업무</option>
-                    <option value="출장 업무">🚗 출장 업무</option>
+                    <option value="사내 업무">사내 업무</option>
+                    <option value="출장 업무">출장 업무</option>
                   </select>
                 </div>
 
@@ -1922,7 +1922,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               color: isBusinessTrip ? '#d97706' : '#1e3a8a',
                               border: isBusinessTrip ? '1px solid rgba(245, 158, 11, 0.25)' : '1px solid rgba(30, 58, 138, 0.25)'
                             }}>
-                              {isBusinessTrip ? '🚗 출장' : '🏢 사내'}
+                              {isBusinessTrip ? '출장' : '사내'}
                             </span>
 
                             {isBusinessTrip && siteLabel && (
@@ -1938,7 +1938,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap'
                               }}>
-                                📍 {siteLabel}
+                                {siteLabel}
                               </span>
                             )}
 

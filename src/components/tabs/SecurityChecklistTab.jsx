@@ -1855,7 +1855,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                   boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
                 }}
               >
-                <Plus size={18} /> 사업장 출입 체크리스트 & 보안 서약
+                <Plus size={18} /> 보안 서약
               </button>
             ) : (
               <div style={{

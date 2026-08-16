@@ -286,7 +286,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
           </div>
 
           <form onSubmit={handleAddSite} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
               <div>
                 <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
                   분류 *
@@ -303,7 +303,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     color: '#0f172a',
                     fontSize: '13px',
                     outline: 'none',
-                    fontWeight: '600'
+                    fontWeight: '600',
+                    boxSizing: 'border-box'
                   }}
                 >
                   <option value="보안앱O">보안앱O</option>
@@ -328,7 +329,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
                     fontSize: '13px',
-                    outline: 'none'
+                    outline: 'none',
+                    boxSizing: 'border-box'
                   }}
                 />
               </div>
@@ -350,21 +352,22 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     border: '1.5px solid #cbd5e1',
                     color: '#0f172a',
                     fontSize: '13px',
-                    outline: 'none'
+                    outline: 'none',
+                    boxSizing: 'border-box'
                   }}
                 />
               </div>
             </div>
 
             {(newSiteForm.type === '보안앱O' || newSiteForm.type === '보안어플O') && (
-              <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <label style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     📱 모바일 보안 앱 바로가기 실행 링크
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', width: '100%', alignItems: 'center', boxSizing: 'border-box' }}>
                   <input
                     type="text"
                     placeholder="예: secapp://, samsungknox://, intent://com.sec.security..."
@@ -372,13 +375,15 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     onChange={(e) => setNewSiteForm({ ...newSiteForm, appUrl: e.target.value })}
                     style={{
                       flex: 1,
-                      padding: '10px 14px',
+                      minWidth: 0,
+                      padding: '10px 12px',
                       borderRadius: '6px',
                       background: '#ffffff',
                       border: '1.5px solid #cbd5e1',
                       color: '#0f172a',
                       fontSize: '12.5px',
-                      outline: 'none'
+                      outline: 'none',
+                      boxSizing: 'border-box'
                     }}
                   />
                   <button
@@ -397,10 +402,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       alignItems: 'center',
                       gap: '5px',
                       flexShrink: 0,
+                      whiteSpace: 'nowrap',
                       boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
                     }}
                   >
-                    <Smartphone size={14} /> 📱 앱 선택
+                    <Smartphone size={14} /> 앱 선택
                   </button>
                 </div>
               </div>
@@ -550,11 +556,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '10px',
+                    flexWrap: 'wrap',
+                    gap: '8px',
                     paddingTop: '8px',
                     borderTop: '1.5px solid #e2e8f0',
                     width: '100%',
-                    minWidth: 0
+                    minWidth: 0,
+                    boxSizing: 'border-box'
                   }}>
                     {/* 앱 경로 텍스트 (너비에 맞춰 말줄임 처리) */}
                     <div
@@ -570,8 +578,9 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         alignItems: 'center',
                         gap: '6px',
                         minWidth: 0,
-                        flex: 1,
-                        overflow: 'hidden'
+                        flex: '1 1 140px',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box'
                       }}
                     >
                       <Smartphone size={13} style={{ flexShrink: 0, color: s.appUrl ? '#1e3a8a' : '#64748b' }} />
@@ -615,6 +624,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
+                            whiteSpace: 'nowrap',
                             boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
                           }}
                           title="연동된 모바일 앱 실행"
@@ -638,6 +648,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
+                          whiteSpace: 'nowrap',
                           transition: 'all 0.2s ease'
                         }}
                         title="스마트폰 보안 앱 찾기 및 연동 등록"
@@ -750,11 +761,11 @@ export default function SiteSettingTab({ onTriggerToast }) {
               </div>
 
               {(editingSite.type === '보안앱O' || editingSite.type === '보안어플O') && (
-                <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ background: '#eff6ff', border: '1.5px solid #cbd5e1', padding: '12px 14px', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box' }}>
                   <label style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '800' }}>
                     📱 모바일 보안 앱 바로가기 실행 링크
                   </label>
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', width: '100%', alignItems: 'center', boxSizing: 'border-box' }}>
                     <input
                       type="text"
                       placeholder="예: secapp://, samsungknox://, intent://com.sec.security..."
@@ -762,13 +773,15 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       onChange={(e) => setEditingSite({ ...editingSite, appUrl: e.target.value })}
                       style={{
                         flex: 1,
-                        padding: '10px 14px',
+                        minWidth: 0,
+                        padding: '10px 12px',
                         borderRadius: '6px',
                         background: '#ffffff',
                         border: '1.5px solid #cbd5e1',
                         color: '#0f172a',
                         fontSize: '12.5px',
-                        outline: 'none'
+                        outline: 'none',
+                        boxSizing: 'border-box'
                       }}
                     />
                     <button
@@ -786,7 +799,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '5px',
-                        flexShrink: 0
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       <Smartphone size={14} /> 앱 선택
@@ -938,28 +952,29 @@ export default function SiteSettingTab({ onTriggerToast }) {
                       e.currentTarget.style.borderColor = '#cbd5e1';
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0, flex: 1 }}>
                       <div style={{
-                        width: '42px',
-                        height: '42px',
+                        width: '40px',
+                        height: '40px',
                         borderRadius: '6px',
                         background: '#f1f5f9',
                         border: '1.5px solid #cbd5e1',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        fontSize: '20px'
+                        fontSize: '18px',
+                        flexShrink: 0
                       }}>
                         📱
                       </div>
-                      <div>
-                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span>{app.name}</span>
                           <span style={{ fontSize: '10px', padding: '2px 7px', borderRadius: '4px', background: 'rgba(30, 58, 138, 0.08)', color: '#1e3a8a', fontWeight: '700', border: '1.5px solid #cbd5e1' }}>
                             {app.badge}
                           </span>
                         </div>
-                        <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px' }}>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {app.company}
                         </div>
                       </div>
