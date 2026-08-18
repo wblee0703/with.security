@@ -2734,6 +2734,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         >
                           <option value="" disabled>-- 방문 목적을 선택해 주세요 --</option>
                           <option value="작업">작업</option>
+                          <option value="점검">점검</option>
                           <option value="회의">회의</option>
                           <option value="납품">납품</option>
                           <option value="기타">기타</option>
@@ -2748,7 +2749,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                         </label>
                         <input
                           type="text"
-                          placeholder="방문 목적을 직접 입력해 주세요 (예: 설비 정기 점검 및 세미나 참석)"
+                          placeholder="예: 세미나 참석"
                           value={formData.customPurpose}
                           onChange={(e) => {
                             const val = e.target.value;
