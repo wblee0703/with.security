@@ -21,7 +21,10 @@ import {
   History,
   RotateCcw,
   CheckSquare,
-  Square
+  Square,
+  Share2,
+  Users,
+  UserCheck
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
@@ -41,9 +44,21 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [pastFilterCategory, setPastFilterCategory] = useState('전체');
   const [selectedPastLogIds, setSelectedPastLogIds] = useState([]);
 
+  // Share Target Setting State
+  const [isShareTargetModalOpen, setIsShareTargetModalOpen] = useState(false);
+  const [shareTargetSearchQuery, setShareTargetSearchQuery] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
+  const [shareTargets, setShareTargets] = useState([]); // [{ username, name, team, rank, division }]
+  const [pendingShareLogItem, setPendingShareLogItem] = useState(null);
+
   // Hook for back-button popup dismissal
   useModalBack(isModalOpen, () => setIsModalOpen(false), 'worklog-form-modal');
   useModalBack(isPastWorkModalOpen, () => setIsPastWorkModalOpen(false), 'worklog-past-modal');
+  useModalBack(isShareTargetModalOpen, () => {
+    setIsShareTargetModalOpen(false);
+    setPendingShareLogItem(null);
+  }, 'worklog-share-target-modal');
+
   const [editingLogId, setEditingLogId] = useState(null);
   const [extraTasks, setExtraTasks] = useState([]); // Multiple tasks state
 
@@ -135,6 +150,156 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     if (onTriggerToast) {
       onTriggerToast(`'${newLogItem.title}' 업무가 추가되었습니다.`, 'success');
+    }
+  };
+
+  // User Identity Comparison Rule (동일인 및 동명이인 식별 기준):
+  // 이름(name), 직급(rank), 소속(team), 사업부(division), 아이디(username) 중 1개라도 다르면 서로 다른 사람(동명이인)으로 판단
+  const isSamePerson = (u1, u2) => {
+    if (!u1 || !u2) return false;
+    const name1 = (u1.name || u1.authorName || u1.writerName || u1.visitorName || '').trim();
+    const name2 = (u2.name || u2.authorName || u2.writerName || u2.visitorName || '').trim();
+    const rank1 = (u1.rank || u1.authorRank || u1.writerRank || '').trim();
+    const rank2 = (u2.rank || u2.authorRank || u2.writerRank || '').trim();
+    const team1 = (u1.team || u1.authorTeam || u1.writerTeam || u1.department || '').trim();
+    const team2 = (u2.team || u2.authorTeam || u2.writerTeam || u2.department || '').trim();
+    const div1 = (u1.division || u1.authorDivision || '').trim();
+    const div2 = (u2.division || u2.authorDivision || '').trim();
+    const id1 = (u1.username || u1.writerId || u1.authorUsername || u1.id || '').trim();
+    const id2 = (u2.username || u2.writerId || u2.authorUsername || u2.id || '').trim();
+
+    // 1. ID가 둘 다 존재하고 다르면 다른 사람
+    if (id1 && id2 && id1 !== id2) return false;
+
+    // 2. 이름, 직급, 소속, 사업부 중 1개라도 다르면 다른 사람 (동명이인 판정)
+    if (name1 && name2 && name1 !== name2) return false;
+    if (rank1 && rank2 && rank1 !== rank2) return false;
+    if (team1 && team2 && team1 !== team2) return false;
+    if (div1 && div2 && div1 !== div2) return false;
+
+    // 3. 이름이나 ID가 일치하고 상충되는 필드가 없으면 동일인
+    if (name1 && name2 && name1 === name2) return true;
+    if (id1 && id2 && id1 === id2) return true;
+
+    return false;
+  };
+
+  // Share Target Designation Helpers
+  const isUserInShareTargets = (user) => {
+    return shareTargets.some(t => isSamePerson(t, user));
+  };
+
+  const handleToggleUserShareTarget = (user) => {
+    if (isSamePerson(currentUser, user)) return;
+
+    setShareTargets(prev => {
+      const exists = prev.some(t => isSamePerson(t, user));
+      if (exists) {
+        return prev.filter(t => !isSamePerson(t, user));
+      } else {
+        return [...prev, {
+          username: user.username || user.id || '',
+          name: user.name || '',
+          team: user.team || user.department || '',
+          rank: user.rank || '',
+          division: user.division || ''
+        }];
+      }
+    });
+  };
+
+  const handleSelectAllShareTargets = () => {
+    const targets = allUsers
+      .filter(u => !isSamePerson(currentUser, u))
+      .map(u => ({
+        username: u.username || u.id || '',
+        name: u.name || '',
+        team: u.team || u.department || '',
+        rank: u.rank || '',
+        division: u.division || ''
+      }));
+    setShareTargets(targets);
+  };
+
+  const handleDeselectAllShareTargets = () => {
+    setShareTargets([]);
+  };
+
+  const getUserShareTargetsStorageKey = (user) => {
+    if (!user) return null;
+    const uid = user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`;
+    return `with_security_worklog_share_targets_${uid.trim()}`;
+  };
+
+  const handleSaveShareTargetModal = async () => {
+    const userKey = getUserShareTargetsStorageKey(currentUser);
+    if (userKey) {
+      localStorage.setItem(userKey, JSON.stringify(shareTargets));
+    }
+    // 레거시 전역 키 삭제 (타 사용자 간 강제 동기화 방지)
+    try { localStorage.removeItem('with_security_worklog_share_targets'); } catch (e) {}
+
+    setIsShareTargetModalOpen(false);
+
+    if (pendingShareLogItem) {
+      const now = new Date();
+      const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const updatedItem = {
+        ...pendingShareLogItem,
+        isShared: true,
+        sharedWith: shareTargets,
+        sharedAt: timeStr
+      };
+      const updatedLogs = await dbService.saveWorkLog(updatedItem);
+      setWorkLogs(updatedLogs);
+      setPendingShareLogItem(null);
+      if (onTriggerToast) {
+        onTriggerToast(`공유 대상(${shareTargets.length}명)이 설정되었으며, '${pendingShareLogItem.title}' 업무가 공유되었습니다.`, 'success');
+      }
+    } else {
+      if (onTriggerToast) {
+        onTriggerToast(`업무 일지 공유 대상(${shareTargets.length}명)이 저장되었습니다.`, 'success');
+      }
+    }
+  };
+
+  // Toggle Share for a single work log item
+  const handleToggleShareLog = async (item) => {
+    if (item.isShared) {
+      const updatedItem = {
+        ...item,
+        isShared: false,
+        sharedWith: [],
+        sharedAt: ''
+      };
+      const updatedLogs = await dbService.saveWorkLog(updatedItem);
+      setWorkLogs(updatedLogs);
+      if (onTriggerToast) {
+        onTriggerToast(`'${item.title}' 업무 공유가 해제되었습니다.`, 'info');
+      }
+    } else {
+      if (!shareTargets || shareTargets.length === 0) {
+        if (onTriggerToast) {
+          onTriggerToast('공유할 대상 사용자를 먼저 지정해 주세요.', 'warning');
+        }
+        setPendingShareLogItem(item);
+        setIsShareTargetModalOpen(true);
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = `${item.date || selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const updatedItem = {
+        ...item,
+        isShared: true,
+        sharedWith: shareTargets,
+        sharedAt: timeStr
+      };
+      const updatedLogs = await dbService.saveWorkLog(updatedItem);
+      setWorkLogs(updatedLogs);
+      if (onTriggerToast) {
+        onTriggerToast(`'${item.title}' 업무가 공유 대상(${shareTargets.length}명)에게 공유되었습니다.`, 'success');
+      }
     }
   };
 
@@ -301,6 +466,23 @@ export default function WorkLogTab({ onTriggerToast }) {
       setWorkLogs(logs);
       const sites = await dbService.getSites();
       setSiteOptions(sites || []);
+      const users = await dbService.getUsers();
+      setAllUsers(users || []);
+
+      // Load saved share targets strictly for current user (개별 일방향 독립 관리)
+      try {
+        const userKey = getUserShareTargetsStorageKey(u);
+        if (userKey) {
+          const storedTargets = localStorage.getItem(userKey);
+          if (storedTargets) {
+            setShareTargets(JSON.parse(storedTargets));
+          } else {
+            setShareTargets([]);
+          }
+        } else {
+          setShareTargets([]);
+        }
+      } catch (e) { }
     } catch (err) {
       console.error('Failed to load work logs:', err);
     }
@@ -499,13 +681,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (currentUser.role === '개발자' || currentUser.role === '관리자' || currentUser.username === 'admin') {
       return true;
     }
-    if (currentUser.username && log.authorUsername && currentUser.username === log.authorUsername) {
-      return true;
-    }
-    if (currentUser.name?.trim() === log.authorName?.trim()) {
-      return true;
-    }
-    return false;
+    return isSamePerson(log, currentUser);
   };
 
   // Open Deletion Modal
@@ -530,15 +706,22 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
-  // Filter logs by selectedDate (unless viewAllDates is true), category, and search query
+  // Filter logs visibility for current user: strictly own authored logs (이름, 직급, 소속, 사업부 기준)
+  const isLogVisibleToCurrentUser = (log, user) => {
+    if (!user) return true;
+    return isSamePerson(log, user);
+  };
+
+  // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = workLogs.filter(log => {
+    const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
     const matchesDate = viewAllDates || log.date === selectedDate;
     const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
     const matchesQuery = !searchQuery.trim() ||
       log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.authorName.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesDate && matchesCategory && matchesQuery;
+    return matchesUser && matchesDate && matchesCategory && matchesQuery;
   });
 
   // Group logs by Date (descending)
@@ -551,9 +734,13 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
 
-  // Filter and sort past logs for the Past Work Copy Modal
+  // Filter and sort past logs for the Past Work Copy Modal (본인 작성 업무만 불러오기)
   const filteredPastLogs = workLogs
     .filter(log => {
+      // 1. Strictly own authored logs
+      const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
+      if (!matchesUser) return false;
+
       if (pastFilterCategory !== '전체' && log.category !== pastFilterCategory) {
         return false;
       }
@@ -587,26 +774,66 @@ export default function WorkLogTab({ onTriggerToast }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
           {/* Header Banner */}
           <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Row 1: Title & Icon */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '6px',
-                background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-                border: '1.5px solid #1e3a8a',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#ffffff',
-                boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
-                flexShrink: 0
-              }}>
-                <ClipboardList size={22} />
+            {/* Row 1: Title & Icon + Share Target Setting Button */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  border: '1.5px solid #1e3a8a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+                  flexShrink: 0
+                }}>
+                  <ClipboardList size={22} />
+                </div>
+                <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+                  업무 일지 관리
+                </div>
               </div>
-              <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-                업무 일지 관리
-              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsShareTargetModalOpen(true)}
+                style={{
+                  padding: '7px 12px',
+                  borderRadius: '6px',
+                  background: shareTargets.length > 0 ? '#eff6ff' : '#ffffff',
+                  border: shareTargets.length > 0 ? '1.5px solid #93c5fd' : '1.5px solid #cbd5e1',
+                  color: shareTargets.length > 0 ? '#1d4ed8' : '#334155',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.06)',
+                  transition: 'all 0.2s ease',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0
+                }}
+                title="업무 일지를 공유할 대상 사용자 지정"
+              >
+                <Users size={14} />
+                <span>업무 공유</span>
+                {shareTargets.length > 0 && (
+                  <span style={{
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    borderRadius: '10px',
+                    padding: '1px 6px',
+                    fontSize: '10.5px',
+                    fontWeight: '800'
+                  }}>
+                    {shareTargets.length}명
+                  </span>
+                )}
+              </button>
             </div>
 
             {/* Row 2: 1:1 Equal Width Action Buttons (50% : 50%) */}
@@ -732,7 +959,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     {viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}
                   </span>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>
-                    {viewAllDates ? '전체 업무 일지:' : '해당 날짜 업무 일지:'} <strong style={{ color: '#1e3a8a', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+                    {viewAllDates ? '전체 업무:' : '해당 날짜 업무:'} <strong style={{ color: '#1e3a8a', fontWeight: '800' }}>{filteredLogs.length}건</strong>
                   </span>
                 </div>
 
@@ -952,17 +1179,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                     <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px' }}>
                       {getFormattedKoreanDate(dateStr)}
                     </span>
-                    <span style={{
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      color: '#1e3a8a',
-                      background: 'rgba(30, 58, 138, 0.08)',
-                      border: '1px solid #cbd5e1',
-                      padding: '2px 8px',
-                      borderRadius: '10px'
-                    }}>
-                      총 {groupedByDate[dateStr].length}건
-                    </span>
                   </div>
 
                   {/* Logs Grid for this date */}
@@ -1037,10 +1253,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   {group.siteName}
                                 </span>
                               )}
-
-                              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: '700' }}>
-                                ({group.items.length}건)
-                              </span>
                             </div>
 
                             {/* Action Buttons: Add Task to this Card Group */}
@@ -1191,20 +1403,42 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       /* Normal View Mode */
                                       <>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                                          <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4' }}>
-                                            <span style={{
-                                              fontSize: '12px',
-                                              fontWeight: '800',
-                                              color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
-                                              paddingTop: '1px'
-                                            }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, overflow: 'hidden' }}>
+                                            <span style={{ fontSize: '12px', fontWeight: '800', color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a', flexShrink: 0 }}>
                                               #{itemIdx + 1}
                                             </span>
-                                            <span>{item.title}</span>
+                                            <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                              {item.title}
+                                            </span>
                                           </div>
 
                                           {canModifyLog(item) && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                              {/* 공유 버튼 (수정/삭제 버튼과 100% 동일 크기 및 패딩) */}
+                                              <button
+                                                type="button"
+                                                onClick={() => handleToggleShareLog(item)}
+                                                style={{
+                                                  background: item.isShared ? '#16a34a' : '#ffffff',
+                                                  border: item.isShared ? '1px solid #15803d' : '1px solid #cbd5e1',
+                                                  color: item.isShared ? '#ffffff' : '#0f172a',
+                                                  padding: '3px 8px',
+                                                  borderRadius: '2px',
+                                                  fontSize: '11px',
+                                                  fontWeight: '700',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  gap: '3px',
+                                                  boxShadow: item.isShared ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                  transition: 'all 0.15s ease'
+                                                }}
+                                                title={item.isShared ? "업무 공유 해제 (현재 공유 대상에게 공유중)" : "업무 공유 (지정된 대상에게 공유)"}
+                                              >
+                                                <Share2 size={12} color={item.isShared ? '#ffffff' : '#0f172a'} />
+                                              </button>
+
                                               <button
                                                 type="button"
                                                 onClick={() => handleStartInlineEdit(item)}
@@ -1385,7 +1619,7 @@ export default function WorkLogTab({ onTriggerToast }) {
         {/* Right Column: Desktop Calendar Widget */}
         <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
           <WorkLogCalendar
-            workLogs={workLogs}
+            workLogs={workLogs.filter(log => isLogVisibleToCurrentUser(log, currentUser))}
             selectedDate={selectedDate}
             onSelectDate={(date) => {
               setSelectedDate(date);
@@ -1742,10 +1976,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                   <Copy size={22} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span>이전 업무 추가</span>
+                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>이전 업무 불러오기</span>
                     <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#1e3a8a', fontWeight: '700' }}>
                       대상일: {selectedDate}
+                    </span>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', fontWeight: '700' }}>
+                      {currentUser?.name ? `${currentUser.name} ${currentUser.rank || ''} (본인 작성 업무)` : '본인 작성 업무'}
                     </span>
                   </div>
                 </div>
@@ -2091,6 +2328,319 @@ export default function WorkLogTab({ onTriggerToast }) {
                 }}
               >
                 삭제하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Share Target Designation */}
+      {isShareTargetModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(14px)',
+          zIndex: 10000,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '90vh',
+            borderRadius: '16px',
+            background: '#ffffff',
+            border: '1.5px solid #cbd5e1',
+            boxShadow: '0 25px 60px -12px rgba(15, 23, 42, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            animation: 'fadeIn 0.2s ease-out'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '18px 20px',
+              borderBottom: '1.5px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 8px rgba(30, 58, 138, 0.25)'
+                }}>
+                  <Users size={18} />
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+                  업무 일지 공유 대상 지정
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsShareTargetModalOpen(false);
+                  setPendingShareLogItem(null);
+                }}
+                style={{
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', flex: 1 }}>
+              {/* Search & Quick Controls */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  padding: '7px 10px',
+                  gap: '8px'
+                }}>
+                  <Search size={14} color="#64748b" />
+                  <input
+                    type="text"
+                    value={shareTargetSearchQuery}
+                    onChange={(e) => setShareTargetSearchQuery(e.target.value)}
+                    placeholder="이름, 소속팀, 직급"
+                    style={{
+                      border: 'none',
+                      outline: 'none',
+                      background: 'transparent',
+                      fontSize: '12.5px',
+                      width: '100%',
+                      color: '#0f172a'
+                    }}
+                  />
+                  {shareTargetSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setShareTargetSearchQuery('')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8' }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSelectAllShareTargets}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1d4ed8',
+                    fontSize: '11.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  전체 선택
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeselectAllShareTargets}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#64748b',
+                    fontSize: '11.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  선택 해제
+                </button>
+              </div>
+
+              {/* Status Indicator */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '6px 10px',
+                background: '#f1f5f9',
+                borderRadius: '6px',
+                fontSize: '12px'
+              }}>
+                <span style={{ color: '#1e3a8a', fontWeight: '800' }}>
+                  선택된 공유 대상: <strong>{shareTargets.length}명</strong>
+                </span>
+              </div>
+
+              {/* User List */}
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                maxHeight: '320px',
+                overflowY: 'auto',
+                paddingRight: '4px'
+              }}>
+                {allUsers
+                  .filter(u => {
+                    if (isSamePerson(currentUser, u)) return false;
+
+                    if (!shareTargetSearchQuery.trim()) return true;
+                    const q = shareTargetSearchQuery.toLowerCase();
+                    return (
+                      (u.name || '').toLowerCase().includes(q) ||
+                      (u.team || u.department || '').toLowerCase().includes(q) ||
+                      (u.rank || '').toLowerCase().includes(q) ||
+                      (u.username || '').toLowerCase().includes(q) ||
+                      (u.division || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .map(u => {
+                    const isSelected = isUserInShareTargets(u);
+
+                    return (
+                      <div
+                        key={u.username || u.id}
+                        onClick={() => handleToggleUserShareTarget(u)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          background: isSelected ? '#eff6ff' : '#ffffff',
+                          border: isSelected ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          boxShadow: isSelected ? '0 2px 6px rgba(59, 130, 246, 0.12)' : 'none'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                          <div style={{ color: isSelected ? '#2563eb' : '#94a3b8', display: 'flex', alignItems: 'center' }}>
+                            {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
+                                {u.name}
+                              </span>
+                              {u.rank && (
+                                <span style={{ fontSize: '11.5px', fontWeight: '700', color: '#64748b' }}>
+                                  {u.rank}
+                                </span>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', color: '#64748b' }}>
+                              <span style={{ color: '#1e3a8a', fontWeight: '700' }}>
+                                {u.team || u.department || '소속 미지정'}
+                              </span>
+                              {u.division && <span>· {u.division}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span style={{
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            background: isSelected ? '#2563eb' : '#f1f5f9',
+                            color: isSelected ? '#ffffff' : '#64748b'
+                          }}>
+                            {isSelected ? '공유 대상' : '제외'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1.5px solid #e2e8f0',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              background: '#f8fafc'
+            }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsShareTargetModalOpen(false);
+                  setPendingShareLogItem(null);
+                }}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  color: '#475569',
+                  fontSize: '12.5px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveShareTargetModal}
+                style={{
+                  padding: '9px 20px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <CheckCircle2 size={15} />
+                <span>업무 공유 ({shareTargets.length}명)</span>
               </button>
             </div>
           </div>

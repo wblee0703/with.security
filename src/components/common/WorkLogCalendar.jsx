@@ -9,6 +9,7 @@ import {
   User,
   Plus
 } from 'lucide-react';
+import { getHolidayName } from '../../data/holidays.js';
 
 export default function WorkLogCalendar({
   workLogs = [],
@@ -259,12 +260,18 @@ export default function WorkLogCalendar({
           fontSize: '11px'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569', fontWeight: '600' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1e3a8a', boxShadow: '0 0 0 1px rgba(30, 58, 138, 0.3)' }} /> 사내 업무
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#475569', fontWeight: '600' }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#7c3aed', boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.3)' }} /> 출장 업무
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#dc2626', fontWeight: '700' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 0 1px rgba(239, 68, 68, 0.3)' }} /> 공휴일
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#1d4ed8', fontWeight: '700' }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563eb', boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.3)' }} /> 오늘
           </span>
         </div>
         <div style={{ color: '#64748b', fontSize: '10.5px' }}>
@@ -314,6 +321,9 @@ export default function WorkLogCalendar({
           const isToday = cell.dateStr && cell.dateStr === todayIso;
           const dayLogs = cell.dateStr ? (logsByDate[cell.dateStr] || []) : [];
           const dayOfWeek = idx % 7;
+          const holidayName = cell.dateStr ? getHolidayName(cell.dateStr) : null;
+          const isHolidayDay = Boolean(holidayName);
+          const isRedDay = dayOfWeek === 0 || isHolidayDay;
 
           return (
             <div
@@ -324,10 +334,12 @@ export default function WorkLogCalendar({
                 }
               }}
               style={{
-                background: cell.isCurrentMonth
-                  ? (isSelected ? '#eff6ff' : '#ffffff')
+                background: isToday
+                  ? '#f0f7ff'
+                  : cell.isCurrentMonth
+                  ? (isSelected ? '#eff6ff' : (isHolidayDay ? '#fffbfb' : '#ffffff'))
                   : '#f8fafc',
-                opacity: cell.isCurrentMonth ? 1 : 0.45,
+                opacity: cell.isCurrentMonth ? 1 : 0.4,
                 padding: '6px 6px',
                 display: 'flex',
                 flexDirection: 'column',
@@ -335,15 +347,18 @@ export default function WorkLogCalendar({
                 position: 'relative',
                 cursor: cell.isCurrentMonth ? 'pointer' : 'default',
                 transition: 'all 0.15s ease',
-                outline: isSelected ? '2px solid #1e3a8a' : 'none',
+                outline: isToday
+                  ? '2px solid #2563eb'
+                  : (isSelected ? '2px solid #0f172a' : 'none'),
                 outlineOffset: '-2px',
+                boxShadow: isToday ? 'inset 0 0 0 1px #93c5fd' : 'none',
                 minWidth: 0,
                 maxWidth: '100%',
                 overflow: 'hidden',
                 boxSizing: 'border-box'
               }}
             >
-              {/* Day Number Header */}
+              {/* Day Number & Holiday / Today Header */}
               <div
                 style={{
                   display: 'flex',
@@ -351,34 +366,81 @@ export default function WorkLogCalendar({
                   justifyContent: 'space-between',
                   marginBottom: '2px',
                   minWidth: 0,
-                  width: '100%'
+                  width: '100%',
+                  gap: '4px'
                 }}
               >
-                <span
-                  style={{
-                    fontSize: '12px',
-                    fontWeight: isToday || isSelected ? '800' : '600',
-                    color: isToday
-                      ? '#1e3a8a'
-                      : dayOfWeek === 0
-                      ? '#ef4444'
-                      : dayOfWeek === 6
-                      ? '#2563eb'
-                      : cell.isCurrentMonth
-                      ? '#0f172a'
-                      : '#94a3b8',
-                    width: isToday ? '22px' : 'auto',
-                    height: isToday ? '22px' : 'auto',
-                    borderRadius: isToday ? '50%' : '0',
-                    background: isToday ? '#eff6ff' : 'transparent',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: isToday ? '1px solid #cbd5e1' : 'none'
-                  }}
-                >
-                  {cell.day}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontSize: isToday ? '12px' : '12px',
+                      fontWeight: isToday || isSelected || isRedDay ? '800' : '600',
+                      color: isToday
+                        ? '#ffffff'
+                        : isRedDay
+                        ? '#ef4444'
+                        : dayOfWeek === 6
+                        ? '#2563eb'
+                        : cell.isCurrentMonth
+                        ? '#0f172a'
+                        : '#94a3b8',
+                      width: isToday ? '24px' : 'auto',
+                      height: isToday ? '24px' : 'auto',
+                      borderRadius: isToday ? '6px' : '0',
+                      background: isToday
+                        ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
+                        : 'transparent',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: isToday ? '0 2px 6px rgba(37, 99, 235, 0.35)' : 'none',
+                      flexShrink: 0
+                    }}
+                  >
+                    {cell.day}
+                  </span>
+
+                  {/* Holiday Badge (공휴일 명칭) */}
+                  {cell.isCurrentMonth && holidayName && (
+                    <span
+                      style={{
+                        fontSize: '9.5px',
+                        fontWeight: '800',
+                        color: '#dc2626',
+                        background: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        padding: '1px 4px',
+                        borderRadius: '4px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: '68px',
+                        flexShrink: 0
+                      }}
+                      title={holidayName}
+                    >
+                      {holidayName}
+                    </span>
+                  )}
+
+                  {/* Today Badge */}
+                  {cell.isCurrentMonth && isToday && (
+                    <span
+                      style={{
+                        fontSize: '9.5px',
+                        fontWeight: '800',
+                        color: '#1d4ed8',
+                        background: '#dbeafe',
+                        border: '1px solid #bfdbfe',
+                        padding: '1px 4px',
+                        borderRadius: '4px',
+                        flexShrink: 0
+                      }}
+                    >
+                      오늘
+                    </span>
+                  )}
+                </div>
 
                 {cell.isCurrentMonth && dayLogs.length > 0 && (
                   <span
@@ -448,7 +510,7 @@ export default function WorkLogCalendar({
                           width: '4px',
                           height: '4px',
                           borderRadius: '50%',
-                          background: textColor,
+                          background: log.isShared ? '#16a34a' : textColor,
                           flexShrink: 0
                         }}
                       />
@@ -464,6 +526,20 @@ export default function WorkLogCalendar({
                       >
                         {log.title}
                       </span>
+                      {log.isShared && (
+                        <span style={{
+                          fontSize: '8px',
+                          fontWeight: '800',
+                          color: '#047857',
+                          background: '#ecfdf5',
+                          border: '1px solid #6ee7b7',
+                          padding: '0 2.5px',
+                          borderRadius: '2px',
+                          flexShrink: 0
+                        }}>
+                          공유중
+                        </span>
+                      )}
                     </div>
                   );
                 })}

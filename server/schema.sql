@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS work_log (
   log_date DATE NOT NULL COMMENT '업무일지 작성 날짜',
   title VARCHAR(200) NOT NULL COMMENT '업무일지 제목',
   tasks_done TEXT COMMENT '금일 수행한 업무 내용',
+  is_shared TINYINT(1) DEFAULT 0 COMMENT '업무 공유 여부',
+  shared_with TEXT COMMENT '공유 대상 목록 JSON',
+  shared_at VARCHAR(100) DEFAULT '' COMMENT '공유 시각',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );

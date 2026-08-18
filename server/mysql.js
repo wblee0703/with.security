@@ -35,11 +35,32 @@ const pool = mysql.createPool({
   charset: 'utf8mb4'
 });
 
-// DB 연결 테스트 및 자동 DB 생성 함수
+// DB 연결 테스트 및 자동 DB 생성/마이그레이션 함수
 export async function testConnection() {
   try {
     const connection = await pool.getConnection();
     console.log('✅ MySQL 데이터베이스 연결 성공! (가비아 커넥션 풀 활성화)');
+    
+    // work_log 컬럼 자동 마이그레이션 (is_shared, shared_with, shared_at)
+    try {
+      const [cols] = await connection.query("SHOW COLUMNS FROM work_log");
+      const colNames = (cols || []).map(c => c.Field);
+      if (!colNames.includes('is_shared')) {
+        await connection.query("ALTER TABLE work_log ADD COLUMN is_shared TINYINT(1) DEFAULT 0 COMMENT '업무 공유 여부'");
+        console.log('✅ [DB Migration] work_log.is_shared 컬럼이 자동 추가되었습니다.');
+      }
+      if (!colNames.includes('shared_with')) {
+        await connection.query("ALTER TABLE work_log ADD COLUMN shared_with TEXT COMMENT '공유 대상 JSON'");
+        console.log('✅ [DB Migration] work_log.shared_with 컬럼이 자동 추가되었습니다.');
+      }
+      if (!colNames.includes('shared_at')) {
+        await connection.query("ALTER TABLE work_log ADD COLUMN shared_at VARCHAR(100) DEFAULT '' COMMENT '공유 시각'");
+        console.log('✅ [DB Migration] work_log.shared_at 컬럼이 자동 추가되었습니다.');
+      }
+    } catch (migErr) {
+      // 테이블이 아직 없는 경우 무시
+    }
+
     connection.release(); // 커넥션 반환
     return true;
   } catch (error) {

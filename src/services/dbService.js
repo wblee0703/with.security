@@ -880,44 +880,86 @@ class SecurityDatabase {
   // -------------------------------------------------------------
   async getWorkLogs() {
     try {
-      const res = await safeFetchApi('/api/work-logs');
-      if (res && res.ok) {
-        const json = await res.json();
-        const remoteData = json.data || json;
-        if (Array.isArray(remoteData)) {
-          const mapped = remoteData.map(item => {
-            let cleanDate = '';
-            if (item.log_date) {
-              cleanDate = String(item.log_date).trim().slice(0, 10);
-            } else if (item.date) {
-              cleanDate = String(item.date).trim().slice(0, 10);
-            }
-            if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
-              cleanDate = new Date().toLocaleDateString('sv-SE');
-            }
-
-            return {
-              id: item.log_id || item.id,
-              category: item.category || '사내 업무',
-              title: item.title || '',
-              details: item.tasks_done || item.details || '',
-              siteName: item.site_name || item.siteName || '',
-              site_name: item.site_name || item.siteName || '',
-              date: cleanDate,
-              name: item.name || item.writer_name || item.authorName || '작성자',
-              authorName: item.name || item.writer_name || item.authorName || '작성자',
-              division: item.division || '',
-              team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-              authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-              rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-              authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-              role: item.role || '일반',
-              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
-            };
-          });
-          localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
-          return mapped;
+      const localOverrides = (() => {
+        try {
+          const raw = localStorage.getItem('with_security_work_logs');
+          return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+          return [];
         }
+      })();
+      const localMap = new Map(localOverrides.map(l => [(l.id || l.log_id), l]));
+
+      const res = await safeFetchApi('/api/work-logs');
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map(item => {
+          let cleanDate = '';
+          if (item.log_date) {
+            cleanDate = String(item.log_date).trim().slice(0, 10);
+          } else if (item.date) {
+            cleanDate = String(item.date).trim().slice(0, 10);
+          }
+          if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+            cleanDate = new Date().toLocaleDateString('sv-SE');
+          }
+
+          const itemId = item.log_id || item.id;
+          const localItem = localMap.get(itemId);
+
+          let parsedSharedWith = [];
+          if (item.shared_with || item.sharedWith) {
+            const rawSw = item.shared_with || item.sharedWith;
+            if (Array.isArray(rawSw)) parsedSharedWith = rawSw;
+            else if (typeof rawSw === 'string') {
+              try { parsedSharedWith = JSON.parse(rawSw); } catch (e) { parsedSharedWith = []; }
+            }
+          } else if (localItem?.sharedWith) {
+            parsedSharedWith = localItem.sharedWith;
+          }
+
+          const isSharedVal = item.is_shared !== undefined
+            ? Boolean(item.is_shared)
+            : (item.isShared !== undefined ? Boolean(item.isShared) : (localItem?.isShared ?? false));
+
+          const sharedAtVal = item.shared_at || item.sharedAt || localItem?.sharedAt || '';
+
+          return {
+            id: itemId,
+            log_id: itemId,
+            category: item.category || '사내 업무',
+            title: item.title || '',
+            details: item.tasks_done || item.details || '',
+            siteName: item.site_name || item.siteName || '',
+            site_name: item.site_name || item.siteName || '',
+            date: cleanDate,
+            name: item.name || item.writer_name || item.authorName || '작성자',
+            authorName: item.name || item.writer_name || item.authorName || '작성자',
+            authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || localItem?.authorUsername || '',
+            writerId: item.writer_id || item.writerId || item.authorUsername || item.username || localItem?.authorUsername || '',
+            division: item.division || localItem?.division || '',
+            team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+            authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+            rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+            authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+            role: item.role || '일반',
+            isShared: isSharedVal,
+            sharedWith: parsedSharedWith,
+            sharedAt: sharedAtVal,
+            createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || localItem?.createdAt || '')
+          };
+        });
+
+        // If local had new unsynced items, prepend them
+        const serverIds = new Set(mapped.map(m => m.id));
+        localOverrides.forEach(lo => {
+          const lId = lo.id || lo.log_id;
+          if (lId && !serverIds.has(lId)) {
+            mapped.push(lo);
+          }
+        });
+
+        localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
+        return mapped;
       }
     } catch (e) {}
 
@@ -938,18 +980,43 @@ class SecurityDatabase {
         authorRank: '대리',
         division: '영업/운영사업부',
         role: '일반',
+        isShared: false,
+        sharedWith: [],
+        sharedAt: '',
         createdAt: '2026-08-11 08:30'
       }
     ];
   }
 
   async saveWorkLog(logItem) {
+    // 1. Immediately update localStorage first
+    const currentLocal = (() => {
+      try {
+        const raw = localStorage.getItem('with_security_work_logs');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const targetId = logItem.id || logItem.log_id;
+    const existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
+    let updated;
+    if (existingIndex >= 0) {
+      updated = [...currentLocal];
+      updated[existingIndex] = { ...updated[existingIndex], ...logItem };
+    } else {
+      updated = [logItem, ...currentLocal];
+    }
+    localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+
+    // 2. Safe async sync with server
     try {
       await safeFetchApi('/api/work-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          logId: logItem.id,
+          logId: targetId,
           name: logItem.authorName || logItem.name || logItem.writerName || '작성자',
           writerId: logItem.authorUsername || logItem.writerId || '',
           division: logItem.authorDivision || logItem.division || '',
@@ -960,21 +1027,14 @@ class SecurityDatabase {
           siteName: logItem.siteName || logItem.site_name || logItem.site || '',
           logDate: logItem.date || new Date().toISOString().split('T')[0],
           title: logItem.title,
-          tasksDone: logItem.details || logItem.tasksDone || ''
+          tasksDone: logItem.details || logItem.tasksDone || '',
+          isShared: logItem.isShared ?? false,
+          sharedWith: logItem.sharedWith || [],
+          sharedAt: logItem.sharedAt || ''
         })
       });
     } catch (e) {}
 
-    const logs = await this.getWorkLogs();
-    const existingIndex = logs.findIndex(l => l.id === logItem.id);
-    let updated;
-    if (existingIndex >= 0) {
-      updated = [...logs];
-      updated[existingIndex] = { ...updated[existingIndex], ...logItem };
-    } else {
-      updated = [logItem, ...logs];
-    }
-    localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
     notifyDataChanged();
     return updated;
   }

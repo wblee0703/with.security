@@ -27,9 +27,9 @@
 - **Primary Data Baseline (`src/data/*.json`)**: All core application data (users, sites, pledges) MUST treat `src/data/*.json` files (`users.json`, `sites.json`, `pledges.json`) as the primary ground-truth source.
 - **Prevent Cookie / Cache Overwriting**: Browser cookies, local storage, and IndexedDB caches MUST NEVER overwrite or supersede edits made to `src/data/*.json`. Data fetching logic MUST always prioritize and merge `src/data/*.json` contents on top of cached state.
 
-## 6. Site & User Identity Evaluation Rules (사업장 및 동일인 식별 규칙)
+## 6. Site & User Identity Evaluation Rules (사업장 및 동일인 / 동명이인 식별 규칙)
 - **Site Identity Evaluation (사업장 식별 규칙)**: Always differentiate and identify sites by combining **Site Name (`name`) AND Site Address (`address`)**. Sites with matching names but different addresses (or vice versa) MUST be treated as separate, distinct sites.
-- **User Identity Evaluation (동일인 식별 규칙)**: Differentiate and evaluate user identity using **User ID (`username` / `id`), Department/Team (`team` / `department`), Rank (`rank`), AND Name (`name` / `visitorName`)**. If ANY single field differs among these 4 parameters (ID, 소속, 직급, 이름 중 1개라도 다르면), they MUST be evaluated as DIFFERENT persons (다른 사람으로 판단).
+- **User Identity Evaluation (동일인 및 동명이인 식별 규칙)**: Differentiate and evaluate user identity using **Name (`name` / `visitorName`), Rank (`rank`), Department/Team (`team` / `department`), Division/Business Unit (`division`), AND User ID (`username` / `id`)**. If ANY single field differs among **Name, Rank, Team, and Division (이름, 직급, 소속, 사업부 중 1개라도 다르면)**, they MUST be evaluated as DIFFERENT persons (동명이인 및 서로 다른 사람으로 판단). All user selection, sharing targets, and authorship checks must adhere to this 4-way differentiation.
 
 ## 7. App vs. Web Browser Environment Separation Rules (모바일 앱과 웹 브라우저 환경 분리 관리 규칙)
 - **Security Context Differentiation (보안 환경 분리 원칙)**:

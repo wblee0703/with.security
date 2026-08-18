@@ -508,13 +508,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     // If it's a No-App site (보안앱X), IMMEDIATELY return checklist mode!
     if (isAppX) {
       return {
-        appName: '보안 앱 예외 사업장 (수동 셀프 체크)',
+        appName: '보안 앱 예외 사업장',
         appCode: 'NO_APP_REQUIRED',
         shortName: '보안앱X',
         company: foundSite ? (foundSite.name || '보안앱X 사업장') : '보안앱X 사업장',
         color: '#1e3a8a',
         badgeBg: 'rgba(30, 58, 138, 0.08)',
-        desc: '본 사업장은 모바일 보안 앱 가동 예외 사업장입니다. 카메라 스티커 부착 셀프 체크리스트로 진행합니다.',
         isChecklistMode: true
       };
     }
@@ -549,7 +548,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         company: '삼성전자 / 삼성SDI / 삼성디스플레이 / 삼성반도체',
         color: '#1d4ed8',
         badgeBg: 'rgba(29, 78, 216, 0.15)',
-        desc: '삼성 MDM (협력사 MDM / com.moplus.samsung.semi.user) 모바일 보안 앱 실행 및 카메라 차단 검수',
+        desc: '협력사 MDM 모바일 보안 앱 실행 및 카메라 차단 검수',
         isChecklistMode: false
       };
     } else if (isHynix) {
@@ -560,9 +559,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         packageName: 'com.skhynix.ssm',
         scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.skhynix.ssm;end',
         company: 'SK하이닉스 이천 / 청주사업장',
-        color: '#dc2626',
-        badgeBg: 'rgba(220, 38, 38, 0.15)',
-        desc: 'SK하이닉스 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
+        color: '#1d4ed8',
+        badgeBg: 'rgba(29, 78, 216, 0.15)',
+        desc: '협력사 SSM 모바일 보안 앱 실행 및 카메라 차단 검수',
         isChecklistMode: false
       };
     } else if (isLgd) {
@@ -573,9 +572,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         packageName: 'com.lgd.deviceon',
         scheme: (foundSite?.appUrl || '').trim() || 'intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=com.lgd.deviceon;end',
         company: 'LG디스플레이 파주 / 구미사업장',
-        color: '#e11d48',
-        badgeBg: 'rgba(225, 29, 72, 0.15)',
-        desc: 'LG디스플레이 디바이스온(DeviceOn) 모바일 보안 앱 실행 및 카메라 차단 검수',
+        color: '#1d4ed8',
+        badgeBg: 'rgba(29, 78, 216, 0.15)',
+        desc: '협력사 DeviceOn 모바일 보안 앱 실행 및 카메라 차단 검수',
         isChecklistMode: false
       };
     }
@@ -2587,7 +2586,11 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             borderRadius: '12px',
                             background: '#f1f5f9',
                             border: '1.5px solid #cbd5e1',
-                            color: '#1e3a8a',
+                            color: (() => {
+                              const selSite = findSiteByDisplayNameOrName(formData.site, sites);
+                              const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
+                              return isSecAppO ? '#16a34a' : '#dc2626';
+                            })(),
                             fontWeight: '800',
                             fontSize: '13px',
                             outline: 'none',
@@ -2630,7 +2633,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             background: isSiteInvalid ? '#fff1f2' : '#ffffff',
                             border: isSiteInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
                             boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
-                            color: formData.site ? '#0f172a' : '#94a3b8',
+                            color: formData.site ? (() => {
+                              const selSite = findSiteByDisplayNameOrName(formData.site, sites);
+                              const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
+                              return isSecAppO ? '#16a34a' : '#dc2626';
+                            })() : '#94a3b8',
+                            fontWeight: formData.site ? '700' : 'normal',
                             fontSize: '13px',
                             outline: 'none',
                             cursor: 'pointer',
@@ -2647,6 +2655,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             const targetRank = formData.rank || currentUser?.rank || '';
 
                             const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+                            const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
+                            const displayType = (s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O';
 
                             return (
                               <option
@@ -2655,10 +2665,11 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                                 disabled={isPledged}
                                 style={{
                                   background: isPledged ? '#f1f5f9' : '#ffffff',
-                                  color: isPledged ? '#94a3b8' : '#0f172a'
+                                  color: isPledged ? '#94a3b8' : (isSecAppO ? '#16a34a' : '#dc2626'),
+                                  fontWeight: isPledged ? '400' : '700'
                                 }}
                               >
-                                [{(s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O'}] {displayName}
+                                [{displayType}] {displayName}
                               </option>
                             );
                           })}
@@ -3010,7 +3021,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               }}
                               style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
                             />
-                            <span>[필수] 스마트폰 카메라 렌즈에 보안 스티커 부착</span>
+                            <span>스마트폰 카메라 렌즈에 보안 스티커 부착</span>
                           </label>
 
                           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12.5px', color: '#0f172a', fontWeight: '600', cursor: 'pointer', lineHeight: '1.4' }}>
@@ -3026,7 +3037,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               }}
                               style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
                             />
-                            <span>[필수] 사업장 내 사진 및 동영상 무단 촬영 금지</span>
+                            <span>사업장 내 사진 및 동영상 무단 촬영 금지</span>
                           </label>
                         </div>
 
@@ -3069,37 +3080,11 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                             }}
                           >
                             {cameraSelfChecklist.cameraChecked ? (
-                              <><CheckCircle2 size={18} color="#059669" /> 스마트폰 카메라 앱 실행됨 (차단 확인 완료)</>
+                              <><CheckCircle2 size={18} color="#059669" /> 스마트폰 카메라 차단 확인 완료</>
                             ) : (
-                              <><Camera size={18} /> 📸 스마트폰 카메라 앱 실행 (스티커 차단 확인)</>
+                              <><Camera size={18} /> 스마트폰 카메라 보안 스티커 확인</>
                             )}
                           </button>
-                        </div>
-
-                        {/* 3. Real-time Checklist Verification Indicator */}
-                        <div style={{
-                          padding: '12px 14px',
-                          borderRadius: '10px',
-                          fontSize: '12px',
-                          fontWeight: '800',
-                          background: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
-                            ? '#ecfdf5'
-                            : '#fff1f2',
-                          color: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
-                            ? '#059669'
-                            : '#e11d48',
-                          border: (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
-                            ? '1.5px solid #a7f3d0'
-                            : '1.5px solid #fda4af',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}>
-                          {(cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked) ? (
-                            <><CheckCircle2 size={16} color="#059669" /> ✓ 카메라 보안 및 스티커 차단 확인 완료</>
-                          ) : (
-                            <><X size={16} color="#e11d48" /> ❌ 보안앱 미확인 (셀프 체크 및 카메라 앱 실행 확인 필요)</>
-                          )}
                         </div>
                       </div>
                     ) : (

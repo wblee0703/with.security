@@ -1,11 +1,31 @@
 import { query } from '../mysql.js';
 
-
+let migrationDone = false;
+async function ensureWorkLogColumns() {
+  if (migrationDone) return;
+  try {
+    const cols = await query("SHOW COLUMNS FROM work_log");
+    const colNames = (cols || []).map(c => c.Field);
+    if (!colNames.includes('is_shared')) {
+      await query("ALTER TABLE work_log ADD COLUMN is_shared TINYINT(1) DEFAULT 0 COMMENT '업무 공유 여부'");
+    }
+    if (!colNames.includes('shared_with')) {
+      await query("ALTER TABLE work_log ADD COLUMN shared_with TEXT COMMENT '공유 대상 JSON'");
+    }
+    if (!colNames.includes('shared_at')) {
+      await query("ALTER TABLE work_log ADD COLUMN shared_at VARCHAR(100) DEFAULT '' COMMENT '공유 시각'");
+    }
+    migrationDone = true;
+  } catch (e) {
+    // ignore
+  }
+}
 
 /**
  * 업무일지(work_log) 생성 및 저장
  */
 export async function createWorkLog(data = {}) {
+  await ensureWorkLogColumns();
 
   const logId = String(data.logId || data.log_id || data.id || `work_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
   const name = String(data.name || data.writerName || data.writer_name || data.authorName || '작성자');
@@ -20,11 +40,15 @@ export async function createWorkLog(data = {}) {
   const title = String(data.title || '업무 일지');
   const tasksDone = String(data.tasksDone || data.tasks_done || data.details || '');
 
+  const isShared = data.isShared ? 1 : 0;
+  const sharedWith = typeof data.sharedWith === 'string' ? data.sharedWith : JSON.stringify(data.sharedWith || []);
+  const sharedAt = String(data.sharedAt || '');
+
   try {
     const sql = `
       INSERT INTO work_log 
-      (\`log_id\`, \`name\`, \`writer_id\`, \`division\`, \`team\`, \`rank\`, \`role\`, \`category\`, \`site_name\`, \`log_date\`, \`title\`, \`tasks_done\`)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (\`log_id\`, \`name\`, \`writer_id\`, \`division\`, \`team\`, \`rank\`, \`role\`, \`category\`, \`site_name\`, \`log_date\`, \`title\`, \`tasks_done\`, \`is_shared\`, \`shared_with\`, \`shared_at\`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`name\` = VALUES(\`name\`),
         \`writer_id\` = VALUES(\`writer_id\`),
@@ -36,30 +60,39 @@ export async function createWorkLog(data = {}) {
         \`site_name\` = VALUES(\`site_name\`),
         \`log_date\` = VALUES(\`log_date\`),
         \`title\` = VALUES(\`title\`),
-        \`tasks_done\` = VALUES(\`tasks_done\`)
+        \`tasks_done\` = VALUES(\`tasks_done\`),
+        \`is_shared\` = VALUES(\`is_shared\`),
+        \`shared_with\` = VALUES(\`shared_with\`),
+        \`shared_at\` = VALUES(\`shared_at\`)
     `;
 
     await query(sql, [
-      logId, name, writerId, division, team, rank, role, category, siteName, logDate, title, tasksDone
+      logId, name, writerId, division, team, rank, role, category, siteName, logDate, title, tasksDone, isShared, sharedWith, sharedAt
     ]);
   } catch (err) {
     console.warn('Primary INSERT work_log error, trying fallback:', err.message);
     try {
-      await query("INSERT INTO work_log (`log_id`, `title`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`)", [logId, title]);
+      await query(`
+        INSERT INTO work_log 
+        (\`log_id\`, \`name\`, \`writer_id\`, \`division\`, \`team\`, \`rank\`, \`role\`, \`category\`, \`site_name\`, \`log_date\`, \`title\`, \`tasks_done\`)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE \`title\` = VALUES(\`title\`)
+      `, [logId, name, writerId, division, team, rank, role, category, siteName, logDate, title, tasksDone]);
     } catch (e) {}
   }
 
-  return { id: logId, log_id: logId, title, name, division, team, rank, role, logDate };
+  return { id: logId, log_id: logId, title, name, division, team, rank, role, logDate, isShared: Boolean(isShared), sharedWith: data.sharedWith || [], sharedAt };
 }
 
 /**
  * 업무일지 목록 조회 (날짜별 / 작성자별 필터 가능, 모든 새 컬럼 반영)
  */
 export async function getWorkLogs(searchParams = {}) {
+  await ensureWorkLogColumns();
   let rows = [];
 
   try {
-    let sql = "SELECT `id`, `log_id`, `name`, `writer_id`, `division`, `team`, `rank`, `role`, `category`, `site_name`, DATE_FORMAT(`log_date`, '%Y-%m-%d') AS `log_date`, `title`, `tasks_done`, `created_at` FROM work_log WHERE 1=1";
+    let sql = "SELECT `id`, `log_id`, `name`, `writer_id`, `division`, `team`, `rank`, `role`, `category`, `site_name`, DATE_FORMAT(`log_date`, '%Y-%m-%d') AS `log_date`, `title`, `tasks_done`, `is_shared`, `shared_with`, `shared_at`, `created_at` FROM work_log WHERE 1=1";
     const params = [];
 
     if (searchParams.writerName || searchParams.name) {
@@ -81,11 +114,14 @@ export async function getWorkLogs(searchParams = {}) {
 
     rows = await query(sql, params);
   } catch (err) {
-    console.warn('Fallback querying work_log with SELECT *:', err.message);
     try {
-      rows = await query('SELECT * FROM work_log ORDER BY `id` DESC');
+      rows = await query("SELECT `id`, `log_id`, `name`, `writer_id`, `division`, `team`, `rank`, `role`, `category`, `site_name`, DATE_FORMAT(`log_date`, '%Y-%m-%d') AS `log_date`, `title`, `tasks_done`, `created_at` FROM work_log ORDER BY `log_date` DESC, `created_at` DESC, `id` DESC");
     } catch (e) {
-      rows = [];
+      try {
+        rows = await query('SELECT * FROM work_log ORDER BY `id` DESC');
+      } catch (e2) {
+        rows = [];
+      }
     }
   }
 
@@ -95,12 +131,23 @@ export async function getWorkLogs(searchParams = {}) {
     const sRank = row.rank || row.writer_rank || '';
     const sDate = row.log_date ? String(row.log_date).slice(0, 10) : '';
 
+    let parsedSharedWith = [];
+    if (row.shared_with) {
+      if (Array.isArray(row.shared_with)) parsedSharedWith = row.shared_with;
+      else if (typeof row.shared_with === 'string') {
+        try { parsedSharedWith = JSON.parse(row.shared_with); } catch (e) { parsedSharedWith = []; }
+      }
+    }
+
     return {
       id: row.log_id || row.id,
       log_id: row.log_id || row.id,
       name: sName,
       writer_name: sName,
       authorName: sName,
+      writer_id: row.writer_id || '',
+      writerId: row.writer_id || '',
+      authorUsername: row.writer_id || '',
       division: row.division || '',
       team: sTeam,
       writer_team: sTeam,
@@ -117,6 +164,12 @@ export async function getWorkLogs(searchParams = {}) {
       title: row.title || '',
       tasks_done: row.tasks_done || row.details || '',
       details: row.tasks_done || row.details || '',
+      is_shared: row.is_shared !== undefined ? Boolean(row.is_shared) : false,
+      isShared: row.is_shared !== undefined ? Boolean(row.is_shared) : false,
+      shared_with: parsedSharedWith,
+      sharedWith: parsedSharedWith,
+      shared_at: row.shared_at || '',
+      sharedAt: row.shared_at || '',
       created_at: row.created_at || '',
       createdAt: row.created_at ? String(row.created_at).replace('T', ' ').slice(0, 16) : ''
     };
@@ -127,6 +180,7 @@ export async function getWorkLogs(searchParams = {}) {
  * 특정 업무일지 상세 조회
  */
 export async function getWorkLogById(logId) {
+  await ensureWorkLogColumns();
   const targetId = String(logId || '').trim();
   if (!targetId) return null;
 
@@ -149,12 +203,23 @@ export async function getWorkLogById(logId) {
   const sRank = row.rank || row.writer_rank || '';
   const sDate = row.log_date ? String(row.log_date).slice(0, 10) : '';
 
+  let parsedSharedWith = [];
+  if (row.shared_with) {
+    if (Array.isArray(row.shared_with)) parsedSharedWith = row.shared_with;
+    else if (typeof row.shared_with === 'string') {
+      try { parsedSharedWith = JSON.parse(row.shared_with); } catch (e) { parsedSharedWith = []; }
+    }
+  }
+
   return {
     id: row.log_id || row.id,
     log_id: row.log_id || row.id,
     name: sName,
     writer_name: sName,
     authorName: sName,
+    writer_id: row.writer_id || '',
+    writerId: row.writer_id || '',
+    authorUsername: row.writer_id || '',
     division: row.division || '',
     team: sTeam,
     writer_team: sTeam,
@@ -170,7 +235,13 @@ export async function getWorkLogById(logId) {
     date: sDate,
     title: row.title || '',
     tasks_done: row.tasks_done || row.details || '',
-    details: row.tasks_done || row.details || ''
+    details: row.tasks_done || row.details || '',
+    is_shared: row.is_shared !== undefined ? Boolean(row.is_shared) : false,
+    isShared: row.is_shared !== undefined ? Boolean(row.is_shared) : false,
+    shared_with: parsedSharedWith,
+    sharedWith: parsedSharedWith,
+    shared_at: row.shared_at || '',
+    sharedAt: row.shared_at || ''
   };
 }
 
@@ -178,8 +249,13 @@ export async function getWorkLogById(logId) {
  * 업무일지 수정
  */
 export async function updateWorkLog(logId, data) {
-  const { title, tasksDone, details, category, team, rank, division, role, logDate, date, siteName, name } = data;
+  await ensureWorkLogColumns();
+  const { title, tasksDone, details, category, team, rank, division, role, logDate, date, siteName, name, isShared, sharedWith, sharedAt } = data;
   const targetDate = logDate || date || null;
+
+  const isSharedVal = isShared !== undefined ? (isShared ? 1 : 0) : null;
+  const sharedWithVal = sharedWith !== undefined ? (typeof sharedWith === 'string' ? sharedWith : JSON.stringify(sharedWith)) : null;
+  const sharedAtVal = sharedAt !== undefined ? String(sharedAt) : null;
 
   const sql = `
     UPDATE work_log 
@@ -192,12 +268,15 @@ export async function updateWorkLog(logId, data) {
         \`division\` = COALESCE(?, \`division\`),
         \`role\` = COALESCE(?, \`role\`),
         \`site_name\` = COALESCE(?, \`site_name\`),
-        log_date = COALESCE(?, log_date)
+        log_date = COALESCE(?, log_date),
+        is_shared = COALESCE(?, is_shared),
+        shared_with = COALESCE(?, shared_with),
+        shared_at = COALESCE(?, shared_at)
     WHERE \`log_id\` = ? OR \`id\` = ?
   `;
 
   const result = await query(sql, [
-    title || null, (tasksDone || details) || null, category || null, name || null, team || null, rank || null, division || null, role || null, siteName || null, targetDate, logId || '', logId || ''
+    title || null, (tasksDone || details) || null, category || null, name || null, team || null, rank || null, division || null, role || null, siteName || null, targetDate, isSharedVal, sharedWithVal, sharedAtVal, logId || '', logId || ''
   ]);
   return result.affectedRows > 0;
 }
