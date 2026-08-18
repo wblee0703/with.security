@@ -1158,7 +1158,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     <input
                       type="password"
                       disabled={!isEditUnlocked}
-                      placeholder={isEditUnlocked ? "새 비밀번호 입력 (미입력 시 기존 유지)" : "수정 모드 시 입력 가능"}
+                      placeholder={isEditUnlocked ? "새 비밀번호 입력" : "수정 모드 시 입력 가능"}
                       value={passwordForm.newPassword}
                       onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                       style={{

@@ -351,21 +351,21 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }
 
   const generateDailyReportText = () => {
-    let t = `   [ 일일 업무 일지 ]\n`;
+    let t = `[ 일일 업무 일지 ]\n`;
     t += `• 보고 일자: ${getFormattedKoreanDate(dailyDate)}\n`;
 
     t += `1. 사내 업무\n`;
     if (dailyInternalLogs.length === 0) {
-      t += `   - 사내 업무 기록 없음\n`;
+      t += `  - 사내 업무 기록 없음\n`;
     } else {
-      t += `   > 담당자: ${dailyInternalAuthorsText}\n`;
+      t += `  > 담당자: ${dailyInternalAuthorsText}\n`;
       dailyInternalLogs.forEach((l, i) => {
         const shareTag = l.isShared ? ` [공유중${l.sharedWith?.length ? `: ${l.sharedWith.length}명` : ''}]` : '';
-        t += `   (${i + 1}) ${l.title}${shareTag}\n`;
+        t += ` ${i + 1}) ${l.title}${shareTag}\n`;
         if (l.details && l.details.trim()) {
           const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
           lines.forEach(line => {
-            t += `       ${line.trim()}\n`;
+            t += `    ${line.trim()}\n`;
           });
         }
       });
@@ -374,7 +374,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     t += `\n2. 출장 및 현장 지원\n`;
     const siteKeys = Object.keys(dailyTripGroupedBySite);
     if (siteKeys.length === 0) {
-      t += `   - 출장 업무 기록 없음\n`;
+      t += `  - 출장 업무 기록 없음\n`;
     } else {
       siteKeys.forEach((siteKey, siteIdx) => {
         const siteLogs = dailyTripGroupedBySite[siteKey];
@@ -396,15 +396,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         });
         const authorsText = Array.from(authorSet).join(', ') || '담당자 미지정';
 
-        t += `   > 출장지: ${siteKey}\n`;
-        t += `   > 출장자: ${authorsText}\n`;
+        t += `  > 출장지: ${siteKey}\n`;
+        t += `  > 출장자: ${authorsText}\n`;
         siteLogs.forEach((l, taskIdx) => {
           const shareTag = l.isShared ? ` [공유중${l.sharedWith?.length ? `: ${l.sharedWith.length}명` : ''}]` : '';
-          t += `   (${taskIdx + 1}) ${l.title}${shareTag}\n`;
+          t += ` ${taskIdx + 1}) ${l.title}${shareTag}\n`;
           if (l.details && l.details.trim()) {
             const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
             lines.forEach(line => {
-              t += `       ${line.trim()}\n`;
+              t += `    ${line.trim()}\n`;
             });
           }
         });
@@ -416,30 +416,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       t += `\n3. 👥 공유받은 업무 (${dailySharedReceivedLogs.length}건)\n`;
       dailySharedReceivedLogs.forEach((l, i) => {
         const aInfo = `${l.authorName || '작성자'} ${l.authorRank || ''} (${formatOnlyTeam(l.authorTeam)})`;
-        t += `   (${i + 1}) [${l.category}${l.siteName ? ` @${l.siteName}` : ''}] ${l.title} (공유자: ${aInfo})\n`;
+        t += ` ${i + 1}) [${l.category}${l.siteName ? ` @${l.siteName}` : ''}] ${l.title} (공유자: ${aInfo})\n`;
         if (l.details && l.details.trim()) {
           const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
           lines.forEach(line => {
-            t += `       ${line.trim()}\n`;
+            t += `    ${line.trim()}\n`;
           });
         }
       });
     }
 
     t += `\n${dailySharedReceivedLogs.length > 0 ? '4' : '3'}. 📋 종합 총평\n`;
-    t += `   - 금일 등록된 총 ${dailyTotalInitialCount}건의 안전 관리 및 보안 운영 업무${dailyMySharedLogs.length > 0 ? ` (공유중인 업무 ${dailyMySharedLogs.length}건 포함)` : ''}${dailySharedReceivedLogs.length > 0 ? ` 및 공유받은 업무 ${dailySharedReceivedLogs.length}건` : ''}이 정상 조치 완료되었습니다.\n`;
+    t += `  - 금일 등록된 총 ${dailyTotalInitialCount}건의 안전 관리 및 보안 운영 업무${dailyMySharedLogs.length > 0 ? ` (공유중인 업무 ${dailyMySharedLogs.length}건 포함)` : ''}${dailySharedReceivedLogs.length > 0 ? ` 및 공유받은 업무 ${dailySharedReceivedLogs.length}건` : ''}이 정상 조치 완료되었습니다.\n`;
     return t;
   };
 
   const generateWeeklyReportText = () => {
-    let t = `   [ WithSecurity 주간 업무 일지 ]\n`;
+    let t = `[ WithSecurity 주간 업무 일지 ]\n`;
     t += `• 대상 주차: ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n`;
     t += `• 주간 총 실적: 총 ${weeklyTotalInitialCount}건 (사내 ${weeklyInitialInternalCount}건 / 출장 ${weeklyInitialTripCount}건)${weeklyMySharedLogs.length > 0 ? ` (공유중 ${weeklyMySharedLogs.length}건 포함)` : ''}${weeklySharedReceivedLogs.length > 0 ? ` [공유받음 ${weeklySharedReceivedLogs.length}건]` : ''}\n`;
     t += `• 활동 일수: ${weeklyActiveDaysCount}일 / 참여 인원: ${weeklyAuthors.length}명\n\n`;
 
     t += `1. 📅 요일별 업무 수행 실적\n`;
     if (sortedWeeklyDates.length === 0) {
-      t += `   - 주간 업무 기록 없음\n`;
+      t += `  - 주간 업무 기록 없음\n`;
     } else {
       sortedWeeklyDates.forEach(dStr => {
         const dayLogs = weeklyGroupedByDate[dStr] || [];
@@ -447,11 +447,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         t += `\n ■ ${getFormattedKoreanDate(dStr)} (총 ${dayInitialGroups.length}건)\n`;
         dayLogs.forEach((l, i) => {
           const shareTag = l.isShared ? ` [공유중${l.sharedWith?.length ? `: ${l.sharedWith.length}명` : ''}]` : '';
-          t += `   (${i + 1}) [${l.category}] ${l.title}${l.siteName ? ` @${l.siteName}` : ''}${shareTag}\n`;
+          t += `  ${i + 1}) [${l.category}] ${l.title}${l.siteName ? ` @${l.siteName}` : ''}${shareTag}\n`;
           if (l.details && l.details.trim()) {
             const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
             lines.forEach(line => {
-              t += `       ${line.trim()}\n`;
+              t += `    ${line.trim()}\n`;
             });
           }
         });
@@ -462,11 +462,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       t += `\n\n2. 👥 주간 공유받은 업무 종합 (${weeklySharedReceivedLogs.length}건)\n`;
       weeklySharedReceivedLogs.forEach((l, i) => {
         const aInfo = `${l.authorName || '작성자'} ${l.authorRank || ''} (${formatOnlyTeam(l.authorTeam)})`;
-        t += `   (${i + 1}) [${l.date}] [${l.category}${l.siteName ? ` @${l.siteName}` : ''}] ${l.title} (공유자: ${aInfo})\n`;
+        t += `  ${i + 1}) [${l.date}] [${l.category}${l.siteName ? ` @${l.siteName}` : ''}] ${l.title} (공유자: ${aInfo})\n`;
         if (l.details && l.details.trim()) {
           const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
           lines.forEach(line => {
-            t += `       ${line.trim()}\n`;
+            t += `    ${line.trim()}\n`;
           });
         }
       });
@@ -980,7 +980,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               {dailySharedReceivedLogs.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
                   <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #2563eb', paddingLeft: '8px' }}>
-                    <Users size={16} /> 3. 공유받은 업무 ({dailySharedReceivedLogs.length}건)
+                    3. 공유받은 업무 ({dailySharedReceivedLogs.length}건)
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '6px' }}>
@@ -1342,7 +1342,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               {weeklySharedReceivedLogs.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '6px' }}>
                   <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #2563eb', paddingLeft: '8px' }}>
-                    <Users size={16} /> 2. 주간 공유받은 업무 실적 ({weeklySharedReceivedLogs.length}건)
+                    2. 주간 공유받은 업무 실적 ({weeklySharedReceivedLogs.length}건)
                   </div>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '4px' }}>
@@ -1350,10 +1350,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <div key={item.id || idx} style={{ background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '8px', padding: '11px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                           <span style={{ fontSize: '12px', fontWeight: '800', color: '#0284c7' }}>
-                            📅 {getFormattedKoreanDate(item.date)}
+                            {getFormattedKoreanDate(item.date)}
                           </span>
                           <span style={{ fontSize: '11.5px', color: '#1e3a8a', fontWeight: '700' }}>
-                            👤 공유자: {item.authorName} {item.authorRank || ''} ({formatOnlyTeam(item.authorTeam)})
+                            공유자: {item.authorName} {item.authorRank || ''} ({formatOnlyTeam(item.authorTeam)})
                           </span>
                         </div>
                         <div style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
