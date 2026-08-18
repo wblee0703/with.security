@@ -832,42 +832,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           )}
 
-          {/* Official Report Summary Table Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: (dailySharedReceivedLogs.length > 0 && dailyMySharedLogs.length > 0) ? 'repeat(5, 1fr)' : (dailySharedReceivedLogs.length > 0 || dailyMySharedLogs.length > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
-            background: '#f8fafc',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '6px',
-            overflow: 'hidden',
-            width: '100%'
-          }}>
-            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>총 수행</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyTotalInitialCount}건</div>
-            </div>
-            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>사내</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyInitialInternalCount}건</div>
-            </div>
-            <div className="summary-stat-cell" style={{ borderRight: (dailySharedReceivedLogs.length > 0 || dailyMySharedLogs.length > 0) ? '1.5px solid #cbd5e1' : 'none', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>출장</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{dailyInitialTripCount}건</div>
-            </div>
-            {dailySharedReceivedLogs.length > 0 && (
-              <div className="summary-stat-cell" style={{ borderRight: dailyMySharedLogs.length > 0 ? '1.5px solid #cbd5e1' : 'none', background: '#eff6ff', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', color: '#1d4ed8', fontWeight: '700', textAlign: 'center' }}>공유받음</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1d4ed8', textAlign: 'center' }}>{dailySharedReceivedLogs.length}건</div>
-              </div>
-            )}
-            {dailyMySharedLogs.length > 0 && (
-              <div className="summary-stat-cell" style={{ background: '#ecfdf5', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', color: '#047857', fontWeight: '700', textAlign: 'center' }}>공유중</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#047857', textAlign: 'center' }}>{dailyMySharedLogs.length}건</div>
-              </div>
-            )}
-          </div>
-
           {dailyOwnLogs.length === 0 && dailySharedReceivedLogs.length === 0 ? (
             <div style={{ padding: '30px', textAlign: 'center', color: '#0f172a' }}>
               <Clock size={32} color="#0f172a" style={{ marginBottom: '8px' }} />
@@ -1310,42 +1274,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               </div>
             </div>
           )}
-
-          {/* Official Report Summary Table Grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: (weeklySharedReceivedLogs.length > 0 && weeklyMySharedLogs.length > 0) ? 'repeat(5, 1fr)' : (weeklySharedReceivedLogs.length > 0 || weeklyMySharedLogs.length > 0) ? 'repeat(4, 1fr)' : 'repeat(3, 1fr)',
-            background: '#f8fafc',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '6px',
-            overflow: 'hidden',
-            width: '100%'
-          }}>
-            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>총 실적</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyTotalInitialCount}건</div>
-            </div>
-            <div className="summary-stat-cell" style={{ borderRight: '1.5px solid #cbd5e1', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>활동 일수</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyActiveDaysCount}일</div>
-            </div>
-            <div className="summary-stat-cell" style={{ borderRight: (weeklySharedReceivedLogs.length > 0 || weeklyMySharedLogs.length > 0) ? '1.5px solid #cbd5e1' : 'none', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-              <div style={{ fontSize: '15px', color: '#0f172a', fontWeight: '700', textAlign: 'center' }}>참여 인원</div>
-              <div style={{ fontSize: '15px', fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>{weeklyAuthors.length}명</div>
-            </div>
-            {weeklySharedReceivedLogs.length > 0 && (
-              <div className="summary-stat-cell" style={{ borderRight: weeklyMySharedLogs.length > 0 ? '1.5px solid #cbd5e1' : 'none', background: '#eff6ff', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', color: '#1d4ed8', fontWeight: '700', textAlign: 'center' }}>공유받음</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#1d4ed8', textAlign: 'center' }}>{weeklySharedReceivedLogs.length}건</div>
-              </div>
-            )}
-            {weeklyMySharedLogs.length > 0 && (
-              <div className="summary-stat-cell" style={{ background: '#ecfdf5', textAlign: 'center', justifyContent: 'center', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', color: '#047857', fontWeight: '700', textAlign: 'center' }}>공유중</div>
-                <div style={{ fontSize: '15px', fontWeight: '900', color: '#047857', textAlign: 'center' }}>{weeklyMySharedLogs.length}건</div>
-              </div>
-            )}
-          </div>
 
           {weeklyOwnLogs.length === 0 && weeklySharedReceivedLogs.length === 0 ? (
             <div style={{ padding: '30px', textAlign: 'center', color: '#0f172a' }}>

@@ -41,8 +41,14 @@ export function verifyUserPasswordServer(inputPassword, storedPasswordHash) {
  * admin 개발자 계정이 없으면 자동 생성 후 반환
  */
 export async function getSecurityUsers() {
-  const sql = 'SELECT id, username, password, name, role, division, team, `rank`, siteId, phone, email, created_at FROM security_user ORDER BY id ASC';
-  let users = await query(sql);
+  let users = [];
+  try {
+    const sql = 'SELECT id, username, password, name, role, division, team, `rank`, siteId, phone, email, education_date, education_expiry_date, education_name, created_at FROM security_user ORDER BY id ASC';
+    users = await query(sql);
+  } catch (err) {
+    const fallbackSql = 'SELECT * FROM security_user ORDER BY id ASC';
+    try { users = await query(fallbackSql); } catch (e) { users = []; }
+  }
   
   const defaultAdminPass = process.env.ADMIN_DEFAULT_PASSWORD || 'withtech123!';
   const defaultAdminUser = process.env.ADMIN_USERNAME || 'admin';
@@ -61,9 +67,12 @@ export async function getSecurityUsers() {
         rank: '대리',
         siteId: 'ALL',
         phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr'
+        email: 'wblee@withtech.co.kr',
+        education_date: '2025-08-20',
+        education_expiry_date: '2026-08-19',
+        education_name: '사내 정기 정보보안 및 안전 교육'
       });
-      users = await query(sql);
+      users = await query('SELECT * FROM security_user ORDER BY id ASC');
     } catch (e) {
       console.warn('Auto admin account seed warning:', e.message);
     }
@@ -83,15 +92,21 @@ export async function getSecurityUsers() {
         rank: '대리',
         siteId: 'SITE-001',
         phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr'
+        email: 'wblee@withtech.co.kr',
+        education_date: '2025-08-20',
+        education_expiry_date: '2026-08-19',
+        education_name: '사내 정기 정보보안 및 안전 교육'
       });
-      users = await query(sql);
+      users = await query('SELECT * FROM security_user ORDER BY id ASC');
     } catch (e) {}
   }
 
   // password를 passwordHash 속성으로도 맵핑하여 클라이언트 검증 호환성 보장
   return (users || []).map(u => ({
     ...u,
+    educationDate: u.education_date || u.educationDate || '',
+    educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
+    educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
     password: u.password || '',
     passwordHash: u.password || ''
   }));
@@ -105,7 +120,13 @@ export async function getSecurityUserByUsername(username) {
   const results = await query(sql, [username]);
   if (results.length > 0) {
     const u = results[0];
-    return { ...u, passwordHash: u.password };
+    return {
+      ...u,
+      educationDate: u.education_date || u.educationDate || '',
+      educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
+      educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
+      passwordHash: u.password
+    };
   }
   return null;
 }
@@ -125,24 +146,57 @@ export async function createSecurityUser(data = {}) {
   const siteId = data.siteId || '';
   const phone = data.phone || '';
   const email = data.email || '';
+  const education_date = data.educationDate || data.education_date || '';
+  const education_expiry_date = data.educationExpiryDate || data.education_expiry_date || '';
+  const education_name = data.educationName || data.education_name || '사내 정기 정보보안 및 안전 교육';
+  const trainings = Array.isArray(data.trainings) ? JSON.stringify(data.trainings) : (typeof data.trainings === 'string' ? data.trainings : '');
 
-  const sql = `
-    INSERT INTO security_user (username, password, name, role, division, team, \`rank\`, siteId, phone, email)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      password = IF(VALUES(password) != '', VALUES(password), password),
-      name = VALUES(name),
-      role = VALUES(role),
-      division = VALUES(division),
-      team = VALUES(team),
-      \`rank\` = VALUES(\`rank\`),
-      siteId = VALUES(siteId),
-      phone = VALUES(phone),
-      email = VALUES(email)
-  `;
+  try {
+    const sql = `
+      INSERT INTO security_user (username, password, name, role, division, team, \`rank\`, siteId, phone, email, education_date, education_expiry_date, education_name, trainings)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        password = IF(VALUES(password) != '', VALUES(password), password),
+        name = VALUES(name),
+        role = VALUES(role),
+        division = VALUES(division),
+        team = VALUES(team),
+        \`rank\` = VALUES(\`rank\`),
+        siteId = VALUES(siteId),
+        phone = VALUES(phone),
+        email = VALUES(email),
+        education_date = VALUES(education_date),
+        education_expiry_date = VALUES(education_expiry_date),
+        education_name = VALUES(education_name),
+        trainings = IF(VALUES(trainings) != '', VALUES(trainings), trainings)
+    `;
+    await query(sql, [username, password, name, role, division, team, rank, siteId, phone, email, education_date, education_expiry_date, education_name, trainings]);
+  } catch (err) {
+    // Fallback without new columns if DB not migrated yet
+    const fallbackSql = `
+      INSERT INTO security_user (username, password, name, role, division, team, \`rank\`, siteId, phone, email)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        password = IF(VALUES(password) != '', VALUES(password), password),
+        name = VALUES(name),
+        role = VALUES(role),
+        division = VALUES(division),
+        team = VALUES(team),
+        \`rank\` = VALUES(\`rank\`),
+        siteId = VALUES(siteId),
+        phone = VALUES(phone),
+        email = VALUES(email)
+    `;
+    await query(fallbackSql, [username, password, name, role, division, team, rank, siteId, phone, email]);
+  }
 
-  await query(sql, [username, password, name, role, division, team, rank, siteId, phone, email]);
-  return { username, name, role, division, team, rank, siteId, phone, email };
+  return {
+    username, name, role, division, team, rank, siteId, phone, email,
+    educationDate: education_date,
+    educationExpiryDate: education_expiry_date,
+    educationName: education_name,
+    trainings: Array.isArray(data.trainings) ? data.trainings : []
+  };
 }
 
 /**

@@ -216,11 +216,12 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData) && remoteData.length > 0) {
-          localStorage.setItem('with_security_checklists_backup', JSON.stringify(remoteData));
+          const consolidated = this._consolidateChecklists(remoteData);
+          localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
           try {
-            for (const p of remoteData) await this.putItem('checklists', p);
+            for (const p of consolidated) await this.putItem('checklists', p);
           } catch (e) {}
-          return remoteData;
+          return consolidated;
         }
       }
     } catch (e) {}
@@ -241,7 +242,6 @@ class SecurityDatabase {
       if (Array.isArray(dbPledges) && dbPledges.length > 0) {
         if (list.length === 0) {
           list = dbPledges;
-          localStorage.setItem('with_security_checklists_backup', JSON.stringify(dbPledges));
         } else {
           // Merge unique items by id / log_id
           const map = new Map();
@@ -254,12 +254,98 @@ class SecurityDatabase {
             if (key && !map.has(key)) map.set(key, item);
           });
           list = Array.from(map.values());
-          localStorage.setItem('with_security_checklists_backup', JSON.stringify(list));
         }
       }
     } catch (e) {}
 
-    return list;
+    const consolidated = this._consolidateChecklists(list);
+    localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
+    return consolidated;
+  }
+
+  // Helper: Consolidate child companion records into parent pledges and remove duplicate standalone entries
+  _consolidateChecklists(rawList) {
+    if (!Array.isArray(rawList)) return [];
+
+    const primaryMap = new Map();
+    const childCompanions = [];
+
+    rawList.forEach(item => {
+      if (!item) return;
+      const parentId = String(item.parent_log_id || item.parentLogId || item.parentPledgeId || '').trim();
+      if (parentId) {
+        childCompanions.push(item);
+      } else {
+        const pKey = String(item.id || item.log_id);
+        if (pKey) {
+          primaryMap.set(pKey, {
+            ...item,
+            companions: Array.isArray(item.companions) ? [...item.companions] : []
+          });
+        }
+      }
+    });
+
+    childCompanions.forEach(cItem => {
+      const parentId = String(cItem.parent_log_id || cItem.parentLogId || cItem.parentPledgeId || '').trim();
+      let parent = primaryMap.get(parentId);
+      if (!parent) {
+        for (const [k, v] of primaryMap.entries()) {
+          if (k === parentId || String(v.id) === parentId || String(v.log_id) === parentId) {
+            parent = v;
+            break;
+          }
+        }
+      }
+
+      if (parent) {
+        const cId = String(cItem.id || cItem.log_id);
+        const cName = (cItem.visitorName || cItem.name || '').trim();
+        const cPhone = (cItem.visitorPhone || cItem.phone || '').trim();
+        const cTeam = (cItem.team || cItem.department || '').trim();
+        const cRank = (cItem.rank || '').trim();
+        const cUsername = (cItem.username || '').trim();
+        const cStatus = cItem.status || '서약전';
+        const cMdm = Boolean(cItem.mdmVerified || cItem.mdm_verified);
+        const cDate = cItem.signature_date || cItem.signatureDate || cItem.signedAt || null;
+
+        const existingIndex = parent.companions.findIndex(c =>
+          String(c.id || c.log_id) === cId ||
+          (c.visitorName?.trim() === cName && (c.phone === cPhone || c.team === cTeam || c.username === cUsername))
+        );
+
+        const compObj = {
+          id: cId,
+          log_id: cId,
+          visitorName: cName,
+          name: cName,
+          username: cUsername,
+          phone: cPhone,
+          visitorPhone: cPhone,
+          team: cTeam,
+          department: cTeam,
+          rank: cRank,
+          status: cStatus,
+          mdmVerified: cMdm,
+          parentPledgeId: parentId,
+          parent_log_id: parentId,
+          pledgedAt: cDate,
+          createdAt: cItem.createdAt || cDate || null
+        };
+
+        if (existingIndex >= 0) {
+          parent.companions[existingIndex] = {
+            ...parent.companions[existingIndex],
+            ...compObj,
+            status: (parent.companions[existingIndex].status === '완료' || parent.companions[existingIndex].status === '승인완료') ? parent.companions[existingIndex].status : cStatus
+          };
+        } else {
+          parent.companions.push(compObj);
+        }
+      }
+    });
+
+    return Array.from(primaryMap.values());
   }
 
   async saveChecklist(checklist) {
@@ -575,9 +661,34 @@ class SecurityDatabase {
       const match = users.find(u => u.username === user.username);
       if (match) {
         user = { ...user, ...match };
-        localStorage.setItem('with_security_active_user', JSON.stringify(user));
       }
     }
+
+    if (user) {
+      // Load user's isolated trainings list from localStorage if exists
+      try {
+        const uid = user.username || user.id || 'default';
+        const storedTrainings = localStorage.getItem(`with_security_user_trainings_${uid}`);
+        if (storedTrainings) {
+          user.trainings = JSON.parse(storedTrainings);
+        } else if (!user.trainings || user.trainings.length === 0) {
+          if (user.educationDate || user.educationExpiryDate) {
+            user.trainings = [{
+              id: 'init-1',
+              category: '법정',
+              title: user.educationName || '사내 정기 정보보안 및 안전 교육',
+              completionDate: user.educationDate || '',
+              expiryDate: user.educationExpiryDate || '',
+              memo: ''
+            }];
+          } else {
+            user.trainings = [];
+          }
+        }
+      } catch (e) {}
+      localStorage.setItem('with_security_active_user', JSON.stringify(user));
+    }
+
     return user;
   }
 
@@ -585,6 +696,13 @@ class SecurityDatabase {
     let safeUser = { ...userProfile };
     if (safeUser.password && !safeUser.passwordHash) {
       safeUser.passwordHash = await hashPassword(safeUser.password);
+    }
+
+    const uid = safeUser.username || safeUser.id || 'default';
+    if (Array.isArray(safeUser.trainings)) {
+      try {
+        localStorage.setItem(`with_security_user_trainings_${uid}`, JSON.stringify(safeUser.trainings));
+      } catch (e) {}
     }
 
     localStorage.setItem('with_security_active_user', JSON.stringify(safeUser));
@@ -616,10 +734,31 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
-          usersList = remoteData;
-          localStorage.setItem('with_security_users_db', JSON.stringify(remoteData));
+          usersList = remoteData.map(u => {
+            let parsedTrainings = [];
+            if (u.trainings) {
+              parsedTrainings = typeof u.trainings === 'string' ? JSON.parse(u.trainings) : u.trainings;
+            } else if (u.educationDate || u.education_date || u.educationExpiryDate || u.education_expiry_date) {
+              parsedTrainings = [{
+                id: 'init-1',
+                category: '법정',
+                title: u.educationName || u.education_name || '사내 정기 정보보안 및 안전 교육',
+                completionDate: u.educationDate || u.education_date || '',
+                expiryDate: u.educationExpiryDate || u.education_expiry_date || '',
+                memo: ''
+              }];
+            }
+            return {
+              ...u,
+              trainings: parsedTrainings,
+              educationDate: u.educationDate || u.education_date || '',
+              educationExpiryDate: u.educationExpiryDate || u.education_expiry_date || '',
+              educationName: u.educationName || u.education_name || '사내 정기 정보보안 및 안전 교육'
+            };
+          });
+          localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
-            for (const u of remoteData) await this.putItem('users', u);
+            for (const u of usersList) await this.putItem('users', u);
           } catch (e) {}
         }
       }
@@ -648,7 +787,10 @@ class SecurityDatabase {
         rank: '대리',
         siteId: 'ALL',
         phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr'
+        email: 'wblee@withtech.co.kr',
+        educationDate: '2025-08-20',
+        educationExpiryDate: '2026-08-19',
+        educationName: '사내 정기 정보보안 및 안전 교육'
       };
       usersList.unshift(defaultAdmin);
       try {

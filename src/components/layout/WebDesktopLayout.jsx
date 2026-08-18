@@ -28,6 +28,7 @@ import WorkLogTab from '../tabs/WorkLogTab';
 import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
 import { ClipboardList, FileSpreadsheet } from 'lucide-react';
+import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
 
 export default function WebDesktopLayout({
   activeTab,
@@ -47,6 +48,8 @@ export default function WebDesktopLayout({
       setActiveUser(u);
     }
     fetchUser();
+    window.addEventListener('with_security_data_changed', fetchUser);
+    return () => window.removeEventListener('with_security_data_changed', fetchUser);
   }, [activeTab]);
   const handleLogout = async () => {
     localStorage.removeItem('with_security_active_user');
@@ -167,9 +170,21 @@ export default function WebDesktopLayout({
           </div>
         </div>
 
-        {/* User Profile */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {/* User Profile & Education Notice & Logout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div
+            onClick={() => setActiveTab('userProfile')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+              padding: '4px 6px',
+              borderRadius: '8px',
+              transition: 'background 0.15s ease'
+            }}
+            title="사용자 정보로 이동"
+          >
             {activeUser ? (
               <div style={{
                 padding: '4px 10px',
@@ -197,6 +212,15 @@ export default function WebDesktopLayout({
               </span>
             </div>
           </div>
+
+          {/* Education Expiry Notification Header Notice */}
+          {activeUser && (
+            <TrainingHeaderNotice
+              currentUser={activeUser}
+              onNavigateToUserProfile={(tab) => setActiveTab(tab || 'userProfile')}
+              compact={false}
+            />
+          )}
 
           {/* Logout Button */}
           {activeUser && (

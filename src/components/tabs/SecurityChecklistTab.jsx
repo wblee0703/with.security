@@ -1122,7 +1122,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       console.error('Failed to register companions in DB:', err);
     }
 
-    setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+    setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item).filter(item => !item.parent_log_id && !item.parentLogId && !item.parentPledgeId));
     setIsCompanionModalOpen(false);
 
     if (onTriggerToast) {
@@ -1268,6 +1268,12 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
   // Filtered List (Enforcing Role-Based & Team-Level Security Isolation & Date Navigation)
   const filteredList = checklistList.filter(item => {
+    // 0. 동행인 자식 레코드(parent_log_id/parentLogId/parentPledgeId 가 있는 항목)는 원본 서약 카드 내부에 포함되므로 최상위 개별 카드에서 제외
+    const isChildCompanion = Boolean(item.parent_log_id || item.parentLogId || item.parentPledgeId);
+    if (isChildCompanion) {
+      return false;
+    }
+
     // 1. Role-Based Access Control & Security Isolation Rule
     // - 개발자 (Developer): 전체 서약 내역 조회 가능
     // - 관리자 (Admin): 같은 소속(팀/부서/회사) 인원의 서약 내역 전체 조회 가능
@@ -1601,7 +1607,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           console.error('Failed to update pass in DB:', err);
         }
 
-        setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item));
+        setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item).filter(item => !item.parent_log_id && !item.parentLogId && !item.parentPledgeId));
         handleCloseModal();
         setActiveStep(1);
 

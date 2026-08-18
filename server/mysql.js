@@ -61,6 +61,30 @@ export async function testConnection() {
       // 테이블이 아직 없는 경우 무시
     }
 
+    // security_user 컬럼 자동 마이그레이션 (education_date, education_expiry_date, education_name)
+    try {
+      const [userCols] = await connection.query("SHOW COLUMNS FROM security_user");
+      const userColNames = (userCols || []).map(c => c.Field);
+      if (!userColNames.includes('education_date')) {
+        await connection.query("ALTER TABLE security_user ADD COLUMN education_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 수료일'");
+        console.log('✅ [DB Migration] security_user.education_date 컬럼이 자동 추가되었습니다.');
+      }
+      if (!userColNames.includes('education_expiry_date')) {
+        await connection.query("ALTER TABLE security_user ADD COLUMN education_expiry_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 만료일'");
+        console.log('✅ [DB Migration] security_user.education_expiry_date 컬럼이 자동 추가되었습니다.');
+      }
+      if (!userColNames.includes('education_name')) {
+        await connection.query("ALTER TABLE security_user ADD COLUMN education_name VARCHAR(150) DEFAULT '사내 정기 정보보안 및 안전 교육' COMMENT '보안교육 과정명'");
+        console.log('✅ [DB Migration] security_user.education_name 컬럼이 자동 추가되었습니다.');
+      }
+      if (!userColNames.includes('trainings')) {
+        await connection.query("ALTER TABLE security_user ADD COLUMN trainings TEXT COMMENT '다건 교육 이수 목록 JSON'");
+        console.log('✅ [DB Migration] security_user.trainings 컬럼이 자동 추가되었습니다.');
+      }
+    } catch (migUserErr) {
+      // 테이블이 아직 없는 경우 무시
+    }
+
     connection.release(); // 커넥션 반환
     return true;
   } catch (error) {

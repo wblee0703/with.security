@@ -1,10 +1,60 @@
 import React, { useState, useEffect } from 'react';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
+
+const TRAINING_CATEGORIES = ['SKHynix', 'Samsung', 'LGD', '법정', '기타 (직접입력)'];
+
+const getCategoryBadgeStyle = (category) => {
+  const cat = String(category || '').trim();
+  if (cat === 'SKHynix') {
+    return { bg: '#f5f3ff', border: '#ddd6fe', color: '#7c3aed', label: 'SKHynix' };
+  } else if (cat === 'Samsung') {
+    return { bg: '#eff6ff', border: '#bfdbfe', color: '#1d4ed8', label: 'Samsung' };
+  } else if (cat === 'LGD') {
+    return { bg: '#fdf2f8', border: '#fbcfe8', color: '#db2777', label: 'LGD' };
+  } else if (cat === '법정') {
+    return { bg: '#ecfdf5', border: '#a7f3d0', color: '#047857', label: '법정' };
+  } else {
+    return { bg: '#f8fafc', border: '#cbd5e1', color: '#475569', label: cat || '기타' };
+  }
+};
+
+const calculateOneYearLater = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  d.setFullYear(d.getFullYear() + 1);
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+const getTrainingStatus = (expiryStr) => {
+  if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const exp = new Date(expiryStr);
+  exp.setHours(0, 0, 0, 0);
+  if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    return { text: `만료됨 (D+${Math.abs(diffDays)}일)`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true };
+  } else if (diffDays === 0) {
+    return { text: 'D-Day (오늘 만료)', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+  } else if (diffDays <= 7) {
+    return { text: `D-${diffDays}일 [긴급 만료임박]`, color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+  } else if (diffDays <= 30) {
+    return { text: `D-${diffDays}일 [만료예정]`, color: '#d97706', bg: '#fffbeb', border: '#fde68a', isWarning: true };
+  } else {
+    return { text: `D-${diffDays}일 (안전)`, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
+  }
+};
 
 const formatPhoneNumber = (value) => {
   if (!value) return '';
@@ -64,6 +114,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [serverUnlockPassword, setServerUnlockPassword] = useState('');
   useModalBack(isServerUnlockModalOpen, () => setIsServerUnlockModalOpen(false), 'server-unlock-modal');
 
+  // Multi-Training Management States
+  const [trainings, setTrainings] = useState([]);
+  const [isAddingTraining, setIsAddingTraining] = useState(false);
+  const [editingTrainingId, setEditingTrainingId] = useState(null);
+  const [trainingForm, setTrainingForm] = useState({
+    category: '법정',
+    customCategory: '',
+    title: '',
+    completionDate: '',
+    expiryDate: '',
+    memo: ''
+  });
+
   // Load active user profile & server URL on mount
   useEffect(() => {
     async function loadUser() {
@@ -71,6 +134,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       if (active) {
         setCurrentUser(active);
         setEditForm(active);
+        setTrainings(Array.isArray(active.trainings) ? active.trainings : []);
       }
       const sUrl = dbService.getServerUrl();
       setActiveServerUrl(sUrl);
@@ -78,6 +142,127 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
     loadUser();
   }, []);
+
+  const handleOpenAddTraining = () => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const expStr = calculateOneYearLater(todayStr);
+    setTrainingForm({
+      category: '법정',
+      customCategory: '',
+      title: '',
+      completionDate: todayStr,
+      expiryDate: expStr,
+      memo: ''
+    });
+    setEditingTrainingId(null);
+    setIsAddingTraining(true);
+  };
+
+  const handleOpenEditTraining = (item) => {
+    const isCustom = !['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category);
+    setTrainingForm({
+      category: isCustom ? '기타 (직접입력)' : item.category,
+      customCategory: isCustom ? (item.customCategory || item.category) : '',
+      title: item.title || '',
+      completionDate: item.completionDate || '',
+      expiryDate: item.expiryDate || '',
+      memo: item.memo || ''
+    });
+    setEditingTrainingId(item.id);
+    setIsAddingTraining(true);
+  };
+
+  const handleSaveTraining = async (e) => {
+    if (e) e.preventDefault();
+    if (!trainingForm.title.trim()) {
+      if (onTriggerToast) onTriggerToast('교육명을 입력해 주세요.', 'warning');
+      return;
+    }
+    if (!trainingForm.completionDate) {
+      if (onTriggerToast) onTriggerToast('교육 수료일을 선택해 주세요.', 'warning');
+      return;
+    }
+
+    const finalCategory = trainingForm.category === '기타 (직접입력)'
+      ? (trainingForm.customCategory.trim() || '기타')
+      : trainingForm.category;
+
+    let updatedList = [];
+    if (editingTrainingId) {
+      updatedList = trainings.map(t => {
+        if (t.id === editingTrainingId) {
+          return {
+            ...t,
+            category: finalCategory,
+            customCategory: trainingForm.customCategory,
+            title: trainingForm.title.trim(),
+            completionDate: trainingForm.completionDate,
+            expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
+            memo: trainingForm.memo.trim(),
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return t;
+      });
+    } else {
+      const newItem = {
+        id: `train-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        category: finalCategory,
+        customCategory: trainingForm.customCategory,
+        title: trainingForm.title.trim(),
+        completionDate: trainingForm.completionDate,
+        expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
+        memo: trainingForm.memo.trim(),
+        createdAt: new Date().toISOString()
+      };
+      updatedList = [newItem, ...trainings];
+    }
+
+    setTrainings(updatedList);
+    setIsAddingTraining(false);
+    setEditingTrainingId(null);
+
+    const updatedUser = {
+      ...currentUser,
+      trainings: updatedList,
+      educationDate: updatedList[0]?.completionDate || '',
+      educationExpiryDate: updatedList[0]?.expiryDate || '',
+      educationName: updatedList[0]?.title || ''
+    };
+
+    await dbService.saveUserProfile(updatedUser);
+    setCurrentUser(updatedUser);
+    setEditForm(updatedUser);
+
+    if (onTriggerToast) {
+      onTriggerToast(editingTrainingId ? '교육 이수 정보가 수정되었습니다.' : '교육 이수가 성공적으로 등록되었습니다.', 'success');
+    }
+  };
+
+  const handleDeleteTraining = async (item) => {
+    if (!window.confirm(`정말로 '${item.title}' 교육 이수 내역을 삭제하시겠습니까?`)) {
+      return;
+    }
+    const updatedList = trainings.filter(t => t.id !== item.id);
+    setTrainings(updatedList);
+
+    const updatedUser = {
+      ...currentUser,
+      trainings: updatedList,
+      educationDate: updatedList[0]?.completionDate || '',
+      educationExpiryDate: updatedList[0]?.expiryDate || '',
+      educationName: updatedList[0]?.title || ''
+    };
+
+    await dbService.saveUserProfile(updatedUser);
+    setCurrentUser(updatedUser);
+    setEditForm(updatedUser);
+
+    if (onTriggerToast) {
+      onTriggerToast(`'${item.title}' 교육 이수 내역이 삭제되었습니다.`, 'success');
+    }
+  };
 
   // Server Connection Test
   const handleTestServer = async () => {
@@ -979,6 +1164,481 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               </div>
 
             </form>
+          </div>
+
+          {/* Dedicated Separate Training & Education Expiry Card */}
+          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Card Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+              <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '8px',
+                  background: 'rgba(30, 58, 138, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#1e3a8a'
+                }}>
+                  <GraduationCap size={18} />
+                </div>
+                <span>교육 수료 관리</span>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  color: '#1e3a8a'
+                }}>
+                  총 {trainings.length}건
+                </span>
+              </div>
+
+              {!isAddingTraining && (
+                <button
+                  type="button"
+                  onClick={handleOpenAddTraining}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '6px',
+                    border: '1.5px solid #1e3a8a',
+                    background: '#1e3a8a',
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Plus size={14} />
+                  <span>교육 추가</span>
+                </button>
+              )}
+            </div>
+
+            {/* Add / Edit Training Form Panel */}
+            {isAddingTraining && (
+              <form onSubmit={handleSaveTraining} style={{
+                background: '#f8fafc',
+                border: '1.5px solid #93c5fd',
+                borderRadius: '12px',
+                padding: '16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px',
+                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                  <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <GraduationCap size={16} />
+                    {editingTrainingId ? '교육 이수 정보 수정' : '교육 이수 정보 등록'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
+                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: trainingForm.category === '기타 (직접입력)' ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      구분 *
+                    </label>
+                    <select
+                      value={trainingForm.category}
+                      onChange={(e) => setTrainingForm({ ...trainingForm, category: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1.5px solid #3b82f6',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {TRAINING_CATEGORIES.map(cat => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {trainingForm.category === '기타 (직접입력)' && (
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        직접 입력 *
+                      </label>
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="예: 한화솔루션, 현대모비스 등"
+                        value={trainingForm.customCategory}
+                        onChange={(e) => setTrainingForm({ ...trainingForm, customCategory: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          background: '#ffffff',
+                          border: '1.5px solid #3b82f6',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                    교육명 *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="교육 과정명 입력 (예: 반도체 안전보건 교육, 정기 정보보안 교육)"
+                    value={trainingForm.title}
+                    onChange={(e) => setTrainingForm({ ...trainingForm, title: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: '1.5px solid #3b82f6',
+                      color: '#0f172a',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      교육 수료일 (이수일) *
+                    </label>
+                    <input
+                      type="date"
+                      value={trainingForm.completionDate}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        const exp = calculateOneYearLater(newDate);
+                        setTrainingForm({
+                          ...trainingForm,
+                          completionDate: newDate,
+                          expiryDate: exp || trainingForm.expiryDate
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '12.5px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                        만료일 *
+                      </label>
+                      {trainingForm.completionDate && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const exp = calculateOneYearLater(trainingForm.completionDate);
+                            if (exp) setTrainingForm({ ...trainingForm, expiryDate: exp });
+                          }}
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: '#1e3a8a',
+                            background: '#eff6ff',
+                            border: '1px solid #bfdbfe',
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          +1년 자동설정
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={trainingForm.expiryDate}
+                      onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '12.5px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                    비고 / 메모 (선택 사항)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="수료증 번호, 교육 기관 등 메모"
+                    value={trainingForm.memo}
+                    onChange={(e) => setTrainingForm({ ...trainingForm, memo: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '12.5px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#475569',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="submit"
+                    style={{
+                      padding: '8px 18px',
+                      borderRadius: '6px',
+                      background: '#1e3a8a',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)'
+                    }}
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>{editingTrainingId ? '수정 완료' : '교육 저장'}</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Training Items List */}
+            {trainings.length === 0 ? (
+              <div style={{
+                padding: '24px 16px',
+                textAlign: 'center',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                border: '1px dashed #cbd5e1',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <GraduationCap size={32} color="#94a3b8" />
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
+                  등록된 교육 수료 내역이 없습니다.
+                </span>
+                <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                  상단의 [+ 교육 추가] 버튼을 눌러 SKHynix, Samsung, LGD, 법정 등의 교육을 등록해 주세요.
+                </span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {trainings.map((item, idx) => {
+                  const catStyle = getCategoryBadgeStyle(item.category);
+                  const status = getTrainingStatus(item.expiryDate);
+                  return (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        background: status.isExpired ? '#fef2f2' : '#ffffff',
+                        border: status.isExpired ? '1.5px solid #fecaca' : (status.isUrgent ? '1.5px solid #fecaca' : '1.5px solid #e2e8f0'),
+                        borderRadius: '12px',
+                        padding: '14px 16px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '10px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                          {/* Category Badge */}
+                          <span style={{
+                            fontSize: '11px',
+                            fontWeight: '800',
+                            padding: '2.5px 8px',
+                            borderRadius: '6px',
+                            background: catStyle.bg,
+                            border: `1px solid ${catStyle.border}`,
+                            color: catStyle.color,
+                            flexShrink: 0
+                          }}>
+                            {catStyle.label}
+                          </span>
+
+                          {/* Title */}
+                          <span style={{
+                            fontSize: '14px',
+                            fontWeight: '800',
+                            color: '#0f172a',
+                            wordBreak: 'break-all'
+                          }}>
+                            {item.title}
+                          </span>
+                        </div>
+
+                        {/* Real-Time D-Day Badge */}
+                        <div style={{
+                          fontSize: '11.5px',
+                          fontWeight: '800',
+                          padding: '3px 9px',
+                          borderRadius: '6px',
+                          background: status.bg,
+                          color: status.color,
+                          border: `1px solid ${status.border}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          flexShrink: 0
+                        }}>
+                          <Clock size={12} />
+                          <span>{status.text}</span>
+                        </div>
+                      </div>
+
+                      {/* Dates Box & Memo */}
+                      <div style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '10px',
+                        background: '#f8fafc',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        flexWrap: 'wrap',
+                        fontSize: '12px'
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Calendar size={12} color="#64748b" />
+                            수료일: <strong style={{ color: '#0f172a' }}>{item.completionDate || '-'}</strong>
+                          </span>
+                          <span style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <Clock size={12} color={status.color} />
+                            만료일: <strong style={{ color: status.color }}>{item.expiryDate || '-'}</strong>
+                          </span>
+                          {item.memo && (
+                            <span style={{ color: '#64748b', fontSize: '11.5px' }}>
+                              (비고: {item.memo})
+                            </span>
+                          )}
+                          {/* Item Edit & Delete Action Buttons */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditTraining(item)}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                color: '#1e3a8a',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title="교육 이수 정보 수정"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTraining(item)}
+                              style={{
+                                background: '#ffffff',
+                                border: '1px solid #fecaca',
+                                color: '#dc2626',
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title="교육 이수 내역 삭제"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+
+
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ fontSize: '11.5px', color: '#64748b', lineHeight: '1.4', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              💡 등록된 각 교육의 만료일 <strong>30일 전</strong> 및 <strong>7일 전</strong>에 앱 접속 시 자동 알림 팝업이 제공됩니다.
+            </div>
           </div>
 
           {/* Password Verification Modal Overlay */}

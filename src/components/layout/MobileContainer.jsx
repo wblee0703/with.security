@@ -12,6 +12,7 @@ import {
   ArrowDown
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
+import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
 
 export default function MobileContainer({
   children,
@@ -165,64 +166,75 @@ export default function MobileContainer({
           </span>
         </div>
 
-        {/* Top Right: User Profile Widget */}
-        {currentUser ? (
-          <div
-            onClick={() => setActiveTab('userProfile')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              cursor: 'pointer',
-              padding: '3px 6px',
-              borderRadius: '10px',
-              transition: 'background 0.2s ease'
-            }}
-            title="사용자 프로필 관리로 이동"
-          >
-            <div style={{
-              padding: '2px 6px',
-              borderRadius: '6px',
-              background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#eff6ff'),
-              color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#1e3a8a'),
-              fontWeight: '800',
-              fontSize: '10px',
-              border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#cbd5e1')}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-              letterSpacing: '-0.2px'
-            }}>
-              {currentUser.role || '일반'}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-              <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
-                {currentUser.name} {currentUser.rank || ''}
-              </span>
-              <span style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100px', fontWeight: '500' }}>
-                {currentUser.team || currentUser.department || '위드텍'}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setActiveTab('userProfile')}
-            style={{
-              padding: '4px 10px',
-              borderRadius: '6px',
-              background: '#eff6ff',
-              border: '1.5px solid #cbd5e1',
-              color: '#1e3a8a',
-              fontSize: '11px',
-              fontWeight: '800',
-              cursor: 'pointer'
-            }}
-          >
-            로그인
-          </button>
-        )}
+        {/* Top Right: User Profile Widget & Training Notice Icon */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {currentUser ? (
+            <>
+              <div
+                onClick={() => setActiveTab('userProfile')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  padding: '3px 4px',
+                  borderRadius: '10px',
+                  transition: 'background 0.2s ease'
+                }}
+                title="사용자 프로필 관리로 이동"
+              >
+                <div style={{
+                  padding: '2px 6px',
+                  borderRadius: '6px',
+                  background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#eff6ff'),
+                  color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#1e3a8a'),
+                  fontWeight: '800',
+                  fontSize: '10px',
+                  border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#cbd5e1')}`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  letterSpacing: '-0.2px'
+                }}>
+                  {currentUser.role || '일반'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                  <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                    {currentUser.name} {currentUser.rank || ''}
+                  </span>
+                  <span style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px', fontWeight: '500' }}>
+                    {currentUser.team || currentUser.department || '위드텍'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Education Expiry Notification Icon Button */}
+              <TrainingHeaderNotice
+                currentUser={currentUser}
+                onNavigateToUserProfile={(tab) => setActiveTab(tab || 'userProfile')}
+                compact={true}
+              />
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setActiveTab('userProfile')}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                background: '#eff6ff',
+                border: '1.5px solid #cbd5e1',
+                color: '#1e3a8a',
+                fontSize: '11px',
+                fontWeight: '800',
+                cursor: 'pointer'
+              }}
+            >
+              로그인
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Pull to Refresh Animated Indicator */}

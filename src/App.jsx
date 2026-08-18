@@ -8,6 +8,7 @@ import SecurityChecklistTab from './components/tabs/SecurityChecklistTab';
 import UserSettingTab from './components/tabs/UserSettingTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
+import TrainingExpiryModal from './components/common/TrainingExpiryModal';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw } from 'lucide-react';
 import { dbService } from './services/dbService';
 
@@ -19,6 +20,10 @@ export default function App() {
   const [platform, setPlatform] = useState('ios');
   const [toastMessage, setToastMessage] = useState(null);
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  // Training Expiry Alert Modal State
+  const [isTrainingAlertOpen, setIsTrainingAlertOpen] = useState(false);
+  const [trainingAlertUser, setTrainingAlertUser] = useState(null);
 
   // Network Offline / Online live detection
   useEffect(() => {
@@ -113,6 +118,58 @@ export default function App() {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
+    };
+  }, []);
+
+  // Check Education / Training Expiry Alert on App Launch & Data Change
+  useEffect(() => {
+    async function evaluateTrainingAlert() {
+      try {
+        const user = await dbService.getUserProfile();
+        if (!user) return;
+
+        let allTrainings = Array.isArray(user.trainings) ? user.trainings : [];
+        if (allTrainings.length === 0 && (user.educationExpiryDate || user.educationDate)) {
+          allTrainings = [{
+            id: 'legacy-1',
+            category: '법정',
+            title: user.educationName || '사내 정기 정보보안 및 안전 교육',
+            completionDate: user.educationDate || '',
+            expiryDate: user.educationExpiryDate || ''
+          }];
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const hasExpiring = allTrainings.some(t => {
+          if (!t.expiryDate) return false;
+          const exp = new Date(t.expiryDate);
+          exp.setHours(0, 0, 0, 0);
+          if (isNaN(exp.getTime())) return false;
+          const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+          return diffDays <= 30; // Expired (< 0) or expiring within 30 days
+        });
+
+        if (hasExpiring) {
+          const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+          const uid = user.username || user.name || 'default';
+          const dismissedDate = localStorage.getItem(`with_security_training_alert_dismissed_${uid}`);
+          if (dismissedDate !== todayIso) {
+            setTrainingAlertUser(user);
+            setIsTrainingAlertOpen(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Training alert evaluation error:', err);
+      }
+    }
+
+    evaluateTrainingAlert();
+
+    window.addEventListener('with_security_data_changed', evaluateTrainingAlert);
+    return () => {
+      window.removeEventListener('with_security_data_changed', evaluateTrainingAlert);
     };
   }, []);
 
@@ -276,28 +333,31 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Floating Alert Banner */}
+      {/* Toast Floating Alert Banner (Bottom-Center) */}
       {toastMessage && (
         <div style={{
           position: 'fixed',
-          top: '20px',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)',
           left: '50%',
           transform: 'translateX(-50%)',
-          zIndex: 300,
-          background: 'rgba(255, 255, 255, 0.98)',
-          border: '1px solid rgba(30, 58, 138, 0.4)',
-          color: '#0f172a',
-          padding: '8px 14px',
-          borderRadius: '6px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12), 0 0 16px rgba(15, 23, 42, 0.15)',
+          zIndex: 10000,
+          background: 'rgba(15, 23, 42, 0.95)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: '1.5px solid rgba(255, 255, 255, 0.18)',
+          color: '#ffffff',
+          padding: '10px 18px',
+          borderRadius: '8px',
+          boxShadow: '0 12px 36px rgba(0, 0, 0, 0.35), 0 0 20px rgba(15, 23, 42, 0.25)',
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          fontSize: '12.5px',
-          fontWeight: '700',
+          fontSize: '13px',
+          fontWeight: '800',
+          maxWidth: '90vw',
           animation: 'staticFadeIn 0.18s ease-in-out forwards'
         }}>
-          <Bell size={16} color="#1e3a8a" />
+          <Bell size={16} color="#60a5fa" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -400,6 +460,17 @@ export default function App() {
           setIsLocked(false);
           showToast('보안 인증 성공: 단말기 및 웹 세션 잠금이 해제되었습니다.');
         }}
+      />
+
+      {/* Education / Training Expiry Alert Modal */}
+      <TrainingExpiryModal
+        isOpen={isTrainingAlertOpen}
+        onClose={() => setIsTrainingAlertOpen(false)}
+        onGoToSettings={() => {
+          setActiveTab('userSetting');
+          setIsTrainingAlertOpen(false);
+        }}
+        currentUser={trainingAlertUser}
       />
 
       {/* First-Time Server URL Mandatory Setup Modal */}

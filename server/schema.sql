@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS security_user (
   siteId VARCHAR(100) DEFAULT '' COMMENT '소속 현장 ID',
   phone VARCHAR(50) DEFAULT '' COMMENT '연락처',
   email VARCHAR(100) DEFAULT '' COMMENT '이메일 주소',
+  education_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 수료일',
+  education_expiry_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 만료일',
+  education_name VARCHAR(150) DEFAULT '사내 정기 정보보안 및 안전 교육' COMMENT '보안교육 과정명',
+  trainings TEXT COMMENT '다건 교육 이수 목록 JSON',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
