@@ -529,7 +529,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Handle Profile Update
   const handleProfileUpdate = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!isEditUnlocked) {
       if (onTriggerToast) onTriggerToast('상단의 [정보 수정] 버튼을 클릭하여 비밀번호 인증을 진행해 주세요.', 'warning');
       return;
@@ -810,36 +810,76 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 <User size={18} color="#1e3a8a" /> 사용자 상세 정보 수정 및 관리
               </div>
 
-              {/* Edit Mode Toggle / Verify Button */}
-              <button
-                type="button"
-                onClick={handleOpenVerifyModal}
-                style={{
-                  padding: '7px 14px',
-                  borderRadius: '6px',
-                  border: isEditUnlocked ? '1.5px solid #fda4af' : '1.5px solid #cbd5e1',
-                  background: isEditUnlocked ? '#fff1f2' : '#eff6ff',
-                  color: isEditUnlocked ? '#e11d48' : '#1e3a8a',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: isEditUnlocked ? '0 2px 6px rgba(244, 63, 94, 0.15)' : '0 2px 6px rgba(15, 23, 42, 0.1)',
-                  transition: 'all 0.2s ease'
-                }}
-              >
+              {/* Edit Mode Actions (Top Right) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {isEditUnlocked ? (
                   <>
-                    <X size={14} /> 수정 취소 (잠금)
+                    <button
+                      type="button"
+                      onClick={handleOpenVerifyModal}
+                      style={{
+                        padding: '7px 12px',
+                        borderRadius: '6px',
+                        border: '1.5px solid #cbd5e1',
+                        background: '#ffffff',
+                        color: '#64748b',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <X size={14} /> 취소
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleProfileUpdate}
+                      style={{
+                        padding: '7px 16px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        background: '#1e3a8a',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <CheckCircle2 size={14} /> 저장
+                    </button>
                   </>
                 ) : (
-                  <>
+                  <button
+                    type="button"
+                    onClick={handleOpenVerifyModal}
+                    style={{
+                      padding: '7px 14px',
+                      borderRadius: '6px',
+                      border: '1.5px solid #cbd5e1',
+                      background: '#eff6ff',
+                      color: '#1e3a8a',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.1)',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
                     <Edit3 size={14} /> 정보 수정
-                  </>
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
 
             <form onSubmit={handleProfileUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -1118,7 +1158,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     <input
                       type="password"
                       disabled={!isEditUnlocked}
-                      placeholder={isEditUnlocked ? "새 비밀번호 입력 (미입력 시 기존 유지)" : "수정 모드 해제 시 입력 가능"}
+                      placeholder={isEditUnlocked ? "새 비밀번호 입력 (미입력 시 기존 유지)" : "수정 모드 시 입력 가능"}
                       value={passwordForm.newPassword}
                       onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                       style={{
@@ -1143,7 +1183,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     <input
                       type="password"
                       disabled={!isEditUnlocked}
-                      placeholder={isEditUnlocked ? "변경할 비밀번호 재입력" : "수정 모드 해제 시 입력 가능"}
+                      placeholder={isEditUnlocked ? "변경할 비밀번호 재입력" : "수정 모드 시 입력 가능"}
                       value={passwordForm.confirmPassword}
                       onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                       style={{
@@ -1162,6 +1202,57 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   </div>
                 </div>
               </div>
+
+              {/* Bottom Action Bar when in Edit Mode */}
+              {isEditUnlocked && (
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                  gap: '10px',
+                  paddingTop: '8px',
+                  borderTop: '1px solid #e2e8f0'
+                }}>
+                  <button
+                    type="button"
+                    onClick={handleOpenVerifyModal}
+                    style={{
+                      padding: '9px 16px',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#64748b',
+                      fontSize: '12.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    수정 취소
+                  </button>
+                  <button
+                    type="submit"
+                    style={{
+                      padding: '9px 22px',
+                      borderRadius: '6px',
+                      background: '#1e3a8a',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '13px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 3px 10px rgba(30, 58, 138, 0.25)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <CheckCircle2 size={16} />
+                    <span>저장</span>
+                  </button>
+                </div>
+              )}
 
             </form>
           </div>
@@ -1286,7 +1377,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       <input
                         type="text"
                         autoFocus
-                        placeholder="예: 한화솔루션, 현대모비스 등"
+                        placeholder="예: LG디스플레이"
                         value={trainingForm.customCategory}
                         onChange={(e) => setTrainingForm({ ...trainingForm, customCategory: e.target.value })}
                         style={{
@@ -1311,7 +1402,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   </label>
                   <input
                     type="text"
-                    placeholder="교육 과정명 입력 (예: 반도체 안전보건 교육, 정기 정보보안 교육)"
+                    placeholder="예: 기본 안전보건 교육, 취급자 교육"
                     value={trainingForm.title}
                     onChange={(e) => setTrainingForm({ ...trainingForm, title: e.target.value })}
                     style={{
@@ -1383,7 +1474,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                             cursor: 'pointer'
                           }}
                         >
-                          +1년 자동설정
+                          +1년
                         </button>
                       )}
                     </div>
@@ -1486,9 +1577,6 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 <GraduationCap size={32} color="#94a3b8" />
                 <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
                   등록된 교육 수료 내역이 없습니다.
-                </span>
-                <span style={{ fontSize: '11.5px', color: '#94a3b8' }}>
-                  상단의 [+ 교육 추가] 버튼을 눌러 SKHynix, Samsung, LGD, 법정 등의 교육을 등록해 주세요.
                 </span>
               </div>
             ) : (
@@ -1637,7 +1725,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             )}
 
             <div style={{ fontSize: '11.5px', color: '#64748b', lineHeight: '1.4', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              💡 등록된 각 교육의 만료일 <strong>30일 전</strong> 및 <strong>7일 전</strong>에 앱 접속 시 자동 알림 팝업이 제공됩니다.
+              💡 교육의 만료일 <strong>30일 </strong> & <strong>7일 </strong>전에 앱 알림 팝업이 제공됩니다.
             </div>
           </div>
 
@@ -1685,9 +1773,6 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
                         현재 비밀번호 인증
                       </h3>
-                      <p style={{ fontSize: '11.5px', color: '#64748b' }}>
-                        사용자 정보 수정을 위해 비밀번호를 입력해 주세요.
-                      </p>
                     </div>
                   </div>
                   <button
@@ -1751,7 +1836,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         cursor: 'pointer'
                       }}
                     >
-                      인증 및 수정 해제
+                      확인
                     </button>
                   </div>
                 </form>
