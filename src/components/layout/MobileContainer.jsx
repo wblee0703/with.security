@@ -305,15 +305,13 @@ export default function MobileContainer({
           <span>업무 정리</span>
         </button>
 
-        {isAdmin && (
-          <button
-            onClick={() => handleNavClick('admin')}
-            className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
-          >
-            <Building2 size={18} />
-            <span>사업장</span>
-          </button>
-        )}
+        <button
+          onClick={() => handleNavClick('admin')}
+          className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+        >
+          <Building2 size={18} />
+          <span>사업장</span>
+        </button>
 
         <button
           onClick={() => handleNavClick('userProfile')}

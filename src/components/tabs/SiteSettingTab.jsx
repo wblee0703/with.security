@@ -255,7 +255,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
       {/* Header Banner */}
-      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '40px',
@@ -272,8 +272,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
           }}>
             <Building2 size={22} />
           </div>
-          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-            출입 사업장 관리
+          <div>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+              {isDevUser ? '출입 사업장 관리' : '출입 사업장 및 보안 앱 연동'}
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '500', marginTop: '2px' }}>
+              {isDevUser ? '사업장 등록/수정 및 보안 앱 연동 경로를 관리합니다.' : '사업장별 보안 앱을 내 폰에 맞게 선택하고 바로가기를 실행할 수 있습니다.'}
+            </div>
           </div>
         </div>
       </div>
