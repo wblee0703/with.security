@@ -237,7 +237,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       localStorage.setItem(userKey, JSON.stringify(shareTargets));
     }
     // 레거시 전역 키 삭제 (타 사용자 간 강제 동기화 방지)
-    try { localStorage.removeItem('with_security_worklog_share_targets'); } catch (e) {}
+    try { localStorage.removeItem('with_security_worklog_share_targets'); } catch (e) { }
 
     setIsShareTargetModalOpen(false);
 
@@ -266,6 +266,7 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Toggle Share for a single work log item
   const handleToggleShareLog = async (item) => {
     if (item.isShared) {
+      // 1. 공유 해제 시: 기존에 공유되었던 대상자 목록을 완전히 비움
       const updatedItem = {
         ...item,
         isShared: false,
@@ -274,13 +275,27 @@ export default function WorkLogTab({ onTriggerToast }) {
       };
       const updatedLogs = await dbService.saveWorkLog(updatedItem);
       setWorkLogs(updatedLogs);
+      window.dispatchEvent(new Event('with_security_data_changed'));
       if (onTriggerToast) {
         onTriggerToast(`'${item.title}' 업무 공유가 해제되었습니다.`, 'info');
       }
     } else {
-      if (!shareTargets || shareTargets.length === 0) {
+      // 2. 공유 활성화 시: 현재 설정된 최신 공유 대상자 목록을 불러와서 즉시 공유
+      const userKey = getUserShareTargetsStorageKey(currentUser);
+      let latestTargets = shareTargets;
+      if (userKey) {
+        try {
+          const stored = localStorage.getItem(userKey);
+          if (stored) {
+            latestTargets = JSON.parse(stored);
+            setShareTargets(latestTargets);
+          }
+        } catch (e) { }
+      }
+
+      if (!latestTargets || latestTargets.length === 0) {
         if (onTriggerToast) {
-          onTriggerToast('공유할 대상 사용자를 먼저 지정해 주세요.', 'warning');
+          onTriggerToast('현재 설정된 공유 대상자가 없습니다. 공유할 대상을 먼저 지정해 주세요.', 'warning');
         }
         setPendingShareLogItem(item);
         setIsShareTargetModalOpen(true);
@@ -292,13 +307,14 @@ export default function WorkLogTab({ onTriggerToast }) {
       const updatedItem = {
         ...item,
         isShared: true,
-        sharedWith: shareTargets,
+        sharedWith: latestTargets,
         sharedAt: timeStr
       };
       const updatedLogs = await dbService.saveWorkLog(updatedItem);
       setWorkLogs(updatedLogs);
+      window.dispatchEvent(new Event('with_security_data_changed'));
       if (onTriggerToast) {
-        onTriggerToast(`'${item.title}' 업무가 공유 대상(${shareTargets.length}명)에게 공유되었습니다.`, 'success');
+        onTriggerToast(`'${item.title}' 업무가 현재 공유 대상(${latestTargets.length}명)에게 공유되었습니다.`, 'success');
       }
     }
   };
@@ -557,7 +573,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: '사내 업무',
-      date: getTodayIsoDate(),
+      date: selectedDate || getTodayIsoDate(),
       title: '',
       details: '',
       siteName: ''
@@ -939,12 +955,16 @@ export default function WorkLogTab({ onTriggerToast }) {
                   flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '2px 8px',
-                  background: 'transparent',
-                  border: 'none',
-                  boxShadow: 'none',
+                  padding: '6px 14px',
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '6px',
+                  boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
                   cursor: 'pointer',
-                  overflow: 'hidden'
+                  overflow: 'hidden',
+                  flex: 1,
+                  maxWidth: '320px',
+                  transition: 'all 0.2s ease'
                 }}
               >
                 {/* Visual Button Text */}
@@ -955,11 +975,29 @@ export default function WorkLogTab({ onTriggerToast }) {
                   gap: '2px',
                   pointerEvents: 'none'
                 }}>
-                  <span style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>
-                    {viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ color: '#1e3a8a', fontSize: '15px', fontWeight: '800' }}>
+                      {viewAllDates ? '전체 날짜 업무 일지' : getFormattedKoreanDate(selectedDate)}
+                    </span>
+                    {!viewAllDates && selectedDate > getTodayIsoDate() && (
+                      <span style={{
+                        background: '#fff7ed',
+                        color: '#c2410c',
+                        border: '1.5px solid #fed7aa',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '800',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '2px'
+                      }}>
+                        예정
+                      </span>
+                    )}
+                  </div>
                   <span style={{ fontSize: '12px', fontWeight: '600', color: '#64748b' }}>
-                    {viewAllDates ? '전체 업무:' : '해당 날짜 업무:'} <strong style={{ color: '#1e3a8a', fontWeight: '800' }}>{filteredLogs.length}건</strong>
+                    {viewAllDates ? '전체 업무:' : (selectedDate > getTodayIsoDate() ? '예정 업무:' : '해당 날짜 업무:')} <strong style={{ color: selectedDate > getTodayIsoDate() ? '#c2410c' : '#1e3a8a', fontWeight: '800' }}>{filteredLogs.length}건</strong>
                   </span>
                 </div>
 
@@ -1018,7 +1056,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               justifyContent: 'space-between',
               width: '100%',
               paddingTop: '10px',
-              borderTop: '1.5px solid #e2e8f0',
+              borderTop: '1.5px solid #cbd5e1',
               gap: '12px',
               flexWrap: 'wrap'
             }}>
@@ -1171,447 +1209,501 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
               </div>
             ) : (
-              sortedDates.map(dateStr => (
-                <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {/* Date Header (Crisp High-Contrast Colors) */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px', paddingTop: '4px' }}>
-                    <Calendar size={16} color="#1e3a8a" />
-                    <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px' }}>
-                      {getFormattedKoreanDate(dateStr)}
-                    </span>
-                  </div>
+              sortedDates.map(dateStr => {
+                const isDateScheduled = dateStr > getTodayIsoDate();
+                return (
+                  <div key={dateStr} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Date Header (Crisp High-Contrast Colors) */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '4px', paddingTop: '4px' }}>
+                      <Calendar size={16} color={isDateScheduled ? '#c2410c' : '#1e3a8a'} />
+                      <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.2px' }}>
+                        {getFormattedKoreanDate(dateStr)}
+                      </span>
+                      {isDateScheduled && (
+                        <span style={{
+                          background: '#fff7ed',
+                          color: '#c2410c',
+                          border: '1.5px solid #fed7aa',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}>
+                          ⏰ 예정 업무
+                        </span>
+                      )}
+                    </div>
 
-                  {/* Logs Grid for this date */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {(() => {
-                      const logsForDate = groupedByDate[dateStr] || [];
-                      const cardGroupsMap = logsForDate.reduce((acc, log) => {
-                        const sName = log.siteName || log.site_name || '';
-                        const aName = log.authorName || log.name || '작성자';
-                        const key = `${log.category}___${sName}___${aName}`;
-                        if (!acc[key]) {
-                          acc[key] = {
-                            key,
-                            category: log.category,
-                            siteName: sName,
-                            authorName: aName,
-                            authorRank: log.authorRank || log.rank || '대리',
-                            authorTeam: log.authorTeam || log.team || log.department || '보안관제팀',
-                            createdAt: log.createdAt || '',
-                            date: log.date,
-                            primaryLog: log,
-                            items: []
-                          };
-                        }
-                        acc[key].items.push(log);
-                        return acc;
-                      }, {});
+                    {/* Logs Grid for this date */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {(() => {
+                        const logsForDate = groupedByDate[dateStr] || [];
+                        const cardGroupsMap = logsForDate.reduce((acc, log) => {
+                          const sName = log.siteName || log.site_name || '';
+                          const aName = log.authorName || log.name || '작성자';
+                          const key = `${log.category}___${sName}___${aName}`;
+                          if (!acc[key]) {
+                            acc[key] = {
+                              key,
+                              category: log.category,
+                              siteName: sName,
+                              authorName: aName,
+                              authorRank: log.authorRank || log.rank || '대리',
+                              authorTeam: log.authorTeam || log.team || log.department || '보안관제팀',
+                              createdAt: log.createdAt || '',
+                              date: log.date,
+                              primaryLog: log,
+                              items: []
+                            };
+                          }
+                          acc[key].items.push(log);
+                          return acc;
+                        }, {});
 
-                      return Object.values(cardGroupsMap).map(group => (
-                        <div
-                          key={group.key}
-                          className="glass-panel"
-                          style={{
-                            padding: '16px 18px',
-                            borderRadius: '6px',
-                            border: '1.5px solid #cbd5e1',
-                            borderLeft: group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #1e3a8a',
-                            boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
-                          }}
-                        >
-                          {/* Log Header Row 1: Category Badge + Business Trip Site + Group Action Button */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                              <span style={{
-                                padding: '4px 10px',
+                        return Object.values(cardGroupsMap)
+                          .sort((a, b) => {
+                            const isATrip = a.category === '출장 업무';
+                            const isBTrip = b.category === '출장 업무';
+                            if (isATrip && !isBTrip) return -1; // 출장 업무 카드가 최상단
+                            if (!isATrip && isBTrip) return 1;
+                            return (a.createdAt || '').localeCompare(b.createdAt || '');
+                          })
+                          .map(group => {
+                          const isCardScheduled = group.date > getTodayIsoDate();
+                          return (
+                            <div
+                              key={group.key}
+                              className="glass-panel"
+                              style={{
+                                width: '100%',
+                                minWidth: 0,
+                                boxSizing: 'border-box',
+                                padding: '16px 18px',
                                 borderRadius: '6px',
-                                fontSize: '11px',
-                                fontWeight: '800',
-                                background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(30, 58, 138, 0.08)',
-                                color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
-                                border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
-                              }}>
-                                {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
-                              </span>
-
-                              {group.category === '출장 업무' && group.siteName && (
-                                <span style={{
-                                  padding: '4px 10px',
-                                  borderRadius: '6px',
-                                  fontSize: '11px',
-                                  fontWeight: '700',
-                                  background: 'rgba(167, 139, 250, 0.12)',
-                                  color: '#7c3aed',
-                                  border: '1.5px solid #c4b5fd',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px'
-                                }}>
-                                  {group.siteName}
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Action Buttons: Add Task to this Card Group */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                              <button
-                                type="button"
-                                onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
-                                style={{
-                                  background: '#eff6ff',
-                                  border: '1.5px solid #cbd5e1',
-                                  color: '#1e3a8a',
-                                  padding: '5px 10px',
-                                  borderRadius: '8px',
-                                  fontSize: '11.5px',
-                                  fontWeight: '700',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '4px',
-                                  transition: 'all 0.2s ease',
-                                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
-                                }}
-                                title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
-                              >
-                                <Plus size={13} /> 추가
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Author & Info Line (Rendered once per card) */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#64748b', flexWrap: 'wrap', paddingTop: '2px', paddingBottom: '4px', borderBottom: '1.5px solid #e2e8f0' }}>
-                            <span style={{ color: '#0f172a', fontWeight: '700' }}>
-                              👤 {group.authorName} {group.authorRank || ''}
-                            </span>
-                            <span>|</span>
-                            <span style={{ color: '#1e3a8a', fontWeight: '700' }}>
-                              {formatOnlyTeam(group.authorTeam)}
-                            </span>
-                            <span>|</span>
-                            <span className="mono-font">🕒 {group.createdAt}</span>
-                          </div>
-
-                          {/* Nested List of Tasks (Titles & Details) inside this Card */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {[...group.items]
-                              .sort((a, b) => (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || ''))
-                              .map((item, itemIdx) => {
-                                const isEditingThis = inlineEditingId === item.id;
-
-                                return (
-                                  <div
-                                    key={item.id}
-                                    style={{
-                                      background: isEditingThis ? '#ffffff' : '#f8fafc',
-                                      border: isEditingThis ? '1.5px solid #1e3a8a' : '1.5px solid #e2e8f0',
-                                      borderRadius: '6px',
-                                      padding: '12px 14px',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '8px',
-                                      boxShadow: isEditingThis ? '0 0 0 3px rgba(30, 58, 138, 0.15)' : 'none',
-                                      transition: 'all 0.2s ease'
-                                    }}
-                                  >
-                                    {isEditingThis ? (
-                                      /* Inline Editing Mode */
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                          <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>
-                                            #{itemIdx + 1}
-                                          </span>
-                                          <input
-                                            type="text"
-                                            value={inlineForm.title}
-                                            onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
-                                            style={{
-                                              flex: 1,
-                                              padding: '7px 10px',
-                                              borderRadius: '2px',
-                                              background: '#ffffff',
-                                              border: '1px solid #1e3a8a',
-                                              color: '#0f172a',
-                                              fontSize: '14px',
-                                              fontWeight: '700',
-                                              outline: 'none'
-                                            }}
-                                            placeholder="업무명을 입력하세요"
-                                          />
-                                        </div>
-
-                                        <textarea
-                                          rows={2}
-                                          value={inlineForm.details}
-                                          onChange={(e) => setInlineForm({ ...inlineForm, details: e.target.value })}
-                                          style={{
-                                            width: '100%',
-                                            padding: '8px 10px',
-                                            borderRadius: '2px',
-                                            background: '#ffffff',
-                                            border: '1px solid #cbd5e1',
-                                            color: '#334155',
-                                            fontSize: '13.5px',
-                                            outline: 'none',
-                                            resize: 'vertical',
-                                            lineHeight: '1.5'
-                                          }}
-                                          placeholder="세부 업무 내용을 입력하세요 (선택)"
-                                        />
-
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
-                                          <button
-                                            type="button"
-                                            onClick={handleCancelInlineEdit}
-                                            style={{
-                                              padding: '5px 10px',
-                                              borderRadius: '2px',
-                                              background: '#ffffff',
-                                              border: '1px solid #cbd5e1',
-                                              color: '#64748b',
-                                              fontSize: '11px',
-                                              fontWeight: '700',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            취소
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleSaveInlineEdit(item)}
-                                            style={{
-                                              padding: '5px 12px',
-                                              borderRadius: '2px',
-                                              background: '#1e3a8a',
-                                              border: '1px solid transparent',
-                                              color: '#ffffff',
-                                              fontSize: '11px',
-                                              fontWeight: '800',
-                                              cursor: 'pointer'
-                                            }}
-                                          >
-                                            저장
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      /* Normal View Mode */
-                                      <>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, overflow: 'hidden' }}>
-                                            <span style={{ fontSize: '12px', fontWeight: '800', color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a', flexShrink: 0 }}>
-                                              #{itemIdx + 1}
-                                            </span>
-                                            <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                              {item.title}
-                                            </span>
-                                          </div>
-
-                                          {canModifyLog(item) && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                              {/* 공유 버튼 (수정/삭제 버튼과 100% 동일 크기 및 패딩) */}
-                                              <button
-                                                type="button"
-                                                onClick={() => handleToggleShareLog(item)}
-                                                style={{
-                                                  background: item.isShared ? '#16a34a' : '#ffffff',
-                                                  border: item.isShared ? '1px solid #15803d' : '1px solid #cbd5e1',
-                                                  color: item.isShared ? '#ffffff' : '#0f172a',
-                                                  padding: '3px 8px',
-                                                  borderRadius: '2px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '700',
-                                                  cursor: 'pointer',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  justifyContent: 'center',
-                                                  gap: '3px',
-                                                  boxShadow: item.isShared ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
-                                                  transition: 'all 0.15s ease'
-                                                }}
-                                                title={item.isShared ? "업무 공유 해제 (현재 공유 대상에게 공유중)" : "업무 공유 (지정된 대상에게 공유)"}
-                                              >
-                                                <Share2 size={12} color={item.isShared ? '#ffffff' : '#0f172a'} />
-                                              </button>
-
-                                              <button
-                                                type="button"
-                                                onClick={() => handleStartInlineEdit(item)}
-                                                style={{
-                                                  background: '#ffffff',
-                                                  border: '1px solid #cbd5e1',
-                                                  color: '#0f172a',
-                                                  padding: '3px 8px',
-                                                  borderRadius: '2px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '700',
-                                                  cursor: 'pointer',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '3px',
-                                                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                }}
-                                                title="이 업무 바로 수정"
-                                              >
-                                                <Edit3 size={12} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleInitiateDeleteLog(item)}
-                                                style={{
-                                                  background: '#ffffff',
-                                                  border: '1px solid #fecaca',
-                                                  color: '#dc2626',
-                                                  padding: '3px 8px',
-                                                  borderRadius: '2px',
-                                                  fontSize: '11px',
-                                                  fontWeight: '700',
-                                                  cursor: 'pointer',
-                                                  display: 'flex',
-                                                  alignItems: 'center',
-                                                  gap: '3px',
-                                                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                }}
-                                                title="이 업무 삭제"
-                                              >
-                                                <Trash2 size={12} />
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-
-                                        {/* Log Details Box (Only rendered if details exist) */}
-                                        {item.details && item.details.trim() !== '' && (
-                                          <div style={{
-                                            border: '1px solid #e2e8f0',
-                                            background: '#ffffff',
-                                            padding: '11px 13px',
-                                            borderRadius: '2px',
-                                            fontSize: '13.5px',
-                                            color: '#334155',
-                                            whiteSpace: 'pre-wrap',
-                                            lineHeight: '1.6'
-                                          }}>
-                                            {item.details}
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                );
-                              })}
-
-                            {/* Inline Adding New Task Box directly inside this Card */}
-                            {inlineAddingCardKey === group.key && (
-                              <div style={{
-                                marginTop: '8px',
-                                padding: '12px',
-                                background: '#ffffff',
-                                border: '1.5px dashed #1e3a8a',
-                                borderRadius: '6px',
+                                border: isCardScheduled ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1',
+                                borderLeft: isCardScheduled
+                                  ? '4px solid #ea580c'
+                                  : (group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #1e3a8a'),
+                                background: isCardScheduled ? '#fffbf5' : '#ffffff',
+                                boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                                 display: 'flex',
                                 flexDirection: 'column',
-                                gap: '10px',
-                                boxShadow: '0 4px 14px rgba(15, 23, 42, 0.08)'
-                              }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ fontSize: '12px', fontWeight: '800', color: '#1e3a8a' }}>
-                                    #{group.items.length + 1}
+                                gap: '10px'
+                              }}
+                            >
+                              {/* Log Header Row 1: Category Badge + Business Trip Site + Group Action Button */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                  <span style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: '800',
+                                    background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+                                    color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
+                                    border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
+                                  }}>
+                                    {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
                                   </span>
-                                  <input
-                                    type="text"
-                                    autoFocus
-                                    value={inlineNewForm.title}
-                                    onChange={(e) => setInlineNewForm({ ...inlineNewForm, title: e.target.value })}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleSaveInlineAdd(group.primaryLog);
-                                      }
-                                    }}
-                                    style={{
-                                      flex: 1,
-                                      padding: '7px 10px',
-                                      borderRadius: '2px',
-                                      background: '#ffffff',
-                                      border: '1.5px solid #1e3a8a',
-                                      color: '#0f172a',
-                                      fontSize: '14px',
-                                      fontWeight: '700',
-                                      outline: 'none'
-                                    }}
-                                    placeholder="추가할 업무명을 입력하세요."
-                                  />
-                                </div>
 
-                                <textarea
-                                  rows={2}
-                                  value={inlineNewForm.details}
-                                  onChange={(e) => setInlineNewForm({ ...inlineNewForm, details: e.target.value })}
-                                  style={{
-                                    width: '100%',
-                                    padding: '8px 10px',
-                                    borderRadius: '2px',
-                                    background: '#ffffff',
-                                    border: '1px solid #cbd5e1',
-                                    color: '#334155',
-                                    fontSize: '13.5px',
-                                    outline: 'none',
-                                    resize: 'vertical',
-                                    lineHeight: '1.5'
-                                  }}
-                                  placeholder="세부 업무 내용을 입력하세요 (선택)"
-                                />
+                                  {isCardScheduled && (
+                                    <span style={{
+                                      padding: '4px 8px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      background: '#fff7ed',
+                                      color: '#c2410c',
+                                      border: '1.5px solid #fed7aa',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px'
+                                    }}>
+                                      ⏰ 예정
+                                    </span>
+                                  )}
 
-                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
-                                  <button
-                                    type="button"
-                                    onClick={handleCancelInlineAdd}
-                                    style={{
-                                      padding: '5px 10px',
-                                      borderRadius: '2px',
-                                      background: '#ffffff',
-                                      border: '1px solid #cbd5e1',
-                                      color: '#64748b',
+                                  {group.category === '출장 업무' && group.siteName && (
+                                    <span style={{
+                                      padding: '4px 10px',
+                                      borderRadius: '6px',
                                       fontSize: '11px',
                                       fontWeight: '700',
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    취소
-                                  </button>
+                                      background: 'rgba(167, 139, 250, 0.12)',
+                                      color: '#7c3aed',
+                                      border: '1.5px solid #c4b5fd',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}>
+                                      {group.siteName}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Action Buttons: Add Task to this Card Group */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                                   <button
                                     type="button"
-                                    onClick={() => handleSaveInlineAdd(group.primaryLog)}
+                                    onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
                                     style={{
-                                      padding: '5px 14px',
-                                      borderRadius: '4px',
-                                      background: '#1e3a8a',
-                                      border: 'none',
-                                      color: '#ffffff',
+                                      background: '#eff6ff',
+                                      border: '1.5px solid #cbd5e1',
+                                      color: '#1e3a8a',
+                                      padding: '5px 10px',
+                                      borderRadius: '8px',
                                       fontSize: '11.5px',
-                                      fontWeight: '800',
+                                      fontWeight: '700',
+                                      whiteSpace: 'nowrap',
+                                      flexShrink: 0,
                                       cursor: 'pointer',
-                                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      transition: 'all 0.2s ease',
+                                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
                                     }}
+                                    title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
                                   >
-                                    추가 완료
+                                    <Plus size={13} /> 추가
                                   </button>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      ));
-                    })()}
+
+                              {/* Nested List of Tasks (Titles & Details) inside this Card */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', minWidth: 0 }}>
+                                {[...group.items]
+                                  .sort((a, b) => (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || ''))
+                                  .map((item, itemIdx) => {
+                                    const isEditingThis = inlineEditingId === item.id;
+
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        style={{
+                                          width: '100%',
+                                          minWidth: 0,
+                                          boxSizing: 'border-box',
+                                          background: isEditingThis ? '#ffffff' : '#f8fafc',
+                                          border: isEditingThis ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                                          borderRadius: '6px',
+                                          padding: '12px 14px',
+                                          display: 'flex',
+                                          flexDirection: 'column',
+                                          gap: '6px',
+                                          boxShadow: isEditingThis ? '0 0 0 3px rgba(30, 58, 138, 0.15)' : '0 1px 3px rgba(15, 23, 42, 0.04)',
+                                          transition: 'all 0.2s ease'
+                                        }}
+                                      >
+                                        {isEditingThis ? (
+                                          /* Inline Editing Mode */
+                                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                              <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a' }}>
+                                                {itemIdx + 1}.
+                                              </span>
+                                              <input
+                                                type="text"
+                                                value={inlineForm.title}
+                                                onChange={(e) => setInlineForm({ ...inlineForm, title: e.target.value })}
+                                                style={{
+                                                  flex: 1,
+                                                  padding: '7px 10px',
+                                                  borderRadius: '4px',
+                                                  background: '#ffffff',
+                                                  border: '1.5px solid #1e3a8a',
+                                                  color: '#0f172a',
+                                                  fontSize: '13.5px',
+                                                  fontWeight: '700',
+                                                  outline: 'none'
+                                                }}
+                                                placeholder="업무명을 입력하세요"
+                                              />
+                                            </div>
+
+                                            <textarea
+                                              rows={2}
+                                              value={inlineForm.details}
+                                              onChange={(e) => setInlineForm({ ...inlineForm, details: e.target.value })}
+                                              style={{
+                                                width: '100%',
+                                                padding: '8px 10px',
+                                                borderRadius: '4px',
+                                                background: '#ffffff',
+                                                border: '1.5px solid #cbd5e1',
+                                                color: '#0f172a',
+                                                fontSize: '13.5px',
+                                                outline: 'none',
+                                                resize: 'vertical',
+                                                lineHeight: '1.5'
+                                              }}
+                                              placeholder="세부 업무 내용을 입력하세요 (선택)"
+                                            />
+
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+                                              <button
+                                                type="button"
+                                                onClick={handleCancelInlineEdit}
+                                                style={{
+                                                  padding: '5px 10px',
+                                                  borderRadius: '4px',
+                                                  background: '#ffffff',
+                                                  border: '1px solid #cbd5e1',
+                                                  color: '#64748b',
+                                                  fontSize: '11px',
+                                                  fontWeight: '700',
+                                                  cursor: 'pointer'
+                                                }}
+                                              >
+                                                취소
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleSaveInlineEdit(item)}
+                                                style={{
+                                                  padding: '5px 12px',
+                                                  borderRadius: '4px',
+                                                  background: '#1e3a8a',
+                                                  border: '1px solid transparent',
+                                                  color: '#ffffff',
+                                                  fontSize: '11px',
+                                                  fontWeight: '800',
+                                                  cursor: 'pointer'
+                                                }}
+                                              >
+                                                저장
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          /* Normal View Mode */
+                                          <>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', width: '100%', minWidth: 0 }}>
+                                              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1, minWidth: 0 }}>
+                                                <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '1px' }}>
+                                                  {itemIdx + 1}.
+                                                </span>
+                                                <span style={{
+                                                  fontSize: '13.5px',
+                                                  fontWeight: '800',
+                                                  color: '#0f172a',
+                                                  whiteSpace: 'pre-wrap',
+                                                  wordBreak: 'break-word',
+                                                  overflowWrap: 'anywhere',
+                                                  lineHeight: '1.4',
+                                                  flex: 1,
+                                                  minWidth: 0
+                                                }}>
+                                                  {item.title}
+                                                </span>
+                                              </div>
+
+                                              {canModifyLog(item) && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginTop: '1px' }}>
+                                                  {/* 공유 버튼 (수정/삭제 버튼과 100% 동일 크기 및 패딩) */}
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleToggleShareLog(item)}
+                                                    style={{
+                                                      background: item.isShared ? '#16a34a' : '#ffffff',
+                                                      border: item.isShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
+                                                      color: item.isShared ? '#ffffff' : '#0f172a',
+                                                      padding: '3px 8px',
+                                                      borderRadius: '4px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '700',
+                                                      cursor: 'pointer',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      justifyContent: 'center',
+                                                      gap: '3px',
+                                                      boxShadow: item.isShared ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                      transition: 'all 0.15s ease'
+                                                    }}
+                                                    title={item.isShared ? "업무 공유 해제 (현재 공유 대상에게 공유중)" : "업무 공유 (지정된 대상에게 공유)"}
+                                                  >
+                                                    <Share2 size={12} color={item.isShared ? '#ffffff' : '#0f172a'} />
+                                                  </button>
+
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleStartInlineEdit(item)}
+                                                    style={{
+                                                      background: '#ffffff',
+                                                      border: '1.5px solid #cbd5e1',
+                                                      color: '#0f172a',
+                                                      padding: '3px 8px',
+                                                      borderRadius: '4px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '700',
+                                                      cursor: 'pointer',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '3px',
+                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                    }}
+                                                    title="이 업무 바로 수정"
+                                                  >
+                                                    <Edit3 size={12} />
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleInitiateDeleteLog(item)}
+                                                    style={{
+                                                      background: '#ffffff',
+                                                      border: '1.5px solid #fca5a5',
+                                                      color: '#dc2626',
+                                                      padding: '3px 8px',
+                                                      borderRadius: '4px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '700',
+                                                      cursor: 'pointer',
+                                                      display: 'flex',
+                                                      alignItems: 'center',
+                                                      gap: '3px',
+                                                      boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                    }}
+                                                    title="이 업무 삭제"
+                                                  >
+                                                    <Trash2 size={12} />
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+
+                                            {/* Log Details Box (Only rendered if details exist) */}
+                                            {item.details && item.details.trim() !== '' && (
+                                              <div style={{
+                                                border: 'none',
+                                                background: 'transparent',
+                                                padding: '0px 4px',
+                                                borderRadius: '0px',
+                                                fontSize: '13.5px',
+                                                color: '#0f172a',
+                                                whiteSpace: 'pre-wrap',
+                                                lineHeight: '1.6',
+                                                boxShadow: 'none'
+                                              }}>
+                                                {item.details}
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+
+                                {/* Inline Adding New Task Box directly inside this Card */}
+                                {inlineAddingCardKey === group.key && (
+                                  <div style={{
+                                    marginTop: '8px',
+                                    padding: '12px',
+                                    background: '#ffffff',
+                                    border: '1.5px dashed #1e3a8a',
+                                    borderRadius: '6px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px',
+                                    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.08)'
+                                  }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a' }}>
+                                        {group.items.length + 1}.
+                                      </span>
+                                      <input
+                                        type="text"
+                                        autoFocus
+                                        value={inlineNewForm.title}
+                                        onChange={(e) => setInlineNewForm({ ...inlineNewForm, title: e.target.value })}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSaveInlineAdd(group.primaryLog);
+                                          }
+                                        }}
+                                        style={{
+                                          flex: 1,
+                                          padding: '7px 10px',
+                                          borderRadius: '4px',
+                                          background: '#ffffff',
+                                          border: '1.5px solid #1e3a8a',
+                                          color: '#0f172a',
+                                          fontSize: '13.5px',
+                                          fontWeight: '700',
+                                          outline: 'none'
+                                        }}
+                                        placeholder="추가할 업무명을 입력하세요."
+                                      />
+                                    </div>
+
+                                    <textarea
+                                      rows={2}
+                                      value={inlineNewForm.details}
+                                      onChange={(e) => setInlineNewForm({ ...inlineNewForm, details: e.target.value })}
+                                      style={{
+                                        width: '100%',
+                                        padding: '8px 10px',
+                                        borderRadius: '4px',
+                                        background: '#ffffff',
+                                        border: '1.5px solid #cbd5e1',
+                                        color: '#0f172a',
+                                        fontSize: '13.5px',
+                                        outline: 'none',
+                                        resize: 'vertical',
+                                        lineHeight: '1.5'
+                                      }}
+                                      placeholder="세부 업무 내용을 입력하세요 (선택)"
+                                    />
+
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '2px' }}>
+                                      <button
+                                        type="button"
+                                        onClick={handleCancelInlineAdd}
+                                        style={{
+                                          padding: '5px 10px',
+                                          borderRadius: '2px',
+                                          background: '#ffffff',
+                                          border: '1px solid #cbd5e1',
+                                          color: '#64748b',
+                                          fontSize: '11px',
+                                          fontWeight: '700',
+                                          cursor: 'pointer'
+                                        }}
+                                      >
+                                        취소
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSaveInlineAdd(group.primaryLog)}
+                                        style={{
+                                          padding: '5px 14px',
+                                          borderRadius: '4px',
+                                          background: '#1e3a8a',
+                                          border: 'none',
+                                          color: '#ffffff',
+                                          fontSize: '11.5px',
+                                          fontWeight: '800',
+                                          cursor: 'pointer',
+                                          boxShadow: '0 2px 6px rgba(15, 23, 42, 0.25)'
+                                        }}
+                                      >
+                                        추가 완료
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

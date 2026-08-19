@@ -94,11 +94,18 @@ export async function launchApp(targetScheme) {
     });
   }
 
-  // 2. Web Browser (PC & Mobile Internet Browser) - Disabled
+  // 2. Web Browser (PC & Mobile Web Browser)
+  try {
+    if (cleanScheme.startsWith('intent://') || cleanScheme.includes('://')) {
+      const a = document.createElement('a');
+      a.href = cleanScheme;
+      a.click();
+    }
+  } catch (e) {}
+
   return { 
-    success: false, 
-    method: 'web-disabled', 
-    reason: '타 앱 실행 기능은 모바일 전용 설치형 앱(APK)에서만 지원됩니다.' 
+    success: true, 
+    method: 'web-compatible' 
   };
 }
 

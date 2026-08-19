@@ -67,27 +67,70 @@ export function getApiServerUrl() {
   return null;
 }
 
+// In-Flight Promise Cache & Short-Term Response Cache to prevent burst API calls
+const inFlightRequests = new Map();
+const recentResponseCache = new Map();
+
 async function safeFetchApi(endpoint, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
   const baseUrl = getApiServerUrl();
   if (baseUrl === null) return null;
   const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
-  try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), options.timeout || 3000);
-    const headers = {
-      'Bypass-Tunnel-Reminder': 'true',
-      ...(options.headers || {})
-    };
-    const res = await fetch(fullUrl, {
-      ...options,
-      headers,
-      signal: controller.signal
-    }).catch(() => null);
-    clearTimeout(tid);
-    return res;
-  } catch (e) {
-    return null;
+
+  // Invalidate cache on mutations
+  if (method !== 'GET') {
+    recentResponseCache.delete(fullUrl);
   }
+
+  // Check 1.5s cache for GET requests
+  if (method === 'GET') {
+    const cached = recentResponseCache.get(fullUrl);
+    if (cached && (Date.now() - cached.timestamp < 1500)) {
+      return cached.response.clone();
+    }
+
+    // Deduplicate concurrent in-flight GET requests
+    if (inFlightRequests.has(fullUrl)) {
+      const ongoingRes = await inFlightRequests.get(fullUrl);
+      return ongoingRes ? ongoingRes.clone() : null;
+    }
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), options.timeout || 3500);
+      const headers = {
+        'Bypass-Tunnel-Reminder': 'true',
+        ...(options.headers || {})
+      };
+      const res = await fetch(fullUrl, {
+        ...options,
+        headers,
+        signal: controller.signal
+      }).catch(() => null);
+      clearTimeout(tid);
+
+      if (res && res.ok && method === 'GET') {
+        recentResponseCache.set(fullUrl, {
+          timestamp: Date.now(),
+          response: res.clone()
+        });
+      }
+
+      return res;
+    } catch (e) {
+      return null;
+    } finally {
+      inFlightRequests.delete(fullUrl);
+    }
+  })();
+
+  if (method === 'GET') {
+    inFlightRequests.set(fullUrl, fetchPromise);
+  }
+
+  return fetchPromise;
 }
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
@@ -618,6 +661,12 @@ class SecurityDatabase {
   }
 
   async saveSite(site) {
+    let previousSite = null;
+    try {
+      const allSites = await this.getSites();
+      previousSite = allSites.find(s => String(s.id) === String(site.id));
+    } catch (e) {}
+
     try {
       await safeFetchApi('/api/security-sites', {
         method: 'POST',
@@ -630,8 +679,112 @@ class SecurityDatabase {
       await this.putItem('sites', site);
     } catch (e) {}
 
+    // 사업장 정보(사업장명, 위치, 보안앱 사용여부 등) 변경 시 기존 업무일지 및 서약서 데이터 일괄 동기화
+    if (previousSite) {
+      await this.cascadeUpdateSiteData(site, previousSite);
+    }
+
     notifyDataChanged();
     return site;
+  }
+
+  // 사업장 변경 시 기존 등록된 업무 일지(work_logs) 및 서약서(checklists)의 사업장 정보 일괄 업데이트
+  async cascadeUpdateSiteData(newSite, oldSite) {
+    if (!newSite || !oldSite) return;
+    const oldName = (oldSite.name || '').trim();
+    const oldAddr = (oldSite.address || oldSite.location || '').trim();
+    const siteId = String(newSite.id || '').trim();
+
+    // 1. 업무 일지 (work_logs) 동기화
+    try {
+      const logs = await this.getWorkLogs();
+      let logsChanged = false;
+      const updatedLogs = logs.map(log => {
+        const logSiteName = (log.siteName || log.site_name || '').trim();
+        const logSiteLoc = (log.siteLocation || log.siteAddress || log.location || '').trim();
+
+        // 사업장명 또는 사업장 식별자가 일치하는 경우 동기화
+        const isMatch = (oldName && logSiteName === oldName) ||
+          (siteId && String(log.siteId) === siteId);
+
+        if (isMatch) {
+          logsChanged = true;
+          return {
+            ...log,
+            siteName: newSite.name,
+            site_name: newSite.name,
+            siteLocation: newSite.address || log.siteLocation || '',
+            siteAddress: newSite.address || log.siteAddress || '',
+            location: newSite.address || log.location || ''
+          };
+        }
+        return log;
+      });
+
+      if (logsChanged) {
+        localStorage.setItem('with_security_work_logs', JSON.stringify(updatedLogs));
+        for (const logItem of updatedLogs) {
+          const logSiteName = (logItem.siteName || logItem.site_name || '').trim();
+          if (logSiteName === newSite.name) {
+            try {
+              await safeFetchApi('/api/work-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(logItem)
+              });
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to cascade update work logs on site change:', e);
+    }
+
+    // 2. 출입 보안 서약서 / 체크리스트 (checklists) 동기화
+    try {
+      const checklists = await this.getChecklists();
+      let clChanged = false;
+      const updatedCls = checklists.map(cl => {
+        const clSite = (cl.site_name || cl.site || cl.siteName || '').trim();
+        const isMatch = (oldName && clSite === oldName) ||
+          (siteId && String(cl.siteId) === siteId);
+
+        if (isMatch) {
+          clChanged = true;
+          return {
+            ...cl,
+            site: newSite.name,
+            site_name: newSite.name,
+            siteName: newSite.name,
+            siteLocation: newSite.address || cl.siteLocation || '',
+            siteAddress: newSite.address || cl.siteAddress || '',
+            location: newSite.address || cl.location || '',
+            siteType: newSite.type || cl.siteType,
+            securityAppType: newSite.type || cl.securityAppType
+          };
+        }
+        return cl;
+      });
+
+      if (clChanged) {
+        localStorage.setItem('with_security_checklists_backup', JSON.stringify(updatedCls));
+        for (const clItem of updatedCls) {
+          const clSite = (clItem.site_name || clItem.site || clItem.siteName || '').trim();
+          if (clSite === newSite.name) {
+            try { await this.putItem('checklists', clItem); } catch (e) {}
+            try {
+              await safeFetchApi('/api/security-checklists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(clItem)
+              });
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to cascade update checklists on site change:', e);
+    }
   }
 
   async deleteSite(id) {
@@ -698,6 +851,9 @@ class SecurityDatabase {
       safeUser.passwordHash = await hashPassword(safeUser.password);
     }
 
+    const previousCached = localStorage.getItem('with_security_active_user');
+    const previousUser = previousCached ? JSON.parse(previousCached) : null;
+
     const uid = safeUser.username || safeUser.id || 'default';
     if (Array.isArray(safeUser.trainings)) {
       try {
@@ -721,8 +877,164 @@ class SecurityDatabase {
       });
     } catch (e) {}
 
+    // 사용자 정보(이름, 직급, 소속팀, 사업부 등) 변경 시 기존 등록 데이터(업무 일지, 출입 서약서 등) 일괄 동기화
+    await this.cascadeUpdateUserData(safeUser, previousUser);
+
     notifyDataChanged();
     return safeUser;
+  }
+
+  // 사용자 정보 변경 시 기존 등록된 업무 일지(work_logs) 및 서약서(checklists)의 작성자 정보 일괄 업데이트
+  async cascadeUpdateUserData(newUser, prevUser = null) {
+    if (!newUser) return;
+    const targetUsername = (newUser.username || newUser.id || '').trim().toLowerCase();
+    const oldName = (prevUser?.name || newUser.name || '').trim();
+
+    // 1. 업무 일지 (work_logs) 일괄 동기화
+    try {
+      const logs = await this.getWorkLogs();
+      let logsChanged = false;
+      const updatedLogs = logs.map(log => {
+        const logAuthorId = (log.authorUsername || log.writerId || log.username || '').trim().toLowerCase();
+        const logAuthorName = (log.authorName || log.name || '').trim();
+
+        // 작성자 일치 여부 확인 (아이디 일치 or 이전 이름 일치)
+        const isAuthorMatch = (targetUsername && logAuthorId && logAuthorId === targetUsername) ||
+          (!logAuthorId && targetUsername === 'admin' && (logAuthorName === '이원배' || logAuthorName === oldName)) ||
+          (!logAuthorId && logAuthorName === oldName);
+
+        let itemModified = false;
+        let newLog = { ...log };
+
+        if (isAuthorMatch) {
+          newLog.authorName = newUser.name;
+          newLog.name = newUser.name;
+          if (newUser.rank) {
+            newLog.authorRank = newUser.rank;
+            newLog.rank = newUser.rank;
+          }
+          if (newUser.team || newUser.department) {
+            newLog.authorTeam = newUser.team || newUser.department;
+            newLog.team = newUser.team || newUser.department;
+          }
+          if (newUser.division) {
+            newLog.division = newUser.division;
+          }
+          if (newUser.role) {
+            newLog.role = newUser.role;
+          }
+          if (newUser.username) {
+            newLog.authorUsername = newUser.username;
+            newLog.writerId = newUser.username;
+          }
+          itemModified = true;
+        }
+
+        // 공유 대상(sharedWith) 목록 내 사용자 정보 일치 시 동기화
+        if (Array.isArray(newLog.sharedWith) && newLog.sharedWith.length > 0) {
+          let sharedWithModified = false;
+          const newSharedWith = newLog.sharedWith.map(target => {
+            const tId = (target.username || target.id || '').trim().toLowerCase();
+            const tName = (target.name || '').trim();
+            if ((targetUsername && tId && tId === targetUsername) || (!tId && tName === oldName)) {
+              sharedWithModified = true;
+              return {
+                ...target,
+                username: newUser.username || target.username,
+                name: newUser.name,
+                rank: newUser.rank || target.rank,
+                team: newUser.team || newUser.department || target.team,
+                division: newUser.division || target.division
+              };
+            }
+            return target;
+          });
+          if (sharedWithModified) {
+            newLog.sharedWith = newSharedWith;
+            itemModified = true;
+          }
+        }
+
+        if (itemModified) {
+          logsChanged = true;
+          return newLog;
+        }
+        return log;
+      });
+
+      if (logsChanged) {
+        localStorage.setItem('with_security_work_logs', JSON.stringify(updatedLogs));
+        for (const logItem of updatedLogs) {
+          const logAuthorId = (logItem.authorUsername || logItem.writerId || logItem.username || '').trim().toLowerCase();
+          const isAuthorMatch = (targetUsername && logAuthorId && logAuthorId === targetUsername) || (!logAuthorId && (logItem.authorName === newUser.name));
+          if (isAuthorMatch) {
+            try {
+              await safeFetchApi('/api/work-logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(logItem)
+              });
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to cascade update work logs on user profile change:', e);
+    }
+
+    // 2. 출입 보안 서약서 (checklists) 일괄 동기화
+    try {
+      const checklists = await this.getChecklists();
+      let clChanged = false;
+      const updatedCls = checklists.map(cl => {
+        const clId = (cl.username || cl.userId || cl.writerId || '').trim().toLowerCase();
+        const clName = (cl.visitorName || cl.name || cl.visitor_name || '').trim();
+        const isMatch = (targetUsername && clId && clId === targetUsername) || (!clId && clName === oldName);
+
+        if (isMatch) {
+          clChanged = true;
+          return {
+            ...cl,
+            visitorName: newUser.name,
+            name: newUser.name,
+            visitor_name: newUser.name,
+            visitorRank: newUser.rank || cl.visitorRank,
+            rank: newUser.rank || cl.rank,
+            visitor_rank: newUser.rank || cl.visitor_rank,
+            visitorTeam: newUser.team || newUser.department || cl.visitorTeam,
+            team: newUser.team || newUser.department || cl.team,
+            visitor_team: newUser.team || newUser.department || cl.visitor_team,
+            department: newUser.team || newUser.department || cl.department,
+            visitorDivision: newUser.division || cl.visitorDivision,
+            division: newUser.division || cl.division,
+            visitorPhone: newUser.phone || cl.visitorPhone,
+            phone: newUser.phone || cl.phone,
+            visitorEmail: newUser.email || cl.visitorEmail,
+            email: newUser.email || cl.email
+          };
+        }
+        return cl;
+      });
+
+      if (clChanged) {
+        localStorage.setItem('with_security_checklists_backup', JSON.stringify(updatedCls));
+        for (const clItem of updatedCls) {
+          const clId = (clItem.username || clItem.userId || clItem.writerId || '').trim().toLowerCase();
+          if ((targetUsername && clId && clId === targetUsername) || (!clId && clItem.visitorName === newUser.name)) {
+            try { await this.putItem('checklists', clItem); } catch (e) {}
+            try {
+              await safeFetchApi('/api/security-checklists', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(clItem)
+              });
+            } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to cascade update checklists on user profile change:', e);
+    }
   }
 
   async getRegisteredUsers() {
@@ -802,6 +1114,10 @@ class SecurityDatabase {
   }
 
   async getUsers() {
+    return this.getRegisteredUsers();
+  }
+
+  async getAllUsers() {
     return this.getRegisteredUsers();
   }
 
@@ -1131,6 +1447,41 @@ class SecurityDatabase {
   }
 
   async saveWorkLog(logItem) {
+    // ⭐ sharedWith를 '이름 직급 (소속)' 형태로만 정제 (예: '홍길동 대리 (운영1팀)')
+    let cleanSharedWith = [];
+    if (Array.isArray(logItem.sharedWith)) {
+      cleanSharedWith = logItem.sharedWith.map(t => {
+        if (typeof t === 'string') return t.trim();
+        if (t && typeof t === 'object') {
+          const name = (t.name || t.authorName || t.writerName || '').trim();
+          const rank = (t.rank || t.authorRank || t.writerRank || '').trim();
+          let team = (t.team || t.department || t.authorTeam || t.writerTeam || '').trim();
+          if (team.includes('>')) team = team.split('>').pop().trim();
+          let label = name;
+          if (rank) label += ` ${rank}`;
+          if (team) label += ` (${team})`;
+          return label.trim() || name;
+        }
+        return String(t);
+      }).filter(Boolean);
+    } else if (typeof logItem.sharedWith === 'string') {
+      try {
+        const parsed = JSON.parse(logItem.sharedWith);
+        if (Array.isArray(parsed)) {
+          cleanSharedWith = parsed.map(s => String(s).trim()).filter(Boolean);
+        } else {
+          cleanSharedWith = logItem.sharedWith.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      } catch (e) {
+        cleanSharedWith = logItem.sharedWith.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    const preparedLog = {
+      ...logItem,
+      sharedWith: cleanSharedWith
+    };
+
     // 1. Immediately update localStorage first
     const currentLocal = (() => {
       try {
@@ -1141,14 +1492,14 @@ class SecurityDatabase {
       }
     })();
 
-    const targetId = logItem.id || logItem.log_id;
+    const targetId = preparedLog.id || preparedLog.log_id;
     const existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
     let updated;
     if (existingIndex >= 0) {
       updated = [...currentLocal];
-      updated[existingIndex] = { ...updated[existingIndex], ...logItem };
+      updated[existingIndex] = { ...updated[existingIndex], ...preparedLog };
     } else {
-      updated = [logItem, ...currentLocal];
+      updated = [preparedLog, ...currentLocal];
     }
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
 
@@ -1159,20 +1510,20 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           logId: targetId,
-          name: logItem.authorName || logItem.name || logItem.writerName || '작성자',
-          writerId: logItem.authorUsername || logItem.writerId || '',
-          division: logItem.authorDivision || logItem.division || '',
-          team: logItem.authorTeam || logItem.team || logItem.writerTeam || logItem.department || '보안관제팀',
-          rank: logItem.authorRank || logItem.rank || logItem.writerRank || '대리',
-          role: logItem.authorRole || logItem.role || '일반',
-          category: logItem.category || '사내 업무',
-          siteName: logItem.siteName || logItem.site_name || logItem.site || '',
-          logDate: logItem.date || new Date().toISOString().split('T')[0],
-          title: logItem.title,
-          tasksDone: logItem.details || logItem.tasksDone || '',
-          isShared: logItem.isShared ?? false,
-          sharedWith: logItem.sharedWith || [],
-          sharedAt: logItem.sharedAt || ''
+          name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
+          writerId: preparedLog.authorUsername || preparedLog.writerId || '',
+          division: preparedLog.authorDivision || preparedLog.division || '',
+          team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
+          rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
+          role: preparedLog.authorRole || preparedLog.role || '일반',
+          category: preparedLog.category || '사내 업무',
+          siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+          logDate: preparedLog.date || new Date().toISOString().split('T')[0],
+          title: preparedLog.title,
+          tasksDone: preparedLog.details || preparedLog.tasksDone || '',
+          isShared: preparedLog.isShared ?? false,
+          sharedWith: cleanSharedWith,
+          sharedAt: preparedLog.sharedAt || ''
         })
       });
     } catch (e) {}
@@ -1189,6 +1540,178 @@ class SecurityDatabase {
     const logs = await this.getWorkLogs();
     const updated = logs.filter(l => l.id !== id);
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    notifyDataChanged();
+    return updated;
+  }
+
+  // -------------------------------------------------------------
+  // Shared Weekly Custom Reports Persistence (주간 직접 입력 1~4번 보고서 사내 공유 & 컬럼별 분리 저장)
+  // -------------------------------------------------------------
+  async getWeeklyReports(searchParams = {}) {
+    const localOverrides = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_shared_weekly_reports');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+    const localMap = new Map(localOverrides.map(r => [(r.id || r.reportId), r]));
+
+    try {
+      let queryStr = '';
+      if (searchParams.weeklyMonday) queryStr += `?weeklyMonday=${encodeURIComponent(searchParams.weeklyMonday)}`;
+      if (searchParams.authorUsername) queryStr += `${queryStr ? '&' : '?'}authorUsername=${encodeURIComponent(searchParams.authorUsername)}`;
+
+      const res = await safeFetchApi(`/api/weekly-reports${queryStr}`);
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped = json.data.map(item => {
+            const itemId = item.id || item.reportId || item.report_id;
+            const localItem = localMap.get(itemId);
+
+            return {
+              id: itemId,
+              reportId: itemId,
+              weeklyMonday: item.weeklyMonday || item.weekly_monday || localItem?.weeklyMonday || '',
+              weekText: item.weekText || item.week_text || localItem?.weekText || '',
+              authorName: item.authorName || item.author_name || item.name || localItem?.authorName || '작성자',
+              authorUsername: item.authorUsername || item.author_username || item.writerId || localItem?.authorUsername || '',
+              authorTeam: item.authorTeam || item.author_team || item.team || localItem?.authorTeam || '',
+              authorRank: item.authorRank || item.author_rank || item.rank || localItem?.authorRank || '대리',
+              authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
+              authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
+              // ⭐ 컬럼별 명확한 분리
+              mainTasks: item.mainTasks || item.main_tasks || localItem?.mainTasks || '',
+              infoSharing: item.infoSharing || item.info_sharing || localItem?.infoSharing || '',
+              workSupport: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
+              teamCoop: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
+              etcTasks: item.etcTasks || item.etc_tasks || localItem?.etcTasks || '',
+              sharedWith: item.sharedWith || item.shared_with || localItem?.sharedWith || [],
+              sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
+              createdAt: item.createdAt || item.created_at || localItem?.createdAt || ''
+            };
+          });
+
+          // Prepend local items if unsynced
+          const serverIds = new Set(mapped.map(m => m.id));
+          localOverrides.forEach(lo => {
+            const lId = lo.id || lo.reportId;
+            if (lId && !serverIds.has(lId)) {
+              mapped.push(lo);
+            }
+          });
+
+          localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(mapped));
+          return mapped;
+        }
+      }
+    } catch (e) {}
+
+    return localOverrides;
+  }
+
+  async saveWeeklyReport(report) {
+    if (!report) return null;
+    const current = await this.getWeeklyReports();
+    const targetId = report.id || report.reportId || `weekly-rep-${report.authorUsername || report.authorName || 'user'}-${report.weeklyMonday || Date.now()}`;
+    
+    // ⭐ sharedWith를 '이름 직급 (소속)' 형태로만 정제 (예: '홍길동 대리 (운영1팀)')
+    let cleanSharedWith = [];
+    if (Array.isArray(report.sharedWith)) {
+      cleanSharedWith = report.sharedWith.map(t => {
+        if (typeof t === 'string') return t.trim();
+        if (t && typeof t === 'object') {
+          const name = (t.name || t.authorName || '').trim();
+          const rank = (t.rank || t.authorRank || t.writerRank || '').trim();
+          let team = (t.team || t.department || t.authorTeam || '').trim();
+          if (team.includes(' ')) {
+            const parts = team.split(/\s+/);
+            team = parts[parts.length - 1];
+          }
+          let label = name;
+          if (rank && !label.includes(rank)) label += ` ${rank}`;
+          if (team && !label.includes(team)) label += ` (${team})`;
+          return label || name || team || '';
+        }
+        return String(t || '');
+      }).filter(Boolean);
+    } else if (typeof report.sharedWith === 'string') {
+      cleanSharedWith = report.sharedWith.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    // ⭐ 주요 내용, 정보 공유, 업무 지원, 기타 업무 컬럼별 정규화
+    const normalized = {
+      ...report,
+      id: targetId,
+      reportId: targetId,
+      weeklyMonday: report.weeklyMonday || '',
+      weekText: report.weekText || '',
+      authorName: report.authorName || report.name || '작성자',
+      authorUsername: report.authorUsername || report.writerId || '',
+      authorTeam: report.authorTeam || report.team || '',
+      authorRank: report.authorRank || report.rank || '대리',
+      authorDivision: report.authorDivision || report.division || '',
+      authorRole: report.authorRole || report.role || '일반',
+      mainTasks: report.mainTasks || '',
+      infoSharing: report.infoSharing || '',
+      workSupport: report.workSupport || report.teamCoop || '',
+      teamCoop: report.workSupport || report.teamCoop || '',
+      etcTasks: report.etcTasks || '',
+      sharedWith: cleanSharedWith,
+      sharedAt: report.sharedAt || '',
+      createdAt: report.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 16)
+    };
+
+    const idx = current.findIndex(r => (r.id || r.reportId) === targetId || (r.weeklyMonday === normalized.weeklyMonday && (r.authorUsername || r.authorName) === (normalized.authorUsername || normalized.authorName)));
+    let updated;
+    if (idx >= 0) {
+      updated = [...current];
+      updated[idx] = { ...updated[idx], ...normalized };
+    } else {
+      updated = [normalized, ...current];
+    }
+
+    localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(updated));
+
+    // Async REST API Sync
+    try {
+      await safeFetchApi('/api/weekly-reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportId: targetId,
+          weeklyMonday: normalized.weeklyMonday,
+          weekText: normalized.weekText,
+          authorName: normalized.authorName,
+          authorUsername: normalized.authorUsername,
+          authorTeam: normalized.authorTeam,
+          authorRank: normalized.authorRank,
+          authorDivision: normalized.authorDivision,
+          authorRole: normalized.authorRole,
+          mainTasks: normalized.mainTasks,
+          infoSharing: normalized.infoSharing,
+          workSupport: normalized.workSupport,
+          etcTasks: normalized.etcTasks,
+          sharedWith: normalized.sharedWith,
+          sharedAt: normalized.sharedAt
+        })
+      });
+    } catch (e) {}
+
+    notifyDataChanged();
+    return updated;
+  }
+
+  async deleteWeeklyReport(reportId) {
+    try {
+      await safeFetchApi(`/api/weekly-reports/${reportId}`, { method: 'DELETE' });
+    } catch (e) {}
+
+    const reports = await this.getWeeklyReports();
+    const updated = reports.filter(r => (r.id !== reportId && r.reportId !== reportId));
+    localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(updated));
     notifyDataChanged();
     return updated;
   }

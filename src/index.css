@@ -1,3 +1,5 @@
+@import url('https://hangeul.pstatic.net/hangeul_static/css/nanum-square-neo.css');
+
 /* Expand Chrome/Edge/WebKit calendar indicator to 100% width & height for full-button clickability */
 .full-clickable-datepicker::-webkit-calendar-picker-indicator {
   position: absolute;
@@ -62,14 +64,6 @@
   50% {
     transform: translateY(-6px);
   }
-}
-
-@font-face {
-  font-family: 'NanumSquareNeo';
-  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_11-01@1.0/NanumSquareNeo-Variable.woff2') format('woff2');
-  font-weight: 100 900;
-  font-style: normal;
-  font-display: swap;
 }
 
 :root {
@@ -156,6 +150,32 @@ textarea:hover:not(:focus) {
 input::placeholder,
 textarea::placeholder {
   color: #94a3b8 !important;
+}
+
+/* Borderless Clean Inputs */
+textarea.borderless-textarea,
+.borderless-textarea textarea,
+textarea.clean-input {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  resize: none !important;
+}
+
+textarea.borderless-textarea:focus,
+.borderless-textarea textarea:focus,
+textarea.clean-input:focus {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+textarea.borderless-textarea:hover,
+.borderless-textarea textarea:hover,
+textarea.clean-input:hover {
+  border: none !important;
 }
 
 option {
@@ -459,6 +479,7 @@ option {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -490,5 +511,20 @@ div[style*="position: 'fixed'"] {
     gap: 6px !important;
     padding: 8px 10px !important;
     white-space: nowrap !important;
+  }
+}
+
+/* Work Summary Responsive Grid: Stacks into 1 column on Mobile/App */
+.work-summary-responsive-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .work-summary-responsive-grid {
+    grid-template-columns: 1fr !important;
   }
 }

@@ -41,3 +41,26 @@ CREATE TABLE IF NOT EXISTS work_log (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- 3. 주간 업무 관리 테이블 (weekly_report) - 주요 내용, 정보 공유, 업무 지원, 기타 업무 컬럼별 분리 저장
+CREATE TABLE IF NOT EXISTS weekly_report (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  report_id VARCHAR(120) UNIQUE COMMENT '고유 주간보고 ID (weekly-rep-username-YYYY-MM-DD)',
+  weekly_monday DATE NOT NULL COMMENT '해당 주차 월요일 날짜',
+  week_text VARCHAR(100) DEFAULT '' COMMENT '주차 표기 (예: 2026년 8월 3주차)',
+  author_name VARCHAR(100) NOT NULL COMMENT '작성자 성명',
+  author_username VARCHAR(100) DEFAULT '' COMMENT '작성자 아이디',
+  author_team VARCHAR(100) DEFAULT '' COMMENT '작성자 소속팀',
+  author_rank VARCHAR(50) DEFAULT '' COMMENT '작성자 직급',
+  author_division VARCHAR(100) DEFAULT '' COMMENT '작성자 사업부',
+  author_role VARCHAR(50) DEFAULT '' COMMENT '작성자 권한/역할',
+  main_tasks TEXT COMMENT '1. 주요 내용',
+  info_sharing TEXT COMMENT '2. 정보 공유',
+  work_support TEXT COMMENT '3. 업무 지원',
+  etc_tasks TEXT COMMENT '4. 기타 업무',
+  shared_with TEXT COMMENT '공유 대상 목록 JSON',
+  shared_at VARCHAR(100) DEFAULT '' COMMENT '공유 시각',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+

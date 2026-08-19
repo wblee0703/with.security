@@ -6,12 +6,20 @@ class ModalBackHandler {
     this.stack = [];
     this.lastBackPressTime = 0;
     this.isInitialized = false;
+    this.suppressNextPopstateCount = 0;
     this.init();
   }
 
   init() {
     if (this.isInitialized || typeof window === 'undefined') return;
     this.isInitialized = true;
+
+    // Seed an initial history state on mobile web to trap browser back gesture
+    try {
+      if (!window.history.state || !window.history.state.isAppRoot) {
+        window.history.pushState({ isAppRoot: true }, '');
+      }
+    } catch (e) {}
 
     // 1. Android Native Back Button Bridge Interface for MainActivity.java
     window.__handleNativeBackPressed = () => {
@@ -20,27 +28,20 @@ class ModalBackHandler {
         return true;
       }
 
-      // If no modals are open: double-back press within 3 seconds to exit app
-      const now = Date.now();
-      if (this.lastBackPressTime && (now - this.lastBackPressTime < 3000)) {
-        // Second press within 3 seconds -> allow app to close/exit
-        this.lastBackPressTime = 0;
-        return false;
-      }
-
-      // First press -> record timestamp and show exit prompt warning for 3 seconds
-      this.lastBackPressTime = now;
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('with_security_exit_prompt', {
-          detail: { message: "취소(뒤로가기) 버튼을 한 번 더 누르면 앱이 종료됩니다." }
-        }));
-      }
+      // If no modals are open: trigger Exit Confirmation Popup Modal
+      window.dispatchEvent(new CustomEvent('with_security_request_exit'));
       return true;
     };
 
-    // 2. Listen to browser & Android WebView popstate events
+    // 2. Listen to browser & Mobile Web popstate events
     window.addEventListener('popstate', (e) => {
-      if (this.stack.length > 0) {
+      // If back was triggered programmatically (e.g. clicking 'X' or 'Cancel' in modal), ignore this event
+      if (this.suppressNextPopstateCount > 0) {
+        this.suppressNextPopstateCount--;
+        return;
+      }
+
+      if (this.hasOpenModals()) {
         const topModal = this.stack.pop();
         if (topModal && typeof topModal.close === 'function') {
           try {
@@ -49,13 +50,27 @@ class ModalBackHandler {
             console.warn('Error closing modal on popstate:', err);
           }
         }
+      } else {
+        // Only on Mobile mode (Native App or Smartphone Web with <= 768px width)
+        const isMobileMode = (typeof window !== 'undefined' && window.innerWidth <= 768) ||
+          Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+        if (isMobileMode) {
+          // Trap back button at root and prompt exit confirmation popup
+          try {
+            window.history.pushState({ isAppRoot: true }, '');
+          } catch (err) {}
+          window.dispatchEvent(new CustomEvent('with_security_request_exit'));
+        }
       }
     });
 
     // 3. Support Desktop Escape key
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && this.stack.length > 0) {
-        this.closeTopModal();
+      if (e.key === 'Escape') {
+        if (this.hasOpenModals()) {
+          this.closeTopModal();
+        }
       }
     });
   }
@@ -96,6 +111,7 @@ class ModalBackHandler {
       this.stack.splice(index, 1);
       try {
         if (window.history.state && window.history.state.modalBackId === id) {
+          this.suppressNextPopstateCount++;
           window.history.back();
         }
       } catch (e) {}
@@ -117,6 +133,7 @@ class ModalBackHandler {
       }
       try {
         if (window.history.state && window.history.state.modalBackId) {
+          this.suppressNextPopstateCount++;
           window.history.back();
         }
       } catch (e) {}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
@@ -9,14 +9,50 @@ import UserSettingTab from './components/tabs/UserSettingTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import TrainingExpiryModal from './components/common/TrainingExpiryModal';
+import ExitConfirmModal from './components/common/ExitConfirmModal';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw } from 'lucide-react';
 import { dbService } from './services/dbService';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
+  const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+
+  // Helper to determine initial default tab based on platform/device mode
+  const getDefaultTab = () => {
+    const isMobileMode = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
+    return isMobileMode ? 'entryCheck' : 'workLog';
+  };
+
   const [activeTab, setActiveTab] = useState(() => {
-    return Capacitor.isNativePlatform() ? 'entryCheck' : 'workLog';
+    const savedTab = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_active_tab') : null;
+    const validTabs = ['entryCheck', 'workLog', 'workSummary', 'admin', 'userProfile'];
+    if (savedTab && validTabs.includes(savedTab) && savedTab !== 'userProfile') {
+      return savedTab;
+    }
+    return getDefaultTab();
   });
+
+  // Intercept tab switching when unsaved changes exist in WorkSummaryTab & persist active tab
+  const handleSafeTabChange = (newTab) => {
+    if (activeTab === 'workSummary' && newTab !== 'workSummary' && typeof window !== 'undefined' && window.__WITH_SECURITY_UNSAVED_CHANGES__) {
+      window.dispatchEvent(new CustomEvent('with_security_prompt_unsaved_tab', {
+        detail: {
+          targetTab: newTab,
+          performTabSwitch: () => {
+            setActiveTab(newTab);
+            if (newTab && newTab !== 'userProfile') {
+              localStorage.setItem('with_security_active_tab', newTab);
+            }
+          }
+        }
+      }));
+      return;
+    }
+    setActiveTab(newTab);
+    if (newTab && newTab !== 'userProfile') {
+      localStorage.setItem('with_security_active_tab', newTab);
+    }
+  };
   const [platform, setPlatform] = useState('ios');
   const [toastMessage, setToastMessage] = useState(null);
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
@@ -95,22 +131,41 @@ export default function App() {
     }
   }, []);
 
-  // Real-Time Background Data Sync between Mobile App & Web DB Server
+  // Real-Time Background Data Sync between Mobile App & Web DB Server (With Concurrency Guard)
+  const isSyncingRef = useRef(false);
+  const lastSyncTimeRef = useRef(0);
+
   useEffect(() => {
-    async function triggerAutoSync() {
+    async function triggerAutoSync(force = false) {
+      const now = Date.now();
+      if (!force && now - lastSyncTimeRef.current < 5000) return; // 5초 이내 중복 동기화 방지
+      if (isSyncingRef.current) return; // 이미 동기화 진행 중이면 스킵
+
       const serverUrl = dbService.getServerUrl();
-      if (serverUrl) {
+      if (!serverUrl) return;
+
+      isSyncingRef.current = true;
+      lastSyncTimeRef.current = now;
+      try {
         await dbService.syncAllWithServer(serverUrl);
+      } catch (e) {
+        console.warn('Auto sync error:', e);
+      } finally {
+        isSyncingRef.current = false;
       }
     }
 
-    triggerAutoSync();
+    triggerAutoSync(true);
 
-    // Auto sync every 15 seconds
-    const interval = setInterval(triggerAutoSync, 15000);
+    // Auto sync every 30 seconds
+    const interval = setInterval(() => triggerAutoSync(false), 30000);
 
-    // Auto sync on app focus / tab switch
-    const handleFocus = () => triggerAutoSync();
+    // Auto sync on app focus (throttled)
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        triggerAutoSync(false);
+      }
+    };
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleFocus);
 
@@ -119,6 +174,18 @@ export default function App() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleFocus);
     };
+  }, []);
+
+  // Listen to Back Button Exit Request from Native Android / Mobile Web
+  useEffect(() => {
+    const handleRequestExit = () => {
+      const isMobile = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
+      if (isMobile) {
+        setIsExitModalOpen(true);
+      }
+    };
+    window.addEventListener('with_security_request_exit', handleRequestExit);
+    return () => window.removeEventListener('with_security_request_exit', handleRequestExit);
   }, []);
 
   // Check Education / Training Expiry Alert on App Launch & Data Change
@@ -423,11 +490,13 @@ export default function App() {
         </button>
       )}
 
+      {/* Safe Tab Switch Handler: intercepts tab change if unsaved workSummary changes exist */}
+      {(() => null)()}
       {/* Render Mode: Web Browser Portal vs Mobile App Shell */}
       {viewMode === 'web' ? (
         <WebDesktopLayout
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
+          setActiveTab={handleSafeTabChange}
           onLockApp={() => setIsLocked(true)}
           onTriggerToast={showToast}
           platform={platform}
@@ -438,7 +507,7 @@ export default function App() {
         <div style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <MobileContainer
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleSafeTabChange}
             platform={platform}
             setPlatform={setPlatform}
             isLocked={isLocked}
@@ -448,7 +517,7 @@ export default function App() {
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={showToast} />}
             {activeTab === 'admin' && <SiteSettingTab onTriggerToast={showToast} />}
-            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={showToast} setActiveTab={setActiveTab} />}
+            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={showToast} setActiveTab={handleSafeTabChange} />}
           </MobileContainer>
         </div>
       )}
@@ -613,6 +682,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Global Mobile Back-Button Exit Confirmation Modal */}
+      <ExitConfirmModal
+        isOpen={isExitModalOpen}
+        onClose={() => setIsExitModalOpen(false)}
+      />
     </div>
   );
 }

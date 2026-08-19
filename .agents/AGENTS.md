@@ -1,44 +1,43 @@
-# Project Rules & Guidelines (with.security)
+# 프로젝트 개발 및 운영 가이드라인 (with.security)
 
-## 1. Cross-Platform Compatibility (iOS, Android, Web)
-- **Responsive Layout**: Always design components to adapt seamlessly between Desktop Web, iOS Safari, and Android Chrome.
-- **Mobile Touch & Notches**: Support `env(safe-area-inset-top)` / `env(safe-area-inset-bottom)` for mobile notches and home indicators. Handle both touch and mouse events gracefully.
-- **PWA & Native Readiness**: Keep components clean and modular so they can easily be packaged via Capacitor or React Native for App Store (iOS) and Play Store (Android) distribution.
+## 1. 모바일 웹 브라우저 및 앱(APK) 디자인 100% 동일 구성 규칙 (핵심)
+- **UI/UX 일관성 보장**: 스마트폰 모바일 웹 브라우저 화면(모바일 모드)과 Capacitor 네이티브 앱(APK) 화면의 디자인, 레이아웃, 폰트, 여백, 컴포넌트 배치는 **항상 100% 동일하고 일관되게 유지**합니다.
+- **반응형 뷰포트 & 노치 영역 지원**: iOS Safari 및 Android Chrome, 네이티브 웹뷰 모두에서 상단 상태표시줄과 하단 제스처 바 노치 영역(`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`)을 동일하게 자연스럽게 처리합니다.
+- **터치 및 인터랙션 최적화**: 모바일 터치 이벤트, 모달 팝업, 스크롤 영역, 카드 뷰가 모바일 웹과 APK 앱에서 완전히 동일한 사용자 경험을 제공하도록 컴포넌트를 공통 단일 소스로 관리합니다.
 
-## 2. Resource & Credit Optimization
-- **Concise Execution**: Perform edits and tool interactions efficiently with minimal redundant calls.
-- **Clear & Compact Communication**: Keep responses structured, concise, and focused on actionable solutions without unnecessary fluff.
+## 2. 크로스 플랫폼 호환성 (iOS, Android, PC Web)
+- **화면 크기별 최적화**: PC 데스크톱 웹, 태블릿, 모바일 스마트폰 화면 크기에 맞춰 레이아웃이 유연하고 아름답게 반응하도록 구성합니다.
+- **PWA 및 네이티브 앱 패키징 준비**: Capacitor 및 모바일 웹 표준 API를 기반으로 작성하여 iOS App Store 및 Google Play Store 패키징 시 즉각 빌드될 수 있도록 모듈성을 유지합니다.
 
-## 3. Continuous Security Auditing & Improvements
-- **Strict Input Validation & Sanitization**: Ensure all form inputs, PIN codes, signatures, and uploads are validated and sanitized.
-- **Encryption & Key Management**: Apply proper client/server-side encryption standards for sensitive data (e.g., Vault secrets, Access Passes, OTP tokens).
-- **Secure Communication & Headers**: Enforce HTTPS/WSS standards, CORS control, and token authentication protocols.
+## 3. 리소스 및 토큰 최적화
+- **효율적인 코드 수정**: 중복 호출을 방지하고 정확한 타겟 라인을 선별하여 간결하고 빠르게 코드를 수정합니다.
+- **명확하고 간결한 소통**: 불필요한 서술을 줄이고, 실제 동작 가능한 솔루션과 변경 결과를 구조화하여 깔끔하게 안내합니다.
 
-## 4. Single Source (`src/`) Directory Structure & Component Architecture Rules
-- **Single Source of Truth (`src/`)**: All application source code, components, services, and styles MUST reside under `src/`.
-- **Layout Components (`src/components/layout/`)**: Main shell and container components (e.g. `MobileContainer.jsx`, `WebDesktopLayout.jsx`, `PinLockModal.jsx`).
-- **Feature Tabs (`src/components/tabs/`)**: Independent functional views/tabs (e.g. `SecurityChecklistTab.jsx`, `WorkLogTab.jsx`, `WorkSummaryTab.jsx`, `SiteSettingTab.jsx`, `UserSettingTab.jsx`).
-- **Common Components (`src/components/common/`)**: Shared reusable UI elements (e.g. `SignatureCanvas.jsx`).
-- **Services & Logic (`src/services/`)**: Business logic, Web Crypto encryption (`cryptoUtil.js`), and IndexedDB persistence (`dbService.js`).
-- **Entry HTML & CSS (`index.html` & `src/index.css`)**: Root HTML entry (`index.html`) and single application stylesheet (`src/index.css`).
-- **Relative Path Consistency**: Maintain relative path integrity across imports (`../layout/`, `../tabs/`, `../common/`, `../services/`).
+## 4. 보안 감사 및 지속적인 안전성 강화
+- **입력값 검증 및 살균 (Sanitization)**: 모든 폼 입력, 서명 데이터, 텍스트, 파일 업로드 시 철저한 유효성 검증과 보안 필터링을 거칩니다.
+- **암호화 및 키 관리**: 로컬 스토리지 및 전송 데이터(Vault 비밀번호, 출입 패스, 서명 등)는 Web Crypto API 기반 표준 암호화(`cryptoUtil.js`)를 적용합니다.
+- **보안 통신 표준**: HTTPS/WSS 표준 준수, 토큰 기반 인증 및 접근 권한 제어를 철저히 유지합니다.
 
-## 5. Primary Ground-Truth Data Rules (`src/data/*.json`)
-- **Primary Data Baseline (`src/data/*.json`)**: All core application data (users, sites, pledges) MUST treat `src/data/*.json` files (`users.json`, `sites.json`, `pledges.json`) as the primary ground-truth source.
-- **Prevent Cookie / Cache Overwriting**: Browser cookies, local storage, and IndexedDB caches MUST NEVER overwrite or supersede edits made to `src/data/*.json`. Data fetching logic MUST always prioritize and merge `src/data/*.json` contents on top of cached state.
+## 5. 단일 소스 원칙 (`src/`) 디렉터리 아키텍처 규칙
+- **단일 진실 공급원 (`src/`)**: 모든 애플리케이션 소스 코드, 컴포넌트, 서비스, 스타일은 반드시 `src/` 디렉터리 내에 위치해야 합니다.
+- **레이아웃 컴포넌트 (`src/components/layout/`)**: 메인 컨테이너 및 쉘 UI (`MobileContainer.jsx`, `WebDesktopLayout.jsx`, `PinLockModal.jsx` 등).
+- **기능 탭 컴포넌트 (`src/components/tabs/`)**: 독립된 기능 뷰 (`SecurityChecklistTab.jsx`, `WorkLogTab.jsx`, `WorkSummaryTab.jsx`, `SiteSettingTab.jsx`, `UserSettingTab.jsx` 등).
+- **공통 컴포넌트 (`src/components/common/`)**: 재사용 UI 요소 (`SignatureCanvas.jsx`, `WorkLogCalendar.jsx` 등).
+- **서비스 및 비즈니스 로직 (`src/services/`)**: Web Crypto 암호화 (`cryptoUtil.js`), IndexedDB 데이터베이스 (`dbService.js`), 앱 런처 (`appLauncherService.js`).
+- **루트 진입점 및 전역 스타일 (`index.html` & `src/index.css`)**: 루트 HTML과 단일 통합 CSS 스타일시트.
 
-## 6. Site & User Identity Evaluation Rules (사업장 및 동일인 / 동명이인 식별 규칙)
-- **Site Identity Evaluation (사업장 식별 규칙)**: Always differentiate and identify sites by combining **Site Name (`name`) AND Site Address (`address`)**. Sites with matching names but different addresses (or vice versa) MUST be treated as separate, distinct sites.
-- **User Identity Evaluation (동일인 및 동명이인 식별 규칙)**: Differentiate and evaluate user identity using **Name (`name` / `visitorName`), Rank (`rank`), Department/Team (`team` / `department`), Division/Business Unit (`division`), AND User ID (`username` / `id`)**. If ANY single field differs among **Name, Rank, Team, and Division (이름, 직급, 소속, 사업부 중 1개라도 다르면)**, they MUST be evaluated as DIFFERENT persons (동명이인 및 서로 다른 사람으로 판단). All user selection, sharing targets, and authorship checks must adhere to this 4-way differentiation.
+## 6. 기준 데이터 무결성 보장 규칙 (`src/data/*.json`)
+- **최우선 기준 데이터 (`src/data/*.json`)**: 사용자(`users.json`), 사업장(`sites.json`), 서약 문구(`pledges.json`)의 최신 정보는 JSON 파일을 최우선 진실의 기준으로 삼습니다.
+- **쿠키 및 캐시 덮어쓰기 방지**: 브라우저 캐시나 IndexedDB에 과거 데이터가 남아있더라도 `src/data/*.json`의 수정 사항을 덮어쓰지 못하도록 우선순위 병합 로직을 강제합니다.
 
-## 7. App vs. Web Browser Environment Separation Rules (모바일 앱과 웹 브라우저 환경 분리 관리 규칙)
-- **Security Context Differentiation (보안 환경 분리 원칙)**:
-  - **Native Mobile App (`Capacitor.isNativePlatform()`)**:
-    - 외부 기업 보안 어플 연동(삼성 Knox/MDM, SK하이닉스 SSM, LGD 디바이스온 등) 및 실행 검증은 모바일 전용 네이티브 앱(APK) 환경에서만 독점적으로 활성화 및 실행되어야 합니다.
-    - 사업장 출입 보안 서약(`entryCheck`) 및 현장 방문자 출입 관제 기능이 기본 제공됩니다.
-  - **Web Browser (PC 및 모바일 인터넷 브라우저 / `!Capacitor.isNativePlatform()`)**:
-    - 일반 웹 브라우저 접속자는 업무 일지(`workLog`), 출입증 조회 등 웹 표준 기능 위주로 제공되며, 외부 타 어플 실행 및 일반 사용자 대상 보안 서약(`entryCheck`)은 숨김/비활성화 처리합니다.
-    - **개발자 예외 권한 (`role === '개발자'` 또는 `username === 'admin'`)**: 개발자 및 관리자는 웹 브라우저에서도 모바일 보안 서약(`entryCheck`) 및 환경 설정 메뉴에 접근하여 테스트 및 유지보수를 수행할 수 있습니다.
-- **Request Boundary Separation (요청 사항 분리 처리)**:
-  - 사용자가 **앱(APK) 전용 기능**(어플 간 연동, 네이티브 인텐트, 백그라운드 포커스 제어, 패키지 스캔 등)을 요청할 때는 웹 브라우저 런타임에 간섭이 없도록 `android/` 네이티브 레이어 및 `Capacitor.isNativePlatform()` 분기 내에서 철저히 격리 개발합니다.
-  - 사용자가 **웹 브라우저 및 호스팅 관련 기능**(가비아 웹호스팅, Node.js REST API, 웹 대시보드, CORS 등)을 요청할 때는 모바일 네이티브 앱의 동작 안정성을 저해하지 않도록 명확히 분리하여 관리합니다.
+## 7. 사업장 및 사용자 동일인 / 동명이인 엄격 식별 규칙
+- **사업장 식별 규칙**: 반드시 **사업장명(`name`)과 사업장 주소(`address`)의 조합**으로 고유성을 식별합니다. 이름이 같아도 주소가 다르면 서로 다른 별개의 사업장으로 취급합니다.
+- **사용자 식별 규칙 (4대 기준)**: 사용자 식별 시 **이름(`name`), 직급(`rank`), 소속팀/부서(`team`), 사업부(`division`)**를 종합 평가합니다. 4개 항목 중 **단 1개라도 다르면 서로 다른 별개의 인원(동명이인 또는 타인)**으로 엄격히 판별합니다.
+
+## 8. 모바일 앱과 웹 브라우저 환경 분리 관리 규칙
+- **보안 앱 연동 기능의 격리 (`Capacitor.isNativePlatform()`)**:
+  - 삼성 Knox/MDM, SK하이닉스 SSM, LGD 디바이스온 등 외부 보안 앱과의 인텐트 연동은 모바일 전용 네이티브 앱(APK) 환경에서만 활성화됩니다.
+  - PC 웹 브라우저에서는 표준 업무 일지 및 조회 기능 위주로 안전하게 작동하며, 관리자/개발자 권한 계정은 테스트를 위한 접근 권한을 가집니다.
+- **요청 사항 분리 처리**:
+  - 앱 전용 기능(패키지 스캔, 네이티브 앱 런처 등)을 작업할 때는 웹 런타임에 에러가 없도록 철저히 `android/` 레이어 및 `isNative` 분기 내에서 격리 개발합니다.
+  - 웹 브라우저 전용 기능(호스팅, REST API 연동 등) 개발 시에도 모바일 앱의 안정성을 훼손하지 않도록 분리 관리합니다.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
@@ -418,7 +419,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       setEditForm(activeUser);
       setLoginForm({ username: '', password: '' });
       if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [구분: ${activeUser.role}]`, 'success');
-      if (setActiveTab) setActiveTab('entryCheck');
+      
+      // 플랫폼/디바이스 모드에 따른 초기 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
+      const savedTab = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_active_tab') : null;
+      const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
+      const targetTab = (savedTab && savedTab !== 'userProfile') ? savedTab : (isMobileEnv ? 'entryCheck' : 'workLog');
+      if (setActiveTab) setActiveTab(targetTab);
     } else {
       if (onTriggerToast) onTriggerToast('아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
     }
@@ -470,7 +476,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     });
 
     if (onTriggerToast) onTriggerToast(`'${newUser.name}'님 계정이 정상 생성되고 로그인 되었습니다. [구분: 일반]`, 'success');
-    if (setActiveTab) setActiveTab('entryCheck');
+    
+    // 플랫폼/디바이스 모드에 따른 초기 화면
+    const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
+    const targetTab = isMobileEnv ? 'entryCheck' : 'workLog';
+    if (setActiveTab) setActiveTab(targetTab);
   };
 
   // Handle Opening Password Verification Modal / Cancel Edit
@@ -630,6 +640,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Handle Logout
   const handleLogout = async () => {
+    localStorage.removeItem('with_security_active_tab');
     await dbService.logoutUser();
     setCurrentUser(null);
     setEditForm(null);

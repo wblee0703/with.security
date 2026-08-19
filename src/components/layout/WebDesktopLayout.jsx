@@ -53,6 +53,7 @@ export default function WebDesktopLayout({
   }, [activeTab]);
   const handleLogout = async () => {
     localStorage.removeItem('with_security_active_user');
+    localStorage.removeItem('with_security_active_tab');
     setActiveUser(null);
     setActiveTab('userProfile');
     if (onTriggerToast) onTriggerToast('로그아웃 되었습니다. 다시 로그인해 주세요.', 'info');

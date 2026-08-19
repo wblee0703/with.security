@@ -22,6 +22,42 @@ async function ensureWorkLogColumns() {
 }
 
 /**
+ * shared_with를 '이름 직급 (소속)' 형식으로 정제하는 헬퍼
+ * 예: '홍길동 대리 (운영1팀)'
+ */
+function formatSharedWithList(rawShared) {
+  if (!rawShared) return '[]';
+  let formatted = [];
+  if (Array.isArray(rawShared)) {
+    formatted = rawShared.map(item => {
+      if (typeof item === 'string') return item.trim();
+      if (typeof item === 'object' && item !== null) {
+        const iName = (item.name || item.authorName || item.writerName || '').trim();
+        const iRank = (item.rank || item.authorRank || item.writerRank || '').trim();
+        const iTeam = (item.team || item.authorTeam || item.writerTeam || item.department || '').trim();
+        const cleanTeam = iTeam ? iTeam.replace(/^.*?>\s*/, '').trim() : '';
+        let label = iName;
+        if (iRank && !label.includes(iRank)) label += ` ${iRank}`;
+        if (cleanTeam && !label.includes(cleanTeam)) label += ` (${cleanTeam})`;
+        return label.trim() || iName;
+      }
+      return String(item).trim();
+    }).filter(Boolean);
+  } else if (typeof rawShared === 'string') {
+    try {
+      const parsed = JSON.parse(rawShared);
+      if (Array.isArray(parsed)) {
+        return formatSharedWithList(parsed);
+      }
+      formatted = rawShared.split(',').map(s => s.trim()).filter(Boolean);
+    } catch (e) {
+      formatted = rawShared.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return JSON.stringify(formatted);
+}
+
+/**
  * 업무일지(work_log) 생성 및 저장
  */
 export async function createWorkLog(data = {}) {
@@ -41,7 +77,8 @@ export async function createWorkLog(data = {}) {
   const tasksDone = String(data.tasksDone || data.tasks_done || data.details || '');
 
   const isShared = data.isShared ? 1 : 0;
-  const sharedWith = typeof data.sharedWith === 'string' ? data.sharedWith : JSON.stringify(data.sharedWith || []);
+  // ⭐ shared_with를 '이름 직급 (소속)' 형식으로만 정제 (예: '홍길동 대리 (운영1팀)')
+  const sharedWith = formatSharedWithList(data.sharedWith || data.shared_with);
   const sharedAt = String(data.sharedAt || '');
 
   try {
@@ -81,7 +118,10 @@ export async function createWorkLog(data = {}) {
     } catch (e) {}
   }
 
-  return { id: logId, log_id: logId, title, name, division, team, rank, role, logDate, isShared: Boolean(isShared), sharedWith: data.sharedWith || [], sharedAt };
+  let parsedShared = [];
+  try { parsedShared = JSON.parse(sharedWith); } catch (e) { parsedShared = []; }
+
+  return { id: logId, log_id: logId, title, name, division, team, rank, role, logDate, isShared: Boolean(isShared), sharedWith: parsedShared, sharedAt };
 }
 
 /**
@@ -254,7 +294,7 @@ export async function updateWorkLog(logId, data) {
   const targetDate = logDate || date || null;
 
   const isSharedVal = isShared !== undefined ? (isShared ? 1 : 0) : null;
-  const sharedWithVal = sharedWith !== undefined ? (typeof sharedWith === 'string' ? sharedWith : JSON.stringify(sharedWith)) : null;
+  const sharedWithVal = sharedWith !== undefined ? formatSharedWithList(sharedWith) : null;
   const sharedAtVal = sharedAt !== undefined ? String(sharedAt) : null;
 
   const sql = `

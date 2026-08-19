@@ -46,7 +46,6 @@ export default function MobileContainer({
   const isAdmin = ['개발자', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
   const isDeveloper = currentUser?.role === '개발자' || currentUser?.username === 'admin';
   const isNative = Capacitor.isNativePlatform();
-  const showSecurityChecklistTab = isNative || isDeveloper;
 
   useEffect(() => {
     const updateClock = () => {
@@ -279,15 +278,13 @@ export default function MobileContainer({
 
       {/* Bottom Mobile Navigation Bar */}
       <nav className="bottom-nav">
-        {showSecurityChecklistTab && (
-          <button
-            onClick={() => handleNavClick('entryCheck')}
-            className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
-          >
-            <ShieldCheck size={18} />
-            <span>보안 서약</span>
-          </button>
-        )}
+        <button
+          onClick={() => handleNavClick('entryCheck')}
+          className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
+        >
+          <ShieldCheck size={18} />
+          <span>보안 서약</span>
+        </button>
 
         <button
           onClick={() => handleNavClick('workLog')}

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { testConnection } from './mysql.js';
 import { createSecurityLog, getSecurityLogs, getSecurityLogById, deleteSecurityLog } from './db_modules/securityLog.js';
 import { createWorkLog, getWorkLogs, getWorkLogById, updateWorkLog, deleteWorkLog } from './db_modules/workLog.js';
+import { createWeeklyReport, getWeeklyReports, deleteWeeklyReport } from './db_modules/weeklyReport.js';
 import { getSecurityUsers, createSecurityUser, deleteSecurityUser, verifyUserPasswordServer } from './db_modules/securityUser.js';
 import { getSecuritySites, createSecuritySite, deleteSecuritySite } from './db_modules/securitySite.js';
 
@@ -60,6 +61,11 @@ function getClientIp(req) {
 }
 
 function checkRateLimit(ip) {
+  // 로컬 개발 환경 및 루프백 IP는 Rate Limit 무제한 허용
+  if (!ip || ip === '127.0.0.1' || ip === '::1' || ip === 'localhost' || ip.includes('127.0.0.1')) {
+    return true;
+  }
+
   const now = Date.now();
   const data = ipRequestCounts.get(ip) || { count: 0, timestamp: now };
   if (now - data.timestamp > 60000) {
@@ -69,7 +75,7 @@ function checkRateLimit(ip) {
     data.count += 1;
   }
   ipRequestCounts.set(ip, data);
-  return data.count <= 120; // 1분당 최대 120회 요청 허용
+  return data.count <= 1200; // 1분당 최대 1,200회 요청 허용
 }
 
 function checkLoginBruteForce(ip) {
@@ -340,6 +346,26 @@ const server = http.createServer(async (req, res) => {
       const logId = pathname.replace('/api/work-logs/', '');
       const deleted = await deleteWorkLog(logId);
       return sendJSON(res, 200, { success: deleted }, req);
+    }
+
+    // 5. Weekly Reports API (/api/weekly-reports) - 컬럼별(주요내용, 정보공유, 업무지원, 기타업무) 분리 관리
+    if (pathname === '/api/weekly-reports') {
+      if (method === 'GET') {
+        const weeklyMonday = reqUrl.searchParams.get('weeklyMonday');
+        const authorUsername = reqUrl.searchParams.get('authorUsername');
+        const reports = await getWeeklyReports({ weeklyMonday, authorUsername });
+        return sendJSON(res, 200, { success: true, data: reports }, req);
+      }
+      if (method === 'POST') {
+        const body = await parseRequestBody(req);
+        const result = await createWeeklyReport(body);
+        return sendJSON(res, 201, { success: true, data: result }, req);
+      }
+    }
+    if (pathname.startsWith('/api/weekly-reports/') && method === 'DELETE') {
+      const reportId = pathname.replace('/api/weekly-reports/', '');
+      const result = await deleteWeeklyReport(reportId);
+      return sendJSON(res, 200, result, req);
     }
 
     // Default 404 Route
