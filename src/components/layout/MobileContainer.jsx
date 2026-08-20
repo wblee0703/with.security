@@ -198,11 +198,11 @@ export default function MobileContainer({
                 }}>
                   {currentUser.role || '일반'}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0, gap: '2.5px' }}>
                   <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap', lineHeight: 1.2 }}>
                     {currentUser.name} {currentUser.rank || ''}
                   </span>
-                  <span style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px', fontWeight: '500' }}>
+                  <span style={{ fontSize: '9px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '85px', fontWeight: '500', lineHeight: 1.2 }}>
                     {currentUser.team || currentUser.department || '위드텍'}
                   </span>
                 </div>

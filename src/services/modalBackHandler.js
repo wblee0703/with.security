@@ -28,9 +28,23 @@ class ModalBackHandler {
         return true;
       }
 
-      // If no modals are open: trigger Exit Confirmation Popup Modal
-      window.dispatchEvent(new CustomEvent('with_security_request_exit'));
-      return true;
+      // 네이티브 APK 앱: 팝업창 없이 2초 내 연속 뒤로가기 시 즉시 종료 (더블백 토스트 안내)
+      const now = Date.now();
+      if (now - this.lastBackPressTime < 2000) {
+        try {
+          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+            window.Capacitor.Plugins.App.exitApp();
+            return true;
+          }
+        } catch (e) {}
+        return false; // MainActivity의 super.onBackPressed() 호출로 기본 앱 종료
+      } else {
+        this.lastBackPressTime = now;
+        window.dispatchEvent(new CustomEvent('with_security_exit_prompt', {
+          detail: { message: "'뒤로' 버튼을 한 번 더 누르면 앱이 종료됩니다." }
+        }));
+        return true;
+      }
     };
 
     // 2. Listen to browser & Mobile Web popstate events
@@ -51,11 +65,10 @@ class ModalBackHandler {
           }
         }
       } else {
-        // Only on Mobile mode (Native App or Smartphone Web with <= 768px width)
-        const isMobileMode = (typeof window !== 'undefined' && window.innerWidth <= 768) ||
-          Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        // 모바일 웹 환경 (네이티브 앱이 아닌 웹 브라우저 모바일 모드)
+        const isNative = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
-        if (isMobileMode) {
+        if (!isNative) {
           // Trap back button at root and prompt exit confirmation popup
           try {
             window.history.pushState({ isAppRoot: true }, '');

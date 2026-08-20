@@ -1640,7 +1640,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
                           {tomorrowOwnLogs.length === 0 ? (
                             <div style={{ fontSize: '12.5px', color: '#64748b', padding: '6px 2px' }}>
-                              내일 등록된 예정 업무가 없습니다. (업무 일지에서 내일 일자로 업무를 추가할 수 있습니다.)
+                              내일 등록된 예정 업무가 없습니다.
                             </div>
                           ) : (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1821,40 +1821,40 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                       return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
                                     })
                                     .map((item, idx) => {
-                                    const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
-                                    return (
-                                      <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
-                                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
-                                          <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
-                                          <span>{item.title}</span>
-                                          {(item.category === '출장 업무' || item.siteName || siteLoc) && (
-                                            <>
-                                              <span style={{
-                                                padding: '1px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10.5px',
-                                                fontWeight: '800',
-                                                background: '#ede9fe',
-                                                color: '#6d28d9',
-                                                border: '1px solid #ddd6fe'
-                                              }}>
-                                                출장
-                                              </span>
-                                              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                                                {item.siteName || ''}
-                                                {siteLoc ? ` (${siteLoc})` : ''}
-                                              </span>
-                                            </>
+                                      const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+                                      return (
+                                        <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
+                                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
+                                            <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
+                                            <span>{item.title}</span>
+                                            {(item.category === '출장 업무' || item.siteName || siteLoc) && (
+                                              <>
+                                                <span style={{
+                                                  padding: '1px 6px',
+                                                  borderRadius: '4px',
+                                                  fontSize: '10.5px',
+                                                  fontWeight: '800',
+                                                  background: '#ede9fe',
+                                                  color: '#6d28d9',
+                                                  border: '1px solid #ddd6fe'
+                                                }}>
+                                                  출장
+                                                </span>
+                                                <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                                                  {item.siteName || ''}
+                                                  {siteLoc ? ` (${siteLoc})` : ''}
+                                                </span>
+                                              </>
+                                            )}
+                                          </div>
+                                          {item.details && (
+                                            <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                              {item.details}
+                                            </div>
                                           )}
                                         </div>
-                                        {item.details && (
-                                          <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                            {item.details}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
+                                      );
+                                    })}
                                 </div>
                               )}
                             </div>
@@ -1939,44 +1939,50 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              {/* Row 2: Week Controller (그 다음 줄에 위치) */}
+              {/* Row 2: Week Controller + Date Range outside */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                background: '#f8fafc',
-                border: '1.5px solid #cbd5e1',
-                padding: '6px 10px',
-                borderRadius: '6px',
                 width: '100%',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                gap: '10px'
               }}>
-                <button
-                  type="button"
-                  onClick={handlePrevWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
-                  title="이전주"
-                >
-                  <ChevronLeft size={18} />
-                </button>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: '#f8fafc',
+                  border: '1.5px solid #cbd5e1',
+                  padding: '5px 8px',
+                  borderRadius: '6px'
+                }}>
+                  <button
+                    type="button"
+                    onClick={handlePrevWeek}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="이전주"
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
                   <span style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
                     {getWeekText(weeklyMonday)}
                   </span>
-                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', whiteSpace: 'nowrap' }}>
-                    ({weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)})
-                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleNextWeek}
+                    style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 4px', display: 'flex', alignItems: 'center' }}
+                    title="다음주"
+                  >
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleNextWeek}
-                  style={{ background: 'none', border: 'none', color: '#0f172a', cursor: 'pointer', padding: '2px 6px', display: 'flex', alignItems: 'center' }}
-                  title="다음주"
-                >
-                  <ChevronRight size={18} />
-                </button>
+                <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#64748b', whiteSpace: 'nowrap' }}>
+                  ({weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)})
+                </span>
               </div>
             </div>
           ) : (
@@ -2003,7 +2009,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
 
                 {/* Week Controls (Right next to 주간 업무) */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#f8fafc', border: '1.5px solid #cbd5e1', padding: '4px 8px', borderRadius: '6px' }}>
                   <button
                     type="button"
                     onClick={handlePrevWeek}
@@ -2025,11 +2031,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   >
                     <ChevronRight size={16} />
                   </button>
-
-                  <span style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', whiteSpace: 'nowrap', marginLeft: '4px' }}>
-                    {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
-                  </span>
                 </div>
+
+                {/* Date Range outside the box */}
+                <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#64748b', whiteSpace: 'nowrap' }}>
+                  {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
+                </span>
               </div>
 
               {/* Action Button: In-App Share */}

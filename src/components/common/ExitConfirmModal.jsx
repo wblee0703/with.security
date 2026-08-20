@@ -105,7 +105,7 @@ export default function ExitConfirmModal({ isOpen, onClose }) {
             letterSpacing: '-0.3px'
           }}
         >
-          {Capacitor.isNativePlatform() ? '앱을 종료하시겠습니까?' : '정말 종료하시겠습니까?'}
+          정말 종료하시겠습니까?
         </h3>
 
         {/* Description */}
@@ -118,7 +118,7 @@ export default function ExitConfirmModal({ isOpen, onClose }) {
             wordBreak: 'keep-all'
           }}
         >
-          확인을 누르면 {Capacitor.isNativePlatform() ? '앱이 완전히 종료' : '창이 닫히며'}, 취소를 누르면 현재 작업 화면이 유지됩니다.
+          확인을 누르면 페이지를 벗어나며, 취소를 누르면 현재 작업 화면이 유지됩니다.
         </p>
 
         {/* Action Buttons */}

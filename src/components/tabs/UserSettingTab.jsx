@@ -99,9 +99,21 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [mgmtUsers, setMgmtUsers] = useState([]);
   const [mgmtSearch, setMgmtSearch] = useState('');
 
+  // Login Failure Alert Modal State
+  const [loginAlertModal, setLoginAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    failCount: 0,
+    remainingAttempts: 5,
+    isBlocked: false,
+    remainingSec: 0
+  });
+
   // Back button hooks
   useModalBack(isVerifyModalOpen, () => setIsVerifyModalOpen(false), 'user-verify-modal');
   useModalBack(isAccountMgmtModalOpen, () => setIsAccountMgmtModalOpen(false), 'user-account-mgmt-modal');
+  useModalBack(loginAlertModal.isOpen, () => setLoginAlertModal(prev => ({ ...prev, isOpen: false })), 'login-alert-modal');
 
   // Remote Backend Server Config States & Initial Lock Protection
   const [serverUrlInput, setServerUrlInput] = useState('');
@@ -391,7 +403,22 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       const targetTab = (savedTab && savedTab !== 'userProfile') ? savedTab : (isMobileEnv ? 'entryCheck' : 'workLog');
       if (setActiveTab) setActiveTab(targetTab);
     } else {
-      if (onTriggerToast) onTriggerToast(loginResult.message || '아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
+      // Show dedicated security alert modal showing attempt count out of 5
+      const fCount = loginResult.failCount || 1;
+      const rAttempts = loginResult.remainingAttempts !== undefined ? loginResult.remainingAttempts : Math.max(0, 5 - fCount);
+      const isBlocked = Boolean(loginResult.blocked || rAttempts === 0);
+
+      setLoginAlertModal({
+        isOpen: true,
+        title: isBlocked ? '🔒 로그인 5회 실패 (접근 차단)' : '⚠️ 비밀번호 불일치',
+        message: loginResult.message || (isBlocked
+          ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
+          : '비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'),
+        failCount: fCount,
+        remainingAttempts: rAttempts,
+        isBlocked,
+        remainingSec: loginResult.remainingSec || (isBlocked ? 300 : 0)
+      });
     }
   };
 
@@ -2706,6 +2733,167 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Login Failure & Brute Force Attempt Counter Modal */}
+      {loginAlertModal.isOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          zIndex: 10000,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '380px',
+            background: '#ffffff',
+            borderRadius: '12px',
+            padding: '22px 20px',
+            border: loginAlertModal.isBlocked ? '1.5px solid #fda4af' : '1.5px solid #cbd5e1',
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.25)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            animation: 'staticFadeIn 0.2s ease forwards'
+          }}>
+            {/* Modal Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                background: loginAlertModal.isBlocked ? '#fee2e2' : '#fef3c7',
+                border: loginAlertModal.isBlocked ? '1.5px solid #fca5a5' : '1.5px solid #fde68a',
+                color: loginAlertModal.isBlocked ? '#dc2626' : '#d97706',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                {loginAlertModal.isBlocked ? <Lock size={20} /> : <AlertTriangle size={20} />}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: '15px',
+                  fontWeight: '800',
+                  color: loginAlertModal.isBlocked ? '#dc2626' : '#0f172a',
+                  letterSpacing: '-0.2px'
+                }}>
+                  {loginAlertModal.title}
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+                  보안 로그인 정책 (최대 5회 시도)
+                </div>
+              </div>
+            </div>
+
+            {/* Visual Attempt Progress Counter Badge */}
+            <div style={{
+              background: loginAlertModal.isBlocked ? '#fff1f2' : '#f8fafc',
+              border: loginAlertModal.isBlocked ? '1.5px solid #fecdd3' : '1.5px solid #e2e8f0',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>
+                  로그인 실패 횟수
+                </span>
+                <span style={{
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  color: loginAlertModal.isBlocked ? '#e11d48' : '#d97706'
+                }}>
+                  5회 중 {Math.min(5, loginAlertModal.failCount)}회 실패
+                </span>
+              </div>
+
+              {/* 5 Dots Indicator */}
+              <div style={{ display: 'flex', gap: '6px', width: '100%' }}>
+                {[1, 2, 3, 4, 5].map(step => {
+                  const isFailed = step <= loginAlertModal.failCount;
+                  return (
+                    <div
+                      key={step}
+                      style={{
+                        flex: 1,
+                        height: '6px',
+                        borderRadius: '3px',
+                        background: isFailed
+                          ? (loginAlertModal.isBlocked ? '#ef4444' : '#f59e0b')
+                          : '#e2e8f0',
+                        transition: 'all 0.2s ease'
+                      }}
+                    />
+                  );
+                })}
+              </div>
+
+              <div style={{
+                fontSize: '12px',
+                fontWeight: '800',
+                color: loginAlertModal.isBlocked ? '#dc2626' : '#1e3a8a',
+                textAlign: 'center',
+                paddingTop: '2px'
+              }}>
+                {loginAlertModal.isBlocked ? (
+                  `🚫 5회 연속 실패로 5분간 로그인이 제한됩니다.`
+                ) : (
+                  `⚡ 남은 로그인 시도: ${loginAlertModal.remainingAttempts}회`
+                )}
+              </div>
+            </div>
+
+            {/* Description Text */}
+            <p style={{
+              fontSize: '12.5px',
+              color: '#475569',
+              lineHeight: '1.5',
+              margin: 0,
+              textAlign: 'center'
+            }}>
+              {loginAlertModal.isBlocked ? (
+                '계정 보안을 위해 일시적으로 로그인이 차단되었습니다. 5분 후 다시 시도해 주세요.'
+              ) : (
+                '입력하신 비밀번호가 올바르지 않습니다. 5회 연속 실패 시 보안을 위해 5분간 로그인이 차단됩니다.'
+              )}
+            </p>
+
+            {/* Action Confirm Button */}
+            <button
+              type="button"
+              onClick={() => setLoginAlertModal(prev => ({ ...prev, isOpen: false }))}
+              style={{
+                width: '100%',
+                padding: '11px',
+                borderRadius: '8px',
+                background: loginAlertModal.isBlocked ? '#dc2626' : '#1e3a8a',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '13px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                boxShadow: loginAlertModal.isBlocked
+                  ? '0 4px 12px rgba(220, 38, 38, 0.25)'
+                  : '0 4px 12px rgba(30, 58, 138, 0.25)',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              확인
+            </button>
           </div>
         </div>
       )}

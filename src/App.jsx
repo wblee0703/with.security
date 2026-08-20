@@ -176,11 +176,11 @@ export default function App() {
     };
   }, []);
 
-  // Listen to Back Button Exit Request from Native Android / Mobile Web
+  // Listen to Back Button Exit Request (웹 브라우저 모바일 모드에서만 종료 확인 팝업창 노출)
   useEffect(() => {
     const handleRequestExit = () => {
-      const isMobile = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
-      if (isMobile) {
+      const isNative = Capacitor.isNativePlatform();
+      if (!isNative) {
         setIsExitModalOpen(true);
       }
     };

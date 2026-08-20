@@ -206,12 +206,12 @@ export default function WebDesktopLayout({
                 {activeUser.role || '일반'}
               </div>
             ) : null}
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a', lineHeight: '1.2' }}>
                 {activeUser ? `${activeUser.name} ${activeUser.rank || ''}` : '미로그인 사용자'}
               </span>
-              <span style={{ fontSize: '11px', color: '#64748b' }}>
-                {activeUser ? `${activeUser.division || ''} • ${activeUser.team || ''}` : '로그인 필요'}
+              <span style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.2' }}>
+                {activeUser ? `${activeUser.division ? `${activeUser.division} • ` : ''}${activeUser.team || ''}` : '로그인 필요'}
               </span>
             </div>
           </div>

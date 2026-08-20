@@ -90,26 +90,40 @@ function checkRateLimit(ip, limit = 600) {
 function checkLoginBruteForce(ip) {
   const now = Date.now();
   const data = loginFailureTracker.get(ip);
-  if (!data) return { blocked: false };
+  if (!data) return { blocked: false, failCount: 0, remainingAttempts: 5 };
   if (data.lockedUntil && now < data.lockedUntil) {
     const remainingSec = Math.ceil((data.lockedUntil - now) / 1000);
-    return { blocked: true, remainingSec };
+    return { blocked: true, remainingSec, failCount: data.failCount, remainingAttempts: 0 };
   }
-  return { blocked: false };
+  if (data.lockedUntil && now >= data.lockedUntil) {
+    loginFailureTracker.delete(ip);
+    return { blocked: false, failCount: 0, remainingAttempts: 5 };
+  }
+  return { blocked: false, failCount: data.failCount, remainingAttempts: Math.max(0, 5 - data.failCount) };
 }
 
 function recordLoginAttempt(ip, success) {
   const now = Date.now();
   if (success) {
     loginFailureTracker.delete(ip);
-    return;
+    return { failCount: 0, remainingAttempts: 5, blocked: false, remainingSec: 0 };
   }
   const data = loginFailureTracker.get(ip) || { failCount: 0, lockedUntil: 0 };
   data.failCount += 1;
+  let blocked = false;
+  let remainingSec = 0;
   if (data.failCount >= 5) {
     data.lockedUntil = now + 5 * 60 * 1000; // 5회 실패 시 5분간 차단
+    blocked = true;
+    remainingSec = 300;
   }
   loginFailureTracker.set(ip, data);
+  return {
+    failCount: data.failCount,
+    remainingAttempts: Math.max(0, 5 - data.failCount),
+    blocked,
+    remainingSec
+  };
 }
 
 // ==========================================
@@ -366,7 +380,11 @@ const server = http.createServer(async (req, res) => {
         if (bruteCheck.blocked) {
           return sendJSON(res, 429, { 
             success: false, 
-            message: `로그인 5회 실패로 보안 차단되었습니다. ${bruteCheck.remainingSec}초 후에 다시 시도해 주세요.` 
+            message: `로그인 5회 실패로 보안 차단되었습니다. ${bruteCheck.remainingSec}초 후에 다시 시도해 주세요.`,
+            blocked: true,
+            failCount: bruteCheck.failCount || 5,
+            remainingAttempts: 0,
+            remainingSec: bruteCheck.remainingSec
           }, req);
         }
 
@@ -387,10 +405,16 @@ const server = http.createServer(async (req, res) => {
             user: safeUser 
           }, req);
         } else {
-          recordLoginAttempt(clientIp, false);
+          const attemptInfo = recordLoginAttempt(clientIp, false);
           return sendJSON(res, 401, { 
             success: false, 
-            message: '아이디 또는 비밀번호가 올바르지 않습니다.' 
+            message: attemptInfo.blocked
+              ? `로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.`
+              : `비밀번호가 일치하지 않습니다. (5회 중 ${attemptInfo.failCount}회 실패, 남은 시도: ${attemptInfo.remainingAttempts}회)`,
+            failCount: attemptInfo.failCount,
+            remainingAttempts: attemptInfo.remainingAttempts,
+            blocked: attemptInfo.blocked,
+            remainingSec: attemptInfo.remainingSec
           }, req);
         }
       }
