@@ -371,48 +371,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     const inputUsername = loginForm.username.trim();
     const inputPassword = loginForm.password.trim();
-    const inputHash = await hashPassword(inputPassword);
-    const users = await dbService.getRegisteredUsers();
 
-    let match = null;
-    for (const u of users) {
-      const dbUsername = String(u?.username || '').trim().toLowerCase();
-      if (dbUsername === inputUsername.toLowerCase()) {
-        const dbPass = String(u?.password || '').trim();
-        const dbHash = String(u?.passwordHash || '').trim();
-        const isPassOk = (await verifyPasswordHash(inputPassword, dbHash)) || (await verifyPasswordHash(inputPassword, dbPass));
-        if (isPassOk) {
-          match = u;
-          break;
-        }
-      }
-    }
+    const loginResult = await dbService.login(inputUsername, inputPassword);
 
-    // Failsafe fallback: Fresh app install without cached DB
-    if (!match && inputUsername.toLowerCase() === 'admin') {
-      const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-      if (inputPassword === defaultAdminPass || inputPassword === 'admin') {
-        const defaultHash = await hashPassword(defaultAdminPass);
-        match = {
-          username: 'admin',
-          password: defaultHash,
-          passwordHash: defaultHash,
-          name: '이원배',
-          role: '개발자',
-          division: '영업/운영사업부',
-          team: '운영1팀',
-          rank: '대리',
-          siteId: 'ALL',
-          phone: '010-9885-0393',
-          email: 'wblee@withtech.co.kr'
-        };
-      }
-    }
-
-    if (match) {
+    if (loginResult.success && loginResult.user) {
       const activeUser = {
-        ...match,
-        role: match.username === 'admin' ? '개발자' : (match.role || '일반')
+        ...loginResult.user,
+        role: loginResult.user.username === 'admin' ? '개발자' : (loginResult.user.role || '일반')
       };
       await dbService.saveUserProfile(activeUser);
       setCurrentUser(activeUser);
@@ -426,7 +391,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       const targetTab = (savedTab && savedTab !== 'userProfile') ? savedTab : (isMobileEnv ? 'entryCheck' : 'workLog');
       if (setActiveTab) setActiveTab(targetTab);
     } else {
-      if (onTriggerToast) onTriggerToast('아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
+      if (onTriggerToast) onTriggerToast(loginResult.message || '아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
     }
   };
 

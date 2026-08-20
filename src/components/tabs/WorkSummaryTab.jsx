@@ -1507,8 +1507,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       </div>
 
                       {dailyInternalLogs.length === 0 ? (
-                        <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                          - 해당 내역 없음
+                        <div style={{ paddingLeft: '6px' }}>
+                          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                            - 해당 내역 없음
+                          </div>
                         </div>
                       ) : (
                         <div style={{ paddingLeft: '6px' }}>
@@ -1557,8 +1559,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       </div>
 
                       {dailyTripLogs.length === 0 ? (
-                        <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                          - 해당 내역 없음
+                        <div style={{ paddingLeft: '6px' }}>
+                          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                            - 해당 내역 없음
+                          </div>
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>

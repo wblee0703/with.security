@@ -290,6 +290,35 @@ export default function App() {
     return window.innerWidth > 768 ? 'web' : 'mobile';
   });
 
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Monitor active user profile & enforce Web Mode on desktop web browser for non-developers
+  useEffect(() => {
+    async function evaluateUserMode() {
+      const u = await dbService.getUserProfile();
+      setCurrentUser(u);
+      // 데스크톱 웹 브라우저 환경에서 개발자 계정이 아니면 웹 모드로 강제 고정
+      if (!Capacitor.isNativePlatform() && window.innerWidth > 768) {
+        if (!u || u.role !== '개발자') {
+          setViewMode('web');
+        }
+      }
+    }
+    evaluateUserMode();
+    window.addEventListener('with_security_data_changed', evaluateUserMode);
+    return () => window.removeEventListener('with_security_data_changed', evaluateUserMode);
+  }, []);
+
+  const handleToggleViewMode = (newMode) => {
+    if (!Capacitor.isNativePlatform() && window.innerWidth > 768) {
+      if (currentUser?.role !== '개발자' && newMode === 'mobile') {
+        showToast('🔒 모바일 모드 전환은 개발자 계정에서만 지원됩니다.');
+        return;
+      }
+    }
+    setViewMode(newMode);
+  };
+
   // Default login guard: if not logged in, force userProfile (Login screen)
   useEffect(() => {
     async function enforceLoginGuard() {
@@ -500,7 +529,7 @@ export default function App() {
           onLockApp={() => setIsLocked(true)}
           onTriggerToast={showToast}
           platform={platform}
-          onToggleViewMode={setViewMode}
+          onToggleViewMode={handleToggleViewMode}
           viewMode={viewMode}
         />
       ) : (

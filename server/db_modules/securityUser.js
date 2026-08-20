@@ -37,13 +37,28 @@ export function verifyUserPasswordServer(inputPassword, storedPasswordHash) {
 }
 
 /**
+ * 사용자 정보 객체에서 민감한 패스워드 해시를 제거하는 살균 헬퍼
+ */
+export function sanitizeUserOutput(user) {
+  if (!user) return null;
+  const { password, passwordHash, ...safeUser } = user;
+  return {
+    ...safeUser,
+    educationDate: user.education_date || user.educationDate || '',
+    educationExpiryDate: user.education_expiry_date || user.educationExpiryDate || '',
+    educationName: user.education_name || user.educationName || '사내 정기 정보보안 및 안전 교육',
+    trainings: Array.isArray(user.trainings) ? user.trainings : (typeof user.trainings === 'string' && user.trainings ? JSON.parse(user.trainings || '[]') : [])
+  };
+}
+
+/**
  * 사용자 목록 조회 (security_user)
  * admin 개발자 계정이 없으면 자동 생성 후 반환
  */
-export async function getSecurityUsers() {
+export async function getSecurityUsers(includePassword = false) {
   let users = [];
   try {
-    const sql = 'SELECT id, username, password, name, role, division, team, `rank`, siteId, phone, email, education_date, education_expiry_date, education_name, created_at FROM security_user ORDER BY id ASC';
+    const sql = 'SELECT id, username, password, name, role, division, team, `rank`, siteId, phone, email, education_date, education_expiry_date, education_name, trainings, created_at FROM security_user ORDER BY id ASC';
     users = await query(sql);
   } catch (err) {
     const fallbackSql = 'SELECT * FROM security_user ORDER BY id ASC';
@@ -101,32 +116,38 @@ export async function getSecurityUsers() {
     } catch (e) {}
   }
 
-  // password를 passwordHash 속성으로도 맵핑하여 클라이언트 검증 호환성 보장
-  return (users || []).map(u => ({
-    ...u,
-    educationDate: u.education_date || u.educationDate || '',
-    educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
-    educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
-    password: u.password || '',
-    passwordHash: u.password || ''
-  }));
+  if (includePassword) {
+    return (users || []).map(u => ({
+      ...u,
+      educationDate: u.education_date || u.educationDate || '',
+      educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
+      educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
+      password: u.password || '',
+      passwordHash: u.password || ''
+    }));
+  }
+
+  return (users || []).map(u => sanitizeUserOutput(u));
 }
 
 /**
  * 특정 사용자 상세 조회
  */
-export async function getSecurityUserByUsername(username) {
+export async function getSecurityUserByUsername(username, includePassword = false) {
   const sql = 'SELECT * FROM security_user WHERE username = ? LIMIT 1';
   const results = await query(sql, [username]);
   if (results.length > 0) {
     const u = results[0];
-    return {
-      ...u,
-      educationDate: u.education_date || u.educationDate || '',
-      educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
-      educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
-      passwordHash: u.password
-    };
+    if (includePassword) {
+      return {
+        ...u,
+        educationDate: u.education_date || u.educationDate || '',
+        educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
+        educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
+        passwordHash: u.password
+      };
+    }
+    return sanitizeUserOutput(u);
   }
   return null;
 }

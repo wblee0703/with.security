@@ -121,54 +121,56 @@ export default function WebDesktopLayout({
             </div>
           </div>
 
-          {/* Device View Mode Switcher (Web Desktop vs Mobile Frame) */}
-          <div style={{
-            display: 'flex',
-            background: '#ffffff',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '6px',
-            padding: '3px',
-            boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-          }}>
-            <button
-              onClick={() => onToggleViewMode('web')}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '5px',
-                border: viewMode === 'web' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
-                background: viewMode === 'web' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
-                color: viewMode === 'web' ? '#1e3a8a' : '#64748b',
-                fontSize: '11px',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <Monitor size={14} /> 웹 모드
-            </button>
-            <button
-              onClick={() => onToggleViewMode('mobile')}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '5px',
-                border: viewMode === 'mobile' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
-                background: viewMode === 'mobile' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
-                color: viewMode === 'mobile' ? '#1e3a8a' : '#64748b',
-                fontSize: '11px',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <Smartphone size={14} /> 모바일 모드
-            </button>
-          </div>
+          {/* Device View Mode Switcher (Web Desktop vs Mobile Frame) - 개발자 계정 전용 활성화 */}
+          {activeUser?.role === '개발자' && (
+            <div style={{
+              display: 'flex',
+              background: '#ffffff',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '6px',
+              padding: '3px',
+              boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+            }}>
+              <button
+                onClick={() => onToggleViewMode('web')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '5px',
+                  border: viewMode === 'web' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
+                  background: viewMode === 'web' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
+                  color: viewMode === 'web' ? '#1e3a8a' : '#64748b',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Monitor size={14} /> 웹 모드
+              </button>
+              <button
+                onClick={() => onToggleViewMode('mobile')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '5px',
+                  border: viewMode === 'mobile' ? '1.5px solid #1e3a8a' : '1.5px solid transparent',
+                  background: viewMode === 'mobile' ? 'rgba(30, 58, 138, 0.08)' : 'transparent',
+                  color: viewMode === 'mobile' ? '#1e3a8a' : '#64748b',
+                  fontSize: '11px',
+                  fontWeight: '700',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Smartphone size={14} /> 모바일 모드
+              </button>
+            </div>
+          )}
         </div>
 
         {/* User Profile & Education Notice & Logout */}

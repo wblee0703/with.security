@@ -100,8 +100,10 @@ async function safeFetchApi(endpoint, options = {}) {
     try {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), options.timeout || 3500);
+      const authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_auth_token') : null;
       const headers = {
         'Bypass-Tunnel-Reminder': 'true',
+        ...(authToken ? { 'Authorization': `Bearer ${authToken}`, 'X-Auth-Token': authToken } : {}),
         ...(options.headers || {})
       };
       const res = await fetch(fullUrl, {
@@ -805,6 +807,57 @@ class SecurityDatabase {
   }
 
   // User Profile & Account Authentication Helpers
+  async login(username, password) {
+    if (!username || !password) return { success: false, message: '아이디와 비밀번호를 입력해 주세요.' };
+    
+    // 1. Try secure remote backend login API first
+    try {
+      const res = await safeFetchApi('/api/security-users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), password: password.trim() })
+      });
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.success && json.user) {
+          if (json.token) {
+            localStorage.setItem('with_security_auth_token', json.token);
+          }
+          await this.saveUserProfile(json.user);
+          return { success: true, user: json.user, token: json.token };
+        }
+      } else if (res && res.status === 429) {
+        const json = await res.json().catch(() => ({}));
+        return { success: false, message: json.message || '로그인 실패 횟수 초과로 일시 차단되었습니다.' };
+      }
+    } catch (e) {
+      console.warn('Backend login API attempt failed, trying local fallback:', e);
+    }
+
+    // 2. Local fallback verification
+    const users = await this.getRegisteredUsers();
+    for (const u of users) {
+      if (String(u?.username || '').trim().toLowerCase() === username.trim().toLowerCase()) {
+        const dbPass = String(u?.password || '').trim();
+        const dbHash = String(u?.passwordHash || '').trim();
+        const isPassOk = (await verifyPasswordHash(password, dbHash)) || (await verifyPasswordHash(password, dbPass));
+        if (isPassOk) {
+          await this.saveUserProfile(u);
+          return { success: true, user: u };
+        }
+      }
+    }
+
+    return { success: false, message: '아이디 또는 비밀번호가 올바르지 않습니다.' };
+  }
+
+  logout() {
+    localStorage.removeItem('with_security_active_user');
+    localStorage.removeItem('with_security_auth_token');
+    localStorage.removeItem('with_security_active_tab');
+    notifyDataChanged();
+  }
+
   async getUserProfile() {
     const cached = localStorage.getItem('with_security_active_user');
     let user = cached ? JSON.parse(cached) : null;
