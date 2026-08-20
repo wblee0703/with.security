@@ -756,22 +756,18 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         lastScannedAt: new Date().toLocaleTimeString(),
         scanLog: []
       });
+
+      if (onTriggerToast) {
+        onTriggerToast('❌ [카메라 차단 안됨] 스마트폰 카메라가 활성화되어 있습니다. 보안 앱(MDM/SSM)에서 카메라를 차단해 주세요.', 'error');
+      }
       return false;
     } catch (err) {
-      if (err.message === 'NOT_SUPPORTED') {
+      // IF CAMERA HARDWARE ACCESS IS STRICTLY BLOCKED BY KNOX/MDM SECURITY POLICY (NotReadableError / TrackStartError / SecurityError)
+      if (err.name === 'NotReadableError' || err.name === 'TrackStartError' || err.name === 'SecurityError') {
+        // STRICT SUCCESS! Camera hardware access was completely blocked by Knox/MDM policy!
         setAppCheckState({ isChecking: false, isVerified: true });
         setCameraCheckVerified(true);
-        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '카메라 비활성화(차단) 확인됨' });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        return true;
-      }
-
-      // IF CAMERA HARDWARE ACCESS IS STRICTLY BLOCKED BY KNOX/MDM SECURITY POLICY OR IN WEB MODE (NotReadableError / SecurityError / TrackStartError / NotAllowedError)
-      if (err.name === 'NotReadableError' || err.name === 'SecurityError' || err.name === 'TrackStartError' || err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        // STRICT SUCCESS! Camera hardware access was completely blocked by Knox/MDM policy or web policy!
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckVerified(true);
-        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '카메라 비활성화(차단) 확인됨' });
+        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '✓ 카메라 비활성화(차단) 확인됨' });
         setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
         setAppScanState({
           isScanning: false,
@@ -781,16 +777,43 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`✓ [카메라 검수 완료] 스마트폰 카메라 비활성화(차단) 상태가 확인되었습니다!`, 'success');
+          onTriggerToast(`✓ [카메라 검수 완료] 스마트폰 카메라 비활성화(차단) 상태가 정상 확인되었습니다!`, 'success');
         }
         return true;
+      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        // User denied browser permission or permission wasn't granted yet -> Cannot reliably verify hardware block
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckVerified(false);
+        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '❌ 카메라 검수 실패 (카메라 접근 권한 필요)' });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'CAMERA_UNLOCKED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast('❌ [검수 실패] 카메라 권한이 허용되지 않아 차단 여부를 확인할 수 없습니다. 권한을 허용한 후 다시 시도해 주세요.', 'warning');
+        }
+        return false;
       } else {
-        // Fallback for web / mobile environment verification
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckVerified(true);
-        setCameraCheckState({ isTesting: false, isVerified: true, result: 'LOCKED', message: '카메라 비활성화(차단) 확인됨' });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        return true;
+        // Any other error -> Strict Fail for security integrity
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckVerified(false);
+        setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '❌ 카메라 검수 미완료 (상태 확인 필요)' });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'NOT_RUNNING',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast('❌ [검수 미완료] 카메라 차단 상태가 확인되지 않았습니다. 보안 앱 실행 후 다시 시도해 주세요.', 'warning');
+        }
+        return false;
       }
     }
   };
@@ -1438,10 +1461,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     // 2) Step 2 Validation: Security App & Camera Lock Verification
     if (targetApp.isChecklistMode) {
-      const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed;
-      if (!isAll && !formData.mdmVerified) {
+      const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked;
+      if (!isAll || !formData.mdmVerified || !formData.cameraLocked) {
         if (onTriggerToast) {
-          onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 2개 항목 검수가 완료되지 않았습니다. 2단계로 이동하여 확인해 주세요.', 'warning');
+          onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 3개 항목(스티커 부착, 촬영 금지, 카메라 실행 확인) 검수가 완료되지 않았습니다.', 'warning');
         }
         setActiveStep(2);
         return;
@@ -1455,9 +1478,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         return;
       }
 
-      if (!cameraCheckVerified) {
+      if (!cameraCheckVerified || !formData.cameraLocked) {
         if (onTriggerToast) {
-          onTriggerToast(`❌ [승인 제출 거부] 2단계 [카메라 검수]가 완료되지 않았습니다. [2. 카메라 검수] 버튼을 클릭해 주세요.`, 'warning');
+          onTriggerToast(`❌ [승인 제출 거부] 2단계 [카메라 차단 검수]가 완료되지 않았습니다. 카메라가 비활성화된 상태에서 [카메라 검수]를 완료해 주세요.`, 'warning');
         }
         setActiveStep(2);
         return;

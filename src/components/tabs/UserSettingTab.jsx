@@ -452,6 +452,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       email: signupForm.email.trim() || `${signupForm.username}@withsecurity.com`
     };
 
+    await dbService.registerUser(newUser);
     await dbService.saveUserProfile(newUser);
     setCurrentUser(newUser);
     setEditForm(newUser);

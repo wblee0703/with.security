@@ -9,6 +9,7 @@ export default function ExitConfirmModal({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const handleConfirmExit = () => {
+    window.__allowAppExit = true;
     onClose();
 
     // 1. Android / iOS Native Capacitor App
@@ -29,12 +30,12 @@ export default function ExitConfirmModal({ isOpen, onClose }) {
       } catch (e) { }
     }
 
-    // 2. Mobile Web Browser
+    // 2. Web Browser (모바일 모드 / 웹 모드)
     try {
       window.close();
     } catch (e) { }
 
-    // Fallback: If window.close() is blocked by browser policy, go back or show guidance
+    // Fallback: If window.close() is blocked by browser security policy, go back
     setTimeout(() => {
       try {
         window.history.go(-2);

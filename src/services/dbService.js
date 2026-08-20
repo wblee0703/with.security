@@ -1,4 +1,5 @@
-import { hashPassword } from './cryptoUtil';
+import { hashPassword, verifyPasswordHash } from './cryptoUtil';
+import { Capacitor } from '@capacitor/core';
 
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
@@ -55,7 +56,12 @@ export function getApiServerUrl() {
     return formatted;
   }
 
-  // 2. If running locally on PC (http://localhost:3000 or http://192.168.0.x:3000)
+  // 2. In native mobile app (Capacitor), do NOT use relative '/api' unless explicit server URL is set!
+  if (Capacitor.isNativePlatform()) {
+    return null;
+  }
+
+  // 3. If running locally on PC browser (http://localhost:3000 or http://192.168.0.x:3000)
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
     if (!host.includes('github.io') && !host.includes('github.com')) {
@@ -63,7 +69,7 @@ export function getApiServerUrl() {
     }
   }
 
-  // 3. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
+  // 4. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
   return null;
 }
 
@@ -885,6 +891,7 @@ class SecurityDatabase {
     }
 
     // 1. Try secure remote backend login API first
+    let serverLoginHandled = false;
     try {
       const res = await safeFetchApi('/api/security-users/login', {
         method: 'POST',
@@ -892,64 +899,113 @@ class SecurityDatabase {
         body: JSON.stringify({ username: uName, password: pass })
       });
       if (res) {
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json.success && json.user) {
-          this.recordLocalLoginAttempt(uName, true);
-          if (json.token) {
-            localStorage.setItem('with_security_auth_token', json.token);
-          }
-          await this.saveUserProfile(json.user);
-          return { success: true, user: json.user, token: json.token };
-        } else {
-          // Record local counter matching server or status
-          const attempt = this.recordLocalLoginAttempt(uName, false);
-          const fCount = json.failCount || attempt.failCount;
-          const rAttempts = (json.remainingAttempts !== undefined) ? json.remainingAttempts : attempt.remainingAttempts;
-          const isBlocked = json.blocked || attempt.blocked;
-          const rSec = json.remainingSec || attempt.remainingSec;
+        const contentType = res.headers ? res.headers.get('content-type') : '';
+        const isJson = contentType && contentType.includes('application/json');
+        if (isJson || res.status === 200 || res.status === 401 || res.status === 429) {
+          const json = await res.json().catch(() => null);
+          if (json && typeof json === 'object') {
+            serverLoginHandled = true;
+            if (res.ok && json.success && json.user) {
+              this.recordLocalLoginAttempt(uName, true);
+              if (json.token) {
+                localStorage.setItem('with_security_auth_token', json.token);
+              }
+              await this.saveUserProfile(json.user);
+              return { success: true, user: json.user, token: json.token };
+            } else if (res.status === 401 || res.status === 429 || json.blocked) {
+              const attempt = this.recordLocalLoginAttempt(uName, false);
+              const fCount = json.failCount || attempt.failCount;
+              const rAttempts = (json.remainingAttempts !== undefined) ? json.remainingAttempts : attempt.remainingAttempts;
+              const isBlocked = json.blocked || attempt.blocked;
+              const rSec = json.remainingSec || attempt.remainingSec;
 
-          return {
-            success: false,
-            message: json.message || (isBlocked
-              ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
-              : `비밀번호가 일치하지 않습니다. (5회 중 ${fCount}회 실패, 남은 시도: ${rAttempts}회)`),
-            failCount: fCount,
-            remainingAttempts: rAttempts,
-            blocked: isBlocked,
-            remainingSec: rSec
-          };
+              return {
+                success: false,
+                message: json.message || (isBlocked
+                  ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
+                  : `비밀번호가 일치하지 않습니다. (5회 중 ${fCount}회 실패, 남은 시도: ${rAttempts}회)`),
+                failCount: fCount,
+                remainingAttempts: rAttempts,
+                blocked: isBlocked,
+                remainingSec: rSec
+              };
+            }
+          }
         }
       }
     } catch (e) {
-      console.warn('Backend login API attempt failed, trying local fallback:', e);
+      console.warn('Backend login API attempt failed, falling back to local storage:', e);
     }
 
-    // 2. Local fallback verification
+    // 2. Local fallback verification (for offline / pre-hosting / mobile app without backend)
     const users = await this.getRegisteredUsers();
     let foundUser = null;
     let isPasswordCorrect = false;
+
+    const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
 
     for (const u of users) {
       if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
         foundUser = u;
         const dbPass = String(u?.password || '').trim();
         const dbHash = String(u?.passwordHash || '').trim();
-        isPasswordCorrect = (await verifyPasswordHash(pass, dbHash)) || (await verifyPasswordHash(pass, dbPass));
+
+        // 1) Salted SHA-256 Verification
+        if (dbHash) {
+          isPasswordCorrect = await verifyPasswordHash(pass, dbHash);
+        }
+        // 2) Password Field Hash / Plain Verification
+        if (!isPasswordCorrect && dbPass) {
+          isPasswordCorrect = (await verifyPasswordHash(pass, dbPass)) || (pass === dbPass);
+        }
+        // 3) Direct Exact String Match
+        if (!isPasswordCorrect && (pass === dbPass || pass === dbHash)) {
+          isPasswordCorrect = true;
+        }
+
+        // 4) Special default password fallback for default initial accounts
+        if (!isPasswordCorrect) {
+          if (uName.toLowerCase() === 'admin' || uName.toLowerCase() === 'wblee') {
+            if (pass === defaultAdminPass || pass === 'withtech123!' || (uName.toLowerCase() === 'admin' && pass === 'admin')) {
+              isPasswordCorrect = true;
+            }
+          }
+        }
         break;
       }
     }
 
     // Admin emergency failsafe fallback
     if (!foundUser && uName.toLowerCase() === 'admin') {
-      const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-      if (pass === defaultAdminPass || pass === 'admin') {
+      if (pass === defaultAdminPass || pass === 'withtech123!' || pass === 'admin') {
         foundUser = {
           username: 'admin',
           name: '이원배',
           role: '개발자',
           division: '영업/운영사업부',
           team: '운영1팀',
-          rank: '대리'
+          rank: '대리',
+          siteId: 'ALL',
+          phone: '010-9885-0393',
+          email: 'wblee@withtech.co.kr'
+        };
+        isPasswordCorrect = true;
+      }
+    }
+
+    // Wblee emergency failsafe fallback
+    if (!foundUser && uName.toLowerCase() === 'wblee') {
+      if (pass === defaultAdminPass || pass === 'withtech123!') {
+        foundUser = {
+          username: 'wblee',
+          name: '이원배',
+          role: '일반',
+          division: '영업/운영사업부',
+          team: '운영1팀',
+          rank: '대리',
+          siteId: 'SITE-001',
+          phone: '010-9885-0393',
+          email: 'wblee@withtech.co.kr'
         };
         isPasswordCorrect = true;
       }
@@ -1021,6 +1077,47 @@ class SecurityDatabase {
     return user;
   }
 
+  async registerUser(newUser) {
+    let safeUser = { ...newUser };
+    if (safeUser.password && !safeUser.passwordHash) {
+      safeUser.passwordHash = await hashPassword(safeUser.password);
+    }
+
+    // 1. Save to IndexedDB
+    try {
+      await this.putItem('users', safeUser);
+    } catch (e) {
+      console.warn('IndexedDB registerUser fallback:', e);
+    }
+
+    // 2. Update localStorage users DB immediately
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
+      if (!Array.isArray(currentUsers)) currentUsers = [];
+      const uname = String(safeUser.username || '').trim().toLowerCase();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      if (existingIdx >= 0) {
+        currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
+      } else {
+        currentUsers.push(safeUser);
+      }
+      localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
+    } catch (e) {}
+
+    // 3. Send to Server if available
+    try {
+      await safeFetchApi('/api/security-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(safeUser)
+      });
+    } catch (e) {}
+
+    notifyDataChanged();
+    return safeUser;
+  }
+
   async saveUserProfile(userProfile) {
     let safeUser = { ...userProfile };
     if (safeUser.password && !safeUser.passwordHash) {
@@ -1044,6 +1141,21 @@ class SecurityDatabase {
     } catch (e) {
       console.warn('IndexedDB saveUserProfile fallback:', e);
     }
+
+    // Keep localStorage user database in sync
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
+      if (!Array.isArray(currentUsers)) currentUsers = [];
+      const uname = String(safeUser.username || '').trim().toLowerCase();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      if (existingIdx >= 0) {
+        currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
+      } else {
+        currentUsers.push(safeUser);
+      }
+      localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
+    } catch (e) {}
 
     try {
       await safeFetchApi('/api/security-users', {
@@ -1216,6 +1328,40 @@ class SecurityDatabase {
   async getRegisteredUsers() {
     let usersList = [];
 
+    // 1. Gather all existing local users first to preserve local password & passwordHash
+    const localUsersMap = new Map();
+    try {
+      const dbUsers = await this.getAll('users');
+      if (Array.isArray(dbUsers)) {
+        for (const u of dbUsers) {
+          if (u && u.username) {
+            localUsersMap.set(String(u.username).trim().toLowerCase(), u);
+          }
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      if (lsRaw) {
+        const lsUsers = JSON.parse(lsRaw);
+        if (Array.isArray(lsUsers)) {
+          for (const u of lsUsers) {
+            if (u && u.username) {
+              const k = String(u.username).trim().toLowerCase();
+              if (!localUsersMap.has(k)) {
+                localUsersMap.set(k, u);
+              } else {
+                const existing = localUsersMap.get(k);
+                localUsersMap.set(k, { ...existing, ...u, password: existing.password || u.password, passwordHash: existing.passwordHash || u.passwordHash });
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {}
+
+    // 2. Try fetching from server if online
     try {
       const res = await safeFetchApi('/api/security-users');
       if (res && res.ok) {
@@ -1223,9 +1369,14 @@ class SecurityDatabase {
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
           usersList = remoteData.map(u => {
+            const uKey = String(u.username || '').trim().toLowerCase();
+            const existingLocal = localUsersMap.get(uKey);
+
             let parsedTrainings = [];
             if (u.trainings) {
               parsedTrainings = typeof u.trainings === 'string' ? JSON.parse(u.trainings) : u.trainings;
+            } else if (existingLocal?.trainings) {
+              parsedTrainings = existingLocal.trainings;
             } else if (u.educationDate || u.education_date || u.educationExpiryDate || u.education_expiry_date) {
               parsedTrainings = [{
                 id: 'init-1',
@@ -1236,14 +1387,27 @@ class SecurityDatabase {
                 memo: ''
               }];
             }
+
             return {
+              ...existingLocal,
               ...u,
+              // Crucial: preserve local password and passwordHash when server strips it
+              password: existingLocal?.password || u.password || '',
+              passwordHash: existingLocal?.passwordHash || u.passwordHash || existingLocal?.password || u.password || '',
               trainings: parsedTrainings,
-              educationDate: u.educationDate || u.education_date || '',
-              educationExpiryDate: u.educationExpiryDate || u.education_expiry_date || '',
-              educationName: u.educationName || u.education_name || '사내 정기 정보보안 및 안전 교육'
+              educationDate: u.educationDate || u.education_date || existingLocal?.educationDate || '',
+              educationExpiryDate: u.educationExpiryDate || u.education_expiry_date || existingLocal?.educationExpiryDate || '',
+              educationName: u.educationName || u.education_name || existingLocal?.educationName || '사내 정기 정보보안 및 안전 교육'
             };
           });
+
+          // Also include pure-local accounts created while offline
+          for (const [uname, localU] of localUsersMap.entries()) {
+            if (!usersList.some(u => String(u.username || '').trim().toLowerCase() === uname)) {
+              usersList.push(localU);
+            }
+          }
+
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
             for (const u of usersList) await this.putItem('users', u);
@@ -1253,20 +1417,18 @@ class SecurityDatabase {
     } catch (e) {}
 
     if (!usersList || usersList.length === 0) {
-      try {
-        const dbUsers = await this.getAll('users');
-        if (dbUsers && dbUsers.length > 0) usersList = dbUsers;
-      } catch (e) {}
+      usersList = Array.from(localUsersMap.values());
     }
 
+    const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
+    const defaultAdminHash = await hashPassword(defaultAdminPass);
+
     // Ensure default admin user always exists
-    const adminExists = usersList.some(u => u.username === 'admin');
-    if (!adminExists) {
-      const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-      const defaultAdminHash = await hashPassword(defaultAdminPass);
+    const adminIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
+    if (adminIdx === -1) {
       const defaultAdmin = {
         username: 'admin',
-        password: defaultAdminHash,
+        password: defaultAdminPass,
         passwordHash: defaultAdminHash,
         name: '이원배',
         role: '개발자',
@@ -1284,6 +1446,44 @@ class SecurityDatabase {
       try {
         await this.putItem('users', defaultAdmin);
       } catch (e) {}
+    } else {
+      // Ensure admin has valid password hashes
+      if (!usersList[adminIdx].passwordHash) {
+        usersList[adminIdx].password = defaultAdminPass;
+        usersList[adminIdx].passwordHash = defaultAdminHash;
+        try { await this.putItem('users', usersList[adminIdx]); } catch (e) {}
+      }
+    }
+
+    // Ensure default wblee user exists
+    const wbleeIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
+    if (wbleeIdx === -1) {
+      const defaultWblee = {
+        username: 'wblee',
+        password: defaultAdminPass,
+        passwordHash: defaultAdminHash,
+        name: '이원배',
+        role: '일반',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'SITE-001',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr',
+        educationDate: '2025-08-20',
+        educationExpiryDate: '2026-08-19',
+        educationName: '사내 정기 정보보안 및 안전 교육'
+      };
+      usersList.push(defaultWblee);
+      try {
+        await this.putItem('users', defaultWblee);
+      } catch (e) {}
+    } else {
+      if (!usersList[wbleeIdx].passwordHash) {
+        usersList[wbleeIdx].password = defaultAdminPass;
+        usersList[wbleeIdx].passwordHash = defaultAdminHash;
+        try { await this.putItem('users', usersList[wbleeIdx]); } catch (e) {}
+      }
     }
 
     return usersList;

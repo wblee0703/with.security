@@ -14,12 +14,29 @@ class ModalBackHandler {
     if (this.isInitialized || typeof window === 'undefined') return;
     this.isInitialized = true;
 
-    // Seed an initial history state on mobile web to trap browser back gesture
-    try {
-      if (!window.history.state || !window.history.state.isAppRoot) {
-        window.history.pushState({ isAppRoot: true }, '');
-      }
-    } catch (e) {}
+    // Seed an initial history state on web to trap browser back gesture
+    const isNative = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+
+    if (!isNative) {
+      const seedHistory = () => {
+        try {
+          if (!window.history.state || !window.history.state.isAppRoot) {
+            window.history.pushState({ isAppRoot: true }, '', window.location.href);
+          }
+        } catch (e) {}
+      };
+      seedHistory();
+      window.addEventListener('click', seedHistory, { passive: true });
+      window.addEventListener('touchstart', seedHistory, { passive: true });
+
+      // Beforeunload protection: prevent accidental tab closing/refresh
+      window.addEventListener('beforeunload', (e) => {
+        if (window.__allowAppExit) return;
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      });
+    }
 
     // 1. Android Native Back Button Bridge Interface for MainActivity.java
     window.__handleNativeBackPressed = () => {
@@ -65,13 +82,13 @@ class ModalBackHandler {
           }
         }
       } else {
-        // 모바일 웹 환경 (네이티브 앱이 아닌 웹 브라우저 모바일 모드)
-        const isNative = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        // 웹 브라우저 환경 (모바일 모드 및 웹 모드 모두 포함, 네이티브 앱 제외)
+        const isNativePlatform = Boolean(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 
-        if (!isNative) {
+        if (!isNativePlatform) {
           // Trap back button at root and prompt exit confirmation popup
           try {
-            window.history.pushState({ isAppRoot: true }, '');
+            window.history.pushState({ isAppRoot: true }, '', window.location.href);
           } catch (err) {}
           window.dispatchEvent(new CustomEvent('with_security_request_exit'));
         }
