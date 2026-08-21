@@ -1132,7 +1132,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           {/* Header Bar Row */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-              {/* Row 1: Title (Icon + 일일 업무 / 내일 예정 업무) on Left, Action Buttons (복사, 공유) on Right */}
+              {/* Row 1: Title (Icon + 일일 업무 / 내일 예정 업무) on Left, Action Buttons (오늘, 복사, 공유) on Right */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{
@@ -1157,8 +1157,33 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                 </div>
 
-                {/* Action Buttons: Copy & Share */}
+                {/* Action Buttons: 오늘 (복사 버튼 왼쪽), 복사, 공유 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {/* 오늘 버튼 - 복사 버튼 왼쪽으로 배치 */}
+                  <button
+                    type="button"
+                    onClick={handleToday}
+                    style={{
+                      background: isToday ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                      border: isToday ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                      color: isToday ? '#1e3a8a' : '#0f172a',
+                      padding: '7px 11px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 6px rgba(15, 23, 42, 0.06)',
+                      whiteSpace: 'nowrap'
+                    }}
+                    title="오늘 날짜로 이동"
+                  >
+                    오늘
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleCopyText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
@@ -1208,7 +1233,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              {/* Row 2: Daily Date Controller & Quick Today/Tomorrow Buttons */}
+              {/* Row 2: Daily Date Controller */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -1288,28 +1313,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     title="다음일"
                   >
                     <ChevronRight size={18} />
-                  </button>
-                </div>
-
-                {/* Quick Date Switcher Button (오늘) */}
-                <div style={{ display: 'flex', width: '100%' }}>
-                  <button
-                    type="button"
-                    onClick={handleToday}
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      border: isToday ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
-                      background: isToday ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
-                      color: isToday ? '#1e3a8a' : '#64748b',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    오늘 일일 업무
                   </button>
                 </div>
               </div>
