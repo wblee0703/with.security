@@ -229,7 +229,12 @@ export async function getWeeklyReports(searchParams = {}) {
 export async function deleteWeeklyReport(reportId) {
   await ensureWeeklyReportTable();
   try {
-    await query("DELETE FROM weekly_report WHERE `report_id` = ? OR `id` = ?", [reportId, reportId]);
+    const isNum = /^\d+$/.test(String(reportId || '').trim());
+    if (isNum) {
+      await query("DELETE FROM weekly_report WHERE `report_id` = ? OR `id` = ?", [reportId, Number(reportId)]);
+    } else {
+      await query("DELETE FROM weekly_report WHERE `report_id` = ?", [reportId]);
+    }
     return { success: true };
   } catch (err) {
     console.warn('deleteWeeklyReport error:', err.message);

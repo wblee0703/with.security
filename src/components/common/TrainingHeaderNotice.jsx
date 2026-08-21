@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { GraduationCap, Clock, Calendar, AlertTriangle, ShieldAlert, ArrowRight, X, CheckCircle2, ChevronRight } from 'lucide-react';
 import { useModalBack } from '../../services/modalBackHandler';
 
@@ -42,18 +43,13 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
   const [isOpen, setIsOpen] = useState(false);
   useModalBack(isOpen, () => setIsOpen(false), 'training-header-notice-modal');
 
-  // Extract all trainings (multi-item support + backwards compatibility fallback)
+  // Extract all trainings (multi-item support - only user-registered items)
   let allTrainings = Array.isArray(currentUser?.trainings) ? currentUser.trainings : [];
-  if (allTrainings.length === 0 && (currentUser?.educationExpiryDate || currentUser?.educationDate)) {
-    allTrainings = [{
-      id: 'legacy-1',
-      category: '법정',
-      title: currentUser.educationName || '사내 정기 정보보안 및 안전 교육',
-      completionDate: currentUser.educationDate || '',
-      expiryDate: currentUser.educationExpiryDate || '',
-      memo: ''
-    }];
-  }
+  allTrainings = allTrainings.filter(t => 
+    !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
+    !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+    (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
+  );
 
   // Calculate statuses and sort by closest expiry date first
   const evaluatedTrainings = allTrainings.map(item => ({
@@ -150,30 +146,30 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
         )}
       </button>
 
-      {/* Expiry Details Popover Modal */}
-      {isOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.45)',
-          backdropFilter: 'blur(6px)',
-          zIndex: 10000,
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'flex-end',
-          padding: '16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px) 16px'
-        }}>
+      {/* Expiry Details Popover Modal (Mounted directly to document.body via Portal) */}
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setIsOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 99999,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '20px'
+          }}
+        >
           <div
             onClick={(e) => e.stopPropagation()}
             className="glass-panel"
             style={{
               width: '100%',
-              maxWidth: '430px',
+              maxWidth: '460px',
               maxHeight: '85vh',
-              borderRadius: '18px',
+              borderRadius: '16px',
               background: '#ffffff',
               border: '1.5px solid #cbd5e1',
               boxShadow: '0 20px 45px rgba(15, 23, 42, 0.25)',
@@ -238,7 +234,18 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
             </div>
 
             {/* Popover Scrollable Body */}
-            <div style={{ padding: '16px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+            <div
+              className="custom-scrollbar"
+              style={{
+                padding: '16px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                maxHeight: '390px',
+                flex: 1
+              }}
+            >
               {/* Status Alert Banner if any expiring */}
               {expiredCount > 0 ? (
                 <div style={{
@@ -337,11 +344,12 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
                       style={{
                         background: st.isExpired ? '#fef2f2' : (st.isUrgent ? '#fef2f2' : (st.isWarning ? '#fffbeb' : '#ffffff')),
                         border: `1.5px solid ${st.border}`,
-                        borderRadius: '12px',
-                        padding: '11px 13px',
+                        borderRadius: '10px',
+                        padding: '10px 12px',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '6px'
+                        gap: '6px',
+                        flexShrink: 0
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -430,7 +438,8 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

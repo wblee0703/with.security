@@ -26,7 +26,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(() => {
     const savedTab = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_active_tab') : null;
     const validTabs = ['entryCheck', 'workLog', 'workSummary', 'admin', 'userProfile'];
-    if (savedTab && validTabs.includes(savedTab) && savedTab !== 'userProfile') {
+    if (savedTab && validTabs.includes(savedTab)) {
       return savedTab;
     }
     return getDefaultTab();
@@ -34,13 +34,14 @@ export default function App() {
 
   // Intercept tab switching when unsaved changes exist in WorkSummaryTab & persist active tab
   const handleSafeTabChange = (newTab) => {
+    const validTabs = ['entryCheck', 'workLog', 'workSummary', 'admin', 'userProfile'];
     if (activeTab === 'workSummary' && newTab !== 'workSummary' && typeof window !== 'undefined' && window.__WITH_SECURITY_UNSAVED_CHANGES__) {
       window.dispatchEvent(new CustomEvent('with_security_prompt_unsaved_tab', {
         detail: {
           targetTab: newTab,
           performTabSwitch: () => {
             setActiveTab(newTab);
-            if (newTab && newTab !== 'userProfile') {
+            if (newTab && validTabs.includes(newTab)) {
               localStorage.setItem('with_security_active_tab', newTab);
             }
           }
@@ -49,13 +50,19 @@ export default function App() {
       return;
     }
     setActiveTab(newTab);
-    if (newTab && newTab !== 'userProfile') {
+    if (newTab && validTabs.includes(newTab)) {
       localStorage.setItem('with_security_active_tab', newTab);
     }
   };
   const [platform, setPlatform] = useState('ios');
   const [toastMessage, setToastMessage] = useState(null);
   const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  // View mode: 'web' or 'mobile'. Default based on screen width or native platform.
+  const [viewMode, setViewMode] = useState(() => {
+    if (Capacitor.isNativePlatform()) return 'mobile';
+    return window.innerWidth > 768 ? 'web' : 'mobile';
+  });
 
   // Training Expiry Alert Modal State
   const [isTrainingAlertOpen, setIsTrainingAlertOpen] = useState(false);
@@ -188,23 +195,51 @@ export default function App() {
     return () => window.removeEventListener('with_security_request_exit', handleRequestExit);
   }, []);
 
-  // Check Education / Training Expiry Alert on App Launch & Data Change
+  // Check Education / Training Expiry Alert (Web: Login ONLY | App/Mobile: App Launch / Reopen / Login)
   useEffect(() => {
-    async function evaluateTrainingAlert() {
+    async function evaluateTrainingAlert(event) {
       try {
         const user = await dbService.getUserProfile();
-        if (!user) return;
+        if (!user || !user.username) {
+          setIsTrainingAlertOpen(false);
+          return;
+        }
+
+        const isMobileOrApp = isNative || (typeof window !== 'undefined' && window.innerWidth <= 768) || viewMode === 'mobile';
+        const isExplicitLogin = Boolean(event?.detail?.isExplicitLogin);
+
+        // Web mode: Show ONLY when logging in
+        if (!isMobileOrApp && !isExplicitLogin) {
+          return;
+        }
 
         let allTrainings = Array.isArray(user.trainings) ? user.trainings : [];
-        if (allTrainings.length === 0 && (user.educationExpiryDate || user.educationDate)) {
-          allTrainings = [{
-            id: 'legacy-1',
-            category: '법정',
-            title: user.educationName || '사내 정기 정보보안 및 안전 교육',
-            completionDate: user.educationDate || '',
-            expiryDate: user.educationExpiryDate || ''
-          }];
-        }
+        allTrainings = allTrainings.filter(t => 
+          !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
+          !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+          (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
+        );
+        try {
+          const dbEduLogs = await dbService.getEduLogs({ userId: user.username, name: user.name });
+          const merged = new Map();
+          allTrainings.forEach(t => {
+            const key = `${(t.title || '').trim().toLowerCase()}__${(t.completionDate || t.completion_date || '').trim()}`;
+            merged.set(key, t);
+          });
+          (dbEduLogs || []).forEach(e => {
+            if ((e.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
+            const key = `${(e.title || '').trim().toLowerCase()}__${(e.completionDate || e.completion_date || '').trim()}`;
+            merged.set(key, e);
+          });
+          allTrainings = Array.from(merged.values());
+        } catch (e) {}
+
+        // Filter out dummy/legacy placeholders if any (only actual user-registered items)
+        allTrainings = allTrainings.filter(t => 
+          !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
+          !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+          (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
+        );
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -223,7 +258,7 @@ export default function App() {
           const uid = user.username || user.name || 'default';
           const dismissedDate = localStorage.getItem(`with_security_training_alert_dismissed_${uid}`);
           if (dismissedDate !== todayIso) {
-            setTrainingAlertUser(user);
+            setTrainingAlertUser({ ...user, trainings: allTrainings });
             setIsTrainingAlertOpen(true);
           }
         }
@@ -238,7 +273,7 @@ export default function App() {
     return () => {
       window.removeEventListener('with_security_data_changed', evaluateTrainingAlert);
     };
-  }, []);
+  }, [viewMode, isNative]);
 
   const handleSaveInitialServer = async () => {
     localStorage.setItem('with_security_server_init_completed', 'true');
@@ -284,12 +319,6 @@ export default function App() {
     showToast('로컬 전용 모드로 앱을 시작합니다. (모바일/웹 데이터 실시간 동기화)');
   };
 
-  // View mode: 'web' or 'mobile'. Default based on screen width or native platform.
-  const [viewMode, setViewMode] = useState(() => {
-    if (Capacitor.isNativePlatform()) return 'mobile';
-    return window.innerWidth > 768 ? 'web' : 'mobile';
-  });
-
   const [currentUser, setCurrentUser] = useState(null);
 
   // Monitor active user profile & enforce Web Mode on desktop web browser for non-developers
@@ -330,6 +359,8 @@ export default function App() {
       }
     }
     enforceLoginGuard();
+    window.addEventListener('with_security_data_changed', enforceLoginGuard);
+    return () => window.removeEventListener('with_security_data_changed', enforceLoginGuard);
   }, [activeTab]);
 
   useEffect(() => {
@@ -565,7 +596,7 @@ export default function App() {
         isOpen={isTrainingAlertOpen}
         onClose={() => setIsTrainingAlertOpen(false)}
         onGoToSettings={() => {
-          setActiveTab('userSetting');
+          handleSafeTabChange('userProfile');
           setIsTrainingAlertOpen(false);
         }}
         currentUser={trainingAlertUser}

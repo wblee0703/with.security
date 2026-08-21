@@ -44,9 +44,9 @@ export function sanitizeUserOutput(user) {
   const { password, passwordHash, ...safeUser } = user;
   return {
     ...safeUser,
-    educationDate: user.education_date || user.educationDate || '',
-    educationExpiryDate: user.education_expiry_date || user.educationExpiryDate || '',
-    educationName: user.education_name || user.educationName || '사내 정기 정보보안 및 안전 교육',
+    educationDate: (user.education_date && user.education_date !== '2025-08-20') ? user.education_date : (user.educationDate && user.educationDate !== '2025-08-20' ? user.educationDate : ''),
+    educationExpiryDate: (user.education_expiry_date && user.education_expiry_date !== '2026-08-19') ? user.education_expiry_date : (user.educationExpiryDate && user.educationExpiryDate !== '2026-08-19' ? user.educationExpiryDate : ''),
+    educationName: (user.education_name && user.education_name !== '사내 정기 정보보안 및 안전 교육') ? user.education_name : (user.educationName && user.educationName !== '사내 정기 정보보안 및 안전 교육' ? user.educationName : ''),
     trainings: Array.isArray(user.trainings) ? user.trainings : (typeof user.trainings === 'string' && user.trainings ? JSON.parse(user.trainings || '[]') : [])
   };
 }
@@ -83,9 +83,10 @@ export async function getSecurityUsers(includePassword = false) {
         siteId: 'ALL',
         phone: '010-9885-0393',
         email: 'wblee@withtech.co.kr',
-        education_date: '2025-08-20',
-        education_expiry_date: '2026-08-19',
-        education_name: '사내 정기 정보보안 및 안전 교육'
+        education_date: '',
+        education_expiry_date: '',
+        education_name: '',
+        trainings: []
       });
       users = await query('SELECT * FROM security_user ORDER BY id ASC');
     } catch (e) {
@@ -108,20 +109,88 @@ export async function getSecurityUsers(includePassword = false) {
         siteId: 'SITE-001',
         phone: '010-9885-0393',
         email: 'wblee@withtech.co.kr',
-        education_date: '2025-08-20',
-        education_expiry_date: '2026-08-19',
-        education_name: '사내 정기 정보보안 및 안전 교육'
+        education_date: '',
+        education_expiry_date: '',
+        education_name: '',
+        trainings: []
       });
       users = await query('SELECT * FROM security_user ORDER BY id ASC');
     } catch (e) {}
   }
 
+  // wblee0703 계정도 없을 경우 생성
+  const wblee0703User = Array.isArray(users) && users.find(u => u.username === 'wblee0703');
+  if (!wblee0703User) {
+    try {
+      await createSecurityUser({
+        username: 'wblee0703',
+        password: hashPasswordServer(defaultAdminPass),
+        name: '이원배',
+        role: '개발자',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'ALL',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr',
+        education_date: '',
+        education_expiry_date: '',
+        education_name: '',
+        trainings: []
+      });
+      users = await query('SELECT * FROM security_user ORDER BY id ASC');
+    } catch (e) {}
+  }
+  if (!Array.isArray(users) || users.length === 0) {
+    users = [
+      {
+        id: 1,
+        username: 'admin',
+        password: hashPasswordServer(defaultAdminPass),
+        name: '이원배',
+        role: '개발자',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'ALL',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr'
+      },
+      {
+        id: 2,
+        username: 'wblee0703',
+        password: hashPasswordServer(defaultAdminPass),
+        name: '이원배',
+        role: '개발자',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'ALL',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr'
+      },
+      {
+        id: 3,
+        username: 'wblee',
+        password: hashPasswordServer(defaultAdminPass),
+        name: '이원배',
+        role: '일반',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'SITE-001',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr'
+      }
+    ];
+  }
+
   if (includePassword) {
     return (users || []).map(u => ({
       ...u,
-      educationDate: u.education_date || u.educationDate || '',
-      educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
-      educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
+      educationDate: (u.education_date && u.education_date !== '2025-08-20') ? u.education_date : (u.educationDate && u.educationDate !== '2025-08-20' ? u.educationDate : ''),
+      educationExpiryDate: (u.education_expiry_date && u.education_expiry_date !== '2026-08-19') ? u.education_expiry_date : (u.educationExpiryDate && u.educationExpiryDate !== '2026-08-19' ? u.educationExpiryDate : ''),
+      educationName: (u.education_name && u.education_name !== '사내 정기 정보보안 및 안전 교육') ? u.education_name : (u.educationName && u.educationName !== '사내 정기 정보보안 및 안전 교육' ? u.educationName : ''),
       password: u.password || '',
       passwordHash: u.password || ''
     }));
@@ -141,9 +210,9 @@ export async function getSecurityUserByUsername(username, includePassword = fals
     if (includePassword) {
       return {
         ...u,
-        educationDate: u.education_date || u.educationDate || '',
-        educationExpiryDate: u.education_expiry_date || u.educationExpiryDate || '',
-        educationName: u.education_name || u.educationName || '사내 정기 정보보안 및 안전 교육',
+        educationDate: (u.education_date && u.education_date !== '2025-08-20') ? u.education_date : (u.educationDate && u.educationDate !== '2025-08-20' ? u.educationDate : ''),
+        educationExpiryDate: (u.education_expiry_date && u.education_expiry_date !== '2026-08-19') ? u.education_expiry_date : (u.educationExpiryDate && u.educationExpiryDate !== '2026-08-19' ? u.educationExpiryDate : ''),
+        educationName: (u.education_name && u.education_name !== '사내 정기 정보보안 및 안전 교육') ? u.education_name : (u.educationName && u.educationName !== '사내 정기 정보보안 및 안전 교육' ? u.educationName : ''),
         passwordHash: u.password
       };
     }
@@ -169,7 +238,7 @@ export async function createSecurityUser(data = {}) {
   const email = data.email || '';
   const education_date = data.educationDate || data.education_date || '';
   const education_expiry_date = data.educationExpiryDate || data.education_expiry_date || '';
-  const education_name = data.educationName || data.education_name || '사내 정기 정보보안 및 안전 교육';
+  const education_name = (data.educationName && data.educationName !== '사내 정기 정보보안 및 안전 교육') ? data.educationName : (data.education_name && data.education_name !== '사내 정기 정보보안 및 안전 교육' ? data.education_name : '');
   const trainings = Array.isArray(data.trainings) ? JSON.stringify(data.trainings) : (typeof data.trainings === 'string' ? data.trainings : '');
 
   try {

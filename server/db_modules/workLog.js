@@ -63,7 +63,7 @@ function formatSharedWithList(rawShared) {
 export async function createWorkLog(data = {}) {
   await ensureWorkLogColumns();
 
-  const logId = String(data.logId || data.log_id || data.id || `work_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`);
+  const logId = String(data.logId || data.log_id || data.id || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`);
   const name = String(data.name || data.writerName || data.writer_name || data.authorName || '작성자');
   const writerId = String(data.writerId || data.writer_id || data.authorUsername || '');
   const division = String(data.division || data.authorDivision || '');

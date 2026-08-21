@@ -64,3 +64,21 @@ CREATE TABLE IF NOT EXISTS weekly_report (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
+-- 4. 교육수료 관리 테이블 (edu_log)
+CREATE TABLE IF NOT EXISTS edu_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  edu_id VARCHAR(100) UNIQUE COMMENT '고유 교육 로그 ID (EDU-타임스탬프-난수)',
+  user_id VARCHAR(100) DEFAULT '' COMMENT '사용자 아이디 (username)',
+  name VARCHAR(100) NOT NULL COMMENT '이수자 성명',
+  division VARCHAR(100) DEFAULT '' COMMENT '이수자 사업부',
+  team VARCHAR(100) DEFAULT '' COMMENT '이수자 소속팀',
+  `rank` VARCHAR(50) DEFAULT '' COMMENT '이수자 직급',
+  category VARCHAR(100) DEFAULT '법정' COMMENT '교육 구분 (SKHynix, Samsung, LGD, 법정, 기타 등)',
+  title VARCHAR(200) NOT NULL COMMENT '교육 과정명',
+  completion_date DATE NOT NULL COMMENT '교육 수료일 (이수일)',
+  expiry_date DATE NOT NULL COMMENT '교육 만료일',
+  memo VARCHAR(255) DEFAULT '' COMMENT '비고 / 수료증 번호 / 메모',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

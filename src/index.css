@@ -22,6 +22,24 @@
   padding: 2px 4px !important;
 }
 
+/* Custom Sleek Scrollbar Utility */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+
 @keyframes pulse-glow {
 
   0%,
@@ -100,7 +118,48 @@ textarea {
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Text Selection Highlighting & Custom Theme */
+::selection {
+  background-color: #bfdbfe !important;
+  color: #0f172a !important;
+}
+::-moz-selection {
+  background-color: #bfdbfe !important;
+  color: #0f172a !important;
+}
+
+/* General interactive UI elements non-selectable for clean app feel */
+button,
+.btn,
+[role="button"],
+.nav-tab,
+.badge,
+.clickable-card-header {
   user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Enable Text Selection for Work Summary, Reports, Inputs, Memos, and Details */
+input,
+textarea,
+pre,
+code,
+[contenteditable="true"],
+.selectable-text,
+.selectable-text *,
+.work-summary-tab,
+.work-summary-tab div,
+.work-summary-tab span,
+.work-summary-tab p,
+.work-summary-tab pre,
+.work-summary-tab td,
+.work-summary-tab th,
+.work-summary-tab li,
+.work-summary-tab label {
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 body {
@@ -449,6 +508,42 @@ option {
     align-self: start !important;
     height: fit-content !important;
   }
+
+  .user-setting-desktop-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    align-items: stretch !important;
+  }
+
+  .user-setting-training-card {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+  }
+
+  .user-setting-training-list-container {
+    flex: 1 1 0 !important;
+    overflow-y: auto !important;
+    min-height: 0 !important;
+    padding-right: 6px !important;
+  }
+
+  .user-setting-header-panel {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+
+  .user-setting-header-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    width: auto !important;
+  }
 }
 
 /* Hide Calendar Widget in Mobile Shell Frame Mode and Small Viewports */
@@ -462,6 +557,35 @@ option {
   width: 100% !important;
 }
 
+.mobile-shell-wrapper .user-setting-desktop-grid {
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+.mobile-shell-wrapper .user-setting-training-card {
+  height: auto !important;
+}
+
+.mobile-shell-wrapper .user-setting-training-list-container {
+  overflow-y: visible !important;
+  flex: none !important;
+  height: auto !important;
+}
+
+.mobile-shell-wrapper .user-setting-header-panel {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+}
+
+.mobile-shell-wrapper .user-setting-header-actions {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
 @media (max-width: 1023px) {
   .work-log-calendar-sticky {
     display: none !important;
@@ -470,6 +594,35 @@ option {
   .work-log-desktop-grid {
     display: flex !important;
     flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .user-setting-desktop-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .user-setting-training-card {
+    height: auto !important;
+  }
+
+  .user-setting-training-list-container {
+    overflow-y: visible !important;
+    flex: none !important;
+    height: auto !important;
+  }
+
+  .user-setting-header-panel {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .user-setting-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)) !important;
+    gap: 8px !important;
     width: 100% !important;
   }
 }
@@ -527,4 +680,34 @@ div[style*="position: 'fixed'"] {
   .work-summary-responsive-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Thin & Clean Custom Scrollbar (Width: 5px) */
+.custom-scrollbar::-webkit-scrollbar,
+.user-setting-training-list-container::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.user-setting-training-list-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.user-setting-training-list-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.user-setting-training-list-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.custom-scrollbar,
+.user-setting-training-list-container {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }

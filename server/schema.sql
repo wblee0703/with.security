@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS security_user (
   email VARCHAR(100) DEFAULT '' COMMENT '이메일 주소',
   education_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 수료일',
   education_expiry_date VARCHAR(50) DEFAULT '' COMMENT '보안교육 만료일',
-  education_name VARCHAR(150) DEFAULT '사내 정기 정보보안 및 안전 교육' COMMENT '보안교육 과정명',
+  education_name VARCHAR(150) DEFAULT '' COMMENT '보안교육 과정명',
   trainings TEXT COMMENT '다건 교육 이수 목록 JSON',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -84,6 +84,47 @@ CREATE TABLE IF NOT EXISTS work_log (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
+
+-- 5. 주간 업무 관리 테이블 (weekly_report)
+CREATE TABLE IF NOT EXISTS weekly_report (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  report_id VARCHAR(120) UNIQUE COMMENT '고유 주간보고 ID (weekly-rep-username-YYYY-MM-DD)',
+  weekly_monday DATE NOT NULL COMMENT '해당 주차 월요일 날짜',
+  week_text VARCHAR(100) DEFAULT '' COMMENT '주차 표기 (예: 2026년 8월 3주차)',
+  author_name VARCHAR(100) NOT NULL COMMENT '작성자 성명',
+  author_username VARCHAR(100) DEFAULT '' COMMENT '작성자 아이디',
+  author_team VARCHAR(100) DEFAULT '' COMMENT '작성자 소속팀',
+  author_rank VARCHAR(50) DEFAULT '' COMMENT '작성자 직급',
+  author_division VARCHAR(100) DEFAULT '' COMMENT '작성자 사업부',
+  author_role VARCHAR(50) DEFAULT '' COMMENT '작성자 권한/역할',
+  main_tasks TEXT COMMENT '1. 주요 내용',
+  info_sharing TEXT COMMENT '2. 정보 공유',
+  work_support TEXT COMMENT '3. 업무 지원',
+  etc_tasks TEXT COMMENT '4. 기타 업무',
+  shared_with TEXT COMMENT '공유 대상 목록 JSON',
+  shared_at VARCHAR(100) DEFAULT '' COMMENT '공유 시각',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 6. 교육수료 관리 테이블 (edu_log)
+CREATE TABLE IF NOT EXISTS edu_log (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  edu_id VARCHAR(100) UNIQUE COMMENT '고유 교육 로그 ID (EDU-타임스탬프-난수)',
+  user_id VARCHAR(100) DEFAULT '' COMMENT '사용자 아이디 (username)',
+  name VARCHAR(100) NOT NULL COMMENT '이수자 성명',
+  division VARCHAR(100) DEFAULT '' COMMENT '이수자 사업부',
+  team VARCHAR(100) DEFAULT '' COMMENT '이수자 소속팀',
+  `rank` VARCHAR(50) DEFAULT '' COMMENT '이수자 직급',
+  category VARCHAR(100) DEFAULT '법정' COMMENT '교육 구분 (SKHynix, Samsung, LGD, 법정, 기타 등)',
+  title VARCHAR(200) NOT NULL COMMENT '교육 과정명',
+  completion_date DATE NOT NULL COMMENT '교육 수료일 (이수일)',
+  expiry_date DATE NOT NULL COMMENT '교육 만료일',
+  memo VARCHAR(255) DEFAULT '' COMMENT '비고 / 수료증 번호 / 메모',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 -- ==========================================
 -- 초기 데이터 (Seed Data)

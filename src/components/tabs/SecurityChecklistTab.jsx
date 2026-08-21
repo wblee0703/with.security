@@ -202,14 +202,10 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
-    const users = await dbService.getRegisteredUsers();
-    const inputHash = await hashPassword(inlineLogin.password);
-    const match = users.find(u =>
-      u.username === inlineLogin.username.trim() &&
-      (u.passwordHash === inputHash || u.password === inlineLogin.password)
-    );
+    const loginRes = await dbService.login(inlineLogin.username.trim(), inlineLogin.password.trim());
 
-    if (match) {
+    if (loginRes.success && loginRes.user) {
+      const match = loginRes.user;
       await dbService.saveUserProfile(match);
       setCurrentUser(match);
       const userTeam = match.team || match.department || '';
@@ -226,7 +222,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       setInlineLogin({ username: '', password: '' });
       if (onTriggerToast) onTriggerToast(`'${match.name}'님 로그인 성공! 보안 서약 작성을 진행합니다.`, 'success');
     } else {
-      if (onTriggerToast) onTriggerToast('아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
+      if (onTriggerToast) onTriggerToast(loginRes.message || '아이디 또는 비밀번호가 일치하지 않습니다.', 'warning');
     }
   };
 

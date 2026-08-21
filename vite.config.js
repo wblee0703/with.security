@@ -20,20 +20,36 @@ try {
 
 function backendDbServerPlugin() {
   let dbProcess = null;
+  let isShuttingDown = false;
+
+  function startDbServer() {
+    if (isShuttingDown) return;
+    console.log('🚀 Starting Backend MySQL API Server (node server/db.js)...');
+    dbProcess = spawn('node', ['server/db.js'], {
+      stdio: 'inherit',
+      shell: true
+    });
+
+    dbProcess.on('exit', (code) => {
+      if (!isShuttingDown && code !== 0) {
+        console.log(`⚠️ Backend server exited (code ${code}). Auto-restarting in 1s...`);
+        setTimeout(startDbServer, 1000);
+      }
+    });
+  }
+
   return {
     name: 'backend-db-server',
     configureServer(server) {
-      console.log('🚀 Starting Backend MySQL API Server (node server/db.js)...');
-      dbProcess = spawn('node', ['server/db.js'], {
-        stdio: 'inherit',
-        shell: true
-      });
+      startDbServer();
 
       process.on('exit', () => {
+        isShuttingDown = true;
         if (dbProcess) dbProcess.kill();
       });
 
       server.httpServer?.on('close', () => {
+        isShuttingDown = true;
         if (dbProcess) {
           console.log('🛑 Closing Backend MySQL Server...');
           dbProcess.kill();

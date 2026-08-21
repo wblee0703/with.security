@@ -1058,7 +1058,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   return (
-    <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', paddingBottom: '30px' }}>
+    <div
+      ref={containerRef}
+      className="work-summary-tab selectable-text"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        width: '100%',
+        paddingBottom: '30px',
+        userSelect: 'text',
+        WebkitUserSelect: 'text'
+      }}
+    >
 
       {/* Top Main Banner */}
       <div className="glass-panel" style={{

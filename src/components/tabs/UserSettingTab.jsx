@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus } from 'lucide-react';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
@@ -75,6 +76,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Form States
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [signupForm, setSignupForm] = useState({
     username: '',
     password: '',
@@ -115,6 +117,33 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   useModalBack(isAccountMgmtModalOpen, () => setIsAccountMgmtModalOpen(false), 'user-account-mgmt-modal');
   useModalBack(loginAlertModal.isOpen, () => setLoginAlertModal(prev => ({ ...prev, isOpen: false })), 'login-alert-modal');
 
+  // Keyboard trap & auto-focus for Login Alert Modal
+  const alertConfirmBtnRef = useRef(null);
+  useEffect(() => {
+    if (loginAlertModal.isOpen) {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
+      const timer = setTimeout(() => {
+        alertConfirmBtnRef.current?.focus();
+      }, 50);
+
+      const handleAlertKeyDown = (e) => {
+        if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ' || e.keyCode === 13 || e.keyCode === 27) {
+          e.preventDefault();
+          e.stopPropagation();
+          setLoginAlertModal(prev => ({ ...prev, isOpen: false }));
+        }
+      };
+
+      window.addEventListener('keydown', handleAlertKeyDown, { capture: true });
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('keydown', handleAlertKeyDown, { capture: true });
+      };
+    }
+  }, [loginAlertModal.isOpen]);
+
   // Remote Backend Server Config States & Initial Lock Protection
   const [serverUrlInput, setServerUrlInput] = useState('');
   const [activeServerUrl, setActiveServerUrl] = useState('');
@@ -129,6 +158,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Multi-Training Management States
   const [trainings, setTrainings] = useState([]);
+  const [selectedTrainingCategory, setSelectedTrainingCategory] = useState('전체');
   const [isAddingTraining, setIsAddingTraining] = useState(false);
   const [editingTrainingId, setEditingTrainingId] = useState(null);
   const [trainingForm, setTrainingForm] = useState({
@@ -147,13 +177,41 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       if (active) {
         setCurrentUser(active);
         setEditForm(active);
-        setTrainings(Array.isArray(active.trainings) ? active.trainings : []);
+        let userTrainings = Array.isArray(active.trainings) ? active.trainings : [];
+        userTrainings = userTrainings.filter(t => 
+          !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
+          !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+          (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
+        );
+        try {
+          const eduLogs = await dbService.getEduLogs({ userId: active.username, name: active.name });
+          const mergedMap = new Map();
+          userTrainings.forEach(t => {
+            const key = `${(t.title || '').trim().toLowerCase()}__${(t.completionDate || t.completion_date || '').trim()}`;
+            mergedMap.set(key, t);
+          });
+          (eduLogs || []).forEach(e => {
+            if ((e.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
+            const key = `${(e.title || '').trim().toLowerCase()}__${(e.completionDate || e.completion_date || '').trim()}`;
+            mergedMap.set(key, e);
+          });
+          userTrainings = Array.from(mergedMap.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+        } catch (e) {}
+        setTrainings(userTrainings);
+      } else {
+        setCurrentUser(null);
+        setEditForm(null);
+        setTrainings([]);
+        setAuthMode('login');
+        setLoginForm({ username: '', password: '' });
       }
       const sUrl = dbService.getServerUrl();
       setActiveServerUrl(sUrl);
       setServerUrlInput(sUrl);
     }
     loadUser();
+    window.addEventListener('with_security_data_changed', loadUser);
+    return () => window.removeEventListener('with_security_data_changed', loadUser);
   }, []);
 
   const handleOpenAddTraining = () => {
@@ -203,24 +261,36 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     let updatedList = [];
     if (editingTrainingId) {
-      updatedList = trainings.map(t => {
-        if (t.id === editingTrainingId) {
-          return {
-            ...t,
-            category: finalCategory,
-            customCategory: trainingForm.customCategory,
-            title: trainingForm.title.trim(),
-            completionDate: trainingForm.completionDate,
-            expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
-            memo: trainingForm.memo.trim(),
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return t;
-      });
+      const existing = trainings.find(t => t.id === editingTrainingId);
+      const targetItem = {
+        ...existing,
+        id: editingTrainingId,
+        eduId: editingTrainingId,
+        userId: currentUser?.username || '',
+        name: currentUser?.name || '사용자',
+        division: currentUser?.division || '',
+        team: currentUser?.team || '',
+        rank: currentUser?.rank || '',
+        category: finalCategory,
+        customCategory: trainingForm.customCategory,
+        title: trainingForm.title.trim(),
+        completionDate: trainingForm.completionDate,
+        expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
+        memo: trainingForm.memo.trim(),
+        updatedAt: new Date().toISOString()
+      };
+      updatedList = trainings.map(t => t.id === editingTrainingId ? targetItem : t);
+      await dbService.saveEduLog(targetItem);
     } else {
+      const newEduId = `EDU-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
       const newItem = {
-        id: `train-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+        id: newEduId,
+        eduId: newEduId,
+        userId: currentUser?.username || '',
+        name: currentUser?.name || '사용자',
+        division: currentUser?.division || '',
+        team: currentUser?.team || '',
+        rank: currentUser?.rank || '',
         category: finalCategory,
         customCategory: trainingForm.customCategory,
         title: trainingForm.title.trim(),
@@ -230,6 +300,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         createdAt: new Date().toISOString()
       };
       updatedList = [newItem, ...trainings];
+      await dbService.saveEduLog(newItem);
     }
 
     setTrainings(updatedList);
@@ -257,8 +328,25 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     if (!window.confirm(`정말로 '${item.title}' 교육 이수 내역을 삭제하시겠습니까?`)) {
       return;
     }
-    const updatedList = trainings.filter(t => t.id !== item.id);
+    const targetId = item.id || item.eduId || item.edu_id;
+    const targetTitle = (item.title || '').trim().toLowerCase();
+    const targetComp = (item.completionDate || item.completion_date || '').trim();
+
+    const updatedList = trainings.filter(t => {
+      if (targetId && (t.id === targetId || t.eduId === targetId)) return false;
+      const tTitle = (t.title || '').trim().toLowerCase();
+      const tComp = (t.completionDate || t.completion_date || '').trim();
+      if (targetTitle && targetComp && tTitle === targetTitle && tComp === targetComp) return false;
+      return true;
+    });
     setTrainings(updatedList);
+
+    await dbService.deleteEduLog(targetId, {
+      title: item.title,
+      completionDate: item.completionDate || item.completion_date,
+      userId: currentUser?.username,
+      name: currentUser?.name
+    });
 
     const updatedUser = {
       ...currentUser,
@@ -375,7 +463,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Handle Login
   const handleLoginSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!loginForm.username.trim() || !loginForm.password.trim()) {
       if (onTriggerToast) onTriggerToast('아이디와 비밀번호를 모두 입력해 주세요.', 'warning');
       return;
@@ -384,41 +472,54 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     const inputUsername = loginForm.username.trim();
     const inputPassword = loginForm.password.trim();
 
-    const loginResult = await dbService.login(inputUsername, inputPassword);
+    setIsLoggingIn(true);
+    try {
+      const loginResult = await dbService.login(inputUsername, inputPassword);
 
-    if (loginResult.success && loginResult.user) {
-      const activeUser = {
-        ...loginResult.user,
-        role: loginResult.user.username === 'admin' ? '개발자' : (loginResult.user.role || '일반')
-      };
-      await dbService.saveUserProfile(activeUser);
-      setCurrentUser(activeUser);
-      setEditForm(activeUser);
-      setLoginForm({ username: '', password: '' });
-      if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [구분: ${activeUser.role}]`, 'success');
-      
-      // 플랫폼/디바이스 모드에 따른 초기 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
-      const savedTab = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_active_tab') : null;
-      const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
-      const targetTab = (savedTab && savedTab !== 'userProfile') ? savedTab : (isMobileEnv ? 'entryCheck' : 'workLog');
-      if (setActiveTab) setActiveTab(targetTab);
-    } else {
-      // Show dedicated security alert modal showing attempt count out of 5
-      const fCount = loginResult.failCount || 1;
-      const rAttempts = loginResult.remainingAttempts !== undefined ? loginResult.remainingAttempts : Math.max(0, 5 - fCount);
-      const isBlocked = Boolean(loginResult.blocked || rAttempts === 0);
+      if (loginResult && loginResult.success && loginResult.user) {
+        const activeUser = {
+          ...loginResult.user,
+          role: loginResult.user.username === 'admin' ? '개발자' : (loginResult.user.role || '일반')
+        };
+        await dbService.saveUserProfile(activeUser);
+        setCurrentUser(activeUser);
+        setEditForm(activeUser);
+        setLoginForm({ username: '', password: '' });
+        if (typeof dbService.notifyDataChanged === 'function') {
+          dbService.notifyDataChanged();
+        }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('with_security_data_changed', { detail: { isExplicitLogin: true } }));
+        }
+        if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [구분: ${activeUser.role}]`, 'success');
 
-      setLoginAlertModal({
-        isOpen: true,
-        title: isBlocked ? '🔒 로그인 5회 실패 (접근 차단)' : '⚠️ 비밀번호 불일치',
-        message: loginResult.message || (isBlocked
-          ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
-          : '비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'),
-        failCount: fCount,
-        remainingAttempts: rAttempts,
-        isBlocked,
-        remainingSec: loginResult.remainingSec || (isBlocked ? 300 : 0)
-      });
+        // 플랫폼/디바이스 모드에 따른 로그인 후 첫 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
+        const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
+        const targetTab = isMobileEnv ? 'entryCheck' : 'workLog';
+        localStorage.setItem('with_security_active_tab', targetTab);
+        if (setActiveTab) setActiveTab(targetTab);
+      } else {
+        const fCount = loginResult?.failCount || 1;
+        const rAttempts = loginResult?.remainingAttempts !== undefined ? loginResult.remainingAttempts : Math.max(0, 5 - fCount);
+        const isBlocked = Boolean(loginResult?.blocked || rAttempts === 0);
+
+        setLoginAlertModal({
+          isOpen: true,
+          title: isBlocked ? '🔒 로그인 5회 실패 (접근 차단)' : '⚠️ 비밀번호 불일치',
+          message: loginResult?.message || (isBlocked
+            ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
+            : '비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'),
+          failCount: fCount,
+          remainingAttempts: rAttempts,
+          isBlocked,
+          remainingSec: loginResult?.remainingSec || (isBlocked ? 300 : 0)
+        });
+      }
+    } catch (err) {
+      console.error('Login submit error:', err);
+      if (onTriggerToast) onTriggerToast('로그인 처리 중 오류가 발생했습니다. 다시 시도해 주세요.', 'warning');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -468,11 +569,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       email: ''
     });
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('with_security_data_changed', { detail: { isExplicitLogin: true } }));
+    }
+
     if (onTriggerToast) onTriggerToast(`'${newUser.name}'님 계정이 정상 생성되고 로그인 되었습니다. [구분: 일반]`, 'success');
-    
-    // 플랫폼/디바이스 모드에 따른 초기 화면
+
+    // 플랫폼/디바이스 모드에 따른 회원가입 후 첫 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
     const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
     const targetTab = isMobileEnv ? 'entryCheck' : 'workLog';
+    localStorage.setItem('with_security_active_tab', targetTab);
     if (setActiveTab) setActiveTab(targetTab);
   };
 
@@ -633,13 +739,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Handle Logout
   const handleLogout = async () => {
-    localStorage.removeItem('with_security_active_tab');
     await dbService.logoutUser();
     setCurrentUser(null);
     setEditForm(null);
+    setTrainings([]);
     setIsEditUnlocked(false);
     setIsAccountMgmtModalOpen(false);
-    if (onTriggerToast) onTriggerToast('로그아웃 되었습니다.', 'info');
+    setAuthMode('login');
+    setLoginForm({ username: '', password: '' });
+    if (setActiveTab) setActiveTab('userProfile');
+    if (onTriggerToast) onTriggerToast('로그아웃 되었습니다. 다시 로그인해 주세요.', 'info');
+    window.dispatchEvent(new Event('with_security_data_changed'));
   };
 
   const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
@@ -668,12 +778,29 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     return false;
   });
 
+  const filteredTrainings = trainings.filter(item => {
+    if (selectedTrainingCategory === '전체') return true;
+    if (selectedTrainingCategory === '기타') {
+      return !['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category) || item.category === '기타';
+    }
+    return item.category === selectedTrainingCategory;
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
       {/* Top Banner Header */}
-      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Row 1: Title & Icon */}
+      <div className="user-setting-header-panel glass-panel" style={{
+        padding: '14px 18px',
+        borderRadius: '6px',
+        border: '1.5px solid #cbd5e1',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        {/* Title & Icon & Subtext */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
             width: '40px',
@@ -690,18 +817,22 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           }}>
             <UserCheck size={22} />
           </div>
-          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
-            사용자 정보
+          <div>
+            <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
+              사용자 정보
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '500', marginTop: '2px' }}>
+              사용자 프로필 정보 및 계정·교육 수료 내역을 관리합니다.
+            </div>
           </div>
         </div>
 
-        {/* Row 2: Action Buttons (계정 관리 왼쪽, 로그아웃 오른쪽 1:1 너비) */}
+        {/* Action Buttons (계정 관리 왼쪽, 로그아웃 오른쪽) */}
         {currentUser && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: (isDevUser || isManagerUser) ? '1fr 1fr' : '1fr',
-            gap: '8px',
-            width: '100%'
+          <div className="user-setting-header-actions" style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
           }}>
             {(isDevUser || isManagerUser) && (
               <button
@@ -712,9 +843,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   background: 'rgba(30, 58, 138, 0.08)',
                   border: '1.5px solid #cbd5e1',
                   color: '#1e3a8a',
-                  padding: '9px 12px',
+                  padding: '7px 12px',
                   borderRadius: '6px',
-                  fontSize: '12.5px',
+                  fontSize: '12px',
                   fontWeight: '800',
                   cursor: 'pointer',
                   display: 'flex',
@@ -726,7 +857,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   whiteSpace: 'nowrap'
                 }}
               >
-                <Users size={15} /> 계정 관리
+                <Users size={14} /> 계정 관리
               </button>
             )}
 
@@ -738,9 +869,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 background: '#fff1f2',
                 border: '1.5px solid #fda4af',
                 color: '#e11d48',
-                padding: '9px 12px',
+                padding: '7px 12px',
                 borderRadius: '6px',
-                fontSize: '12.5px',
+                fontSize: '12px',
                 fontWeight: '800',
                 cursor: 'pointer',
                 display: 'flex',
@@ -752,7 +883,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 whiteSpace: 'nowrap'
               }}
             >
-              <LogOut size={15} /> 로그아웃
+              <LogOut size={14} /> 로그아웃
             </button>
           </div>
         )}
@@ -807,63 +938,519 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             </div>
           </div>
 
-          {/* Profile Edit Form */}
-          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <User size={18} color="#1e3a8a" /> 사용자 상세 정보 수정 및 관리
-              </div>
+          {/* Main 2-Column Responsive Layout for Web Desktop Mode (1:1 Ratio) */}
+          <div className="user-setting-desktop-grid" style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '10px',
+            alignItems: 'start',
+            width: '100%'
+          }}>
+            {/* Left Column: Profile Edit Form */}
+            <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <User size={18} color="#1e3a8a" /> 사용자 상세 정보 수정 및 관리
+                </div>
 
-              {/* Edit Mode Actions (Top Right) */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {isEditUnlocked ? (
-                  <>
+                {/* Edit Mode Actions (Top Right) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {isEditUnlocked ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleOpenVerifyModal}
+                        style={{
+                          padding: '7px 12px',
+                          borderRadius: '6px',
+                          border: '1.5px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#64748b',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <X size={14} /> 취소
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleProfileUpdate}
+                        style={{
+                          padding: '7px 16px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          background: '#1e3a8a',
+                          color: '#ffffff',
+                          fontSize: '12px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <CheckCircle2 size={14} /> 저장
+                      </button>
+                    </>
+                  ) : (
                     <button
                       type="button"
                       onClick={handleOpenVerifyModal}
                       style={{
-                        padding: '7px 12px',
+                        padding: '7px 14px',
                         borderRadius: '6px',
                         border: '1.5px solid #cbd5e1',
-                        background: '#ffffff',
-                        color: '#64748b',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <X size={14} /> 취소
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleProfileUpdate}
-                      style={{
-                        padding: '7px 16px',
-                        borderRadius: '6px',
-                        border: 'none',
-                        background: '#1e3a8a',
-                        color: '#ffffff',
+                        background: '#eff6ff',
+                        color: '#1e3a8a',
                         fontSize: '12px',
                         fontWeight: '800',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '5px',
-                        boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)',
+                        gap: '6px',
+                        boxShadow: '0 2px 6px rgba(15, 23, 42, 0.1)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <Edit3 size={14} /> 정보 수정
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <form onSubmit={handleProfileUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Row 1: Account Role & Division (2 Columns) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      계정 구분
+                    </label>
+                    {(currentUser?.role === '개발자' || currentUser?.username === 'admin') ? (
+                      <select
+                        disabled={!isEditUnlocked}
+                        value={editForm?.role || '개발자'}
+                        onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                          border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
+                          color: isEditUnlocked ? '#0f172a' : '#64748b',
+                          fontWeight: '700',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        <option value="일반">일반</option>
+                        <option value="관리자">관리자</option>
+                        <option value="개발자">개발자</option>
+                      </select>
+                    ) : currentUser?.role === '관리자' ? (
+                      <select
+                        disabled={!isEditUnlocked}
+                        value={editForm?.role || '관리자'}
+                        onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                          border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                          color: isEditUnlocked ? '#0f172a' : '#64748b',
+                          fontWeight: '700',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
+                        }}
+                      >
+                        <option value="일반">일반</option>
+                        <option value="관리자">관리자</option>
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        disabled
+                        value={editForm?.role || '일반'}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: '#f1f5f9',
+                          border: '1.5px solid #cbd5e1',
+                          color: '#64748b',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: 'not-allowed'
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      사업부 *
+                    </label>
+                    <select
+                      disabled={!isEditUnlocked}
+                      value={editForm?.division || ''}
+                      onChange={(e) => {
+                        const newDiv = e.target.value;
+                        const teams = getTeamsForDivision(newDiv);
+                        setEditForm({
+                          ...editForm,
+                          division: newDiv,
+                          team: teams.length > 0 ? (teams.includes(editForm?.team) ? editForm.team : teams[0]) : editForm?.team || ''
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      <option value="" disabled>-- 사업부 선택 --</option>
+                      {DIVISION_LIST.map(div => (
+                        <option key={div} value={div}>
+                          {div}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Team, Rank & Name (3 Columns in the Same Row) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      소속팀 *
+                    </label>
+                    <select
+                      disabled={!isEditUnlocked}
+                      value={editForm?.team || ''}
+                      onChange={(e) => setEditForm({ ...editForm, team: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      <option value="" disabled>-- 소속팀 선택 --</option>
+                      {getTeamsForDivision(editForm?.division).map(tm => (
+                        <option key={tm} value={tm}>
+                          {tm}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      직급 *
+                    </label>
+                    <select
+                      disabled={!isEditUnlocked}
+                      value={editForm?.rank || ''}
+                      onChange={(e) => setEditForm({ ...editForm, rank: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
+                      }}
+                    >
+                      <option value="" disabled>-- 직급 선택 --</option>
+                      {RANK_LIST.map(rk => (
+                        <option key={rk} value={rk}>
+                          {rk}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      이름 (성명) *
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isEditUnlocked}
+                      placeholder="홍길동"
+                      value={editForm?.name || ''}
+                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      전화번호 *
+                    </label>
+                    <input
+                      type="text"
+                      disabled={!isEditUnlocked}
+                      placeholder="010-0000-0000"
+                      maxLength={13}
+                      inputMode="numeric"
+                      value={editForm?.phone || ''}
+                      onChange={(e) => {
+                        const formatted = formatPhoneNumber(e.target.value);
+                        setEditForm({ ...editForm, phone: formatted });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      이메일 주소 *
+                    </label>
+                    <input
+                      type="email"
+                      disabled={!isEditUnlocked}
+                      placeholder="user@withsecurity.com"
+                      value={editForm?.email || ''}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '12px',
+                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
+                        color: isEditUnlocked ? '#0f172a' : '#64748b',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Password Change Section (Optional) */}
+                <div style={{
+                  background: isEditUnlocked ? '#eff6ff' : '#f8fafc',
+                  border: isEditUnlocked ? '1.5px solid #bfdbfe' : '1.5px solid #e2e8f0',
+                  padding: '16px',
+                  borderRadius: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: isEditUnlocked ? '#1e3a8a' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Key size={15} color={isEditUnlocked ? '#1e3a8a' : '#64748b'} /> 계정 비밀번호 변경 (선택 사항)
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        변경할 비밀번호
+                      </label>
+                      <input
+                        type="password"
+                        disabled={!isEditUnlocked}
+                        placeholder={isEditUnlocked ? "새 비밀번호 입력" : "수정 모드 시 입력 가능"}
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                          border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
+                          color: isEditUnlocked ? '#0f172a' : '#64748b',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        비밀번호 확인
+                      </label>
+                      <input
+                        type="password"
+                        disabled={!isEditUnlocked}
+                        placeholder={isEditUnlocked ? "변경할 비밀번호 재입력" : "수정 모드 시 입력 가능"}
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
+                          border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
+                          color: isEditUnlocked ? '#0f172a' : '#64748b',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: isEditUnlocked ? 'text' : 'not-allowed'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Action Bar when in Edit Mode */}
+                {isEditUnlocked && (
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    alignItems: 'center',
+                    gap: '10px',
+                    paddingTop: '8px',
+                    borderTop: '1px solid #e2e8f0'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={handleOpenVerifyModal}
+                      style={{
+                        padding: '9px 16px',
+                        borderRadius: '6px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#64748b',
+                        fontSize: '12.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
                         transition: 'all 0.15s ease'
                       }}
                     >
-                      <CheckCircle2 size={14} /> 저장
+                      수정 취소
                     </button>
-                  </>
-                ) : (
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '9px 22px',
+                        borderRadius: '6px',
+                        background: '#1e3a8a',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '13px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 3px 10px rgba(30, 58, 138, 0.25)',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      <CheckCircle2 size={16} />
+                      <span>저장</span>
+                    </button>
+                  </div>
+                )}
+
+              </form>
+            </div>
+
+            {/* Dedicated Separate Training & Education Expiry Card */}
+            <div className="user-setting-training-card glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '14px', minHeight: 0 }}>
+              {/* Card Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <GraduationCap size={18} color="#1e3a8a" /> 교육 수료 관리
+                  </div>
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: '800',
+                    padding: '2px 8px',
+                    borderRadius: '12px',
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    color: '#1e3a8a'
+                  }}>
+                    {selectedTrainingCategory === '전체' ? `총 ${trainings.length}건` : `${filteredTrainings.length}/${trainings.length}건`}
+                  </span>
+
+                  {/* Category Filter Select */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <select
+                      value={selectedTrainingCategory}
+                      onChange={(e) => setSelectedTrainingCategory(e.target.value)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: '6px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: selectedTrainingCategory === '전체' ? '#475569' : '#1e3a8a',
+                        fontSize: '11.5px',
+                        fontWeight: '800',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="전체">전체 구분</option>
+                      <option value="SKHynix">SKHynix</option>
+                      <option value="Samsung">Samsung</option>
+                      <option value="LGD">LGD</option>
+                      <option value="법정">법정</option>
+                      <option value="기타">기타</option>
+                    </select>
+                  </div>
+                </div>
+
+                {!isAddingTraining && (
                   <button
                     type="button"
-                    onClick={handleOpenVerifyModal}
+                    onClick={handleOpenAddTraining}
                     style={{
                       padding: '7px 14px',
                       borderRadius: '6px',
@@ -880,510 +1467,46 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    <Edit3 size={14} /> 정보 수정
+                    <Plus size={14} />
+                    <span>교육 추가</span>
                   </button>
                 )}
               </div>
-            </div>
 
-            <form onSubmit={handleProfileUpdate} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Row 1: Account Role & Division (2 Columns) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    계정 구분
-                  </label>
-                  {(currentUser?.role === '개발자' || currentUser?.username === 'admin') ? (
-                    <select
-                      disabled={!isEditUnlocked}
-                      value={editForm?.role || '개발자'}
-                      onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
-                        color: isEditUnlocked ? '#0f172a' : '#64748b',
-                        fontWeight: '700',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      <option value="일반">일반</option>
-                      <option value="관리자">관리자</option>
-                      <option value="개발자">개발자</option>
-                    </select>
-                  ) : currentUser?.role === '관리자' ? (
-                    <select
-                      disabled={!isEditUnlocked}
-                      value={editForm?.role || '관리자'}
-                      onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                        color: isEditUnlocked ? '#0f172a' : '#64748b',
-                        fontWeight: '700',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      <option value="일반">일반</option>
-                      <option value="관리자">관리자</option>
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      disabled
-                      value={editForm?.role || '일반'}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#f1f5f9',
-                        border: '1.5px solid #cbd5e1',
-                        color: '#64748b',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: 'not-allowed'
-                      }}
-                    />
-                  )}
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    사업부 *
-                  </label>
-                  <select
-                    disabled={!isEditUnlocked}
-                    value={editForm?.division || ''}
-                    onChange={(e) => {
-                      const newDiv = e.target.value;
-                      const teams = getTeamsForDivision(newDiv);
-                      setEditForm({
-                        ...editForm,
-                        division: newDiv,
-                        team: teams.length > 0 ? (teams.includes(editForm?.team) ? editForm.team : teams[0]) : editForm?.team || ''
-                      });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    <option value="" disabled>-- 사업부 선택 --</option>
-                    {DIVISION_LIST.map(div => (
-                      <option key={div} value={div}>
-                        {div}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 2: Team, Rank & Name (3 Columns in the Same Row) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    소속팀 *
-                  </label>
-                  <select
-                    disabled={!isEditUnlocked}
-                    value={editForm?.team || ''}
-                    onChange={(e) => setEditForm({ ...editForm, team: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    <option value="" disabled>-- 소속팀 선택 --</option>
-                    {getTeamsForDivision(editForm?.division).map(tm => (
-                      <option key={tm} value={tm}>
-                        {tm}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    직급 *
-                  </label>
-                  <select
-                    disabled={!isEditUnlocked}
-                    value={editForm?.rank || ''}
-                    onChange={(e) => setEditForm({ ...editForm, rank: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
-                    }}
-                  >
-                    <option value="" disabled>-- 직급 선택 --</option>
-                    {RANK_LIST.map(rk => (
-                      <option key={rk} value={rk}>
-                        {rk}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    이름 (성명) *
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!isEditUnlocked}
-                    placeholder="홍길동"
-                    value={editForm?.name || ''}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    전화번호 *
-                  </label>
-                  <input
-                    type="text"
-                    disabled={!isEditUnlocked}
-                    placeholder="010-0000-0000"
-                    maxLength={13}
-                    inputMode="numeric"
-                    value={editForm?.phone || ''}
-                    onChange={(e) => {
-                      const formatted = formatPhoneNumber(e.target.value);
-                      setEditForm({ ...editForm, phone: formatted });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    이메일 주소 *
-                  </label>
-                  <input
-                    type="email"
-                    disabled={!isEditUnlocked}
-                    placeholder="user@withsecurity.com"
-                    value={editForm?.email || ''}
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                      border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
-                      color: isEditUnlocked ? '#0f172a' : '#64748b',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none',
-                      cursor: isEditUnlocked ? 'text' : 'not-allowed'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Password Change Section (Optional) */}
-              <div style={{
-                background: isEditUnlocked ? '#eff6ff' : '#f8fafc',
-                border: isEditUnlocked ? '1.5px solid #bfdbfe' : '1.5px solid #e2e8f0',
-                padding: '16px',
-                borderRadius: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: isEditUnlocked ? '#1e3a8a' : '#475569', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Key size={15} color={isEditUnlocked ? '#1e3a8a' : '#64748b'} /> 계정 비밀번호 변경 (선택 사항)
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      변경할 비밀번호
-                    </label>
-                    <input
-                      type="password"
-                      disabled={!isEditUnlocked}
-                      placeholder={isEditUnlocked ? "새 비밀번호 입력" : "수정 모드 시 입력 가능"}
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
-                        color: isEditUnlocked ? '#0f172a' : '#64748b',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: isEditUnlocked ? 'text' : 'not-allowed'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      비밀번호 확인
-                    </label>
-                    <input
-                      type="password"
-                      disabled={!isEditUnlocked}
-                      placeholder={isEditUnlocked ? "변경할 비밀번호 재입력" : "수정 모드 시 입력 가능"}
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: isEditUnlocked ? '#ffffff' : '#f1f5f9',
-                        border: isEditUnlocked ? '1.5px solid #3b82f6' : '1.5px solid #cbd5e1',
-                        color: isEditUnlocked ? '#0f172a' : '#64748b',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: isEditUnlocked ? 'text' : 'not-allowed'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Bottom Action Bar when in Edit Mode */}
-              {isEditUnlocked && (
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  alignItems: 'center',
-                  gap: '10px',
-                  paddingTop: '8px',
-                  borderTop: '1px solid #e2e8f0'
-                }}>
-                  <button
-                    type="button"
-                    onClick={handleOpenVerifyModal}
-                    style={{
-                      padding: '9px 16px',
-                      borderRadius: '6px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#64748b',
-                      fontSize: '12.5px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    수정 취소
-                  </button>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '9px 22px',
-                      borderRadius: '6px',
-                      background: '#1e3a8a',
-                      border: 'none',
-                      color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      boxShadow: '0 3px 10px rgba(30, 58, 138, 0.25)',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <CheckCircle2 size={16} />
-                    <span>저장</span>
-                  </button>
-                </div>
-              )}
-
-            </form>
-          </div>
-
-          {/* Dedicated Separate Training & Education Expiry Card */}
-          <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Card Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{
-                  width: '30px',
-                  height: '30px',
-                  borderRadius: '8px',
-                  background: 'rgba(30, 58, 138, 0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#1e3a8a'
-                }}>
-                  <GraduationCap size={18} />
-                </div>
-                <span>교육 수료 관리</span>
-                <span style={{
-                  fontSize: '11px',
-                  fontWeight: '800',
-                  padding: '2px 8px',
+              {/* Add / Edit Training Form Panel */}
+              {isAddingTraining && (
+                <form onSubmit={handleSaveTraining} style={{
+                  background: '#f8fafc',
+                  border: '1.5px solid #93c5fd',
                   borderRadius: '12px',
-                  background: '#eff6ff',
-                  border: '1px solid #bfdbfe',
-                  color: '#1e3a8a'
+                  padding: '16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)'
                 }}>
-                  총 {trainings.length}건
-                </span>
-              </div>
-
-              {!isAddingTraining && (
-                <button
-                  type="button"
-                  onClick={handleOpenAddTraining}
-                  style={{
-                    padding: '7px 14px',
-                    borderRadius: '6px',
-                    border: '1.5px solid #1e3a8a',
-                    background: '#1e3a8a',
-                    color: '#ffffff',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                    boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <Plus size={14} />
-                  <span>교육 추가</span>
-                </button>
-              )}
-            </div>
-
-            {/* Add / Edit Training Form Panel */}
-            {isAddingTraining && (
-              <form onSubmit={handleSaveTraining} style={{
-                background: '#f8fafc',
-                border: '1.5px solid #93c5fd',
-                borderRadius: '12px',
-                padding: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '14px',
-                boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <GraduationCap size={16} />
-                    {editingTrainingId ? '교육 이수 정보 수정' : '교육 이수 정보 등록'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
-                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: trainingForm.category === '기타 (직접입력)' ? '1fr 1fr' : '1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      구분 *
-                    </label>
-                    <select
-                      value={trainingForm.category}
-                      onChange={(e) => setTrainingForm({ ...trainingForm, category: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        border: '1.5px solid #3b82f6',
-                        color: '#0f172a',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
+                    <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <GraduationCap size={16} />
+                      {editingTrainingId ? '교육 이수 정보 수정' : '교육 이수 정보 등록'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
+                      style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                     >
-                      {TRAINING_CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
+                      <X size={16} />
+                    </button>
                   </div>
 
-                  {trainingForm.category === '기타 (직접입력)' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: trainingForm.category === '기타 (직접입력)' ? '1fr 1fr' : '1fr', gap: '12px' }}>
                     <div>
                       <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        직접 입력 *
+                        구분 *
                       </label>
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="예: LG디스플레이"
-                        value={trainingForm.customCategory}
-                        onChange={(e) => setTrainingForm({ ...trainingForm, customCategory: e.target.value })}
+                      <select
+                        value={trainingForm.category}
+                        onChange={(e) => setTrainingForm({ ...trainingForm, category: e.target.value })}
                         style={{
                           width: '100%',
                           padding: '9px 12px',
@@ -1393,53 +1516,156 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                           color: '#0f172a',
                           fontSize: '13px',
                           fontWeight: '700',
-                          outline: 'none'
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {TRAINING_CATEGORIES.map(cat => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {trainingForm.category === '기타 (직접입력)' && (
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          직접 입력 *
+                        </label>
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="예: LG디스플레이"
+                          value={trainingForm.customCategory}
+                          onChange={(e) => setTrainingForm({ ...trainingForm, customCategory: e.target.value })}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #3b82f6',
+                            color: '#0f172a',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                      교육명 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="예: 기본 안전보건 교육, 취급자 교육"
+                      value={trainingForm.title}
+                      onChange={(e) => setTrainingForm({ ...trainingForm, title: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1.5px solid #3b82f6',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        교육 수료일 (이수일) *
+                      </label>
+                      <input
+                        type="date"
+                        value={trainingForm.completionDate}
+                        onChange={(e) => {
+                          const newDate = e.target.value;
+                          const exp = calculateOneYearLater(newDate);
+                          setTrainingForm({
+                            ...trainingForm,
+                            completionDate: newDate,
+                            expiryDate: exp || trainingForm.expiryDate
+                          });
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          background: '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          color: '#0f172a',
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
                         }}
                       />
                     </div>
-                  )}
-                </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    교육명 *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="예: 기본 안전보건 교육, 취급자 교육"
-                    value={trainingForm.title}
-                    onChange={(e) => setTrainingForm({ ...trainingForm, title: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                      border: '1.5px solid #3b82f6',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                          만료일 *
+                        </label>
+                        {trainingForm.completionDate && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const exp = calculateOneYearLater(trainingForm.completionDate);
+                              if (exp) setTrainingForm({ ...trainingForm, expiryDate: exp });
+                            }}
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              color: '#1e3a8a',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              borderRadius: '4px',
+                              padding: '1px 6px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            +1년
+                          </button>
+                        )}
+                      </div>
+                      <input
+                        type="date"
+                        value={trainingForm.expiryDate}
+                        onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '8px',
+                          background: '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          color: '#0f172a',
+                          fontSize: '12.5px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      />
+                    </div>
+                  </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      교육 수료일 (이수일) *
+                      비고 / 메모 (선택 사항)
                     </label>
                     <input
-                      type="date"
-                      value={trainingForm.completionDate}
-                      onChange={(e) => {
-                        const newDate = e.target.value;
-                        const exp = calculateOneYearLater(newDate);
-                        setTrainingForm({
-                          ...trainingForm,
-                          completionDate: newDate,
-                          expiryDate: exp || trainingForm.expiryDate
-                        });
-                      }}
+                      type="text"
+                      placeholder="수료증 번호, 교육 기관 등 메모"
+                      value={trainingForm.memo}
+                      onChange={(e) => setTrainingForm({ ...trainingForm, memo: e.target.value })}
                       style={{
                         width: '100%',
                         padding: '9px 12px',
@@ -1448,288 +1674,279 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         border: '1.5px solid #cbd5e1',
                         color: '#0f172a',
                         fontSize: '12.5px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: 'pointer'
+                        outline: 'none'
                       }}
                     />
                   </div>
 
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                        만료일 *
-                      </label>
-                      {trainingForm.completionDate && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const exp = calculateOneYearLater(trainingForm.completionDate);
-                            if (exp) setTrainingForm({ ...trainingForm, expiryDate: exp });
-                          }}
-                          style={{
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            color: '#1e3a8a',
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            borderRadius: '4px',
-                            padding: '1px 6px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          +1년
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="date"
-                      value={trainingForm.expiryDate}
-                      onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
                       style={{
-                        width: '100%',
-                        padding: '9px 12px',
-                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        borderRadius: '6px',
                         background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        color: '#0f172a',
-                        fontSize: '12.5px',
+                        border: '1px solid #cbd5e1',
+                        color: '#475569',
+                        fontSize: '12px',
                         fontWeight: '700',
-                        outline: 'none',
                         cursor: 'pointer'
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                    비고 / 메모 (선택 사항)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="수료증 번호, 교육 기관 등 메모"
-                    value={trainingForm.memo}
-                    onChange={(e) => setTrainingForm({ ...trainingForm, memo: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '12.5px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-                  <button
-                    type="button"
-                    onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
-                    style={{
-                      padding: '8px 14px',
-                      borderRadius: '6px',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      color: '#475569',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="submit"
-                    style={{
-                      padding: '8px 18px',
-                      borderRadius: '6px',
-                      background: '#1e3a8a',
-                      border: 'none',
-                      color: '#ffffff',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)'
-                    }}
-                  >
-                    <CheckCircle2 size={14} />
-                    <span>{editingTrainingId ? '수정 완료' : '교육 저장'}</span>
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {/* Training Items List */}
-            {trainings.length === 0 ? (
-              <div style={{
-                padding: '24px 16px',
-                textAlign: 'center',
-                background: '#f8fafc',
-                borderRadius: '12px',
-                border: '1px dashed #cbd5e1',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <GraduationCap size={32} color="#94a3b8" />
-                <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
-                  등록된 교육 수료 내역이 없습니다.
-                </span>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {trainings.map((item, idx) => {
-                  const catStyle = getCategoryBadgeStyle(item.category);
-                  const status = getTrainingStatus(item.expiryDate);
-                  return (
-                    <div
-                      key={item.id || idx}
-                      style={{
-                        background: status.isExpired ? '#fef2f2' : '#ffffff',
-                        border: status.isExpired ? '1.5px solid #fecaca' : (status.isUrgent ? '1.5px solid #fecaca' : '1.5px solid #e2e8f0'),
-                        borderRadius: '12px',
-                        padding: '14px 16px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '10px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
-                          {/* Category Badge */}
-                          <span style={{
-                            fontSize: '11px',
-                            fontWeight: '800',
-                            padding: '2.5px 8px',
-                            borderRadius: '6px',
-                            background: catStyle.bg,
-                            border: `1px solid ${catStyle.border}`,
-                            color: catStyle.color,
-                            flexShrink: 0
-                          }}>
-                            {catStyle.label}
-                          </span>
-
-                          {/* Title */}
-                          <span style={{
-                            fontSize: '14px',
-                            fontWeight: '800',
-                            color: '#0f172a',
-                            wordBreak: 'break-all'
-                          }}>
-                            {item.title}
-                          </span>
-                        </div>
-
-                        {/* Real-Time D-Day Badge */}
-                        <div style={{
-                          fontSize: '11.5px',
-                          fontWeight: '800',
-                          padding: '3px 9px',
-                          borderRadius: '6px',
-                          background: status.bg,
-                          color: status.color,
-                          border: `1px solid ${status.border}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          flexShrink: 0
-                        }}>
-                          <Clock size={12} />
-                          <span>{status.text}</span>
-                        </div>
-                      </div>
-
-                      {/* Dates Box & Memo */}
-                      <div style={{
+                      취소
+                    </button>
+                    <button
+                      type="submit"
+                      style={{
+                        padding: '8px 18px',
+                        borderRadius: '6px',
+                        background: '#1e3a8a',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
                         display: 'flex',
-                        justifyContent: 'space-between',
                         alignItems: 'center',
-                        gap: '10px',
-                        background: '#f8fafc',
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        flexWrap: 'wrap',
-                        fontSize: '12px'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Calendar size={12} color="#64748b" />
-                            수료일: <strong style={{ color: '#0f172a' }}>{item.completionDate || '-'}</strong>
-                          </span>
-                          <span style={{ color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <Clock size={12} color={status.color} />
-                            만료일: <strong style={{ color: status.color }}>{item.expiryDate || '-'}</strong>
-                          </span>
-                          {item.memo && (
-                            <span style={{ color: '#64748b', fontSize: '11.5px' }}>
-                              (비고: {item.memo})
-                            </span>
-                          )}
-                          {/* Item Edit & Delete Action Buttons */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditTraining(item)}
-                              style={{
-                                background: '#ffffff',
-                                border: '1px solid #cbd5e1',
-                                color: '#1e3a8a',
-                                padding: '3px 8px',
-                                borderRadius: '4px',
+                        gap: '4px',
+                        boxShadow: '0 2px 6px rgba(30, 58, 138, 0.25)'
+                      }}
+                    >
+                      <CheckCircle2 size={14} />
+                      <span>{editingTrainingId ? '수정 완료' : '교육 저장'}</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Training Items List (Scrollable in Web Desktop Mode) */}
+              <div className="user-setting-training-list-container custom-scrollbar" style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                minHeight: 0
+              }}>
+                {trainings.length === 0 ? (
+                  <div style={{
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    background: '#f8fafc',
+                    borderRadius: '12px',
+                    border: '1px dashed #cbd5e1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <GraduationCap size={32} color="#94a3b8" />
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
+                      등록된 교육 수료 내역이 없습니다.
+                    </span>
+                  </div>
+                ) : filteredTrainings.length === 0 ? (
+                  <div style={{
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    background: '#f8fafc',
+                    borderRadius: '12px',
+                    border: '1px dashed #cbd5e1',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <GraduationCap size={32} color="#94a3b8" />
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: '#64748b' }}>
+                      '{selectedTrainingCategory}' 구분에 해당하는 교육 내역이 없습니다.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTrainingCategory('전체')}
+                      style={{
+                        marginTop: '4px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        color: '#1e3a8a',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      전체 보기
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {filteredTrainings.map((item, idx) => {
+                      const catStyle = getCategoryBadgeStyle(item.category);
+                      const status = getTrainingStatus(item.expiryDate);
+                      return (
+                        <div
+                          key={item.id || idx}
+                          style={{
+                            background: status.isExpired ? '#fff5f5' : '#ffffff',
+                            border: status.isExpired ? '1.5px solid #f87171' : (status.isUrgent ? '1.5px solid #f87171' : (status.isWarning ? '1.5px solid #fbbf24' : '1.5px solid #cbd5e1')),
+                            borderRadius: '12px',
+                            padding: '14px 16px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '10px',
+                            boxShadow: '0 2px 6px rgba(15, 23, 42, 0.05)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: 1, minWidth: 0 }}>
+                              {/* Category Badge */}
+                              <span style={{
                                 fontSize: '11px',
-                                fontWeight: '700',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              title="교육 이수 정보 수정"
-                            >
-                              <Edit3 size={11} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTraining(item)}
-                              style={{
-                                background: '#ffffff',
-                                border: '1px solid #fecaca',
-                                color: '#dc2626',
-                                padding: '3px 8px',
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '3px'
-                              }}
-                              title="교육 이수 내역 삭제"
-                            >
-                              <Trash2 size={11} />
-                            </button>
+                                fontWeight: '800',
+                                padding: '2.5px 8px',
+                                borderRadius: '6px',
+                                background: catStyle.bg,
+                                border: `1px solid ${catStyle.border}`,
+                                color: catStyle.color,
+                                flexShrink: 0
+                              }}>
+                                {catStyle.label}
+                              </span>
+
+                              {/* Title */}
+                              <span style={{
+                                fontSize: '14px',
+                                fontWeight: '800',
+                                color: '#0f172a',
+                                wordBreak: 'break-all'
+                              }}>
+                                {item.title}
+                              </span>
+                            </div>
+
+                            {/* Real-Time D-Day Badge */}
+                            <div style={{
+                              fontSize: '11.5px',
+                              fontWeight: '800',
+                              padding: '3px 9px',
+                              borderRadius: '6px',
+                              background: status.bg,
+                              color: status.color,
+                              border: `1px solid ${status.border}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              flexShrink: 0
+                            }}>
+                              <Clock size={12} />
+                              <span>{status.text}</span>
+                            </div>
+                          </div>
+
+                          {/* Dates Box & Memo + Right-Fixed Action Buttons */}
+                          <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                            background: '#f8fafc',
+                            border: '1.5px solid #e2e8f0',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            fontSize: '12px'
+                          }}>
+                            {/* 1st Row: Completion Date & Expiry Date on the same horizontal line */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Calendar size={12} color="#64748b" />
+                                수료일: <strong style={{ color: '#0f172a' }}>{item.completionDate || '-'}</strong>
+                              </span>
+                              <span style={{ color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                <Clock size={12} color={status.color} />
+                                만료일: <strong style={{ color: status.color }}>{item.expiryDate || '-'}</strong>
+                              </span>
+                            </div>
+
+                            {/* 2nd Row: Memo (Left) & Action Buttons (Right) on the same horizontal line */}
+                            <div style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '10px',
+                              borderTop: '1px solid #eef2f6',
+                              paddingTop: '6px',
+                              marginTop: '2px'
+                            }}>
+                              {/* Left: Memo */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                {item.memo ? (
+                                  <span style={{ color: '#64748b', fontSize: '11.5px', wordBreak: 'break-all' }}>
+                                    비고: {item.memo}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>
+                                    비고: 없음
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Right: Fixed Edit & Delete Action Buttons */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditTraining(item)}
+                                  style={{
+                                    background: '#ffffff',
+                                    border: '1px solid #cbd5e1',
+                                    color: '#1e3a8a',
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="교육 이수 정보 수정"
+                                >
+                                  <Edit3 size={11} /> 수정
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTraining(item)}
+                                  style={{
+                                    background: '#ffffff',
+                                    border: '1px solid #fecaca',
+                                    color: '#dc2626',
+                                    padding: '3px 8px',
+                                    borderRadius: '4px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="교육 이수 내역 삭제"
+                                >
+                                  <Trash2 size={11} /> 삭제
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
-
-
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
 
-            <div style={{ fontSize: '11.5px', color: '#64748b', lineHeight: '1.4', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              💡 교육의 만료일 <strong>30일 </strong> & <strong>7일 </strong>전에 앱 알림 팝업이 제공됩니다.
+              <div style={{ fontSize: '11.5px', color: '#64748b', lineHeight: '1.4', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                💡 교육의 만료일 <strong>30일 </strong> & <strong>7일 </strong>전에 앱 알림 팝업이 제공됩니다.
+              </div>
             </div>
           </div>
 
@@ -1849,138 +2066,90 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           )}
         </div>
       ) : (
-        /* Mode 2: Logged Out State (Login / Signup Tabs) */
-        <div className="glass-panel" style={{ padding: '20px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
-          {/* Tab Selection */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
-            <button
-              onClick={() => setAuthMode('login')}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '12px',
-                border: authMode === 'login' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                background: authMode === 'login' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
-                color: authMode === 'login' ? '#1e3a8a' : '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <LogIn size={16} /> 기존 계정 로그인
-            </button>
-            <button
-              onClick={() => setAuthMode('signup')}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: '12px',
-                border: authMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-                fontSize: '13px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                background: authMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
-                color: authMode === 'signup' ? '#1e3a8a' : '#64748b',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.2s ease'
-              }}
-            >
-              <UserPlus size={16} /> 신규 회원가입
-            </button>
-          </div>
-
-          {/* Login Form */}
-          {authMode === 'login' && (
-            <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                  아이디 (Username) *
-                </label>
-                <input
-                  type="text"
-                  placeholder="예: admin 또는 생성한 아이디"
-                  value={loginForm.username}
-                  onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: '#ffffff',
-                    border: '1.5px solid #cbd5e1',
-                    color: '#0f172a',
-                    fontSize: '13px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                  비밀번호 (Password) *
-                </label>
-                <input
-                  type="password"
-                  placeholder="비밀번호 입력 (예: password123)"
-                  value={loginForm.password}
-                  onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: '#ffffff',
-                    border: '1.5px solid #cbd5e1',
-                    color: '#0f172a',
-                    fontSize: '13px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
+        /* Mode 2: Logged Out State (Login / Signup Tabs) - Top-Aligned 1/3 Width Card */
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          width: '100%',
+          padding: '0 12px 24px 12px'
+        }}>
+          <div
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: authMode === 'signup' ? '560px' : '420px',
+              padding: '28px 24px',
+              borderRadius: '16px',
+              border: '1.5px solid #cbd5e1',
+              boxShadow: '0 15px 35px -5px rgba(15, 23, 42, 0.08)',
+              background: '#ffffff',
+              margin: '0 auto',
+              transition: 'max-width 0.2s ease'
+            }}
+          >
+            {/* Tab Selection */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '12px' }}>
               <button
-                type="submit"
-                className="glass-button-primary"
+                onClick={() => setAuthMode('login')}
                 style={{
-                  padding: '12px',
+                  flex: 1,
+                  padding: '10px',
                   borderRadius: '12px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: '6px',
+                  border: authMode === 'login' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                  fontSize: '13px',
                   fontWeight: '700',
-                  fontSize: '13px'
+                  cursor: 'pointer',
+                  background: authMode === 'login' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                  color: authMode === 'login' ? '#1e3a8a' : '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
                 }}
               >
-                <LogIn size={16} /> 로그인하기
+                <LogIn size={16} /> 기존 계정 로그인
               </button>
-            </form>
-          )}
+              <button
+                onClick={() => setAuthMode('signup')}
+                style={{
+                  flex: 1,
+                  padding: '10px',
+                  borderRadius: '12px',
+                  border: authMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer',
+                  background: authMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                  color: authMode === 'signup' ? '#1e3a8a' : '#64748b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <UserPlus size={16} /> 신규 회원가입
+              </button>
+            </div>
 
-          {/* Signup Form */}
-          {authMode === 'signup' && (
-            <form onSubmit={handleSignupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+            {/* Login Form */}
+            {authMode === 'login' && (
+              <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    신규 아이디 (ID) *
+                    아이디 (Username) *
                   </label>
                   <input
                     type="text"
-                    placeholder="사용할 아이디"
-                    value={signupForm.username}
-                    onChange={(e) => setSignupForm({ ...signupForm, username: e.target.value })}
+                    placeholder="예: admin 또는 생성한 아이디"
+                    value={loginForm.username}
+                    onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
+                      padding: '11px 14px',
+                      borderRadius: '10px',
                       background: '#ffffff',
                       border: '1.5px solid #cbd5e1',
                       color: '#0f172a',
@@ -1992,17 +2161,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
                 <div>
                   <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    비밀번호 (PW) *
+                    비밀번호 (Password) *
                   </label>
                   <input
                     type="password"
-                    placeholder="비밀번호 설정"
-                    value={signupForm.password}
-                    onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                    placeholder="비밀번호 입력 (예: password123)"
+                    value={loginForm.password}
+                    onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
                     style={{
                       width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
+                      padding: '11px 14px',
+                      borderRadius: '10px',
                       background: '#ffffff',
                       border: '1.5px solid #cbd5e1',
                       color: '#0f172a',
@@ -2012,218 +2181,271 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   />
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    계정 구분
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value="일반"
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#f1f5f9',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#64748b',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'not-allowed'
-                    }}
-                  />
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="glass-button-primary"
+                  style={{
+                    padding: '12px',
+                    borderRadius: '10px',
+                    cursor: isLoggingIn ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    opacity: isLoggingIn ? 0.7 : 1,
+                    marginTop: '4px'
+                  }}
+                >
+                  {isLoggingIn ? <RefreshCw size={16} className="animate-spin" /> : <LogIn size={16} />}
+                  {isLoggingIn ? '로그인 처리 중...' : '로그인하기'}
+                </button>
+              </form>
+            )}
+
+            {/* Signup Form */}
+            {authMode === 'signup' && (
+              <form onSubmit={handleSignupSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      신규 아이디 (ID) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="사용할 아이디"
+                      value={signupForm.username}
+                      onChange={(e) => setSignupForm({ ...signupForm, username: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      비밀번호 (PW) *
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="비밀번호 설정"
+                      value={signupForm.password}
+                      onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    사업부 *
-                  </label>
-                  <select
-                    value={signupForm.division}
-                    onChange={(e) => {
-                      const newDiv = e.target.value;
-                      const teams = getTeamsForDivision(newDiv);
-                      setSignupForm({
-                        ...signupForm,
-                        division: newDiv,
-                        team: teams.length > 0 ? teams[0] : signupForm.team
-                      });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="" disabled>-- 사업부 선택 --</option>
-                    {DIVISION_LIST.map(div => (
-                      <option key={div} value={div}>
-                        {div}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      사업부 *
+                    </label>
+                    <select
+                      value={signupForm.division}
+                      onChange={(e) => {
+                        const newDiv = e.target.value;
+                        const teams = getTeamsForDivision(newDiv);
+                        setSignupForm({
+                          ...signupForm,
+                          division: newDiv,
+                          team: teams.length > 0 ? teams[0] : signupForm.team
+                        });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 사업부 선택 --</option>
+                      {DIVISION_LIST.map(div => (
+                        <option key={div} value={div}>
+                          {div}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              {/* Row 3: Team, Rank & Name (3 Columns in the Same Row) */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    소속팀 *
-                  </label>
-                  <select
-                    value={signupForm.team}
-                    onChange={(e) => setSignupForm({ ...signupForm, team: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="" disabled>-- 소속팀 선택 --</option>
-                    {getTeamsForDivision(signupForm.division).map(tm => (
-                      <option key={tm} value={tm}>
-                        {tm}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    직급 *
-                  </label>
-                  <select
-                    value={signupForm.rank}
-                    onChange={(e) => setSignupForm({ ...signupForm, rank: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="" disabled>-- 직급 선택 --</option>
-                    {RANK_LIST.map(rk => (
-                      <option key={rk} value={rk}>
-                        {rk}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      소속팀 *
+                    </label>
+                    <select
+                      value={signupForm.team}
+                      onChange={(e) => setSignupForm({ ...signupForm, team: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 소속팀 선택 --</option>
+                      {getTeamsForDivision(signupForm.division).map(tm => (
+                        <option key={tm} value={tm}>
+                          {tm}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    이름 (성명) *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="홍길동"
-                    value={signupForm.name}
-                    onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
+                {/* Row: Rank & Name */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      직급 *
+                    </label>
+                    <select
+                      value={signupForm.rank}
+                      onChange={(e) => setSignupForm({ ...signupForm, rank: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>-- 직급 선택 --</option>
+                      {RANK_LIST.map(rk => (
+                        <option key={rk} value={rk}>
+                          {rk}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    전화번호 *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="010-0000-0000"
-                    maxLength={13}
-                    inputMode="numeric"
-                    value={signupForm.phone}
-                    onChange={(e) => {
-                      const formatted = formatPhoneNumber(e.target.value);
-                      setSignupForm({ ...signupForm, phone: formatted });
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      이름 (성명) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="홍길동"
+                      value={signupForm.name}
+                      onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
-                    이메일 주소 *
-                  </label>
-                  <input
-                    type="email"
-                    placeholder="user@withsecurity.com"
-                    value={signupForm.email}
-                    onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '12px',
-                      background: '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      전화번호 *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="010-0000-0000"
+                      maxLength={13}
+                      inputMode="numeric"
+                      value={signupForm.phone}
+                      onChange={(e) => {
+                        const formatted = formatPhoneNumber(e.target.value);
+                        setSignupForm({ ...signupForm, phone: formatted });
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
 
-              <button
-                type="submit"
-                onClick={handleSignupSubmit}
-                className="glass-button-primary"
-                style={{
-                  padding: '12px',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: '700',
-                  fontSize: '13px',
-                  marginTop: '8px'
-                }}
-              >
-                <UserPlus size={16} /> 계정 생성 및 회원가입 완료
-              </button>
-            </form>
-          )}
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      이메일 주소 *
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="user@withsecurity.com"
+                      value={signupForm.email}
+                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  onClick={handleSignupSubmit}
+                  className="glass-button-primary"
+                  style={{
+                    padding: '12px',
+                    borderRadius: '10px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontWeight: '700',
+                    fontSize: '13px',
+                    marginTop: '8px'
+                  }}
+                >
+                  <UserPlus size={16} /> 계정 생성 및 회원가입 완료
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       )}
 
@@ -2738,36 +2960,39 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         </div>
       )}
 
-      {/* Login Failure & Brute Force Attempt Counter Modal */}
-      {loginAlertModal.isOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(15, 23, 42, 0.65)',
-          backdropFilter: 'blur(6px)',
-          WebkitBackdropFilter: 'blur(6px)',
-          zIndex: 10000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px'
-        }}>
-          <div className="glass-panel" style={{
-            width: '100%',
-            maxWidth: '380px',
-            background: '#ffffff',
-            borderRadius: '12px',
-            padding: '22px 20px',
-            border: loginAlertModal.isBlocked ? '1.5px solid #fda4af' : '1.5px solid #cbd5e1',
-            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.25)',
+      {/* Login Failure / Locked Security Modal Alert (Mounted to document.body via Portal) */}
+      {loginAlertModal.isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setLoginAlertModal(prev => ({ ...prev, isOpen: false }))}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
-            flexDirection: 'column',
-            gap: '14px',
-            animation: 'staticFadeIn 0.2s ease forwards'
-          }}>
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '20px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="glass-panel"
+            style={{
+              width: '100%',
+              maxWidth: '380px',
+              borderRadius: '16px',
+              background: '#ffffff',
+              border: loginAlertModal.isBlocked ? '1.5px solid #ef4444' : '1.5px solid #cbd5e1',
+              boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+              padding: '22px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+              animation: 'staticFadeIn 0.2s ease forwards'
+            }}
+          >
             {/* Modal Header */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <div style={{
@@ -2875,8 +3100,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
             {/* Action Confirm Button */}
             <button
+              ref={alertConfirmBtnRef}
+              autoFocus
               type="button"
               onClick={() => setLoginAlertModal(prev => ({ ...prev, isOpen: false }))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setLoginAlertModal(prev => ({ ...prev, isOpen: false }));
+                }
+              }}
               style={{
                 width: '100%',
                 padding: '11px',
@@ -2896,7 +3130,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               확인
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -27,18 +27,13 @@ export default function TrainingExpiryModal({
 
   if (!isOpen || !currentUser) return null;
 
-  // Extract all trainings (multi-item support + backwards compatibility fallback)
+  // Extract all trainings (multi-item support - only user-registered items)
   let allTrainings = Array.isArray(currentUser.trainings) ? currentUser.trainings : [];
-  if (allTrainings.length === 0 && (currentUser.educationExpiryDate || currentUser.educationDate)) {
-    allTrainings = [{
-      id: 'legacy-1',
-      category: '법정',
-      title: currentUser.educationName || '사내 정기 정보보안 및 안전 교육',
-      completionDate: currentUser.educationDate || '',
-      expiryDate: currentUser.educationExpiryDate || '',
-      memo: ''
-    }];
-  }
+  allTrainings = allTrainings.filter(t => 
+    !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
+    !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+    (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -85,33 +80,37 @@ export default function TrainingExpiryModal({
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(15, 23, 42, 0.75)',
-      backdropFilter: 'blur(12px)',
-      zIndex: 20000,
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'flex-end',
-      padding: '16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px) 16px',
-      animation: 'fadeIn 0.2s ease-out'
-    }}>
-      <div className="glass-panel" style={{
-        width: '100%',
-        maxWidth: '490px',
-        maxHeight: '90vh',
-        borderRadius: '20px',
-        background: '#ffffff',
-        border: `2px solid ${themeColor}`,
-        boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: 'blur(12px)',
+        zIndex: 20000,
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
-      }}>
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '20px',
+        animation: 'fadeIn 0.2s ease-out'
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="glass-panel"
+        style={{
+          width: '100%',
+          maxWidth: '490px',
+          maxHeight: '90vh',
+          borderRadius: '20px',
+          background: '#ffffff',
+          border: `2px solid ${themeColor}`,
+          boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}
+      >
         {/* Header Bar */}
         <div style={{
           background: `linear-gradient(135deg, ${themeColor} 0%, ${hasExpired ? '#991b1b' : (hasUrgent ? '#b91c1c' : '#d97706')} 100%)`,
