@@ -701,6 +701,22 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const tomorrowOwnLogs = tomorrowAllLogs.filter(isMyAuthoredLog);
   const tomorrowInitialGroups = getInitialWorkGroups(tomorrowOwnLogs);
 
+  // Next day calculation relative to dailyDate
+  const getNextDayIso = (currentIso) => {
+    if (!currentIso) return getTomorrowIso();
+    const d = new Date(currentIso);
+    d.setDate(d.getDate() + 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const nextDailyIso = getNextDayIso(dailyDate);
+  const nextDayAllLogs = workLogs.filter(log => (log.date || '').startsWith(isToday ? tomorrowIso : nextDailyIso));
+  const nextDayOwnLogs = nextDayAllLogs.filter(isMyAuthoredLog);
+  const nextDayInitialGroups = getInitialWorkGroups(nextDayOwnLogs);
+
   // Initial work registration counts for daily (처음 등록 기준 건수)
   const dailyInitialGroups = getInitialWorkGroups(dailyOwnLogs);
   const dailyInitialInternalCount = dailyInitialGroups.filter(g => g.category === '사내 업무').length;
@@ -721,6 +737,25 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const weeklyRange = getWeeklyDateRange(weeklyMonday);
+
+  const thisMondayIso = formatIso(getMonday(new Date()));
+  const getNextWeekMondayIso = (monIso) => {
+    const d = new Date(monIso);
+    d.setDate(d.getDate() + 7);
+    return formatIso(d);
+  };
+  const nextMondayIso = getNextWeekMondayIso(thisMondayIso);
+
+  const isThisWeek = weeklyMonday === thisMondayIso;
+  const isNextWeek = weeklyMonday === nextMondayIso;
+  const isFutureWeek = weeklyMonday > nextMondayIso;
+
+  const getWeeklyHeaderTitle = () => {
+    if (isThisWeek) return '금주 업무';
+    if (isNextWeek) return '차주 업무';
+    if (isFutureWeek) return '예정 업무';
+    return '주간 업무';
+  };
 
   const handlePrevWeek = () => {
     const mon = new Date(weeklyMonday);
@@ -957,14 +992,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }
 
   const generateDailyReportText = () => {
-    const reportTitle = isTomorrow
-      ? `[ 내일 예정 업무 일지 ]`
-      : (isFuture ? `[ ${getFormattedKoreanDate(dailyDate)} 예정 업무 일지 ]` : `[ 일일 업무 일지 ]`);
+    let t = `• ${isFuture ? '예정 일자' : '보고 일자'}: ${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}\n`;
 
-    let t = `${reportTitle}\n`;
-    t += `• ${isFuture ? '예정 일자' : '보고 일자'}: ${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}\n`;
-
-    t += `\n사내 업무${isFuture ? ' (예정)' : ''}\n`;
+    t += `\n<사내 업무>${isFuture ? ' (예정)' : ''}\n`;
     if (dailyInternalLogs.length === 0) {
       t += `  - 사내 ${isFuture ? '예정 ' : ''}업무 기록 없음\n`;
     } else {
@@ -980,7 +1010,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       });
     }
 
-    t += `\n출장 및 현장 지원${isFuture ? ' (예정)' : ''}\n`;
+    t += `\n<출장 및 현장 지원>${isFuture ? ' (예정)' : ''}\n`;
     const siteKeys = Object.keys(dailyTripGroupedBySite);
     if (siteKeys.length === 0) {
       t += `  - 출장 ${isFuture ? '예정 ' : ''}업무 기록 없음\n`;
@@ -1002,27 +1032,38 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       });
     }
 
-    // 오늘 업무 보고서 작성 시 내일 예정 업무가 있으면 자동으로 하단에 첨부
-    if (isToday && tomorrowOwnLogs.length > 0) {
+    // 내일(익일) 예정 업무 (당일 및 과거/현재 보고서 작성 시 항상 포함)
+    if (!isFuture) {
+      const targetTomorrowLogs = isToday ? tomorrowOwnLogs : nextDayOwnLogs;
+      const targetTomorrowDate = isToday ? tomorrowIso : nextDailyIso;
+      const tomorrowLabel = isToday ? '내일' : `${getFormattedKoreanDate(targetTomorrowDate)}`;
+
       t += `\n----------------------------------------\n`;
-      t += `📌 [ 내일 예정 업무 (${tomorrowInitialGroups.length}건) ]\n`;
-      tomorrowOwnLogs.forEach((tl, ti) => {
-        const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
-        const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
-        const siteTag = isTrip ? ` [출장] ${tl.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
-        t += `  ${ti + 1}. ${tl.title}${siteTag}\n`;
-        if (tl.details && tl.details.trim()) {
-          t += `     ${tl.details.trim()}\n`;
-        }
-      });
+      t += `📌 [ ${tomorrowLabel} 예정 업무${targetTomorrowLogs.length > 0 ? ` (${targetTomorrowLogs.length}건)` : ''} ]\n`;
+
+      if (targetTomorrowLogs.length === 0) {
+        t += `  - ${tomorrowLabel} 예정 업무 기록 없음\n`;
+      } else {
+        targetTomorrowLogs.forEach((tl, ti) => {
+          const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
+          const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
+          const siteTag = isTrip ? ` [출장: ${tl.siteName || '출장지'}${siteLoc ? ` (${siteLoc})` : ''}]` : ' [사내]';
+          t += `  ${ti + 1}. ${tl.title}${siteTag}\n`;
+          if (tl.details && tl.details.trim()) {
+            const lines = tl.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+            lines.forEach(line => {
+              t += `     ${line.trim()}\n`;
+            });
+          }
+        });
+      }
     }
 
     return t;
   };
 
   const generateWeeklyReportText = () => {
-    let t = `[ 주간 업무 일지 ]\n`;
-    t += `• ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n`;
+    let t = `• ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n\n`;
 
     const custom = currentWeeklyCustom;
 
@@ -1635,8 +1676,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       )}
                     </div>
 
-                    {/* Section: 오늘 일일 업무 화면일 때 내일 예정 업무 박스 (왼쪽 컬럼 정렬) */}
-                    {isToday && (
+                    {/* Section: 내일(익일) 예정 업무 박스 (상시 노출) */}
+                    {!isFuture && (
                       <div style={{ paddingLeft: '6px', marginTop: '6px' }}>
                         <div style={{
                           padding: '13px 15px',
@@ -1645,54 +1686,68 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                           border: '1.5px solid #cbd5e1',
                           display: 'flex',
                           flexDirection: 'column',
-                          gap: '8px'
+                          gap: '10px'
                         }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
-                              <span>📅 내일 예정 업무</span>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
+                              <span>📅 {isToday ? `내일 (${getFormattedKoreanDate(tomorrowIso)}) 예정 업무` : `익일 (${getFormattedKoreanDate(nextDailyIso)}) 예정 업무`}</span>
+                              {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length > 0 && (
+                                <span style={{
+                                  background: '#1e3a8a',
+                                  color: '#ffffff',
+                                  padding: '1px 7px',
+                                  borderRadius: '10px',
+                                  fontSize: '11px',
+                                  fontWeight: '800'
+                                }}>
+                                  {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length}건
+                                </span>
+                              )}
                             </div>
                           </div>
 
-                          {tomorrowOwnLogs.length === 0 ? (
-                            <div style={{ fontSize: '12.5px', color: '#64748b', padding: '6px 2px' }}>
-                              내일 등록된 예정 업무가 없습니다.
+                          {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length === 0 ? (
+                            <div style={{ fontSize: '13px', color: '#64748b', padding: '4px 2px', fontWeight: '600' }}>
+                              - {isToday ? '내일' : '익일'} 등록된 예정 업무가 없습니다.
                             </div>
                           ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {tomorrowOwnLogs.slice(0, 5).map((tl, ti) => {
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).map((tl, ti) => {
                                 const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
                                 const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
                                 return (
-                                  <div key={tl.id || ti} style={{ fontSize: '13px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span style={{ color: '#0f172a', fontWeight: '800' }}>•</span>
-                                    <span style={{ fontWeight: '700' }}>{tl.title}</span>
-                                    {isTrip && (
-                                      <>
-                                        <span style={{
-                                          padding: '1px 6px',
-                                          borderRadius: '4px',
-                                          fontSize: '10.5px',
-                                          fontWeight: '800',
-                                          background: '#ede9fe',
-                                          color: '#6d28d9',
-                                          border: '1px solid #ddd6fe'
-                                        }}>
-                                          출장
-                                        </span>
-                                        <span style={{ fontSize: '11.5px', color: '#475569', fontWeight: '700' }}>
-                                          {tl.siteName || ''}
-                                          {siteLoc ? ` (${siteLoc})` : ''}
-                                        </span>
-                                      </>
+                                  <div key={tl.id || ti} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                    <div style={{ fontSize: '13.5px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                      <span style={{ color: '#0f172a', fontWeight: '800' }}>{ti + 1}.</span>
+                                      <span style={{ fontWeight: '800' }}>{tl.title}</span>
+                                      {isTrip && (
+                                        <>
+                                          <span style={{
+                                            padding: '1px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '10.5px',
+                                            fontWeight: '800',
+                                            background: '#ede9fe',
+                                            color: '#6d28d9',
+                                            border: '1px solid #ddd6fe'
+                                          }}>
+                                            출장
+                                          </span>
+                                          <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                                            {tl.siteName || ''}
+                                            {siteLoc ? ` (${siteLoc})` : ''}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                    {tl.details && tl.details.trim() && (
+                                      <div style={{ fontSize: '12.5px', color: '#334155', paddingLeft: '18px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
+                                        {tl.details}
+                                      </div>
                                     )}
                                   </div>
                                 );
                               })}
-                              {tomorrowOwnLogs.length > 5 && (
-                                <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '700', paddingLeft: '10px' }}>
-                                  외 {tomorrowOwnLogs.length - 5}건
-                                </div>
-                              )}
                             </div>
                           )}
                         </div>
@@ -1921,7 +1976,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     <FileSpreadsheet size={20} />
                   </div>
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                    주간 업무
+                    {getWeeklyHeaderTitle()}
                   </div>
                 </div>
 
@@ -2020,7 +2075,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   <FileSpreadsheet size={22} />
                 </div>
                 <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
-                  주간 업무
+                  {getWeeklyHeaderTitle()}
                 </div>
 
                 {/* Week Controls (Right next to 주간 업무) */}
@@ -2302,7 +2357,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   {/* 텍스트 복사 버튼 */}
                   <button
                     type="button"
-                    onClick={() => handleCopyText(generateWeeklyReportText(), '주간 업무 보고서')}
+                    onClick={() => handleCopyText(generateWeeklyReportText(), `${getWeeklyHeaderTitle()} 보고서`)}
                     style={{
                       background: '#eff6ff',
                       border: '1.5px solid #cbd5e1',
@@ -2318,7 +2373,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       transition: 'all 0.2s ease',
                       boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
                     }}
-                    title="주간 업무 보고서 텍스트 복사"
+                    title={`${getWeeklyHeaderTitle()} 보고서 텍스트 복사`}
                   >
                     <Copy size={13} />
                   </button>
@@ -2327,7 +2382,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   {isNative && (
                     <button
                       type="button"
-                      onClick={() => handleShareText(generateWeeklyReportText(), '주간 업무 보고서')}
+                      onClick={() => handleShareText(generateWeeklyReportText(), `${getWeeklyHeaderTitle()} 보고서`)}
                       style={{
                         background: '#1e3a8a',
                         border: '1.5px solid #1e3a8a',
@@ -2343,7 +2398,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         transition: 'all 0.2s ease',
                         boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
                       }}
-                      title="주간 업무 보고서 공유 (카카오톡, 메신저 등)"
+                      title={`${getWeeklyHeaderTitle()} 보고서 공유 (카카오톡, 메신저 등)`}
                     >
                       <Share2 size={13} />
                     </button>
