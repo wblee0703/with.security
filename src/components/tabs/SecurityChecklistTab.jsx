@@ -731,21 +731,23 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // 미디어 장치 API를 지원하지 않거나 환경이 제한된 경우 (보안 브라우저 정책 등에 의해 차단된 상태로 간주)
-        throw new Error('CAMERA_BLOCKED_BY_DEVICE_POLICY');
+        throw new Error('NOT_SUPPORTED');
       }
 
-      // ACTUALLY ATTEMPT TO EXECUTE / OPEN CAMERA STREAM
+      // 1. 카메라 하드웨어 스트림 열기 시도
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 
-      // IF CAMERA STREAM OPENS -> CAMERA IS ACTIVE & UNLOCKED!
-      // SECURITY APP MDM POLICY IS NOT RESTRICTING CAMERA!
+      // 스트림이 정상적으로 열림 -> 카메라가 켜져 있고 작동 중임 (차단 안 됨!)
       stream.getTracks().forEach(track => track.stop());
 
-      // STRICT FAIL! Camera is ACTIVE / Unlocked!
       setAppCheckState({ isChecking: false, isVerified: false });
       setCameraCheckVerified(false);
-      setCameraCheckState({ isTesting: false, isVerified: false, result: 'UNLOCKED', message: '❌ 카메라 차단 안됨 (카메라 활성화 감지)' });
+      setCameraCheckState({
+        isTesting: false,
+        isVerified: false,
+        result: 'UNLOCKED',
+        message: '❌ 카메라 차단 안됨 (카메라 활성화 감지)'
+      });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
         isScanning: false,
@@ -755,14 +757,40 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       });
 
       if (onTriggerToast) {
-        onTriggerToast('❌ [카메라 차단 안됨] 스마트폰 카메라가 활성화되어 있습니다. 보안 앱(MDM/SSM)에서 카메라를 차단해 주세요.', 'error');
+        onTriggerToast('❌ [카메라 차단 안됨] 스마트폰 카메라가 정상 작동 중입니다. 보안 앱(MDM/SSM)에서 카메라를 차단해 주세요.', 'error');
       }
       return false;
     } catch (err) {
-      // IF CAMERA ACCESS FAILS (NotReadableError, TrackStartError, SecurityError, NotAllowedError, PermissionDeniedError, NotFoundError 등)
-      // -> 스마트폰 Knox/MDM/SSM 보안 앱 또는 시스템 보안 정책에 의해 카메라가 정상적으로 비활성화(차단)된 상태임!
-      console.log('Camera Block Verified via Exception:', err.name, err.message);
+      console.log('Camera Check Error Result:', err.name, err.message);
 
+      // 2. 브라우저/앱 자체의 카메라 권한이 거부된 경우 (NotAllowedError / PermissionDeniedError)
+      // 권한이 거부되어 있으면 브라우저가 카메라 하드웨어에 접근하지 못하므로, 실제 카메라가 켜져 있는지 꺼져 있는지 확인할 수 없음!
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckVerified(false);
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: false,
+          result: 'UNLOCKED',
+          message: '⚠️ 카메라 권한 허용 필요 (상태 확인 불가)'
+        });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'CAMERA_UNLOCKED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast('⚠️ [권한 허용 필요] 카메라 권한이 차단되어 있어 실제 작동 여부를 테스트할 수 없습니다. 브라우저/앱 설정에서 카메라 권한을 \'허용\'해 주세요.', 'warning');
+        }
+        return false;
+      }
+
+      // 3. Knox/MDM/SSM 보안 정책에 의해 하드웨어 레벨에서 차단된 경우
+      // (NotReadableError, TrackStartError, SecurityError, AbortError, OverconstrainedError, NotFoundError 등)
+      // 권한이 있는데도 하드웨어를 점유할 수 없거나 보안 정책에 의해 잠겨 있는 상태임 -> 실제 차단 성공!
       setAppCheckState({ isChecking: false, isVerified: true });
       setCameraCheckVerified(true);
       setCameraCheckState({
@@ -780,7 +808,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       });
 
       if (onTriggerToast) {
-        onTriggerToast('✓ [카메라 검수 완료] 스마트폰 카메라 비활성화(차단) 상태가 정상 확인되었습니다!', 'success');
+        onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 스마트폰 카메라 비활성화(차단) 상태가 확인되었습니다!', 'success');
       }
       return true;
     }
