@@ -795,10 +795,41 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (deleteTargetLog) {
       const updatedLogs = await dbService.deleteWorkLog(deleteTargetLog.id);
       setWorkLogs(updatedLogs);
-      setIsDeleteModalOpen(false);
-      const title = deleteTargetLog.title;
       setDeleteTargetLog(null);
       if (onTriggerToast) onTriggerToast(`'${title}' 업무 일지가 삭제되었습니다.`, 'info');
+    }
+  };
+
+  // Handle Drag & Drop Schedule Move from Calendar
+  const handleMoveLogDate = async (logId, newDate) => {
+    if (!logId || !newDate) return;
+    const targetLog = workLogs.find(l => l.id === logId);
+    if (!targetLog) return;
+    if (targetLog.date === newDate) return;
+
+    if (!canModifyLog(targetLog)) {
+      if (onTriggerToast) onTriggerToast('❌ 본인이 작성한 업무 일지만 이동할 수 있습니다.', 'error');
+      return;
+    }
+
+    const timePart = targetLog.createdAt && targetLog.createdAt.includes(' ')
+      ? targetLog.createdAt.split(' ')[1]
+      : '09:00:00';
+
+    const updatedLog = {
+      ...targetLog,
+      date: newDate,
+      createdAt: `${newDate} ${timePart}`
+    };
+
+    const updatedLogs = await dbService.saveWorkLog(updatedLog);
+    setWorkLogs(updatedLogs);
+    setSelectedDate(newDate);
+    setViewAllDates(false);
+    window.dispatchEvent(new Event('with_security_data_changed'));
+
+    if (onTriggerToast) {
+      onTriggerToast(`'${updatedLog.title}' 업무가 [${newDate}] 일자로 이동되었습니다.`, 'success');
     }
   };
 
@@ -1790,6 +1821,8 @@ export default function WorkLogTab({ onTriggerToast }) {
               setViewAllDates(false);
             }}
             onOpenAddModal={handleOpenAddModal}
+            onMoveLogDate={handleMoveLogDate}
+            canModifyLog={canModifyLog}
           />
         </div>
       </div>

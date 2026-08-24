@@ -863,11 +863,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   });
   const sortedWeeklyDates = Object.keys(weeklyGroupedByDate).sort();
 
-  // 월~금요일 5일간의 날짜 및 일일 업무 목록 생성
+  // 월~금요일 및 토·일(주말) 주간 일일 업무 목록 생성 (총 6개 카드: 월, 화, 수, 목, 금, 주말)
   const getWeeklyWorkDays = (monIso) => {
     const days = [];
     const dayLabels = ['월', '화', '수', '목', '금'];
     const mon = new Date(monIso);
+
+    // 1. 월~금요일 5일 카드 생성
     for (let i = 0; i < 5; i++) {
       const d = new Date(mon);
       d.setDate(d.getDate() + i);
@@ -881,6 +883,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         iso,
         dayLabel: dayLabels[i],
         shortDate: `${month}/${date}`,
+        isWeekend: false,
         isToday: iso === todayIso,
         isFuture: iso > todayIso,
         isSelected: iso === dailyDate,
@@ -888,6 +891,49 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         totalCount: dayInitialGroups.length
       });
     }
+
+    // 2. 토·일(주말) 카드 생성 (하나의 카드로 병합)
+    const sat = new Date(mon);
+    sat.setDate(sat.getDate() + 5);
+    const sun = new Date(mon);
+    sun.setDate(sun.getDate() + 6);
+
+    const satIso = formatIso(sat);
+    const sunIso = formatIso(sun);
+    const satMonth = String(sat.getMonth() + 1).padStart(2, '0');
+    const satDate = String(sat.getDate()).padStart(2, '0');
+    const sunMonth = String(sun.getMonth() + 1).padStart(2, '0');
+    const sunDate = String(sun.getDate()).padStart(2, '0');
+
+    const satLogs = weeklyOwnLogs.filter(l => (l.date || '').startsWith(satIso));
+    const sunLogs = weeklyOwnLogs.filter(l => (l.date || '').startsWith(sunIso));
+    const weekendLogs = [...satLogs, ...sunLogs];
+
+    const satInitialGroups = getInitialWorkGroups(satLogs);
+    const sunInitialGroups = getInitialWorkGroups(sunLogs);
+
+    const isWeekendToday = satIso === todayIso || sunIso === todayIso;
+    const shortDateRange = satMonth === sunMonth
+      ? `${satMonth}/${satDate}~${sunDate}`
+      : `${satMonth}/${satDate}~${sunMonth}/${sunDate}`;
+
+    days.push({
+      iso: sunIso === todayIso ? sunIso : satIso,
+      satIso,
+      sunIso,
+      dayLabel: '주말',
+      subLabel: '토·일',
+      shortDate: shortDateRange,
+      isWeekend: true,
+      isToday: isWeekendToday,
+      isFuture: satIso > todayIso,
+      isSelected: dailyDate === satIso || dailyDate === sunIso,
+      logs: weekendLogs,
+      satLogs,
+      sunLogs,
+      totalCount: satInitialGroups.length + sunInitialGroups.length
+    });
+
     return days;
   };
   const weeklyWorkDays = getWeeklyWorkDays(weeklyMonday);
@@ -957,12 +1003,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
       const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
       const siteTag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
-      text += `${idx + 1}. ${item.title}${siteTag}\n`;
+      const weekendTag = day.isWeekend ? (item.date === day.sunIso ? '[일] ' : '[토] ') : '';
+      text += `${idx + 1}. ${weekendTag}${item.title}${siteTag}\n`;
       if (item.details && item.details.trim()) {
         text += `   ${item.details.trim().replace(/\n/g, '\n   ')}\n`;
       }
     });
-    handleCopyText(text.trim(), `${day.dayLabel}요일 업무 전체`);
+    handleCopyText(text.trim(), day.isWeekend ? '주말(토/일) 업무 전체' : `${day.dayLabel}요일 업무 전체`);
   };
 
   // Group daily trip logs by site
@@ -1690,7 +1737,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
-                              <span>📅 {isToday ? `내일 (${getFormattedKoreanDate(tomorrowIso)}) 예정 업무` : `익일 (${getFormattedKoreanDate(nextDailyIso)}) 예정 업무`}</span>
+                              <span>📅 {isToday ? `내일 예정 업무` : `익일 예정 업무`}</span>
                               {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length > 0 && (
                                 <span style={{
                                   background: '#1e3a8a',
@@ -2139,25 +2186,37 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           )}
 
-          {/* Top 5 Workday Cards: 월~금요일 일일 업무 현황 카드 (5열 그리드) */}
+          {/* Top 6 Workday Cards: 월~금요일 + 주말(토/일) 일일 업무 현황 카드 (6열 그리드) */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: isMobile ? 'repeat(auto-fit, minmax(130px, 1fr))' : 'repeat(5, 1fr)',
+            gridTemplateColumns: isMobile ? 'repeat(auto-fit, minmax(130px, 1fr))' : 'repeat(6, 1fr)',
             gap: '10px',
             width: '100%',
             marginBottom: '4px'
           }}>
             {weeklyWorkDays.map((day) => {
-              const isCurrentSelected = day.iso === dailyDate;
+              const isCurrentSelected = day.isWeekend
+                ? (dailyDate === day.satIso || dailyDate === day.sunIso)
+                : (day.iso === dailyDate);
+
               return (
                 <div
-                  key={day.iso}
-                  onClick={() => setDailyDate(day.iso)}
+                  key={day.isWeekend ? 'weekend' : day.iso}
+                  onClick={() => {
+                    if (day.isWeekend) {
+                      const target = (todayIso === day.sunIso || (!day.satLogs?.length && day.sunLogs?.length)) ? day.sunIso : day.satIso;
+                      setDailyDate(target);
+                    } else {
+                      setDailyDate(day.iso);
+                    }
+                  }}
                   style={{
-                    background: day.isToday ? '#eff6ff' : '#f8fafc',
+                    background: day.isToday
+                      ? '#eff6ff'
+                      : (day.isWeekend ? '#fffaf8' : '#f8fafc'),
                     border: isCurrentSelected
-                      ? '2px solid #1e3a8a'
-                      : (day.isToday ? '1.5px solid #93c5fd' : '1.5px solid #cbd5e1'),
+                      ? (day.isWeekend ? '2px solid #ea580c' : '2px solid #1e3a8a')
+                      : (day.isToday ? '1.5px solid #93c5fd' : (day.isWeekend ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1')),
                     borderRadius: '8px',
                     padding: '10px 12px',
                     display: 'flex',
@@ -2165,10 +2224,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     gap: '8px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
-                    boxShadow: isCurrentSelected ? '0 2px 10px rgba(30, 58, 138, 0.15)' : 'none',
+                    boxShadow: isCurrentSelected
+                      ? (day.isWeekend ? '0 2px 10px rgba(234, 88, 12, 0.15)' : '0 2px 10px rgba(30, 58, 138, 0.15)')
+                      : 'none',
                     minHeight: '120px'
                   }}
-                  title={`${day.dayLabel}요일(${day.shortDate}) 일일 업무로 이동`}
+                  title={`${day.isWeekend ? '주말(토·일)' : `${day.dayLabel}요일`}(${day.shortDate}) 일일 업무로 이동`}
                 >
                   {/* Day Card Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(203, 213, 225, 0.8)', paddingBottom: '6px' }}>
@@ -2176,7 +2237,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <span style={{
                         fontSize: '13px',
                         fontWeight: '800',
-                        color: day.isToday ? '#1e3a8a' : '#0f172a'
+                        color: day.isToday
+                          ? '#1e3a8a'
+                          : (day.isWeekend ? '#c2410c' : '#0f172a')
                       }}>
                         {day.dayLabel} ({day.shortDate})
                       </span>
@@ -2199,9 +2262,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                           type="button"
                           onClick={(e) => handleCopyDayLogs(e, day)}
                           style={{
-                            background: '#eff6ff',
-                            border: '1px solid #bfdbfe',
-                            color: '#1e40af',
+                            background: day.isWeekend ? '#fff7ed' : '#eff6ff',
+                            border: day.isWeekend ? '1px solid #fed7aa' : '1px solid #bfdbfe',
+                            color: day.isWeekend ? '#c2410c' : '#1e40af',
                             borderRadius: '4px',
                             padding: '1.5px 5px',
                             fontSize: '10px',
@@ -2212,7 +2275,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             gap: '2px',
                             lineHeight: '1'
                           }}
-                          title={`${day.dayLabel}요일 업무 전체 복사`}
+                          title={day.isWeekend ? '주말(토/일) 업무 전체 복사' : `${day.dayLabel}요일 업무 전체 복사`}
                         >
                           <Copy size={9.5} />
                         </button>
@@ -2227,65 +2290,81 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         - 등록된 업무 없음
                       </div>
                     ) : (
-                      day.logs.slice(0, 4).map((item, idx) => (
-                        <div key={item.id || idx} style={{
-                          fontSize: '12px',
-                          color: '#0f172a',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '4px',
-                          lineHeight: '1.3',
-                          padding: '1px 0'
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flex: 1 }}>
-                            <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>•</span>
-                            <span style={{
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              fontWeight: '700'
-                            }} title={item.title}>
-                              {item.title}
-                            </span>
-                            {item.category === '출장 업무' && (
+                      day.logs.slice(0, 4).map((item, idx) => {
+                        const isSun = day.isWeekend && item.date === day.sunIso;
+                        return (
+                          <div key={item.id || idx} style={{
+                            fontSize: '12px',
+                            color: '#0f172a',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '4px',
+                            lineHeight: '1.3',
+                            padding: '1px 0'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flex: 1 }}>
+                              <span style={{ color: '#64748b', fontSize: '11px', fontWeight: '800', flexShrink: 0 }}>•</span>
+                              {day.isWeekend && (
+                                <span style={{
+                                  fontSize: '9px',
+                                  fontWeight: '800',
+                                  padding: '0 3px',
+                                  borderRadius: '2px',
+                                  background: isSun ? '#fee2e2' : '#dbeafe',
+                                  color: isSun ? '#dc2626' : '#2563eb',
+                                  flexShrink: 0
+                                }}>
+                                  {isSun ? '일' : '토'}
+                                </span>
+                              )}
                               <span style={{
-                                fontSize: '9.5px',
-                                fontWeight: '800',
-                                background: '#ede9fe',
-                                color: '#6d28d9',
-                                padding: '0 4px',
-                                borderRadius: '3px',
-                                flexShrink: 0
-                              }}>
-                                출장
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                fontWeight: '700'
+                              }} title={item.title}>
+                                {item.title}
                               </span>
-                            )}
+                              {item.category === '출장 업무' && (
+                                <span style={{
+                                  fontSize: '9.5px',
+                                  fontWeight: '800',
+                                  background: '#ede9fe',
+                                  color: '#6d28d9',
+                                  padding: '0 4px',
+                                  borderRadius: '3px',
+                                  flexShrink: 0
+                                }}>
+                                  출장
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => handleCopySingleItem(e, item)}
+                              style={{
+                                background: '#f1f5f9',
+                                border: '1px solid #cbd5e1',
+                                color: '#334155',
+                                borderRadius: '3px',
+                                padding: '1px 4px',
+                                fontSize: '10px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '2px',
+                                flexShrink: 0,
+                                lineHeight: '1'
+                              }}
+                              title="이 업무 상세 내용 복사"
+                            >
+                              <Copy size={9} />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => handleCopySingleItem(e, item)}
-                            style={{
-                              background: '#f1f5f9',
-                              border: '1px solid #cbd5e1',
-                              color: '#334155',
-                              borderRadius: '3px',
-                              padding: '1px 4px',
-                              fontSize: '10px',
-                              fontWeight: '700',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '2px',
-                              flexShrink: 0,
-                              lineHeight: '1'
-                            }}
-                            title="이 업무 상세 내용 복사"
-                          >
-                            <Copy size={9} />
-                          </button>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                     {day.logs.length > 4 && (
                       <div style={{ fontSize: '10.5px', color: '#64748b', fontWeight: '700', paddingLeft: '6px' }}>
