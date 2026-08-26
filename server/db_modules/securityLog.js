@@ -78,14 +78,10 @@ export async function createSecurityLog(data = {}) {
   const currentYear = new Date().getFullYear();
   let logId = String(data.log_id || data.id || '').trim();
 
-  if (!logId || !logId.startsWith(`PASS-${currentYear}-`)) {
-    try {
-      const existing = await query("SELECT `log_id` FROM security_log WHERE `log_id` LIKE ?", [`PASS-${currentYear}-%`]);
-      const num = (existing ? existing.length : 0) + 1;
-      logId = `PASS-${currentYear}-${String(num).padStart(3, '0')}`;
-    } catch (e) {
-      logId = `PASS-${currentYear}-${String(Date.now()).slice(-3)}`;
-    }
+  if (!logId) {
+    const ts = Date.now().toString().slice(-6);
+    const rand = Math.floor(100 + Math.random() * 900);
+    logId = `PASS-${currentYear}-${ts}-${rand}`;
   }
 
   const parentLogId = String(data.parent_log_id || data.parentLogId || data.parentPledgeId || '').trim();

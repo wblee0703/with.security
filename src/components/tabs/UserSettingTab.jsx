@@ -46,15 +46,15 @@ const getTrainingStatus = (expiryStr) => {
   if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
   const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) {
-    return { text: `만료됨 (D+${Math.abs(diffDays)}일)`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true };
+    return { text: `만료됨`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true };
   } else if (diffDays === 0) {
-    return { text: 'D-Day (오늘 만료)', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+    return { text: 'D-Day', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
   } else if (diffDays <= 7) {
-    return { text: `D-${diffDays}일 [긴급 만료임박]`, color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+    return { text: `D-${diffDays}일`, color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
   } else if (diffDays <= 30) {
-    return { text: `D-${diffDays}일 [만료예정]`, color: '#d97706', bg: '#fffbeb', border: '#fde68a', isWarning: true };
+    return { text: `D-${diffDays}일`, color: '#d97706', bg: '#fffbeb', border: '#fde68a', isWarning: true };
   } else {
-    return { text: `D-${diffDays}일 (안전)`, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
+    return { text: `D-${diffDays}일`, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
   }
 };
 
@@ -161,6 +161,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [selectedTrainingCategory, setSelectedTrainingCategory] = useState('전체');
   const [isAddingTraining, setIsAddingTraining] = useState(false);
   const [editingTrainingId, setEditingTrainingId] = useState(null);
+  const trainingFormRef = useRef(null);
   const [trainingForm, setTrainingForm] = useState({
     category: '법정',
     customCategory: '',
@@ -178,7 +179,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         setCurrentUser(active);
         setEditForm(active);
         let userTrainings = Array.isArray(active.trainings) ? active.trainings : [];
-        userTrainings = userTrainings.filter(t => 
+        userTrainings = userTrainings.filter(t =>
           !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
           !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
           (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
@@ -196,7 +197,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             mergedMap.set(key, e);
           });
           userTrainings = Array.from(mergedMap.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
-        } catch (e) {}
+        } catch (e) { }
         setTrainings(userTrainings);
       } else {
         setCurrentUser(null);
@@ -228,10 +229,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     });
     setEditingTrainingId(null);
     setIsAddingTraining(true);
+    setTimeout(() => {
+      if (trainingFormRef.current) {
+        trainingFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 80);
   };
 
   const handleOpenEditTraining = (item) => {
     const isCustom = !['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category);
+    const targetId = item.id || item.eduId || item.edu_id || `EDU-${Date.now()}`;
+    item.id = targetId;
     setTrainingForm({
       category: isCustom ? '기타 (직접입력)' : item.category,
       customCategory: isCustom ? (item.customCategory || item.category) : '',
@@ -240,12 +248,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       expiryDate: item.expiryDate || '',
       memo: item.memo || ''
     });
-    setEditingTrainingId(item.id);
+    setEditingTrainingId(targetId);
     setIsAddingTraining(true);
+    setTimeout(() => {
+      if (trainingFormRef.current) {
+        trainingFormRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 80);
   };
 
   const handleSaveTraining = async (e) => {
-    if (e) e.preventDefault();
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!trainingForm.title.trim()) {
       if (onTriggerToast) onTriggerToast('교육명을 입력해 주세요.', 'warning');
       return;
@@ -261,9 +277,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     let updatedList = [];
     if (editingTrainingId) {
-      const existing = trainings.find(t => t.id === editingTrainingId);
+      const existing = trainings.find(t => 
+        (t.id && t.id === editingTrainingId) || 
+        (t.eduId && t.eduId === editingTrainingId) ||
+        (t.title === trainingForm.title && t.completionDate === trainingForm.completionDate)
+      );
       const targetItem = {
-        ...existing,
+        ...(existing || {}),
         id: editingTrainingId,
         eduId: editingTrainingId,
         userId: currentUser?.username || '',
@@ -279,7 +299,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         memo: trainingForm.memo.trim(),
         updatedAt: new Date().toISOString()
       };
-      updatedList = trainings.map(t => t.id === editingTrainingId ? targetItem : t);
+      updatedList = trainings.map(t => 
+        ((t.id && t.id === editingTrainingId) || (t.eduId && t.eduId === editingTrainingId)) ? targetItem : t
+      );
+      if (!updatedList.some(t => t.id === editingTrainingId || t.eduId === editingTrainingId)) {
+        updatedList = [targetItem, ...trainings.filter(t => t.title !== targetItem.title || t.completionDate !== targetItem.completionDate)];
+      }
       await dbService.saveEduLog(targetItem);
     } else {
       const newEduId = `EDU-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -359,6 +384,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     await dbService.saveUserProfile(updatedUser);
     setCurrentUser(updatedUser);
     setEditForm(updatedUser);
+
+    if (editingTrainingId && (editingTrainingId === targetId || editingTrainingId === item.id || editingTrainingId === item.eduId)) {
+      setIsAddingTraining(false);
+      setEditingTrainingId(null);
+    }
 
     if (onTriggerToast) {
       onTriggerToast(`'${item.title}' 교육 이수 내역이 삭제되었습니다.`, 'success');
@@ -1475,16 +1505,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
               {/* Add / Edit Training Form Panel */}
               {isAddingTraining && (
-                <form onSubmit={handleSaveTraining} style={{
-                  background: '#f8fafc',
-                  border: '1.5px solid #93c5fd',
-                  borderRadius: '12px',
-                  padding: '16px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '14px',
-                  boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)'
-                }}>
+                <form
+                  ref={trainingFormRef}
+                  onSubmit={handleSaveTraining}
+                  style={{
+                    background: '#f8fafc',
+                    border: '1.5px solid #93c5fd',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '14px',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)'
+                  }}
+                >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px' }}>
                     <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                       <GraduationCap size={16} />
@@ -1783,18 +1817,22 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     {filteredTrainings.map((item, idx) => {
                       const catStyle = getCategoryBadgeStyle(item.category);
                       const status = getTrainingStatus(item.expiryDate);
+                      const isEditingThisItem = Boolean(editingTrainingId && (editingTrainingId === item.id || editingTrainingId === item.eduId));
+
                       return (
                         <div
-                          key={item.id || idx}
+                          key={item.id || item.eduId || idx}
                           style={{
-                            background: status.isExpired ? '#fff5f5' : '#ffffff',
-                            border: status.isExpired ? '1.5px solid #f87171' : (status.isUrgent ? '1.5px solid #f87171' : (status.isWarning ? '1.5px solid #fbbf24' : '1.5px solid #cbd5e1')),
+                            background: isEditingThisItem ? '#eff6ff' : (status.isExpired ? '#fff5f5' : '#ffffff'),
+                            border: isEditingThisItem
+                              ? '2px solid #2563eb'
+                              : (status.isExpired ? '1.5px solid #f87171' : (status.isUrgent ? '1.5px solid #f87171' : (status.isWarning ? '1.5px solid #fbbf24' : '1.5px solid #cbd5e1'))),
                             borderRadius: '12px',
                             padding: '14px 16px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '10px',
-                            boxShadow: '0 2px 6px rgba(15, 23, 42, 0.05)',
+                            boxShadow: isEditingThisItem ? '0 0 0 3px rgba(37, 99, 235, 0.15)' : '0 2px 6px rgba(15, 23, 42, 0.05)',
                             transition: 'all 0.15s ease'
                           }}
                         >
@@ -1823,6 +1861,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               }}>
                                 {item.title}
                               </span>
+
+                              {isEditingThisItem && (
+                                <span style={{
+                                  fontSize: '10.5px',
+                                  fontWeight: '800',
+                                  padding: '2px 6px',
+                                  borderRadius: '4px',
+                                  background: '#2563eb',
+                                  color: '#ffffff'
+                                }}>
+                                  수정 중
+                                </span>
+                              )}
                             </div>
 
                             {/* Real-Time D-Day Badge */}
@@ -1839,7 +1890,6 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               gap: '4px',
                               flexShrink: 0
                             }}>
-                              <Clock size={12} />
                               <span>{status.text}</span>
                             </div>
                           </div>
@@ -1849,7 +1899,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                             display: 'flex',
                             flexDirection: 'column',
                             gap: '8px',
-                            background: '#f8fafc',
+                            background: isEditingThisItem ? '#ffffff' : '#f8fafc',
                             border: '1.5px solid #e2e8f0',
                             padding: '9px 12px',
                             borderRadius: '8px',
@@ -1894,45 +1944,67 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenEditTraining(item)}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleOpenEditTraining(item);
+                                  }}
                                   style={{
-                                    background: '#ffffff',
-                                    border: '1px solid #cbd5e1',
-                                    color: '#1e3a8a',
-                                    padding: '3px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '700',
+                                    background: isEditingThisItem ? '#1e3a8a' : '#ffffff',
+                                    border: isEditingThisItem ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
+                                    color: isEditingThisItem ? '#ffffff' : '#1e3a8a',
+                                    padding: '5px 10px',
+                                    minHeight: '30px',
+                                    minWidth: '54px',
+                                    borderRadius: '5px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '800',
                                     cursor: 'pointer',
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '3px',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    touchAction: 'manipulation',
+                                    userSelect: 'none',
+                                    WebkitTapHighlightColor: 'transparent',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                     transition: 'all 0.15s ease'
                                   }}
                                   title="교육 이수 정보 수정"
                                 >
-                                  <Edit3 size={11} /> 수정
+                                  <Edit3 size={12} /> {isEditingThisItem ? '수정 중' : '수정'}
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteTraining(item)}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleDeleteTraining(item);
+                                  }}
                                   style={{
                                     background: '#ffffff',
                                     border: '1px solid #fecaca',
                                     color: '#dc2626',
-                                    padding: '3px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '11px',
-                                    fontWeight: '700',
+                                    padding: '5px 10px',
+                                    minHeight: '30px',
+                                    minWidth: '54px',
+                                    borderRadius: '5px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '800',
                                     cursor: 'pointer',
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
-                                    gap: '3px',
+                                    justifyContent: 'center',
+                                    gap: '4px',
+                                    touchAction: 'manipulation',
+                                    userSelect: 'none',
+                                    WebkitTapHighlightColor: 'transparent',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                     transition: 'all 0.15s ease'
                                   }}
                                   title="교육 이수 내역 삭제"
                                 >
-                                  <Trash2 size={11} /> 삭제
+                                  <Trash2 size={12} /> 삭제
                                 </button>
                               </div>
                             </div>

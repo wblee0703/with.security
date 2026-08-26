@@ -505,7 +505,7 @@ class SecurityDatabase {
 
   async saveChecklist(checklist) {
     if (!checklist) return null;
-    const targetId = checklist.id || checklist.log_id || `PASS-${new Date().getFullYear()}-${Date.now()}`;
+    const targetId = checklist.id || checklist.log_id || `PASS-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
     const normalizedChecklist = {
       ...checklist,
       id: targetId,

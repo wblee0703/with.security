@@ -182,15 +182,36 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
     resetAppVerificationState();
-    const userTeam = active ? (active.team || active.department || '') : '';
-    setFormData(prev => ({
-      ...prev,
-      visitorName: active.name || prev.visitorName,
-      phone: active.phone || prev.phone,
-      team: userTeam || prev.team,
-      department: userTeam || prev.department,
-      rank: active.rank || prev.rank
-    }));
+    const userTeam = active ? (active.team || active.department || active.division || '') : '';
+    const targetDate = selectedDate || getTodayLocalIsoDate();
+    setFormData({
+      site: '',
+      visitorName: active.name || '',
+      phone: active.phone || '010-0000-0000',
+      team: userTeam,
+      department: userTeam,
+      rank: active.rank || '대리',
+      company: userTeam,
+      hostName: '',
+      purposeType: '작업',
+      customPurpose: '',
+      purpose: '작업',
+      visitDate: `${targetDate} ~ ${targetDate}`,
+      mdmVerified: false,
+      docChecklist: {
+        gateApproved: false,
+        docSecVerified: false,
+        preCheckVerified: false
+      },
+      materials: [],
+      agreedToTerms: false,
+      isCompanionMode: false,
+      parentPledgeId: null,
+      companionId: null,
+      isEditMode: false,
+      editingPledgeId: null
+    });
+    setActiveStep(1);
     setIsModalOpen(true);
   };
 
@@ -637,28 +658,20 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   const [cameraCheckVerified, setCameraCheckVerified] = useState(false);
   const [step2Attempted, setStep2Attempted] = useState(false);
 
-  // Handler for Launching Native Smartphone Camera Application
+  // Handler for Launching Native Smartphone Camera Application (Preview only, does NOT auto-verify)
   const handleLaunchNativeCameraApp = async () => {
-    if (Capacitor.isNativePlatform()) {
-      await launchApp('android.media.action.STILL_IMAGE_CAMERA');
-      setCameraSelfChecklist(prev => {
-        const updated = { ...prev, cameraChecked: true };
-        const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
-        setFormData(f => ({ ...f, mdmVerified: isAll, cameraLocked: isAll }));
-        return updated;
-      });
-    } else {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'environment';
-      input.click();
-      setCameraSelfChecklist(prev => {
-        const updated = { ...prev, cameraChecked: true };
-        const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
-        setFormData(f => ({ ...f, mdmVerified: isAll, cameraLocked: isAll }));
-        return updated;
-      });
+    try {
+      if (Capacitor.isNativePlatform()) {
+        await launchApp('android.media.action.STILL_IMAGE_CAMERA');
+      } else {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment';
+        input.click();
+      }
+    } catch (e) {
+      console.warn('Native camera launch notice:', e);
     }
   };
 
@@ -716,6 +729,80 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     setIsModalOpen(false);
   };
 
+  // Helper: Sample video frame brightness to determine if real camera imagery is received
+  const checkVideoFrameIsBlack = async (stream) => {
+    return new Promise((resolve) => {
+      try {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.srcObject = stream;
+
+        const cleanup = () => {
+          try {
+            video.pause();
+            video.srcObject = null;
+          } catch (e) {}
+        };
+
+        const timeout = setTimeout(() => {
+          cleanup();
+          resolve(false); // timeout, assume not completely black
+        }, 1200);
+
+        video.onloadeddata = () => {
+          setTimeout(() => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = video.videoWidth || 320;
+              canvas.height = video.videoHeight || 240;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                clearTimeout(timeout);
+                cleanup();
+                resolve(false);
+                return;
+              }
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+              const data = frame.data;
+              let totalBrightness = 0;
+              const sampleStep = 16;
+              let sampledCount = 0;
+
+              for (let i = 0; i < data.length; i += 4 * sampleStep) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                totalBrightness += (r + g + b) / 3;
+                sampledCount++;
+              }
+
+              const avgBrightness = sampledCount > 0 ? totalBrightness / sampledCount : 0;
+              clearTimeout(timeout);
+              cleanup();
+              // If average brightness is virtually zero, camera is hardware blacked out
+              resolve(avgBrightness < 3);
+            } catch (e) {
+              clearTimeout(timeout);
+              cleanup();
+              resolve(false);
+            }
+          }, 300);
+        };
+
+        video.play().catch(() => {
+          clearTimeout(timeout);
+          cleanup();
+          resolve(true); // playback rejected by policy -> blocked
+        });
+      } catch (e) {
+        resolve(true);
+      }
+    });
+  };
+
   // Unified Mobile Security App Execution Verification (Camera Hardware Block Verification)
   const handleCheckAppExecutionStatus = async () => {
     if (!formData.site || !formData.site.trim()) {
@@ -731,22 +818,56 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('NOT_SUPPORTED');
+        // Media devices not supported or HTTP environment
+        // Device policy / environment blocks direct getUserMedia
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: false,
+          result: 'PROMPT_MANUAL',
+          message: '⚠️ 기기 보안 정책 감지 (수동 확인 가능)'
+        });
+        return false;
       }
 
       // 1. 카메라 하드웨어 스트림 열기 시도
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
 
-      // 스트림이 정상적으로 열림 -> 카메라가 켜져 있고 작동 중임 (차단 안 됨!)
+      // 스트림이 열렸을 때, 실제 영상이 들어오는지 (밝기 검사) 확인
+      const isBlackout = await checkVideoFrameIsBlack(stream);
       stream.getTracks().forEach(track => track.stop());
 
+      if (isBlackout) {
+        // 스트림은 열렸으나 영상이 블랙아웃됨 (MDM 하드웨어 차단 상태)
+        setAppCheckState({ isChecking: false, isVerified: true });
+        setCameraCheckVerified(true);
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: true,
+          result: 'LOCKED',
+          message: '✓ 카메라 비활성화(차단) 확인됨'
+        });
+        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+        setAppScanState({
+          isScanning: false,
+          status: 'VERIFIED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+        if (onTriggerToast) {
+          onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 카메라 비활성화(블랙아웃) 상태가 확인되었습니다!', 'success');
+        }
+        return true;
+      }
+
+      // 실제 영상이 감지됨 -> 카메라가 켜져 있고 작동 중임 (차단 안 됨!)
       setAppCheckState({ isChecking: false, isVerified: false });
       setCameraCheckVerified(false);
       setCameraCheckState({
         isTesting: false,
         isVerified: false,
         result: 'UNLOCKED',
-        message: '❌ 카메라 차단 안됨 (카메라 활성화 감지)'
+        message: '❌ 카메라 켜짐 감지 (보안앱 차단 필요)'
       });
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
@@ -763,54 +884,63 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     } catch (err) {
       console.log('Camera Check Error Result:', err.name, err.message);
 
-      // 2. 브라우저/앱 자체의 카메라 권한이 거부된 경우 (NotAllowedError / PermissionDeniedError)
-      // 권한이 거부되어 있으면 브라우저가 카메라 하드웨어에 접근하지 못하므로, 실제 카메라가 켜져 있는지 꺼져 있는지 확인할 수 없음!
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setAppCheckState({ isChecking: false, isVerified: false });
-        setCameraCheckVerified(false);
+      // 2. Knox/MDM/SSM 보안 정책에 의해 하드웨어 레벨에서 명확히 차단된 에러
+      const isHardwareBlocked = [
+        'NotReadableError',
+        'TrackStartError',
+        'SecurityError',
+        'AbortError',
+        'OverconstrainedError',
+        'NotFoundError',
+        'DevicesNotFoundError'
+      ].includes(err.name);
+
+      if (isHardwareBlocked) {
+        setAppCheckState({ isChecking: false, isVerified: true });
+        setCameraCheckVerified(true);
         setCameraCheckState({
           isTesting: false,
-          isVerified: false,
-          result: 'UNLOCKED',
-          message: '⚠️ 카메라 권한 허용 필요 (상태 확인 불가)'
+          isVerified: true,
+          result: 'LOCKED',
+          message: '✓ 카메라 하드웨어 차단 확인됨'
         });
-        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
         setAppScanState({
           isScanning: false,
-          status: 'CAMERA_UNLOCKED',
+          status: 'VERIFIED',
           lastScannedAt: new Date().toLocaleTimeString(),
           scanLog: []
         });
 
         if (onTriggerToast) {
-          onTriggerToast('⚠️ [권한 허용 필요] 카메라 권한이 차단되어 있어 실제 작동 여부를 테스트할 수 없습니다. 브라우저/앱 설정에서 카메라 권한을 \'허용\'해 주세요.', 'warning');
+          onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 스마트폰 카메라 비활성화(차단) 상태가 확인되었습니다!', 'success');
         }
-        return false;
+        return true;
       }
 
-      // 3. Knox/MDM/SSM 보안 정책에 의해 하드웨어 레벨에서 차단된 경우
-      // (NotReadableError, TrackStartError, SecurityError, AbortError, OverconstrainedError, NotFoundError 등)
-      // 권한이 있는데도 하드웨어를 점유할 수 없거나 보안 정책에 의해 잠겨 있는 상태임 -> 실제 차단 성공!
-      setAppCheckState({ isChecking: false, isVerified: true });
-      setCameraCheckVerified(true);
+      // 3. 브라우저/안드로이드 권한 에러 (NotAllowedError / PermissionDeniedError)
+      // 스마트폰 기종에 따라 보안앱이 카메라를 차단했을 때 OS가 NotAllowedError를 반환할 수 있으므로,
+      // 사용자에게 직접 확인 가능한 수동 확인 옵션 제공
+      setAppCheckState({ isChecking: false, isVerified: false });
+      setCameraCheckVerified(false);
       setCameraCheckState({
         isTesting: false,
-        isVerified: true,
-        result: 'LOCKED',
-        message: '✓ 카메라 비활성화(차단) 확인됨'
+        isVerified: false,
+        result: 'PROMPT_MANUAL',
+        message: '⚠️ 기기 보안 정책 확인됨 (직접 확인 완료 지원)'
       });
-      setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
       setAppScanState({
         isScanning: false,
-        status: 'VERIFIED',
+        status: 'CHECK_REQUIRED',
         lastScannedAt: new Date().toLocaleTimeString(),
         scanLog: []
       });
 
       if (onTriggerToast) {
-        onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 스마트폰 카메라 비활성화(차단) 상태가 확인되었습니다!', 'success');
+        onTriggerToast('⚠️ [기기 보안 정책] 보안앱에서 카메라가 비활성화되었는지 확인 후, 하단 [보안앱 카메라 차단 직접 확인 완료]를 터치해 주세요.', 'info');
       }
-      return true;
+      return false;
     }
   };
 
@@ -1036,6 +1166,17 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     let updatedCompanions = [...(targetPledgeForCompanion.companions || [])];
     const addedNames = [];
 
+    const targetDate = selectedDate || (targetPledgeForCompanion.visitDate ? targetPledgeForCompanion.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
+    const targetDateParts = targetDate.split('-');
+    let targetTimeStr;
+    if (targetDateParts.length === 3) {
+      const now = new Date();
+      const targetDateObj = new Date(parseInt(targetDateParts[0], 10), parseInt(targetDateParts[1], 10) - 1, parseInt(targetDateParts[2], 10), now.getHours(), now.getMinutes(), now.getSeconds());
+      targetTimeStr = targetDateObj.toLocaleString('ko-KR', { hour12: false });
+    } else {
+      targetTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
+    }
+
     for (const u of selectedUsers) {
       const uName = (u.name || '').trim();
       const uTeam = (u.team || u.department || u.division || targetPledgeForCompanion.department || '보안관제팀').trim();
@@ -1048,7 +1189,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       const isAlreadyCompanion = updatedCompanions.some(c => isSamePerson(u, c));
 
       if (!isPrimary && !isAlreadyCompanion) {
-        const compLogId = `PASS-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+        const compLogId = `PASS-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
         updatedCompanions.push({
           id: compLogId,
           log_id: compLogId,
@@ -1064,7 +1205,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           status: '서약전',
           mdmVerified: false,
           pledgedAt: null,
-          createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
+          createdAt: targetTimeStr
         });
         addedNames.push(uName);
 
@@ -1099,7 +1240,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             signature_date: '',
             signatureDate: '',
             signedAt: '',
-            status: '서약전'
+            status: '서약전',
+            createdAt: targetTimeStr
           });
         } catch (compErr) {
           console.warn('Companion security_log save warning:', compErr);
@@ -1149,6 +1291,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     const inheritedPurpose = targetItem.purpose || targetItem.purposeType || '작업';
     const inheritedPurposeType = targetItem.purposeType || targetItem.purpose || '작업';
     const inheritedCustomPurpose = targetItem.customPurpose || (targetItem.purposeType === '기타' ? targetItem.purpose : '') || '';
+    const targetDate = selectedDate || (targetItem.visitDate ? targetItem.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
 
     setFormData({
       site: targetSite,
@@ -1162,7 +1305,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       purposeType: inheritedPurposeType,
       customPurpose: inheritedCustomPurpose,
       purpose: inheritedPurpose,
-      visitDate: targetItem.visitDate || `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+      visitDate: targetItem.visitDate || `${targetDate} ~ ${targetDate}`,
       mdmVerified: false,
       docChecklist: {
         gateApproved: false,
@@ -1202,6 +1345,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     resetAppVerificationState();
 
     const userTeam = activeUser.team || activeUser.department || targetItem.team || '보안관제팀';
+    const targetDate = selectedDate || (targetItem.visitDate ? targetItem.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
     setFormData({
       site: targetItem.site || '',
       visitorName: activeUser ? activeUser.name : (targetItem.visitorName || ''),
@@ -1214,7 +1358,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       purposeType: '',
       customPurpose: '',
       purpose: '',
-      visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+      visitDate: targetItem.visitDate || `${targetDate} ~ ${targetDate}`,
       mdmVerified: false,
       docChecklist: {
         gateApproved: false,
@@ -1371,19 +1515,19 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     });
   };
 
-  // Helper: 사업장(사업장명 + 위치 조합) 및 사용자(ID, 소속, 직급, 이름) 기준 오늘 서약 완료 여부 엄격 체크
-  const isSiteAlreadyPledgedToday = (siteObj, visitorName, phone, username, team, rank) => {
+  // Helper: 사업장(사업장명 + 위치 조합) 및 사용자(ID, 소속, 직급, 이름) 기준 특정 일자(기본: 선택된 필터 일자) 서약 완료 여부 엄격 체크
+  const isSiteAlreadyPledgedToday = (siteObj, visitorName, phone, username, team, rank, targetDateIso) => {
     if (!siteObj) return false;
-    const todayIso = getTodayLocalIsoDate();
+    const checkDateIso = targetDateIso || selectedDate || getTodayLocalIsoDate();
     const siteNameStr = String(siteObj.name || '').trim().toLowerCase();
     const siteAddrStr = String(siteObj.address || '').trim().toLowerCase();
 
     return (checklistList || []).some(item => {
-      // 1. 오늘 날짜 체크
+      // 1. 해당 날짜 체크
       const itemDate = item.signature_date || item.signatureDate || item.signedAt || item.createdAt || '';
       const itemVisitDate = item.visitDate || '';
-      const isToday = itemDate.includes(todayIso) || itemVisitDate.includes(todayIso) || matchesSelectedDate(item, todayIso);
-      if (!isToday) return false;
+      const isDateMatch = itemDate.includes(checkDateIso) || itemVisitDate.includes(checkDateIso) || matchesSelectedDate(item, checkDateIso);
+      if (!isDateMatch) return false;
 
       // 2. 사업장 구분: 사업장명 AND 사업장 위치 조합 확인 (1개라도 다르면 다른 사업장으로 판단)
       const itemSite = String(item.site_name || item.siteName || item.site || '').trim().toLowerCase();
@@ -1426,7 +1570,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
     // 1) Step 1 Validation: Site Selection & Visitor Name
     if (!formData.site || !formData.site.trim()) {
-      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 선택해 주세요.', 'warning');
+      if (onTriggerToast) onTriggerToast('1단계: 출입 대상 사업장을 먼저 선택해 주세요.', 'warning');
       setActiveStep(1);
       return;
     }
@@ -1436,7 +1580,18 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       return;
     }
 
-    // 중복 서약 방지 검증: 오늘 동일 사업장에 이미 서약이 완료된 경우 방지
+    const targetDate = selectedDate || (formData.visitDate ? formData.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
+    const targetDateParts = targetDate.split('-');
+    let targetTimeStr;
+    if (targetDateParts.length === 3) {
+      const now = new Date();
+      const targetDateObj = new Date(parseInt(targetDateParts[0], 10), parseInt(targetDateParts[1], 10) - 1, parseInt(targetDateParts[2], 10), now.getHours(), now.getMinutes(), now.getSeconds());
+      targetTimeStr = targetDateObj.toLocaleString('ko-KR', { hour12: false });
+    } else {
+      targetTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
+    }
+
+    // 중복 서약 방지 검증: 해당 대상 일자에 동일 사업장에 이미 서약이 완료된 경우 방지
     if (!formData.isEditMode && !formData.isCompanionMode && formData.site) {
       const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
 
@@ -1446,9 +1601,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
       const targetRank = formData.rank || currentUser?.rank || '';
 
-      if (selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
+      if (selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank, targetDate)) {
         if (onTriggerToast) {
-          onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 동일 사업장에 중복 서명은 제한됩니다.`, 'warning');
+          onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 [${targetDate}] 일자로 이미 서약이 완료되었습니다. 동일 일자에 중복 서명은 제한됩니다.`, 'warning');
         }
         setActiveStep(1);
         return;
@@ -1541,7 +1696,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             division: currentUser?.division || updatedCompanions[existingIndex].division || '사업부 미지정',
             rank: formData.rank?.trim() || updatedCompanions[existingIndex].rank || '대리',
             role: currentUser?.role || updatedCompanions[existingIndex].role || '일반',
-            pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false })
+            pledgedAt: targetTimeStr
           };
         } else {
           // Add new companion with "완료"
@@ -1558,8 +1713,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             phone: inputPhone || '010-0000-0000',
             status: '완료',
             mdmVerified: true,
-            pledgedAt: new Date().toLocaleString('ko-KR', { hour12: false }),
-            createdAt: new Date().toLocaleString('ko-KR', { hour12: false })
+            pledgedAt: targetTimeStr,
+            createdAt: targetTimeStr
           };
           updatedCompanions.push(newCompanion);
         }
@@ -1599,9 +1754,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
               mdmVerified: true,
               docChecklist: { gateApproved: true, docSecVerified: true, preCheckVerified: true },
               pledgeTerms: targetPledge.pledgeTerms || '',
-              signature_date: new Date().toLocaleString('ko-KR', { hour12: false }),
-              signatureDate: new Date().toLocaleString('ko-KR', { hour12: false }),
-              signedAt: new Date().toLocaleString('ko-KR', { hour12: false }),
+              signature_date: targetTimeStr,
+              signatureDate: targetTimeStr,
+              signedAt: targetTimeStr,
               status: '승인완료'
             });
           }
@@ -1627,7 +1782,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           purposeType: '작업',
           customPurpose: '',
           purpose: '작업',
-          visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+          visitDate: `${targetDate} ~ ${targetDate}`,
           mdmVerified: false,
           docChecklist: {
             gateApproved: false,
@@ -1641,7 +1796,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
         });
 
         if (onTriggerToast) {
-          onTriggerToast(`[${updatedPledge.site}] '${inputVisitorName}' 동행 서약 정보가 해당 내역에 반영되었습니다.`, 'success');
+          onTriggerToast(`[${updatedPledge.site}] '${inputVisitorName}' 동행 서약 정보가 [${targetDate}] 일자로 반영되었습니다.`, 'success');
         }
         return;
       }
@@ -1677,13 +1832,13 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           purpose: finalPurpose,
           purposeType: formData.purposeType,
           customPurpose: formData.customPurpose,
-          visitDate: formData.visitDate,
+          visitDate: formData.visitDate || `${targetDate} ~ ${targetDate}`,
           mdmVerified: formData.mdmVerified,
           docChecklist: formData.docChecklist || targetPledge.docChecklist,
           materials: formData.materials || [],
           companions: updatedCompanions,
           status: '승인완료',
-          updatedAt: new Date().toLocaleString('ko-KR', { hour12: false })
+          updatedAt: targetTimeStr
         };
 
         try {
@@ -1709,7 +1864,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
           purposeType: '',
           customPurpose: '',
           purpose: '',
-          visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+          visitDate: `${targetDate} ~ ${targetDate}`,
           mdmVerified: false,
           materials: [],
           agreedToTerms: false,
@@ -1727,13 +1882,11 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     }
 
     const currentYear = new Date().getFullYear();
-    const nextNum = checklistList.length + 1;
-    const newPassId = `PASS-${currentYear}-${String(nextNum).padStart(3, '0')}`;
+    const nowTs = Date.now().toString().slice(-6);
+    const randNum = Math.floor(100 + Math.random() * 900);
+    const newPassId = `PASS-${currentYear}-${nowTs}-${randNum}`;
 
     const rawSiteStr = String(formData.site || '').trim();
-
-    const nowTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
-    const todayIso = getTodayLocalIsoDate();
 
     const newPass = {
       id: newPassId,
@@ -1754,16 +1907,16 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       purpose: finalPurpose,
       purposeType: formData.purposeType || '',
       customPurpose: formData.customPurpose || '',
-      visitDate: formData.visitDate || `${todayIso} ~ ${todayIso}`,
+      visitDate: formData.visitDate || `${targetDate} ~ ${targetDate}`,
       mdmVerified: formData.mdmVerified,
       docChecklist: formData.docChecklist || { gateApproved: false, docSecVerified: false, preCheckVerified: false },
       materials: formData.materials || [],
       companions: formData.companions || [],
       status: '승인완료',
-      signature_date: nowTimeStr,
-      signatureDate: nowTimeStr,
-      signedAt: nowTimeStr,
-      createdAt: nowTimeStr
+      signature_date: targetTimeStr,
+      signatureDate: targetTimeStr,
+      signedAt: targetTimeStr,
+      createdAt: targetTimeStr
     };
 
     try {
@@ -1772,7 +1925,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       setChecklistList(freshList || []);
     } catch (err) {
       console.error('Failed to save pass to DB:', err);
-      setChecklistList([newPass, ...checklistList]);
+      setChecklistList(prev => [newPass, ...prev.filter(item => item.id !== newPass.id)]);
     }
     handleCloseModal();
     setActiveStep(1);
@@ -1791,7 +1944,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
       purposeType: '',
       customPurpose: '',
       purpose: '',
-      visitDate: `${getTodayLocalIsoDate()} ~ ${getTodayLocalIsoDate()}`,
+      visitDate: `${targetDate} ~ ${targetDate}`,
       mdmVerified: false,
       docChecklist: {
         gateApproved: false,
@@ -1805,7 +1958,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
     });
 
     if (onTriggerToast) {
-      onTriggerToast(`[${newPass.site}] 보안서약 및 출입 승인증이 데이터베이스에 정상 등록되었습니다.`, 'success');
+      onTriggerToast(`[${newPass.site}] [${targetDate}] 보안서약 및 출입 승인증이 정상 등록되었습니다.`, 'success');
     }
   };
 
@@ -3030,7 +3183,7 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           </label>
                         </div>
 
-                        {/* 2. 스마트폰 카메라 앱 실행 카드 */}
+                        {/* 2. 스마트폰 카메라 앱 실행 & 확인 카드 */}
                         <div style={{
                           background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#ffffff',
                           border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
@@ -3042,38 +3195,73 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                           transition: 'all 0.25s ease',
                           boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
                         }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span>📸 2단계: 스마트폰 기본 카메라 앱 실행</span>
+                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <span>📸 2단계: 스마트폰 기본 카메라 실행 및 차단 확인</span>
+                            {cameraSelfChecklist.cameraChecked && (
+                              <span style={{ fontSize: '11px', color: '#059669', fontWeight: '700' }}>✓ 확인 완료</span>
+                            )}
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={handleLaunchNativeCameraApp}
-                            style={{
-                              width: '100%',
-                              height: '46px',
-                              padding: '0 16px',
-                              borderRadius: '12px',
-                              fontSize: '13px',
-                              fontWeight: '800',
-                              background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#eff6ff',
-                              color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a',
-                              border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
-                              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              gap: '8px',
-                              transition: 'all 0.25s ease'
-                            }}
-                          >
-                            {cameraSelfChecklist.cameraChecked ? (
-                              <><CheckCircle2 size={18} color="#059669" /> 스마트폰 카메라 차단 확인 완료</>
-                            ) : (
-                              <><Camera size={18} /> 스마트폰 카메라 보안 스티커 확인</>
-                            )}
-                          </button>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              type="button"
+                              onClick={handleLaunchNativeCameraApp}
+                              style={{
+                                flex: 1,
+                                height: '44px',
+                                padding: '0 12px',
+                                borderRadius: '10px',
+                                fontSize: '12.5px',
+                                fontWeight: '700',
+                                background: '#ffffff',
+                                color: '#334155',
+                                border: '1.5px solid #cbd5e1',
+                                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <Camera size={16} /> 카메라 열기
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = !cameraSelfChecklist.cameraChecked;
+                                const updated = { ...cameraSelfChecklist, cameraChecked: nextVal };
+                                setCameraSelfChecklist(updated);
+                                const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
+                                setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
+                                if (nextVal && onTriggerToast) {
+                                  onTriggerToast('✓ 카메라 차단 상태가 확인되었습니다.', 'success');
+                                }
+                              }}
+                              style={{
+                                flex: 1.4,
+                                height: '44px',
+                                padding: '0 12px',
+                                borderRadius: '10px',
+                                fontSize: '12.5px',
+                                fontWeight: '800',
+                                background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#1e3a8a',
+                                color: cameraSelfChecklist.cameraChecked ? '#059669' : '#ffffff',
+                                border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #1e3a8a',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s ease'
+                              }}
+                            >
+                              <CheckCircle2 size={16} color={cameraSelfChecklist.cameraChecked ? '#059669' : '#ffffff'} />
+                              {cameraSelfChecklist.cameraChecked ? '차단 확인 완료됨' : '차단 확인 완료 체크'}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -3236,10 +3424,15 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#1e3a8a',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '6px'
+                              justifyContent: 'space-between'
                             }}>
                               <span>📸 2단계: 스마트폰 카메라 차단 검수</span>
+                              {cameraCheckVerified && (
+                                <span style={{ fontSize: '11px', color: '#059669', fontWeight: '700' }}>✓ 검수 완료</span>
+                              )}
                             </div>
+
+                            {/* 1. 자동 카메라 차단 검수 버튼 */}
                             <button
                               type="button"
                               onClick={async () => {
@@ -3276,15 +3469,85 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
                               }}
                             >
                               {appScanState.isScanning || cameraCheckState.isTesting ? (
-                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 검수 진행 중</>
+                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 차단 감지 중...</>
                               ) : cameraCheckVerified ? (
                                 <><CheckCircle2 size={16} color="#059669" /> 카메라 차단 확인됨 (검수 완료)</>
-                              ) : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? (
-                                <>❌ 카메라 차단 안됨 (앱 상태 확인 필요)</>
+                              ) : (!cameraCheckVerified && cameraCheckState.result === 'UNLOCKED') ? (
+                                <>❌ 카메라 켜짐 감지 (보안앱 차단 필요)</>
                               ) : (
-                                <>📸 카메라 검수 시작</>
+                                <>📸 카메라 차단 자동 감지</>
                               )}
                             </button>
+
+                            {/* 2. 기기별 호환성을 위한 기본 카메라 실행 & 직접 확인 패널 */}
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px',
+                              padding: '10px',
+                              background: '#f8fafc',
+                              borderRadius: '10px',
+                              border: '1px dashed #cbd5e1'
+                            }}>
+                              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
+                                💡 스마트폰 기종 정책으로 자동 감지가 안 될 경우 아래 버튼을 이용하세요:
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={handleLaunchNativeCameraApp}
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '700',
+                                    background: '#ffffff',
+                                    color: '#334155',
+                                    border: '1px solid #cbd5e1',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <Camera size={13} /> 기본 카메라 열기
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCameraCheckVerified(true);
+                                    setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+                                    setCameraCheckState({
+                                      isTesting: false,
+                                      isVerified: true,
+                                      result: 'LOCKED',
+                                      message: '✓ 보안앱 차단 직접 확인 완료'
+                                    });
+                                    if (onTriggerToast) onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 스마트폰 카메라 비활성화 상태가 직접 확인되었습니다.', 'success');
+                                  }}
+                                  style={{
+                                    flex: 1.3,
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '700',
+                                    background: cameraCheckVerified ? '#ecfdf5' : '#1e3a8a',
+                                    color: cameraCheckVerified ? '#059669' : '#ffffff',
+                                    border: cameraCheckVerified ? '1px solid #a7f3d0' : '1px solid #1e3a8a',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <CheckCircle2 size={13} color={cameraCheckVerified ? '#059669' : '#ffffff'} />
+                                  {cameraCheckVerified ? '카메라 차단 확인 완료됨' : '카메라 차단 직접 확인'}
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
