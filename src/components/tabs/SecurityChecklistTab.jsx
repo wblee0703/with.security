@@ -31,9 +31,11 @@ import {
   Calendar,
   ExternalLink,
   Award,
-  Settings
+  Settings,
+  HardHat
 } from 'lucide-react';
 
+import TbmSection from './TbmSection';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { isSamePerson, DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
@@ -64,7 +66,13 @@ const formatToMinutePrecision = (dateVal) => {
   return str;
 };
 
-export default function SecurityChecklistTab({ onTriggerToast }) {
+export default function SecurityChecklistTab({
+  onTriggerToast,
+  isWebSplit = false,
+  externalDate,
+  onDateChange
+}) {
+  const [activeSubTab, setActiveSubTab] = useState('tbm'); // 'tbm' | 'pledge'
   const [checklistList, setChecklistList] = useState([]);
 
   // Load from IndexedDB on component mount & listen for real-time DB changes
@@ -974,7 +982,9 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
 
   // Search & Filters & Interactive Date Navigator
   const todayStr = getTodayLocalIsoDate();
-  const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [internalDate, setInternalDate] = useState(todayStr);
+  const selectedDate = externalDate || internalDate;
+  const setSelectedDate = onDateChange || setInternalDate;
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSiteFilter, setSelectedSiteFilter] = useState('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
@@ -1963,62 +1973,137 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
 
-      {/* Header Title Banner */}
-      <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
+      {/* Sub-Tab Navigation Toggle Bar (Visible in Mobile View, Hidden in Web Split Mode) */}
+      {!isWebSplit && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '6px',
+          padding: '4px',
+          background: '#f1f5f9',
+          borderRadius: '8px',
+          border: '1.5px solid #cbd5e1'
+        }}>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('tbm')}
+            style={{
+              padding: '9px 12px',
               borderRadius: '6px',
-              background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-              border: '1.5px solid #1e3a8a',
+              border: 'none',
+              background: activeSubTab === 'tbm'
+                ? 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)'
+                : 'transparent',
+              color: activeSubTab === 'tbm' ? '#ffffff' : '#64748b',
+              fontSize: '13px',
+              fontWeight: '800',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff',
-              boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
-              flexShrink: 0
-            }}>
-              <ShieldCheck size={22} />
-            </div>
-            <div>
-              <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', margin: 0 }}>
-                사업장 출입 보안 서약
-              </div>
-              <p style={{ fontSize: '11.5px', color: '#64748b', margin: '2px 0 0 0' }}>
-                모바일 보안 앱 · 자재&문서 확인 · 전자 서약서
-              </p>
-            </div>
-          </div>
+              gap: '6px',
+              boxShadow: activeSubTab === 'tbm' ? '0 2px 8px rgba(2, 132, 199, 0.25)' : 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <HardHat size={16} />
+            업무전후 TBM
+          </button>
 
-          <div style={{ display: 'flex', width: '100%' }}>
-            <button
-              type="button"
-              onClick={handleOpenPledgeModal}
-              className="glass-button-primary"
-              style={{
-                width: '100%',
-                padding: '11px 18px',
-                borderRadius: '6px',
-                fontSize: '13.5px',
-                fontWeight: '700',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                border: '1px solid transparent',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
-              }}
-            >
-              <Plus size={18} /> 보안 서약
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveSubTab('pledge')}
+            style={{
+              padding: '9px 12px',
+              borderRadius: '6px',
+              border: 'none',
+              background: activeSubTab === 'pledge'
+                ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)'
+                : 'transparent',
+              color: activeSubTab === 'pledge' ? '#ffffff' : '#64748b',
+              fontSize: '13px',
+              fontWeight: '800',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              boxShadow: activeSubTab === 'pledge' ? '0 2px 8px rgba(15, 23, 42, 0.25)' : 'none',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <ShieldCheck size={16} />
+            사업장 출입 보안 서약
+          </button>
         </div>
-      </div>
+      )}
+
+      {/* Render TBM Section when TBM Sub-Tab is Active in Mobile Mode */}
+      {!isWebSplit && activeSubTab === 'tbm' ? (
+        <TbmSection
+          onTriggerToast={onTriggerToast}
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          isStandalone={true}
+        />
+      ) : (
+        <>
+          {/* Header Title Banner */}
+          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '6px',
+                  background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                  border: '1.5px solid #1e3a8a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#ffffff',
+                  boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+                  flexShrink: 0
+                }}>
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', margin: 0 }}>
+                    사업장 출입 보안 서약
+                  </div>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '2px 0 0 0' }}>
+                    모바일 보안 앱 · 자재&문서 확인 · 전자 서약서
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', width: '100%' }}>
+                <button
+                  type="button"
+                  onClick={handleOpenPledgeModal}
+                  className="glass-button-primary"
+                  style={{
+                    width: '100%',
+                    padding: '11px 18px',
+                    borderRadius: '6px',
+                    fontSize: '13.5px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    border: '1px solid transparent',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.25)'
+                  }}
+                >
+                  <Plus size={18} /> 보안 서약
+                </button>
+              </div>
+            </div>
+          </div>
 
       {/* Interactive Date Selector Navigation Bar (Proportionally Spaced & Balanced) */}
       <div className="glass-panel" style={{
@@ -4859,6 +4944,8 @@ export default function SecurityChecklistTab({ onTriggerToast }) {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
 
     </div>

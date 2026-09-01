@@ -23,12 +23,21 @@ import {
 } from 'lucide-react';
 import SiteSettingTab from '../tabs/SiteSettingTab';
 import SecurityChecklistTab from '../tabs/SecurityChecklistTab';
+import TbmSection from '../tabs/TbmSection';
 import UserSettingTab from '../tabs/UserSettingTab';
 import WorkLogTab from '../tabs/WorkLogTab';
 import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
-import { ClipboardList, FileSpreadsheet } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet, HardHat } from 'lucide-react';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
+
+const getTodayIsoDate = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function WebDesktopLayout({
   activeTab,
@@ -41,6 +50,7 @@ export default function WebDesktopLayout({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeUser, setActiveUser] = useState(null);
+  const [sharedDate, setSharedDate] = useState(getTodayIsoDate());
 
   useEffect(() => {
     async function fetchUser() {
@@ -68,7 +78,7 @@ export default function WebDesktopLayout({
   };
 
   const navItems = [
-    { id: 'entryCheck', label: '보안 서약', icon: ShieldCheck },
+    { id: 'entryCheck', label: 'TBM', icon: HardHat },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList },
     { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet },
     { id: 'admin', label: '사업장', icon: Building2 },
@@ -300,7 +310,35 @@ export default function WebDesktopLayout({
         {/* Right Main Web Content Panel */}
         <main style={{ flex: 1, paddingLeft: '24px', overflowY: 'auto' }}>
           <div style={{ width: '100%' }}>
-            {activeTab === 'entryCheck' && <SecurityChecklistTab onTriggerToast={onTriggerToast} />}
+            {activeTab === 'entryCheck' && (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                gap: '20px',
+                alignItems: 'start',
+                width: '100%'
+              }}>
+                {/* Left Column: 사업장 출입 보안 서약 */}
+                <div style={{ minWidth: 0 }}>
+                  <SecurityChecklistTab
+                    onTriggerToast={onTriggerToast}
+                    isWebSplit={true}
+                    externalDate={sharedDate}
+                    onDateChange={setSharedDate}
+                  />
+                </div>
+
+                {/* Right Column: 업무전후 TBM */}
+                <div style={{ minWidth: 0 }}>
+                  <TbmSection
+                    onTriggerToast={onTriggerToast}
+                    selectedDate={sharedDate}
+                    onDateChange={setSharedDate}
+                    isStandalone={false}
+                  />
+                </div>
+              </div>
+            )}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'admin' && <SiteSettingTab onTriggerToast={onTriggerToast} />}

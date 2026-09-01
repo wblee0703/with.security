@@ -143,7 +143,7 @@ async function safeFetchApi(endpoint, options = {}) {
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
 const DB_NAME = 'WithSecurity_DB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 class SecurityDatabase {
   constructor() {
@@ -252,6 +252,15 @@ class SecurityDatabase {
             eduStore.createIndex('userId', 'userId', { unique: false });
             eduStore.createIndex('category', 'category', { unique: false });
             eduStore.createIndex('completionDate', 'completionDate', { unique: false });
+          }
+
+          // 8. TBM (Tool Box Meeting) Store (tbms)
+          if (!db.objectStoreNames.contains('tbms')) {
+            const tbmStore = db.createObjectStore('tbms', { keyPath: 'id' });
+            tbmStore.createIndex('date', 'date', { unique: false });
+            tbmStore.createIndex('site', 'site', { unique: false });
+            tbmStore.createIndex('status', 'status', { unique: false });
+            tbmStore.createIndex('createdAt', 'createdAt', { unique: false });
           }
         };
 
@@ -2453,6 +2462,163 @@ class SecurityDatabase {
       const queryStr = qs.toString() ? `?${qs.toString()}` : '';
 
       await safeFetchApi(`/api/edu-logs/${encodeURIComponent(eduId)}${queryStr}`, { method: 'DELETE' });
+    } catch (e) {}
+
+    notifyDataChanged();
+    return true;
+  }
+
+  // ==========================================
+  // --- TBM (Tool Box Meeting) Domain CRUD ---
+  // ==========================================
+
+  async getTbms(filterDate = null) {
+    let list = [];
+
+    // 1. Try remote API if available
+    try {
+      const res = await safeFetchApi('/api/tbms');
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          localStorage.setItem('with_security_tbms_backup', JSON.stringify(remoteData));
+          try {
+            for (const item of remoteData) await this.putItem('tbms', item);
+          } catch (e) {}
+          list = remoteData;
+        }
+      }
+    } catch (e) {}
+
+    // 2. Offline / Local fallback: LocalStorage + IndexedDB
+    if (list.length === 0) {
+      try {
+        const raw = localStorage.getItem('with_security_tbms_backup');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            list = parsed;
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const dbItems = await this.getAll('tbms');
+        if (Array.isArray(dbItems) && dbItems.length > 0) {
+          if (list.length === 0) {
+            list = dbItems;
+          } else {
+            const map = new Map();
+            for (const item of list) map.set(item.id, item);
+            for (const item of dbItems) {
+              if (!map.has(item.id)) map.set(item.id, item);
+            }
+            list = Array.from(map.values());
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Sort by createdAt / date descending
+    list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date).getTime() || 0;
+      const timeB = new Date(b.createdAt || b.date).getTime() || 0;
+      return timeB - timeA;
+    });
+
+    if (filterDate) {
+      return list.filter(item => item.date === filterDate);
+    }
+    return list;
+  }
+
+  async getTbmById(id) {
+    if (!id) return null;
+    const all = await this.getTbms();
+    return all.find(item => item.id === id) || null;
+  }
+
+  async saveTbm(tbm) {
+    if (!tbm) return null;
+    const now = new Date().toISOString();
+    const id = tbm.id || `tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const fullTbm = {
+      ...tbm,
+      id,
+      createdAt: tbm.createdAt || now,
+      updatedAt: now
+    };
+
+    // 1. Put into IndexedDB
+    try {
+      await this.putItem('tbms', fullTbm);
+    } catch (e) {}
+
+    // 2. Put into LocalStorage cache
+    try {
+      const raw = localStorage.getItem('with_security_tbms_backup');
+      let list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) list = [];
+      const idx = list.findIndex(item => item.id === id);
+      if (idx >= 0) {
+        list[idx] = fullTbm;
+      } else {
+        list.unshift(fullTbm);
+      }
+      localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
+    } catch (e) {}
+
+    // 3. Remote API sync
+    try {
+      await safeFetchApi('/api/tbms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fullTbm)
+      });
+    } catch (e) {}
+
+    notifyDataChanged();
+    return fullTbm;
+  }
+
+  async updateTbm(id, patch) {
+    if (!id) return null;
+    const existing = await this.getTbmById(id);
+    if (!existing) return null;
+
+    const updated = {
+      ...existing,
+      ...patch,
+      updatedAt: new Date().toISOString()
+    };
+
+    return await this.saveTbm(updated);
+  }
+
+  async deleteTbm(id) {
+    if (!id) return false;
+
+    // 1. Delete from IndexedDB
+    try {
+      await this.deleteItem('tbms', id);
+    } catch (e) {}
+
+    // 2. Delete from LocalStorage
+    try {
+      const raw = localStorage.getItem('with_security_tbms_backup');
+      if (raw) {
+        let list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          list = list.filter(item => item.id !== id);
+          localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
+        }
+      }
+    } catch (e) {}
+
+    // 3. Remote API delete
+    try {
+      await safeFetchApi(`/api/tbms/${encodeURIComponent(id)}`, { method: 'DELETE' });
     } catch (e) {}
 
     notifyDataChanged();

@@ -9,7 +9,8 @@ import {
   ClipboardList,
   FileSpreadsheet,
   RefreshCw,
-  ArrowDown
+  ArrowDown,
+  HardHat
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
@@ -282,8 +283,8 @@ export default function MobileContainer({
           onClick={() => handleNavClick('entryCheck')}
           className={`nav-item ${activeTab === 'entryCheck' ? 'active' : ''}`}
         >
-          <ShieldCheck size={18} />
-          <span>보안 서약</span>
+          <HardHat size={18} />
+          <span>TBM</span>
         </button>
 
         <button
