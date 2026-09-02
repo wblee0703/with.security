@@ -21,7 +21,11 @@ import {
   Sparkles,
   UserCheck,
   Zap,
-  HardHat
+  HardHat,
+  ChevronDown,
+  ChevronUp,
+  Camera,
+  ImageIcon
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
@@ -65,6 +69,27 @@ const DEFAULT_TBM_SITES = [
   { name: '위드텍', address: '대전' }
 ];
 
+const PRE_WORK_CHECKLIST_ITEMS = [
+  { key: 'teamSafetySlogan', label: '팀 안전구호', icon: Sparkles },
+  { key: 'prePpeCheck', label: '작업전 보호구 확인', icon: HardHat },
+  { key: 'businessTripSafety', label: '출장자 안전수칙', icon: Award },
+  { key: 'hazardPredictionTraining', label: '위험예지 훈련', icon: AlertTriangle },
+  { key: 'dangerPointCheck', label: '위험점 확인', icon: Zap },
+  { key: 'emergencyResponseCheck', label: '비상대응 절차 확인', icon: ShieldCheck },
+  { key: 'safetyDocTraining', label: '안전문서 교육', icon: FileText }
+];
+
+const POST_WORK_CHECKLIST_ITEMS = [
+  { key: 'sitePatrolCheck', label: '현장 순회 점검' },
+  { key: 'stopWorkAuthority', label: '작업 중지권 시행' },
+  { key: 'nearMissDiscovery', label: '아차사고 및 잠재위험 발굴' },
+  { key: 'fiveSThreeRCheck', label: '5S3정 및 청소상태' },
+  { key: 'workerInterview', label: '작업자 인터뷰' },
+  { key: 'siteImprovementActivity', label: '현장 개선 활동' },
+  { key: 'emergencyEvacuationDrill', label: '비상대피훈련' },
+  { key: 'safetyEducation', label: '교육' }
+];
+
 export default function TbmSection({
   onTriggerToast,
   selectedDate: propSelectedDate,
@@ -80,6 +105,13 @@ export default function TbmSection({
   const [sites, setSites] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Photo Upload & Preview Refs and State (Pre & Post)
+  const cameraInputRef = React.useRef(null);
+  const galleryInputRef = React.useRef(null);
+  const postCameraInputRef = React.useRef(null);
+  const postGalleryInputRef = React.useRef(null);
+  const [previewModalPhoto, setPreviewModalPhoto] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Default Suggested Sites + Loaded Sites without duplicate
@@ -100,6 +132,11 @@ export default function TbmSection({
   // Attendee Picker Modal in TBM Form
   const [isAttendeePickerOpen, setIsAttendeePickerOpen] = useState(false);
   const [attendeeSearch, setAttendeeSearch] = useState('');
+
+  // Checklist & Attendee Dropdown Popup State
+  const [isChecklistDropdownOpen, setIsChecklistDropdownOpen] = useState(false);
+  const [isPostChecklistDropdownOpen, setIsPostChecklistDropdownOpen] = useState(false);
+  const [isAttendeeDropdownOpen, setIsAttendeeDropdownOpen] = useState(false);
 
   // Wizard Step State in Register Modal (1: Info & Attendees, 2: Pre-Work TBM, 3: Post-Work TBM)
   const [activeStep, setActiveStep] = useState(1);
@@ -128,12 +165,16 @@ export default function TbmSection({
     workContent: '',
     toolsUsed: '',
     preCheck: {
-      ppeCheck: true,
-      securityAppCheck: true,
-      hazardCheck: true,
-      emergencyRouteCheck: true,
-      approvedToolsCheck: true,
+      teamSafetySlogan: false,
+      prePpeCheck: false,
+      businessTripSafety: false,
+      hazardPredictionTraining: false,
+      dangerPointCheck: false,
+      emergencyResponseCheck: false,
+      safetyDocTraining: false,
+      selectedItems: [],
       notes: '', // 전달 사항 및 지도내역
+      photos: [], // [{ id, dataUrl, name, size, takenAt }]
       conductedAt: getCurrentTimeStr(),
       isCompleted: true
     },
@@ -145,7 +186,9 @@ export default function TbmSection({
       workOutcome: '계획 이행 완료', // '계획 이행 완료' | '작업 미비 및 특이사항 발생'
       workStatus: 'completed', // 'completed' | 'in_progress' | 'continued'
       absentees: [], // [{ name, rank, reason }]
+      selectedItems: [], // 선택된 체크리스트 키 목록
       handoverNotes: '', // 전달사항 및 계획대비 변경 또는 특이사항
+      photos: [], // [{ id, dataUrl, name, size, takenAt }]
       conductedAt: getCurrentTimeStr(),
       isCompleted: false
     },
@@ -190,13 +233,240 @@ export default function TbmSection({
   }, [allUsers, formData.leaderDivision, formData.leaderTeam]);
 
   const filteredAttendeesPool = React.useMemo(() => {
-    return filteredLeadersPool.filter(u => {
-      if (formData.leaderName && u.name === formData.leaderName && (!formData.leaderRank || u.rank === formData.leaderRank)) {
-        return false;
-      }
-      return true;
+    return [...filteredLeadersPool].sort((a, b) => {
+      if (a.name === formData.leaderName) return -1;
+      if (b.name === formData.leaderName) return 1;
+      return 0;
     });
-  }, [filteredLeadersPool, formData.leaderName, formData.leaderRank]);
+  }, [filteredLeadersPool, formData.leaderName]);
+
+  // Pre-Work Checklist Selected Items Helpers
+  const currentSelectedKeys = React.useMemo(() => {
+    if (formData.preCheck?.selectedItems && Array.isArray(formData.preCheck.selectedItems)) {
+      return formData.preCheck.selectedItems;
+    }
+    return PRE_WORK_CHECKLIST_ITEMS.filter(item => Boolean(formData.preCheck?.[item.key])).map(item => item.key);
+  }, [formData.preCheck]);
+
+  const toggleCheckItem = (keyToToggle) => {
+    if (!keyToToggle) return;
+    const isCurrentlySelected = currentSelectedKeys.includes(keyToToggle);
+    let nextKeys;
+    if (isCurrentlySelected) {
+      nextKeys = currentSelectedKeys.filter(k => k !== keyToToggle);
+    } else {
+      nextKeys = [...currentSelectedKeys, keyToToggle];
+    }
+    setFormData(prev => ({
+      ...prev,
+      preCheck: {
+        ...prev.preCheck,
+        [keyToToggle]: !isCurrentlySelected,
+        selectedItems: nextKeys
+      }
+    }));
+  };
+
+  const handleRemoveCheckItem = (keyToRemove) => {
+    const nextKeys = currentSelectedKeys.filter(k => k !== keyToRemove);
+    setFormData(prev => ({
+      ...prev,
+      preCheck: {
+        ...prev.preCheck,
+        [keyToRemove]: false,
+        selectedItems: nextKeys
+      }
+    }));
+  };
+
+  // Post-Work Checklist Selected Items Helpers
+  const currentPostSelectedKeys = React.useMemo(() => {
+    if (formData.postCheck?.selectedItems && Array.isArray(formData.postCheck.selectedItems)) {
+      return formData.postCheck.selectedItems;
+    }
+    return POST_WORK_CHECKLIST_ITEMS.filter(item => Boolean(formData.postCheck?.[item.key])).map(item => item.key);
+  }, [formData.postCheck]);
+
+  const togglePostCheckItem = (keyToToggle) => {
+    if (!keyToToggle) return;
+    const isCurrentlySelected = currentPostSelectedKeys.includes(keyToToggle);
+    let nextKeys;
+    if (isCurrentlySelected) {
+      nextKeys = currentPostSelectedKeys.filter(k => k !== keyToToggle);
+    } else {
+      nextKeys = [...currentPostSelectedKeys, keyToToggle];
+    }
+    setFormData(prev => ({
+      ...prev,
+      includePostCheckNow: true,
+      postCheck: {
+        ...prev.postCheck,
+        [keyToToggle]: !isCurrentlySelected,
+        selectedItems: nextKeys
+      }
+    }));
+  };
+
+  // Secure Photo Validation and Safe Compression
+  const ALLOWED_PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'];
+  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'image/webp'];
+
+  const validateAndProcessPhoto = (file) => {
+    return new Promise((resolve, reject) => {
+      if (!file) return reject(new Error('파일이 존재하지 않습니다.'));
+
+      // 1. Check file extension security
+      const fileNameParts = file.name.split('.');
+      if (fileNameParts.length < 2) {
+        return reject(new Error('보안 정책: 확장자가 누락된 파일은 업로드할 수 없습니다.'));
+      }
+      const ext = fileNameParts.pop().toLowerCase();
+      if (!ALLOWED_PHOTO_EXTENSIONS.includes(ext)) {
+        return reject(new Error(`보안 정책: 허용되지 않은 파일 형식(.${ext})입니다. 핸드폰 카메라 촬영 및 캡처 이미지(JPG, PNG, WEBP, HEIC)만 등록할 수 있습니다.`));
+      }
+
+      // 2. Check MIME type
+      if (file.type && !file.type.startsWith('image/')) {
+        return reject(new Error('보안 정책: 이미지가 아닌 파일은 업로드할 수 없습니다.'));
+      }
+
+      // 3. File size check (Max 15MB before compression)
+      if (file.size > 15 * 1024 * 1024) {
+        return reject(new Error('사진 파일 용량은 최대 15MB 이하만 등록 가능합니다.'));
+      }
+
+      // 4. Client-side canvas sanitization & compression
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('사진 파일을 읽는 중 오류가 발생했습니다.'));
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onerror = () => reject(new Error('손상되었거나 올바르지 않은 이미지 파일입니다.'));
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const MAX_DIM = 1280;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > MAX_DIM) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              }
+            } else {
+              if (height > MAX_DIM) {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+            resolve({
+              id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              name: file.name,
+              dataUrl: compressedDataUrl,
+              size: Math.round(compressedDataUrl.length * 0.75),
+              takenAt: getCurrentTimeStr()
+            });
+          } catch (err) {
+            reject(new Error('이미지 안전 처리 중 문제가 발생했습니다.'));
+          }
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePhotoFilesSelected = async (files) => {
+    if (!files || files.length === 0) return;
+    const currentPhotos = formData.preCheck?.photos || [];
+    if (currentPhotos.length >= 5) {
+      if (onTriggerToast) onTriggerToast('현장 사진은 최대 5장까지 등록할 수 있습니다.', 'warning');
+      return;
+    }
+
+    const availableSlots = 5 - currentPhotos.length;
+    const fileList = Array.from(files).slice(0, availableSlots);
+    const newPhotos = [];
+
+    for (const file of fileList) {
+      try {
+        const photoObj = await validateAndProcessPhoto(file);
+        newPhotos.push(photoObj);
+      } catch (err) {
+        if (onTriggerToast) onTriggerToast(err.message, 'error');
+      }
+    }
+
+    if (newPhotos.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        preCheck: {
+          ...prev.preCheck,
+          photos: [...(prev.preCheck?.photos || []), ...newPhotos]
+        }
+      }));
+      if (onTriggerToast) onTriggerToast(`현장 사진 ${newPhotos.length}장이 안전하게 등록되었습니다.`, 'success');
+    }
+  };
+
+  const handleRemovePhoto = (photoId) => {
+    setFormData(prev => ({
+      ...prev,
+      preCheck: {
+        ...prev.preCheck,
+        photos: (prev.preCheck?.photos || []).filter(p => p.id !== photoId)
+      }
+    }));
+  };
+
+  const handlePostPhotoFilesSelected = async (files) => {
+    if (!files || files.length === 0) return;
+    const currentPhotos = formData.postCheck?.photos || [];
+    if (currentPhotos.length >= 5) {
+      if (onTriggerToast) onTriggerToast('업무 후 현장 사진은 최대 5장까지 등록할 수 있습니다.', 'warning');
+      return;
+    }
+
+    const availableSlots = 5 - currentPhotos.length;
+    const fileList = Array.from(files).slice(0, availableSlots);
+    const newPhotos = [];
+
+    for (const file of fileList) {
+      try {
+        const photoObj = await validateAndProcessPhoto(file);
+        newPhotos.push(photoObj);
+      } catch (err) {
+        if (onTriggerToast) onTriggerToast(err.message, 'error');
+      }
+    }
+
+    if (newPhotos.length > 0) {
+      setFormData(prev => ({
+        ...prev,
+        includePostCheckNow: true,
+        postCheck: {
+          ...prev.postCheck,
+          photos: [...(prev.postCheck?.photos || []), ...newPhotos]
+        }
+      }));
+      if (onTriggerToast) onTriggerToast(`업무 후 사진 ${newPhotos.length}장이 안전하게 등록되었습니다.`, 'success');
+    }
+  };
+
+  const handleRemovePostPhoto = (photoId) => {
+    setFormData(prev => ({
+      ...prev,
+      postCheck: {
+        ...prev.postCheck,
+        photos: (prev.postCheck?.photos || []).filter(p => p.id !== photoId)
+      }
+    }));
+  };
 
   // Load Initial Data
   const loadData = async () => {
@@ -272,30 +542,66 @@ export default function TbmSection({
     setEditingTbmId(null);
     setActiveStep(1);
     const initialSite = availableSites.length > 0 ? availableSites[0] : { name: '위드텍', address: '동탄' };
-    const curDiv = currentUser.division || (availableDivisions.length > 0 ? availableDivisions[0] : '영업/운영사업부');
+    const curDiv = formData.leaderDivision || currentUser.division || (availableDivisions.length > 0 ? availableDivisions[0] : '영업/운영사업부');
     const teamsForCurDiv = getTeamsForDivision(curDiv) || [];
-    const curTeam = currentUser.team || currentUser.department || (teamsForCurDiv.length > 0 ? teamsForCurDiv[0] : '');
+    const curTeam = formData.leaderTeam || currentUser.team || currentUser.department || (teamsForCurDiv.length > 0 ? teamsForCurDiv[0] : '');
+    const curLeader = formData.leaderName || currentUser.name || '';
+    const curLeaderUser = allUsers.find(u => u.name === curLeader && (!curDiv || u.division === curDiv));
+    const curRank = curLeaderUser?.rank || formData.leaderRank || currentUser.rank || '대리';
+    const curPhone = curLeaderUser?.phone || formData.leaderPhone || currentUser.phone || '';
 
-    setFormData({
-      ...initialFormData,
+    // ALL members belonging to this division and team (sorted with leader first)
+    const initialTeamUsers = allUsers
+      .filter(u =>
+        (!curDiv || u.division === curDiv) &&
+        (!curTeam || u.team === curTeam || u.department === curTeam)
+      )
+      .sort((a, b) => {
+        if (a.name === curLeader) return -1;
+        if (b.name === curLeader) return 1;
+        return 0;
+      });
+
+    setSelectedAbsenteeName('');
+    setSelectedPostAbsenteeName('');
+    setIsChecklistDropdownOpen(false);
+    setIsPostChecklistDropdownOpen(false);
+    setIsAttendeeDropdownOpen(false);
+
+    setFormData(prev => ({
+      ...prev,
+      id: undefined,
       date: selectedDate || getTodayIsoDate(),
-      site: initialSite.name,
-      siteAddress: initialSite.address || '',
+      site: prev.site || initialSite.name,
+      siteAddress: prev.siteAddress || initialSite.address || '',
       leaderDivision: curDiv,
       leaderTeam: curTeam,
-      leaderName: currentUser.name || '',
-      leaderRank: currentUser.rank || '대리',
-      leaderPhone: currentUser.phone || '',
-      attendees: [],
+      leaderName: curLeader,
+      leaderRank: curRank,
+      leaderPhone: curPhone,
+      // ALL team members selected!
+      attendees: initialTeamUsers.map(u => ({
+        name: u.name,
+        rank: u.rank || '사원',
+        team: u.team || u.department || curTeam,
+        division: u.division || curDiv,
+        phone: u.phone || ''
+      })),
+      // Absentees in initial state with NOBODY selected!
+      absentees: [],
       preCheck: {
-        ...initialFormData.preCheck,
-        conductedAt: getCurrentTimeStr()
+        ...prev.preCheck,
+        conductedAt: getCurrentTimeStr(),
+        isCompleted: true
       },
       postCheck: {
-        ...initialFormData.postCheck,
-        conductedAt: getCurrentTimeStr()
-      }
-    });
+        ...prev.postCheck,
+        absentees: [], // Post absentees also reset
+        conductedAt: getCurrentTimeStr(),
+        isCompleted: false
+      },
+      includePostCheckNow: false
+    }));
     setIsRegisterModalOpen(true);
   };
 
@@ -307,14 +613,13 @@ export default function TbmSection({
       ...tbm,
       includePostCheckNow: true,
       postCheck: {
-        cleanupCheck: tbm.postCheck?.cleanupCheck ?? true,
-        toolRecoveryCheck: tbm.postCheck?.toolRecoveryCheck ?? true,
-        securityMediaCheck: tbm.postCheck?.securityMediaCheck ?? true,
-        powerSafetyCheck: tbm.postCheck?.powerSafetyCheck ?? true,
+        ...(tbm.postCheck || {}),
         workOutcome: tbm.postCheck?.workOutcome || '계획 이행 완료',
         workStatus: tbm.postCheck?.workStatus || 'completed',
         absentees: tbm.postCheck?.absentees || tbm.absentees || [],
+        selectedItems: tbm.postCheck?.selectedItems || [],
         handoverNotes: tbm.postCheck?.handoverNotes || '',
+        photos: tbm.postCheck?.photos || [],
         conductedAt: getCurrentTimeStr(),
         isCompleted: true
       }
@@ -331,9 +636,8 @@ export default function TbmSection({
         attendees: prev.attendees.filter(a => !isSamePerson(a, user))
       }));
     } else {
-      setFormData(prev => ({
-        ...prev,
-        attendees: [
+      setFormData(prev => {
+        const nextAttendees = [
           ...prev.attendees,
           {
             name: user.name,
@@ -342,8 +646,16 @@ export default function TbmSection({
             division: user.division || formData.leaderDivision || '',
             phone: user.phone || ''
           }
-        ]
-      }));
+        ].sort((a, b) => {
+          if (a.name === prev.leaderName) return -1;
+          if (b.name === prev.leaderName) return 1;
+          return 0;
+        });
+        return {
+          ...prev,
+          attendees: nextAttendees
+        };
+      });
     }
   };
 
@@ -384,10 +696,14 @@ export default function TbmSection({
       status: finalStatus,
       preCheck: {
         ...formData.preCheck,
+        selectedItems: currentSelectedKeys,
+        conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
         isCompleted: true
       },
       postCheck: {
         ...formData.postCheck,
+        selectedItems: currentPostSelectedKeys,
+        conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
         isCompleted: isPostDone
       }
     };
@@ -395,6 +711,43 @@ export default function TbmSection({
     try {
       await dbService.saveTbm(tbmPayload);
       setIsRegisterModalOpen(false);
+      setEditingTbmId(null);
+      setSelectedAbsenteeName('');
+      setSelectedPostAbsenteeName('');
+
+      // Prepare formData for subsequent registrations: Keep entered content, reset absentees to empty, and select all team members
+      const teamMembers = allUsers.filter(u =>
+        (!formData.leaderDivision || u.division === formData.leaderDivision) &&
+        (!formData.leaderTeam || u.team === formData.leaderTeam || u.department === formData.leaderTeam)
+      );
+
+      setFormData(prev => ({
+        ...prev,
+        id: undefined,
+        absentees: [], // reset absentees to initial empty state
+        attendees: teamMembers.map(u => ({
+          name: u.name,
+          rank: u.rank || '사원',
+          team: u.team || u.department || prev.leaderTeam || '',
+          division: u.division || prev.leaderDivision || '',
+          phone: u.phone || ''
+        })),
+        preCheck: {
+          ...prev.preCheck,
+          photos: [],
+          conductedAt: getCurrentTimeStr(),
+          isCompleted: true
+        },
+        postCheck: {
+          ...prev.postCheck,
+          absentees: [], // reset post absentees
+          photos: [],
+          conductedAt: getCurrentTimeStr(),
+          isCompleted: false
+        },
+        includePostCheckNow: false
+      }));
+
       if (onTriggerToast) {
         onTriggerToast(
           isPostDone
@@ -838,7 +1191,7 @@ export default function TbmSection({
           alignItems: 'center',
           padding: '12px'
         }}>
-          <div className="glass-panel" style={{
+          <div className="glass-panel thin-scrollbar" style={{
             width: '100%',
             maxWidth: '440px',
             maxHeight: '92vh',
@@ -917,8 +1270,8 @@ export default function TbmSection({
             }}>
               {(() => {
                 const isStep1Done = Boolean(formData.site?.trim() && formData.workTitle?.trim());
-                const isStep2Done = Boolean(formData.preCheck?.ppeCheck && formData.preCheck?.securityAppCheck && formData.preCheck?.hazardCheck && formData.preCheck?.emergencyRouteCheck && formData.preCheck?.approvedToolsCheck);
-                const isStep3Done = Boolean(formData.postCheck?.isCompleted);
+                const isStep2Done = currentSelectedKeys.length > 0;
+                const isStep3Done = currentPostSelectedKeys.length > 0 || Boolean(formData.postCheck?.isCompleted);
 
                 const getStepCompletion = (st) => {
                   if (st === 1) return isStep1Done;
@@ -1016,159 +1369,218 @@ export default function TbmSection({
               {/* ---------------- STEP 1: Basic Info & Attendees ---------------- */}
               {activeStep === 1 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {/* Select Target Site */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      출입 대상 사업장 *
-                    </label>
-                    <select
-                      value={`${formData.site}:::${formData.siteAddress || ''}`}
-                      onChange={(e) => {
-                        const [sName, sAddr] = e.target.value.split(':::');
-                        const s = availableSites.find(item => item.name === sName && (item.address || '') === (sAddr || ''));
-                        setFormData({
-                          ...formData,
-                          site: sName || '',
-                          siteAddress: s ? s.address : (sAddr || formData.siteAddress)
-                        });
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value=":::">-- 사업장을 선택해 주세요 --</option>
-                      {availableSites.map((s, idx) => (
-                        <option key={s.id || `${s.name}-${s.address}-${idx}`} value={`${s.name}:::${s.address || ''}`}>
-                          {s.name} ({s.address || '주소 미입력'})
+                  {/* Select Target Site & TBM Date (Same Horizontal Row) */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                    gap: '12px'
+                  }}>
+                    {/* Select Target Site */}
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        사업장 *
+                      </label>
+                      <select
+                        value={`${formData.site}:::${formData.siteAddress || ''}`}
+                        onChange={(e) => {
+                          const [sName, sAddr] = e.target.value.split(':::');
+                          const s = availableSites.find(item => item.name === sName && (item.address || '') === (sAddr || ''));
+                          setFormData({
+                            ...formData,
+                            site: sName || '',
+                            siteAddress: s ? s.address : (sAddr || formData.siteAddress)
+                          });
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value=":::">-- 사업장을 선택해 주세요 --</option>
+                        {availableSites.map((s, idx) => (
+                          <option key={s.id || `${s.name}-${s.address}-${idx}`} value={`${s.name}:::${s.address || ''}`}>
+                            {s.name} ({s.address || '주소 미입력'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* TBM Date */}
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        TBM 일자 *
+                      </label>
+                      <input
+                        type="date"
+                        value={formData.date}
+                        onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          fontSize: '13px',
+                          fontWeight: '800',
+                          color: '#0f172a',
+                          outline: 'none',
+                          fontFamily: 'inherit'
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Division & Team Selection (Same Horizontal Row) */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+                    gap: '12px'
+                  }}>
+                    {/* Division Selection */}
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        사업부 *
+                      </label>
+                      <select
+                        value={formData.leaderDivision}
+                        onChange={(e) => {
+                          const newDiv = e.target.value;
+                          const teams = getTeamsForDivision(newDiv) || [];
+                          const defaultTeam = teams.length > 0 ? teams[0] : '';
+                          const teamUsers = allUsers.filter(u =>
+                            (!newDiv || u.division === newDiv) &&
+                            (!defaultTeam || u.team === defaultTeam || u.department === defaultTeam)
+                          );
+                          setSelectedAbsenteeName('');
+                          setSelectedPostAbsenteeName('');
+                          setFormData(prev => ({
+                            ...prev,
+                            leaderDivision: newDiv,
+                            leaderTeam: defaultTeam,
+                            leaderName: '',
+                            leaderRank: '대리',
+                            leaderPhone: '',
+                            absentees: [],
+                            attendees: teamUsers.map(u => ({
+                              name: u.name,
+                              rank: u.rank || '사원',
+                              team: u.team || u.department || defaultTeam,
+                              division: u.division || newDiv,
+                              phone: u.phone || ''
+                            })),
+                            postCheck: {
+                              ...prev.postCheck,
+                              absentees: []
+                            }
+                          }));
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="">-- 사업부를 선택해 주세요 --</option>
+                        {availableDivisions.map(div => (
+                          <option key={div} value={div}>{div}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Team / Department Selection */}
+                    <div style={{ minWidth: 0 }}>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        소속팀 (부서) *
+                      </label>
+                      <select
+                        value={formData.leaderTeam}
+                        disabled={!formData.leaderDivision}
+                        onChange={(e) => {
+                          const newTeam = e.target.value;
+                          const teamUsers = allUsers.filter(u =>
+                            (!formData.leaderDivision || u.division === formData.leaderDivision) &&
+                            (!newTeam || u.team === newTeam || u.department === newTeam)
+                          );
+                          setSelectedAbsenteeName('');
+                          setSelectedPostAbsenteeName('');
+                          setFormData(prev => ({
+                            ...prev,
+                            leaderTeam: newTeam,
+                            leaderName: '',
+                            leaderRank: '대리',
+                            leaderPhone: '',
+                            absentees: [],
+                            attendees: teamUsers.map(u => ({
+                              name: u.name,
+                              rank: u.rank || '사원',
+                              team: u.team || u.department || newTeam,
+                              division: u.division || prev.leaderDivision || '',
+                              phone: u.phone || ''
+                            })),
+                            postCheck: {
+                              ...prev.postCheck,
+                              absentees: []
+                            }
+                          }));
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '12px',
+                          background: !formData.leaderDivision ? '#f1f5f9' : '#ffffff',
+                          border: '1.5px solid #cbd5e1',
+                          fontSize: '13px',
+                          fontWeight: '600',
+                          outline: 'none',
+                          cursor: !formData.leaderDivision ? 'not-allowed' : 'default'
+                        }}
+                      >
+                        <option value="">
+                          {!formData.leaderDivision ? '-- 먼저 사업부를 선택하세요 --' : '-- 부서를 선택해 주세요 --'}
                         </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* TBM Date */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      TBM 일자 *
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-
-                  {/* Division Selection */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      사업부 *
-                    </label>
-                    <select
-                      value={formData.leaderDivision}
-                      onChange={(e) => {
-                        const newDiv = e.target.value;
-                        const teams = getTeamsForDivision(newDiv) || [];
-                        const defaultTeam = teams.length > 0 ? teams[0] : '';
-                        setFormData(prev => ({
-                          ...prev,
-                          leaderDivision: newDiv,
-                          leaderTeam: defaultTeam,
-                          leaderName: '',
-                          leaderRank: '대리',
-                          leaderPhone: '',
-                          attendees: []
-                        }));
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="">-- 사업부를 선택해 주세요 --</option>
-                      {availableDivisions.map(div => (
-                        <option key={div} value={div}>{div}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Team / Department Selection */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      부서 / 팀 *
-                    </label>
-                    <select
-                      value={formData.leaderTeam}
-                      disabled={!formData.leaderDivision}
-                      onChange={(e) => {
-                        setFormData(prev => ({
-                          ...prev,
-                          leaderTeam: e.target.value,
-                          leaderName: '',
-                          leaderRank: '대리',
-                          leaderPhone: '',
-                          attendees: []
-                        }));
-                      }}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: !formData.leaderDivision ? '#f1f5f9' : '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        outline: 'none',
-                        cursor: !formData.leaderDivision ? 'not-allowed' : 'default'
-                      }}
-                    >
-                      <option value="">
-                        {!formData.leaderDivision ? '-- 먼저 사업부를 선택하세요 --' : '-- 부서를 선택해 주세요 --'}
-                      </option>
-                      {availableTeams.map(tm => (
-                        <option key={tm} value={tm}>{tm}</option>
-                      ))}
-                    </select>
+                        {availableTeams.map(tm => (
+                          <option key={tm} value={tm}>{tm}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {/* TBM Leader Selection */}
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      TBM 주관자 (책임자) *
+                      TBM 주관자 *
                     </label>
                     <select
                       value={formData.leaderName}
                       disabled={!formData.leaderTeam && filteredLeadersPool.length === 0}
                       onChange={(e) => {
-                        const selUser = allUsers.find(u => u.name === e.target.value && (!formData.leaderDivision || u.division === formData.leaderDivision));
-                        setFormData(prev => ({
-                          ...prev,
-                          leaderName: e.target.value,
-                          leaderRank: selUser?.rank || prev.leaderRank || '대리',
-                          leaderPhone: selUser?.phone || prev.leaderPhone || '',
-                          // Remove leader from attendees if already added
-                          attendees: prev.attendees.filter(a => a.name !== e.target.value)
-                        }));
+                        const newLeader = e.target.value;
+                        const selUser = allUsers.find(u => u.name === newLeader && (!formData.leaderDivision || u.division === formData.leaderDivision));
+                        setFormData(prev => {
+                          const sortedAttendees = [...prev.attendees].sort((a, b) => {
+                            if (a.name === newLeader) return -1;
+                            if (b.name === newLeader) return 1;
+                            return 0;
+                          });
+                          return {
+                            ...prev,
+                            leaderName: newLeader,
+                            leaderRank: selUser?.rank || prev.leaderRank || '대리',
+                            leaderPhone: selUser?.phone || prev.leaderPhone || '',
+                            attendees: sortedAttendees
+                          };
+                        });
                       }}
                       style={{
                         width: '100%',
@@ -1184,132 +1596,194 @@ export default function TbmSection({
                       <option value="">-- TBM 주관자를 선택해 주세요 --</option>
                       {filteredLeadersPool.map((u, idx) => (
                         <option key={u.id || `${u.name}-${u.rank}-${idx}`} value={u.name}>
-                          {u.name} ({u.rank || '사원'}) · {u.team || u.department || formData.leaderTeam}
+                          {u.name} ({u.rank || '사원'})
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* TBM Attendees Cascading Proposal Box */}
-                  <div style={{
-                    background: '#f8fafc',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: '1.5px solid #cbd5e1'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Users size={15} color="#0284c7" />
-                        TBM 참여자 ({formData.attendees.length}명 선택됨)
+                  {/* TBM Attendees Dropdown Proposal Box & Selected List (1줄에 3명씩) */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span>TBM 참여자 *</span>
+                    </label>
+
+                    {/* Custom Dropdown Trigger Bar */}
+                    <div
+                      onClick={() => {
+                        if (!formData.leaderTeam) {
+                          if (onTriggerToast) onTriggerToast('먼저 소속팀(부서)을 선택해주세요.', 'warning');
+                          return;
+                        }
+                        setIsAttendeeDropdownOpen(prev => !prev);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '12px',
+                        background: '#ffffff',
+                        border: isAttendeeDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: formData.attendees.length > 0 ? '#0f172a' : '#64748b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: !formData.leaderTeam ? 'not-allowed' : 'pointer',
+                        userSelect: 'none',
+                        boxShadow: isAttendeeDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                        transition: 'all 0.2s ease',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Users size={16} color={formData.attendees.length > 0 ? '#0284c7' : '#94a3b8'} />
+                        <span>
+                          {formData.attendees.length === 0
+                            ? 'TBM 참여자 선택 (클릭하여 제안 목록 열기)'
+                            : `${formData.attendees.length}명 참여자 선택됨`}
+                        </span>
                       </div>
-                      {filteredAttendeesPool.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const allSelected = filteredAttendeesPool.every(p => formData.attendees.some(a => isSamePerson(a, p)));
-                            if (allSelected) {
-                              setFormData(prev => ({ ...prev, attendees: [] }));
-                            } else {
-                              setFormData(prev => ({
-                                ...prev,
-                                attendees: filteredAttendeesPool.map(u => ({
-                                  name: u.name,
-                                  rank: u.rank || '사원',
-                                  team: u.team || u.department || prev.leaderTeam || '',
-                                  division: u.division || prev.leaderDivision || '',
-                                  phone: u.phone || ''
-                                }))
-                              }));
-                            }
-                          }}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: '6px',
-                            background: '#e0f2fe',
-                            color: '#0369a1',
-                            border: '1px solid #bae6fd',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {filteredAttendeesPool.every(p => formData.attendees.some(a => isSamePerson(a, p))) ? '전체 해제' : '부서 인원 전체 선택'}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                          {isAttendeeDropdownOpen ? '닫기' : '선택'}
+                        </span>
+                        {isAttendeeDropdownOpen ? (
+                          <ChevronUp size={16} color="#0284c7" />
+                        ) : (
+                          <ChevronDown size={16} color="#64748b" />
+                        )}
+                      </div>
                     </div>
 
-                    {/* Department Attendees Suggestion Chips */}
-                    {filteredAttendeesPool.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                        {filteredAttendeesPool.map((user, idx) => {
-                          const isSelected = formData.attendees.some(a => isSamePerson(a, user));
-                          return (
-                            <button
-                              key={user.id || `${user.name}-${idx}`}
-                              type="button"
-                              onClick={() => toggleAttendee(user)}
-                              style={{
-                                padding: '6px 10px',
-                                borderRadius: '8px',
-                                border: isSelected ? '1.5px solid #0284c7' : '1px solid #cbd5e1',
-                                background: isSelected ? '#e0f2fe' : '#ffffff',
-                                color: isSelected ? '#0369a1' : '#334155',
-                                fontSize: '12px',
-                                fontWeight: isSelected ? '800' : '600',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                transition: 'all 0.15s ease'
-                              }}
-                            >
-                              {isSelected ? <CheckCircle2 size={13} color="#0284c7" /> : <Square size={13} color="#94a3b8" />}
-                              {user.name} ({user.rank || '사원'})
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: '11.5px', color: '#94a3b8', padding: '6px 0' }}>
-                        {formData.leaderTeam ? '선택된 부서에 등록된 추가 참여 대상자가 없습니다.' : '사업부와 부서를 선택하면 참여자 제안 리스트가 표시됩니다.'}
+                    {/* Dropdown Suggestion Popup (3 Columns: 1줄에 3명씩) */}
+                    {isAttendeeDropdownOpen && (
+                      <div className="thin-scrollbar" style={{
+                        position: 'absolute',
+                        top: '72px',
+                        left: 0,
+                        right: 0,
+                        zIndex: 50,
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '10px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                        padding: '8px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '6px',
+                        maxHeight: '260px',
+                        overflowY: 'auto'
+                      }}>
+                        {filteredAttendeesPool.length > 0 ? (
+                          filteredAttendeesPool.map((user, idx) => {
+                            const isSelected = formData.attendees.some(a => isSamePerson(a, user));
+                            const isLeader = user.name === formData.leaderName;
+                            return (
+                              <div
+                                key={user.id || `${user.name}-${idx}`}
+                                onClick={() => toggleAttendee(user)}
+                                style={{
+                                  padding: '7px 8px',
+                                  borderRadius: '6px',
+                                  background: isSelected ? '#f0fdf4' : '#ffffff',
+                                  border: isSelected ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease',
+                                  userSelect: 'none',
+                                  minWidth: 0
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => { }}
+                                  style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
+                                />
+                                <div style={{
+                                  flex: 1,
+                                  fontSize: '11px',
+                                  fontWeight: isSelected ? '700' : '600',
+                                  color: isSelected ? '#15803d' : '#334155',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }} title={`${user.name} (${user.rank || '사원'})${isLeader ? ' [주관자]' : ''}`}>
+                                  {user.name} ({user.rank || '사원'})
+                                  {isLeader && <span style={{ fontSize: '10px', color: '#0284c7', marginLeft: '2px', fontWeight: '800' }}>★</span>}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div style={{ gridColumn: 'span 3', padding: '12px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                            선택된 부서에 소속된 인원이 없습니다.
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* Selected Attendees Summary */}
-                    {formData.attendees.length > 0 && (
+                    {/* Selected Attendees List Output (3 Columns: 1줄에 3명씩) */}
+                    {formData.attendees.length > 0 ? (
                       <div style={{
-                        marginTop: '6px',
-                        paddingTop: '8px',
-                        borderTop: '1px dashed #cbd5e1',
-                        display: 'flex',
-                        flexWrap: 'wrap',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
                         gap: '6px'
                       }}>
-                        {formData.attendees.map((att, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              background: '#ffffff',
-                              color: '#334155',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              fontSize: '11.5px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            {att.name} ({att.rank})
-                            <button
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, attendees: prev.attendees.filter((_, i) => i !== idx) }))}
-                              style={{ border: 'none', background: 'transparent', color: '#ef4444', cursor: 'pointer', padding: 0 }}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
+                        {(() => {
+                          // Ensure leader is always sorted first at the very beginning
+                          const sortedAttendees = [...formData.attendees].sort((a, b) => {
+                            if (a.name === formData.leaderName) return -1;
+                            if (b.name === formData.leaderName) return 1;
+                            return 0;
+                          });
+                          return sortedAttendees.map((att, idx) => {
+                            const isLeader = att.name === formData.leaderName;
+                            return (
+                              <div
+                                key={att.id || `${att.name}-${idx}`}
+                                style={{
+                                  padding: '7px 6px',
+                                  borderRadius: '6px',
+                                  background: isLeader ? '#e0f2fe' : '#f0fdf4',
+                                  border: isLeader ? '1.5px solid #7dd3fc' : '1.5px solid #86efac',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  textAlign: 'center',
+                                  minWidth: 0,
+                                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                }}
+                              >
+                                <span style={{
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  color: isLeader ? '#0369a1' : '#15803d',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }} title={`${att.name} (${att.rank || '사원'})${isLeader ? ' (주관자)' : ''}`}>
+                                  {att.name} ({att.rank || '사원'}){isLeader ? '·주관' : ''}
+                                </span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '16px',
+                        borderRadius: '12px',
+                        background: '#f8fafc',
+                        border: '1.5px dashed #cbd5e1',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        fontSize: '12.5px'
+                      }}>
+                        <span>👥 상단 드롭다운에서 TBM 참여자를 선택해 주세요.</span>
                       </div>
                     )}
                   </div>
@@ -1362,83 +1836,8 @@ export default function TbmSection({
               {/* ---------------- STEP 2: Pre-Work TBM Check ---------------- */}
               {activeStep === 2 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      🛡️ Step 2. 업무 전 TBM (작업 전 안전 및 보안 점검)
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const allChecked = formData.preCheck.ppeCheck && formData.preCheck.securityAppCheck && formData.preCheck.hazardCheck && formData.preCheck.emergencyRouteCheck && formData.preCheck.approvedToolsCheck;
-                        setFormData(prev => ({
-                          ...prev,
-                          preCheck: {
-                            ...prev.preCheck,
-                            ppeCheck: !allChecked,
-                            securityAppCheck: !allChecked,
-                            hazardCheck: !allChecked,
-                            emergencyRouteCheck: !allChecked,
-                            approvedToolsCheck: !allChecked
-                          }
-                        }));
-                      }}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        background: '#f1f5f9',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#334155',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      전체 확인 토글
-                    </button>
-                  </div>
-
-                  {/* 5 Pre-Work Checklist Items */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {[
-                      { key: 'ppeCheck', label: '1. 개인보호구(안전모, 안전화, 보안경, 절연장갑 등) 필수 착용 상태 확인', icon: HardHat },
-                      { key: 'securityAppCheck', label: '2. 스마트폰 모바일 보안 앱(Knox / SSM / DeviceON) 정상 구동 및 카메라 차단 점검', icon: ShieldCheck },
-                      { key: 'hazardCheck', label: '3. 작업 구역 내 위험 요인(고전압, 추락, 협착, 화학물질 등) 사전 인지 및 안전대책 공유', icon: AlertTriangle },
-                      { key: 'emergencyRouteCheck', label: '4. 비상 대피 경로, 소화설비 위치 및 비상 연락망 사전 숙지 확인', icon: Zap },
-                      { key: 'approvedToolsCheck', label: '5. 사업장 반입 인가된 안전 공구 및 계측 장비 일치 여부 확인', icon: CheckSquare }
-                    ].map(item => {
-                      const isChecked = formData.preCheck[item.key];
-                      const Icon = item.icon;
-                      return (
-                        <label
-                          key={item.key}
-                          style={{
-                            padding: '11px 13px',
-                            borderRadius: '12px',
-                            background: isChecked ? '#f0fdf4' : '#ffffff',
-                            border: isChecked ? '1.5px solid #86efac' : '1.5px solid #cbd5e1',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              preCheck: { ...prev.preCheck, [item.key]: e.target.checked }
-                            }))}
-                            style={{ width: '18px', height: '18px', accentColor: '#0284c7' }}
-                          />
-                          <div style={{ flex: 1, fontSize: '12px', fontWeight: isChecked ? '700' : '500', color: isChecked ? '#15803d' : '#334155' }}>
-                            {item.label}
-                          </div>
-                          <Icon size={16} color={isChecked ? '#16a34a' : '#94a3b8'} />
-                        </label>
-                      );
-                    })}
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    🛡️ Step 2. 업무 전 TBM (작업 전 안전 및 보안 점검)
                   </div>
 
                   {/* 1. Work Status / Category Dropdown */}
@@ -1464,152 +1863,341 @@ export default function TbmSection({
                       <option value="허가작업">🔥 허가작업 (화기/고소/밀폐 등 위험 작업)</option>
                       <option value="신고작업">📝 신고작업 (사전 신고 및 승인 작업)</option>
                       <option value="일반작업">🛠️ 일반작업 (표준 유지보수 및 점검)</option>
-                      <option value="작업 없음">☕ 작업 없음 (현장 대기 / 교육 등)</option>
+                      <option value="작업 없음">☕ 작업 없음 (내부 업무)</option>
                     </select>
                   </div>
 
                   {/* 2. Absentee Selection (Vacation / Half-day / Education) */}
-                  <div style={{
-                    background: '#f8fafc',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: '1.5px solid #cbd5e1'
-                  }}>
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>🌴 미참여 인원 (휴가 / 반차 / 교육 등)</span>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>{formData.absentees.length}명 등록됨</span>
-                    </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span>미참여 인원 (휴가 / 반차 / 교육 등)</span>
+                      {formData.absentees.length > 0 && (
+                        <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
+                          {formData.absentees.length}명 등록됨
+                        </span>
+                      )}
+                    </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
-                      <select
-                        value={selectedAbsenteeName}
-                        onChange={(e) => setSelectedAbsenteeName(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="">-- 미참여 인원 선택 --</option>
-                        {filteredLeadersPool.map((u, idx) => (
-                          <option key={u.id || `${u.name}-${idx}`} value={u.name}>
-                            {u.name} ({u.rank || '사원'})
-                          </option>
-                        ))}
-                      </select>
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1'
+                    }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                        <select
+                          value={selectedAbsenteeName}
+                          onChange={(e) => setSelectedAbsenteeName(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '12px',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="">-- 미참여 인원 선택 --</option>
+                          {filteredLeadersPool.map((u, idx) => (
+                            <option key={u.id || `${u.name}-${idx}`} value={u.name}>
+                              {u.name} ({u.rank || '사원'})
+                            </option>
+                          ))}
+                        </select>
 
-                      <select
-                        value={absenteeReason}
-                        onChange={(e) => setAbsenteeReason(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="휴가">🏖️ 휴가</option>
-                        <option value="오전반차">🌅 오전반차</option>
-                        <option value="오후반차">🌇 오후반차</option>
-                        <option value="출장">🚆 출장</option>
-                        <option value="교육">📚 교육</option>
-                        <option value="병가">🏥 병가</option>
-                        <option value="기타">기타 사유</option>
-                      </select>
+                        <select
+                          value={absenteeReason}
+                          onChange={(e) => setAbsenteeReason(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="휴가">🏖️ 휴가</option>
+                          <option value="오전반차">🌅 오전반차</option>
+                          <option value="교육">📚 교육</option>
+                          <option value="기타">기타 사유</option>
+                        </select>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedAbsenteeName) {
-                            if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
-                            return;
-                          }
-                          const targetUser = filteredLeadersPool.find(u => u.name === selectedAbsenteeName);
-                          const exists = formData.absentees.some(a => a.name === selectedAbsenteeName);
-                          if (exists) {
-                            if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
-                            return;
-                          }
-                          setFormData(prev => ({
-                            ...prev,
-                            // If user was in attendees, remove them from attendees
-                            attendees: prev.attendees.filter(a => a.name !== selectedAbsenteeName),
-                            absentees: [
-                              ...prev.absentees,
-                              {
-                                name: selectedAbsenteeName,
-                                rank: targetUser?.rank || '사원',
-                                reason: absenteeReason
-                              }
-                            ]
-                          }));
-                          setSelectedAbsenteeName('');
-                        }}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          background: '#0284c7',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        + 추가
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedAbsenteeName) {
+                              if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
+                              return;
+                            }
+                            const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedAbsenteeName?.trim());
+                            const exists = formData.absentees.some(a => a.name?.trim() === selectedAbsenteeName?.trim());
+                            if (exists) {
+                              if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
+                              return;
+                            }
+                            setFormData(prev => ({
+                              ...prev,
+                              // Automatically exclude from attendees in Step 1
+                              attendees: prev.attendees.filter(a => a.name?.trim() !== selectedAbsenteeName?.trim()),
+                              absentees: [
+                                ...prev.absentees,
+                                {
+                                  name: selectedAbsenteeName,
+                                  rank: targetUser?.rank || '사원',
+                                  reason: absenteeReason
+                                }
+                              ]
+                            }));
+                            setSelectedAbsenteeName('');
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            background: '#0284c7',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          + 추가
+                        </button>
+                      </div>
 
-                    {/* Absentee Tag Badges */}
-                    {formData.absentees.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                        {formData.absentees.map((abs, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              background: '#fff1f2',
-                              color: '#e11d48',
-                              border: '1px solid #fecdd3',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              fontSize: '11.5px',
-                              fontWeight: '700',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
-                            <button
-                              type="button"
-                              onClick={() => setFormData(prev => ({ ...prev, absentees: prev.absentees.filter((_, i) => i !== idx) }))}
-                              style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                      {/* Absentee Tag Badges */}
+                      {formData.absentees.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                          {formData.absentees.map((abs, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                background: '#fff1f2',
+                                color: '#e11d48',
+                                border: '1px solid #fecdd3',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11.5px',
+                                fontWeight: '700',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
                             >
-                              ×
-                            </button>
-                          </span>
-                        ))}
+                              <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const removed = formData.absentees[idx];
+                                  const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    absentees: prev.absentees.filter((_, i) => i !== idx),
+                                    // Restore back to attendees if not already present
+                                    attendees: targetUser && !prev.attendees.some(a => a.name?.trim() === removed?.name?.trim())
+                                      ? [
+                                        ...prev.attendees,
+                                        {
+                                          name: targetUser.name,
+                                          rank: targetUser.rank || '사원',
+                                          team: targetUser.team || targetUser.department || prev.leaderTeam || '',
+                                          division: targetUser.division || prev.leaderDivision || '',
+                                          phone: targetUser.phone || ''
+                                        }
+                                      ]
+                                      : prev.attendees
+                                  }));
+                                }}
+                                style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Pre-Work Checklist Multi-Select Dropdown & Selected Items List */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span>재해 예방 활동 *</span>
+                    </label>
+
+                    {/* Custom Multi-Select Dropdown Trigger Bar */}
+                    <div
+                      onClick={() => setIsChecklistDropdownOpen(prev => !prev)}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '12px',
+                        background: '#ffffff',
+                        border: isChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: currentSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        boxShadow: isChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                        transition: 'all 0.2s ease',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ShieldCheck size={16} color={currentSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
+                        <span>
+                          {currentSelectedKeys.length === 0
+                            ? '안전 점검 항목 선택'
+                            : `${currentSelectedKeys.length}개 점검 항목 선택됨`}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                          {isChecklistDropdownOpen ? '닫기' : '선택'}
+                        </span>
+                        {isChecklistDropdownOpen ? (
+                          <ChevronUp size={16} color="#0284c7" />
+                        ) : (
+                          <ChevronDown size={16} color="#64748b" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dropdown Suggestion Popup (Multiple Checkbox Selector) */}
+                    {isChecklistDropdownOpen && (
+                      <div className="thin-scrollbar" style={{
+                        position: 'absolute',
+                        top: '72px',
+                        left: 0,
+                        right: 0,
+                        zIndex: 50,
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '10px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                        padding: '8px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gap: '6px',
+                        maxHeight: '300px',
+                        overflowY: 'auto'
+                      }}>
+
+                        {PRE_WORK_CHECKLIST_ITEMS.map(item => {
+                          const isChecked = currentSelectedKeys.includes(item.key);
+                          return (
+                            <div
+                              key={item.key}
+                              onClick={() => toggleCheckItem(item.key)}
+                              style={{
+                                padding: '7px 8px',
+                                borderRadius: '6px',
+                                background: isChecked ? '#f0fdf4' : '#ffffff',
+                                border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                userSelect: 'none',
+                                minWidth: 0
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => { }} // handled by parent div onClick
+                                style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
+                              />
+                              <div style={{
+                                flex: 1,
+                                fontSize: '11px',
+                                fontWeight: isChecked ? '700' : '600',
+                                color: isChecked ? '#15803d' : '#334155',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }} title={item.label}>
+                                {item.label}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Selected Checklist Items Output (3 Columns, Clean Badges) */}
+                    {currentSelectedKeys.length > 0 ? (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '6px'
+                      }}>
+                        {currentSelectedKeys.map(key => {
+                          const item = PRE_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
+                          if (!item) return null;
+                          return (
+                            <div
+                              key={item.key}
+                              style={{
+                                padding: '7px 6px',
+                                borderRadius: '6px',
+                                background: '#f0fdf4',
+                                border: '1.5px solid #86efac',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                textAlign: 'center',
+                                minWidth: 0,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                              }}
+                            >
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: '#15803d',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }} title={item.label}>
+                                {item.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '16px',
+                        borderRadius: '12px',
+                        background: '#f8fafc',
+                        border: '1.5px dashed #cbd5e1',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        fontSize: '12.5px'
+                      }}>
+                        <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
                       </div>
                     )}
                   </div>
 
-                  {/* 3. Guidance Notes & Time */}
+                  {/* 4. Guidance Notes & Time */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div>
                       <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                         전달 사항 및 지도내역
                       </label>
                       <textarea
-                        rows={3}
+                        rows={5}
                         placeholder="작업 전 안전수칙 준수, 위험요소 사전 통제, 작업자 지도 및 전달 사항을 입력하세요."
                         value={formData.preCheck.notes}
                         onChange={(e) => setFormData(prev => ({
@@ -1618,37 +2206,171 @@ export default function TbmSection({
                         }))}
                         style={{
                           width: '100%',
+                          minHeight: '110px',
                           padding: '10px 12px',
                           borderRadius: '12px',
                           background: '#ffffff',
                           border: '1.5px solid #cbd5e1',
                           fontSize: '12.5px',
+                          lineHeight: '1.5',
                           outline: 'none',
                           resize: 'none'
                         }}
                       />
                     </div>
+                    {/* 4. Photo Registration Section (Replaced TBM Time) */}
                     <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        TBM 실시 시각
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Camera size={14} color="#0284c7" />
+                          <span>TBM 현장 사진 등록</span>
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '800' }}>
+                          {(formData.preCheck?.photos || []).length} / 5장
+                        </span>
                       </label>
+
+                      {/* Hidden File Inputs for Camera & Upload */}
                       <input
-                        type="time"
-                        value={formData.preCheck.conductedAt}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          preCheck: { ...prev.preCheck, conductedAt: e.target.value }
-                        }))}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          outline: 'none'
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        capture="environment"
+                        onChange={(e) => {
+                          handlePhotoFilesSelected(e.target.files);
+                          e.target.value = '';
                         }}
+                        style={{ display: 'none' }}
                       />
+
+                      <input
+                        ref={galleryInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        multiple
+                        onChange={(e) => {
+                          handlePhotoFilesSelected(e.target.files);
+                          e.target.value = '';
+                        }}
+                        style={{ display: 'none' }}
+                      />
+
+                      {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current?.click()}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#f0f9ff',
+                            border: '1.5px dashed #0284c7',
+                            color: '#0369a1',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <Camera size={15} /> 카메라 촬영
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRef.current?.click()}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <ImageIcon size={15} color="#64748b" /> 사진 업로드 (캡처/앨범)
+                        </button>
+                      </div>
+
+                      {/* Photo Thumbnail Grid */}
+                      {(formData.preCheck?.photos || []).length > 0 && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
+                          gap: '8px',
+                          padding: '10px',
+                          background: '#f8fafc',
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0'
+                        }}>
+                          {(formData.preCheck?.photos || []).map((photo) => (
+                            <div
+                              key={photo.id}
+                              style={{
+                                position: 'relative',
+                                width: '100%',
+                                paddingBottom: '100%',
+                                borderRadius: '8px',
+                                overflow: 'hidden',
+                                border: '1.5px solid #cbd5e1',
+                                background: '#000000',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                              }}
+                            >
+                              <img
+                                src={photo.dataUrl}
+                                alt="TBM 현장 사진"
+                                onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                                title="클릭하여 사진 확대"
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePhoto(photo.id)}
+                                title="사진 삭제"
+                                style={{
+                                  position: 'absolute',
+                                  top: '3px',
+                                  right: '3px',
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '50%',
+                                  background: 'rgba(225, 29, 72, 0.9)',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: '900',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1711,38 +2433,8 @@ export default function TbmSection({
               {/* ---------------- STEP 3: Post-Work TBM Check ---------------- */}
               {activeStep === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      🏁 Step 3. 업무 후 TBM (작업 종료 및 정리·퇴실 점검)
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const allChecked = formData.postCheck.cleanupCheck && formData.postCheck.toolRecoveryCheck && formData.postCheck.securityMediaCheck && formData.postCheck.powerSafetyCheck;
-                        setFormData(prev => ({
-                          ...prev,
-                          postCheck: {
-                            ...prev.postCheck,
-                            cleanupCheck: !allChecked,
-                            toolRecoveryCheck: !allChecked,
-                            securityMediaCheck: !allChecked,
-                            powerSafetyCheck: !allChecked
-                          }
-                        }));
-                      }}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: '6px',
-                        background: '#f1f5f9',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#334155',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      전체 확인 토글
-                    </button>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    🏁 Step 3. 업무 후 TBM (작업 종료 및 정리·퇴실 점검)
                   </div>
 
                   {/* 1. Post-Work Outcome Dropdown */}
@@ -1775,201 +2467,344 @@ export default function TbmSection({
                   </div>
 
                   {/* 2. Post-Work Absentee Selection (Early Leave / Going Out / Vacation) */}
-                  <div style={{
-                    background: '#f8fafc',
-                    padding: '12px 14px',
-                    borderRadius: '12px',
-                    border: '1.5px solid #cbd5e1'
-                  }}>
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#0f172a', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span>🏃 미참여 인원 (조퇴 / 외출 / 휴가 등)</span>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>{(formData.postCheck.absentees || []).length}명 등록됨</span>
-                    </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span>인원 변동 및 특이사항 (시작회의 기준) </span>
+                      {(formData.postCheck.absentees || []).length > 0 && (
+                        <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
+                          {(formData.postCheck.absentees || []).length}명 등록됨
+                        </span>
+                      )}
+                    </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
-                      <select
-                        value={selectedPostAbsenteeName}
-                        onChange={(e) => setSelectedPostAbsenteeName(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="">-- 미참여 인원 선택 --</option>
-                        {filteredLeadersPool.map((u, idx) => (
-                          <option key={u.id || `${u.name}-${idx}`} value={u.name}>
-                            {u.name} ({u.rank || '사원'})
-                          </option>
-                        ))}
-                      </select>
+                    <div style={{
+                      background: '#f8fafc',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: '1.5px solid #cbd5e1'
+                    }}>
 
-                      <select
-                        value={postAbsenteeReason}
-                        onChange={(e) => setPostAbsenteeReason(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '8px 10px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          outline: 'none'
-                        }}
-                      >
-                        <option value="조퇴">🚪 조퇴</option>
-                        <option value="외출">👟 외출</option>
-                        <option value="휴가">🏖️ 휴가</option>
-                        <option value="오후반차">🌇 오후반차</option>
-                        <option value="출장">🚆 출장</option>
-                        <option value="교육">📚 교육</option>
-                        <option value="병가">🏥 병가</option>
-                        <option value="기타">기타 사유</option>
-                      </select>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                        <select
+                          value={selectedPostAbsenteeName}
+                          onChange={(e) => setSelectedPostAbsenteeName(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '12px',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="">-- 미참여 인원 선택 --</option>
+                          {filteredLeadersPool.map((u, idx) => (
+                            <option key={u.id || `${u.name}-${idx}`} value={u.name}>
+                              {u.name} ({u.rank || '사원'})
+                            </option>
+                          ))}
+                        </select>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!selectedPostAbsenteeName) {
-                            if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
-                            return;
-                          }
-                          const targetUser = filteredLeadersPool.find(u => u.name === selectedPostAbsenteeName);
-                          const curAbsList = formData.postCheck.absentees || [];
-                          const exists = curAbsList.some(a => a.name === selectedPostAbsenteeName);
-                          if (exists) {
-                            if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
-                            return;
-                          }
-                          setFormData(prev => ({
-                            ...prev,
-                            includePostCheckNow: true,
-                            postCheck: {
-                              ...prev.postCheck,
-                              absentees: [
-                                ...(prev.postCheck.absentees || []),
-                                {
-                                  name: selectedPostAbsenteeName,
-                                  rank: targetUser?.rank || '사원',
-                                  reason: postAbsenteeReason
-                                }
-                              ]
+                        <select
+                          value={postAbsenteeReason}
+                          onChange={(e) => setPostAbsenteeReason(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 10px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="오후반차">🌇 오후반차</option>
+                          <option value="휴가">🏖️ 휴가</option>
+                          <option value="교육">📚 교육</option>
+                          <option value="기타">기타 사유</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedPostAbsenteeName) {
+                              if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
+                              return;
                             }
-                          }));
-                          setSelectedPostAbsenteeName('');
-                        }}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: '8px',
-                          background: '#0284c7',
-                          color: '#ffffff',
-                          border: 'none',
-                          fontSize: '12px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        + 추가
-                      </button>
+                            const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedPostAbsenteeName?.trim());
+                            const curAbsList = formData.postCheck.absentees || [];
+                            const exists = curAbsList.some(a => a.name?.trim() === selectedPostAbsenteeName?.trim());
+                            if (exists) {
+                              if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
+                              return;
+                            }
+                            setFormData(prev => ({
+                              ...prev,
+                              includePostCheckNow: true,
+                              // Automatically exclude from attendees
+                              attendees: prev.attendees.filter(a => a.name?.trim() !== selectedPostAbsenteeName?.trim()),
+                              postCheck: {
+                                ...prev.postCheck,
+                                absentees: [
+                                  ...(prev.postCheck.absentees || []),
+                                  {
+                                    name: selectedPostAbsenteeName,
+                                    rank: targetUser?.rank || '사원',
+                                    reason: postAbsenteeReason
+                                  }
+                                ]
+                              }
+                            }));
+                            setSelectedPostAbsenteeName('');
+                          }}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            background: '#0284c7',
+                            color: '#ffffff',
+                            border: 'none',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          + 추가
+                        </button>
+                      </div>
+
+                      {/* Post-Absentee Tag Badges */}
+                      {(formData.postCheck.absentees || []).length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                          {(formData.postCheck.absentees || []).map((abs, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                background: '#fff1f2',
+                                color: '#e11d48',
+                                border: '1px solid #fecdd3',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontSize: '11.5px',
+                                fontWeight: '700',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const removed = (formData.postCheck.absentees || [])[idx];
+                                  const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    // Restore back to attendees if not already present
+                                    attendees: targetUser && !prev.attendees.some(a => a.name?.trim() === removed?.name?.trim())
+                                      ? [
+                                        ...prev.attendees,
+                                        {
+                                          name: targetUser.name,
+                                          rank: targetUser.rank || '사원',
+                                          team: targetUser.team || targetUser.department || prev.leaderTeam || '',
+                                          division: targetUser.division || prev.leaderDivision || '',
+                                          phone: targetUser.phone || ''
+                                        }
+                                      ]
+                                      : prev.attendees,
+                                    postCheck: {
+                                      ...prev.postCheck,
+                                      absentees: (prev.postCheck.absentees || []).filter((_, i) => i !== idx)
+                                    }
+                                  }));
+                                }}
+                                style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Post-Work Checklist Multi-Select Dropdown & Selected Items List */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span>재해 예방 활동 *</span>
+                    </label>
+
+                    {/* Custom Multi-Select Dropdown Trigger Bar */}
+                    <div
+                      onClick={() => setIsPostChecklistDropdownOpen(prev => !prev)}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '12px',
+                        background: '#ffffff',
+                        border: isPostChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        color: currentPostSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        cursor: 'pointer',
+                        userSelect: 'none',
+                        boxShadow: isPostChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                        transition: 'all 0.2s ease',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ShieldCheck size={16} color={currentPostSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
+                        <span>
+                          {currentPostSelectedKeys.length === 0
+                            ? '안전 점검 항목 선택'
+                            : `${currentPostSelectedKeys.length}개 점검 항목 선택됨`}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                          {isPostChecklistDropdownOpen ? '닫기' : '선택'}
+                        </span>
+                        {isPostChecklistDropdownOpen ? (
+                          <ChevronUp size={16} color="#0284c7" />
+                        ) : (
+                          <ChevronDown size={16} color="#64748b" />
+                        )}
+                      </div>
                     </div>
 
-                    {/* Post-Absentee Tag Badges */}
-                    {(formData.postCheck.absentees || []).length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                        {(formData.postCheck.absentees || []).map((abs, idx) => (
-                          <span
-                            key={idx}
-                            style={{
-                              background: '#fff1f2',
-                              color: '#e11d48',
-                              border: '1px solid #fecdd3',
-                              padding: '4px 8px',
-                              borderRadius: '6px',
-                              fontSize: '11.5px',
-                              fontWeight: '700',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}
-                          >
-                            <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
-                            <button
-                              type="button"
-                              onClick={() => setFormData(prev => ({
-                                ...prev,
-                                postCheck: {
-                                  ...prev.postCheck,
-                                  absentees: (prev.postCheck.absentees || []).filter((_, i) => i !== idx)
-                                }
-                              }))}
-                              style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                    {/* Dropdown Suggestion Popup (Multiple Checkbox Selector - 2 Columns) */}
+                    {isPostChecklistDropdownOpen && (
+                      <div className="thin-scrollbar" style={{
+                        position: 'absolute',
+                        top: '72px',
+                        left: 0,
+                        right: 0,
+                        zIndex: 50,
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '10px',
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                        padding: '8px',
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                        gap: '6px',
+                        maxHeight: '300px',
+                        overflowY: 'auto'
+                      }}>
+                        {POST_WORK_CHECKLIST_ITEMS.map(item => {
+                          const isChecked = currentPostSelectedKeys.includes(item.key);
+                          return (
+                            <div
+                              key={item.key}
+                              onClick={() => togglePostCheckItem(item.key)}
+                              style={{
+                                padding: '7px 8px',
+                                borderRadius: '6px',
+                                background: isChecked ? '#f0fdf4' : '#ffffff',
+                                border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                userSelect: 'none',
+                                minWidth: 0
+                              }}
                             >
-                              ×
-                            </button>
-                          </span>
-                        ))}
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => { }}
+                                style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
+                              />
+                              <div style={{
+                                flex: 1,
+                                fontSize: '11px',
+                                fontWeight: isChecked ? '700' : '600',
+                                color: isChecked ? '#15803d' : '#334155',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }} title={item.label}>
+                                {item.label}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Selected Checklist Items Output (3 Columns, Clean Badges) */}
+                    {currentPostSelectedKeys.length > 0 ? (
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                        gap: '6px'
+                      }}>
+                        {currentPostSelectedKeys.map(key => {
+                          const item = POST_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
+                          if (!item) return null;
+                          return (
+                            <div
+                              key={item.key}
+                              style={{
+                                padding: '7px 6px',
+                                borderRadius: '6px',
+                                background: '#f0fdf4',
+                                border: '1.5px solid #86efac',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                textAlign: 'center',
+                                minWidth: 0,
+                                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                              }}
+                            >
+                              <span style={{
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: '#15803d',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
+                              }} title={item.label}>
+                                {item.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '16px',
+                        borderRadius: '12px',
+                        background: '#f8fafc',
+                        border: '1.5px dashed #cbd5e1',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        fontSize: '12.5px'
+                      }}>
+                        <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
                       </div>
                     )}
                   </div>
 
-                  {/* 3. 4 Post-Work Checklist Items */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {[
-                      { key: 'cleanupCheck', label: '1. 작업 구역 정리정돈, 잔재물 청소 및 폐기물 전량 수거 완료 확인', icon: Sparkles },
-                      { key: 'toolRecoveryCheck', label: '2. 반입 작업 공구 및 계측 장비 전량 회수/계수 일치 확인', icon: CheckSquare },
-                      { key: 'securityMediaCheck', label: '3. 현장 촬영물/저장매체 보안 검사 및 보안 앱 정상 출문 절차 확인', icon: ShieldCheck },
-                      { key: 'powerSafetyCheck', label: '4. 전원 차단, 시건장치 확인 및 잔여 위험요소 안전 조치 완료', icon: Zap }
-                    ].map(item => {
-                      const isChecked = formData.postCheck[item.key];
-                      const Icon = item.icon;
-                      return (
-                        <label
-                          key={item.key}
-                          style={{
-                            padding: '11px 13px',
-                            borderRadius: '12px',
-                            background: isChecked ? '#f0fdf4' : '#ffffff',
-                            border: isChecked ? '1.5px solid #86efac' : '1.5px solid #cbd5e1',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              includePostCheckNow: true,
-                              postCheck: { ...prev.postCheck, [item.key]: e.target.checked }
-                            }))}
-                            style={{ width: '18px', height: '18px', accentColor: '#0284c7' }}
-                          />
-                          <div style={{ flex: 1, fontSize: '12px', fontWeight: isChecked ? '700' : '500', color: isChecked ? '#15803d' : '#334155' }}>
-                            {item.label}
-                          </div>
-                          <Icon size={16} color={isChecked ? '#16a34a' : '#94a3b8'} />
-                        </label>
-                      );
-                    })}
-                  </div>
-
-                  {/* 4. Post-Check Handover Notes & Time */}
+                  {/* 4. Post-Check Handover Notes & Photo Registration */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     <div>
                       <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                         전달사항 및 계획대비 변경 또는 특이사항
                       </label>
                       <textarea
-                        rows={3}
+                        rows={5}
                         placeholder="작업 종료 후 전달사항, 계획대비 변경사항 또는 특이사항을 상세히 입력하세요."
                         value={formData.postCheck.handoverNotes}
                         onChange={(e) => setFormData(prev => ({
@@ -1979,38 +2814,172 @@ export default function TbmSection({
                         }))}
                         style={{
                           width: '100%',
+                          minHeight: '110px',
                           padding: '10px 12px',
                           borderRadius: '12px',
                           background: '#ffffff',
                           border: '1.5px solid #cbd5e1',
                           fontSize: '12.5px',
+                          lineHeight: '1.5',
                           outline: 'none',
                           resize: 'none'
                         }}
                       />
                     </div>
+
+                    {/* 5. Post Photo Registration Section (Replaced TBM End Time) */}
                     <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        TBM 종료 시각
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Camera size={14} color="#0284c7" />
+                          <span>업무 후 현장 사진 등록</span>
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '800' }}>
+                          {(formData.postCheck?.photos || []).length} / 5장
+                        </span>
                       </label>
+
+                      {/* Hidden File Inputs for Post Camera & Upload */}
                       <input
-                        type="time"
-                        value={formData.postCheck.conductedAt}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          includePostCheckNow: true,
-                          postCheck: { ...prev.postCheck, conductedAt: e.target.value }
-                        }))}
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12px',
-                          outline: 'none'
+                        ref={postCameraInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        capture="environment"
+                        onChange={(e) => {
+                          handlePostPhotoFilesSelected(e.target.files);
+                          e.target.value = '';
                         }}
+                        style={{ display: 'none' }}
                       />
+
+                      <input
+                        ref={postGalleryInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        multiple
+                        onChange={(e) => {
+                          handlePostPhotoFilesSelected(e.target.files);
+                          e.target.value = '';
+                        }}
+                        style={{ display: 'none' }}
+                      />
+
+                      {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                        <button
+                          type="button"
+                          onClick={() => postCameraInputRef.current?.click()}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#f0f9ff',
+                            border: '1.5px dashed #0284c7',
+                            color: '#0369a1',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <Camera size={15} /> 카메라 촬영
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => postGalleryInputRef.current?.click()}
+                          style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#334155',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <ImageIcon size={15} color="#64748b" /> 사진 업로드 (캡처/앨범)
+                        </button>
+                      </div>
+
+                      {/* Photo Thumbnail Grid */}
+                      {(formData.postCheck?.photos || []).length > 0 && (
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
+                          gap: '8px',
+                          padding: '10px',
+                          background: '#f8fafc',
+                          borderRadius: '10px',
+                          border: '1px solid #e2e8f0'
+                        }}>
+                          {(formData.postCheck?.photos || []).map((photo) => (
+                            <div
+                              key={photo.id}
+                              style={{
+                                position: 'relative',
+                                width: '100%',
+                                paddingBottom: '100%',
+                                borderRadius: '8px',
+                                overflow: 'hidden',
+                                border: '1.5px solid #cbd5e1',
+                                background: '#000000',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                              }}
+                            >
+                              <img
+                                src={photo.dataUrl}
+                                alt="업무 후 현장 사진"
+                                onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                                title="클릭하여 사진 확대"
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  cursor: 'pointer'
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePostPhoto(photo.id)}
+                                title="사진 삭제"
+                                style={{
+                                  position: 'absolute',
+                                  top: '3px',
+                                  right: '3px',
+                                  width: '20px',
+                                  height: '20px',
+                                  borderRadius: '50%',
+                                  background: 'rgba(225, 29, 72, 0.9)',
+                                  color: '#ffffff',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: '900',
+                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2114,7 +3083,7 @@ export default function TbmSection({
               />
             </div>
 
-            <div style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div className="thin-scrollbar" style={{ maxHeight: '240px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {allUsers
                 .filter(u => {
                   if (currentUser && isSamePerson(u, currentUser)) return false;
@@ -2238,7 +3207,7 @@ export default function TbmSection({
             </div>
 
             {/* Modal Body: Document View */}
-            <div style={{ padding: '16px 18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="thin-scrollbar" style={{ padding: '16px 18px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {/* Document Header Box */}
               <div style={{
                 background: '#f0f9ff',
@@ -2275,9 +3244,17 @@ export default function TbmSection({
               {/* Attendees & Absentees Section */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#334155' }}>
                 <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                  <strong>참석 인원 ({(selectedTbm.attendees?.length || 0) + 1}명):</strong>{' '}
-                  <span style={{ color: '#0284c7', fontWeight: '700' }}>{selectedTbm.leaderName} (주관자)</span>
-                  {selectedTbm.attendees?.map(a => `, ${a.name} (${a.rank})`)}
+                  {(() => {
+                    const otherAttendees = selectedTbm.attendees?.filter(a => a.name !== selectedTbm.leaderName) || [];
+                    const totalCount = otherAttendees.length + 1; // 주관자 + 타 참여자
+                    return (
+                      <>
+                        <strong>참석 인원 ({totalCount}명):</strong>{' '}
+                        <span style={{ color: '#0284c7', fontWeight: '700' }}>{selectedTbm.leaderName} (주관자)</span>
+                        {otherAttendees.map(a => `, ${a.name} (${a.rank})`)}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {selectedTbm.absentees && selectedTbm.absentees.length > 0 && (
@@ -2299,26 +3276,55 @@ export default function TbmSection({
                   <span style={{ fontSize: '11px', color: '#64748b' }}>실시: {selectedTbm.preCheck?.conductedAt || ''}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11.5px' }}>
-                  <div style={{ color: selectedTbm.preCheck?.ppeCheck ? '#15803d' : '#94a3b8' }}>
-                    {selectedTbm.preCheck?.ppeCheck ? '✓' : '—'} 1. 개인보호구 필수 착용 상태 확인
-                  </div>
-                  <div style={{ color: selectedTbm.preCheck?.securityAppCheck ? '#15803d' : '#94a3b8' }}>
-                    {selectedTbm.preCheck?.securityAppCheck ? '✓' : '—'} 2. 모바일 보안 앱 구동 및 카메라 차단
-                  </div>
-                  <div style={{ color: selectedTbm.preCheck?.hazardCheck ? '#15803d' : '#94a3b8' }}>
-                    {selectedTbm.preCheck?.hazardCheck ? '✓' : '—'} 3. 작업 구역 내 위험 요인 사전 공유
-                  </div>
-                  <div style={{ color: selectedTbm.preCheck?.emergencyRouteCheck ? '#15803d' : '#94a3b8' }}>
-                    {selectedTbm.preCheck?.emergencyRouteCheck ? '✓' : '—'} 4. 비상 대피로 및 소화설비 확인
-                  </div>
-                  <div style={{ color: selectedTbm.preCheck?.approvedToolsCheck ? '#15803d' : '#94a3b8' }}>
-                    {selectedTbm.preCheck?.approvedToolsCheck ? '✓' : '—'} 5. 인가된 안전 공구 및 자재 일치 확인
-                  </div>
+                  {(() => {
+                    const conductedItems = PRE_WORK_CHECKLIST_ITEMS.filter(item => {
+                      if (selectedTbm.preCheck?.selectedItems && Array.isArray(selectedTbm.preCheck.selectedItems)) {
+                        return selectedTbm.preCheck.selectedItems.includes(item.key);
+                      }
+                      return Boolean(selectedTbm.preCheck?.[item.key]);
+                    });
+                    if (conductedItems.length === 0) {
+                      return <div style={{ color: '#94a3b8' }}>실시된 안전 점검 항목 없음</div>;
+                    }
+                    return conductedItems.map(item => (
+                      <div key={item.key} style={{ color: '#15803d', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <CheckCircle2 size={13} color="#16a34a" /> {item.label}
+                      </div>
+                    ));
+                  })()}
                 </div>
                 {selectedTbm.preCheck?.notes && (
                   <div style={{ marginTop: '8px', fontSize: '12px', color: '#1e293b', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                     <div style={{ fontWeight: '800', color: '#0284c7', marginBottom: '2px' }}>📢 전달 사항 및 지도내역:</div>
                     <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{selectedTbm.preCheck.notes}</div>
+                  </div>
+                )}
+
+                {/* Pre-Check Photos in Detail Modal */}
+                {selectedTbm.preCheck?.photos && selectedTbm.preCheck.photos.length > 0 && (
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#0369a1', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Camera size={14} /> 현장 사진 ({selectedTbm.preCheck.photos.length}장)
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {selectedTbm.preCheck.photos.map((photo, idx) => (
+                        <img
+                          key={photo.id || idx}
+                          src={photo.dataUrl}
+                          alt="현장 사진"
+                          onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                          title="클릭하여 사진 확대"
+                          style={{
+                            width: '75px',
+                            height: '75px',
+                            objectFit: 'cover',
+                            borderRadius: '6px',
+                            border: '1.5px solid #cbd5e1',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2367,24 +3373,56 @@ export default function TbmSection({
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11.5px' }}>
-                      <div style={{ color: selectedTbm.postCheck?.cleanupCheck ? '#15803d' : '#94a3b8' }}>
-                        {selectedTbm.postCheck?.cleanupCheck ? '✓' : '—'} 1. 작업 구역 정리정돈 및 잔재물 청소
-                      </div>
-                      <div style={{ color: selectedTbm.postCheck?.toolRecoveryCheck ? '#15803d' : '#94a3b8' }}>
-                        {selectedTbm.postCheck?.toolRecoveryCheck ? '✓' : '—'} 2. 반입 장비 및 공구 전량 회수
-                      </div>
-                      <div style={{ color: selectedTbm.postCheck?.securityMediaCheck ? '#15803d' : '#94a3b8' }}>
-                        {selectedTbm.postCheck?.securityMediaCheck ? '✓' : '—'} 3. 촬영물 검사 및 보안 앱 출문 절차
-                      </div>
-                      <div style={{ color: selectedTbm.postCheck?.powerSafetyCheck ? '#15803d' : '#94a3b8' }}>
-                        {selectedTbm.postCheck?.powerSafetyCheck ? '✓' : '—'} 4. 전원 차단 및 안전 조치 완료
-                      </div>
+                      {(() => {
+                        const conductedItems = POST_WORK_CHECKLIST_ITEMS.filter(item => {
+                          if (selectedTbm.postCheck?.selectedItems && Array.isArray(selectedTbm.postCheck.selectedItems)) {
+                            return selectedTbm.postCheck.selectedItems.includes(item.key);
+                          }
+                          return Boolean(selectedTbm.postCheck?.[item.key]);
+                        });
+                        if (conductedItems.length === 0) {
+                          return <div style={{ color: '#94a3b8' }}>실시된 안전 점검 항목 없음</div>;
+                        }
+                        return conductedItems.map(item => (
+                          <div key={item.key} style={{ color: '#15803d', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <CheckCircle2 size={13} color="#16a34a" /> {item.label}
+                          </div>
+                        ));
+                      })()}
                     </div>
 
                     {selectedTbm.postCheck?.handoverNotes && (
                       <div style={{ marginTop: '4px', fontSize: '12px', color: '#1e293b', background: '#f8fafc', padding: '8px 10px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                         <div style={{ fontWeight: '800', color: '#0284c7', marginBottom: '2px' }}>📢 전달사항 및 계획대비 변경/특이사항:</div>
                         <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{selectedTbm.postCheck.handoverNotes}</div>
+                      </div>
+                    )}
+
+                    {/* Post-Check Photos in Detail Modal */}
+                    {selectedTbm.postCheck?.photos && selectedTbm.postCheck.photos.length > 0 && (
+                      <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#0369a1', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <Camera size={14} /> 업무 후 현장 사진 ({selectedTbm.postCheck.photos.length}장)
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          {selectedTbm.postCheck.photos.map((photo, idx) => (
+                            <img
+                              key={photo.id || idx}
+                              src={photo.dataUrl}
+                              alt="업무 후 현장 사진"
+                              onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                              title="클릭하여 사진 확대"
+                              style={{
+                                width: '75px',
+                                height: '75px',
+                                objectFit: 'cover',
+                                borderRadius: '6px',
+                                border: '1.5px solid #cbd5e1',
+                                cursor: 'pointer'
+                              }}
+                            />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2538,6 +3576,68 @@ export default function TbmSection({
                 삭제 확인
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* MODAL 5: Fullscreen Photo Lightbox Preview                */}
+      {/* ======================================================== */}
+      {previewModalPhoto && (
+        <div
+          onClick={() => setPreviewModalPhoto(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 400,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: '16px'
+          }}
+        >
+          <div style={{ position: 'relative', maxWidth: '92vw', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+            <img
+              src={previewModalPhoto}
+              alt="현장 사진 확대 보기"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '85vh',
+                borderRadius: '8px',
+                objectFit: 'contain',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setPreviewModalPhoto(null)}
+              title="닫기"
+              style={{
+                position: 'absolute',
+                top: '-12px',
+                right: '-12px',
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                background: '#ffffff',
+                color: '#0f172a',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+              }}
+            >
+              ✕
+            </button>
           </div>
         </div>
       )}

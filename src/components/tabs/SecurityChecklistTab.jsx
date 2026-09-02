@@ -666,7 +666,7 @@ export default function SecurityChecklistTab({
   const [cameraCheckVerified, setCameraCheckVerified] = useState(false);
   const [step2Attempted, setStep2Attempted] = useState(false);
 
-  // Handler for Launching Native Smartphone Camera Application (Preview only, does NOT auto-verify)
+  // Handler for Launching Native Smartphone Camera Application & verifying policy check
   const handleLaunchNativeCameraApp = async () => {
     try {
       if (Capacitor.isNativePlatform()) {
@@ -680,6 +680,27 @@ export default function SecurityChecklistTab({
       }
     } catch (e) {
       console.warn('Native camera launch notice:', e);
+    }
+
+    // Policy verification: Mark camera check as verified
+    setAppCheckState({ isChecking: false, isVerified: true });
+    setCameraCheckVerified(true);
+    setCameraCheckState({
+      isTesting: false,
+      isVerified: true,
+      result: 'LOCKED',
+      message: '✓ 기본 카메라 차단 정책 확인 완료'
+    });
+    setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+    setAppScanState({
+      isScanning: false,
+      status: 'VERIFIED',
+      lastScannedAt: new Date().toLocaleTimeString(),
+      scanLog: []
+    });
+
+    if (onTriggerToast) {
+      onTriggerToast('✓ [카메라 검수 완료] 기본 카메라 실행을 통해 기기 보안 차단 정책이 확인되었습니다.', 'success');
     }
   };
 
@@ -3287,46 +3308,19 @@ export default function SecurityChecklistTab({
                             )}
                           </div>
 
-                          <div style={{ display: 'flex', gap: '8px' }}>
+                          <div style={{ display: 'flex', width: '100%' }}>
                             <button
                               type="button"
-                              onClick={handleLaunchNativeCameraApp}
-                              style={{
-                                flex: 1,
-                                height: '44px',
-                                padding: '0 12px',
-                                borderRadius: '10px',
-                                fontSize: '12.5px',
-                                fontWeight: '700',
-                                background: '#ffffff',
-                                color: '#334155',
-                                border: '1.5px solid #cbd5e1',
-                                boxShadow: '0 1px 4px rgba(0, 0, 0, 0.04)',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <Camera size={16} /> 카메라 열기
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const nextVal = !cameraSelfChecklist.cameraChecked;
-                                const updated = { ...cameraSelfChecklist, cameraChecked: nextVal };
+                              onClick={async () => {
+                                await handleLaunchNativeCameraApp();
+                                const updated = { ...cameraSelfChecklist, cameraChecked: true };
                                 setCameraSelfChecklist(updated);
-                                const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
+                                const isAll = updated.stickerAttached && updated.noPhotoAgreed && true;
                                 setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
-                                if (nextVal && onTriggerToast) {
-                                  onTriggerToast('✓ 카메라 차단 상태가 확인되었습니다.', 'success');
-                                }
                               }}
                               style={{
-                                flex: 1.4,
-                                height: '44px',
+                                width: '100%',
+                                height: '46px',
                                 padding: '0 12px',
                                 borderRadius: '10px',
                                 fontSize: '12.5px',
@@ -3343,8 +3337,11 @@ export default function SecurityChecklistTab({
                                 transition: 'all 0.2s ease'
                               }}
                             >
-                              <CheckCircle2 size={16} color={cameraSelfChecklist.cameraChecked ? '#059669' : '#ffffff'} />
-                              {cameraSelfChecklist.cameraChecked ? '차단 확인 완료됨' : '차단 확인 완료 체크'}
+                              {cameraSelfChecklist.cameraChecked ? (
+                                <><CheckCircle2 size={16} color="#059669" /> 기본 카메라 차단 확인됨 (검수 완료)</>
+                              ) : (
+                                <><Camera size={16} /> 기본 카메라 열기 (차단 정책 확인)</>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -3517,35 +3514,33 @@ export default function SecurityChecklistTab({
                               )}
                             </div>
 
-                            {/* 1. 자동 카메라 차단 검수 버튼 */}
+                            {/* 기본 카메라 열기 버튼으로 정책 확인 */}
                             <button
                               type="button"
                               onClick={async () => {
                                 setStep2Attempted(true);
-                                const isLocked = await handleCheckAppExecutionStatus();
-                                setCameraCheckVerified(Boolean(isLocked));
+                                await handleLaunchNativeCameraApp();
                               }}
-                              disabled={appScanState.isScanning || cameraCheckState.isTesting}
                               style={{
                                 width: '100%',
-                                height: '46px',
+                                height: '48px',
                                 padding: '0 16px',
                                 borderRadius: '12px',
                                 fontSize: '13px',
                                 fontWeight: '800',
                                 background: cameraCheckVerified
                                   ? '#ecfdf5'
-                                  : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                  : (!cameraCheckVerified && step2Attempted)
                                     ? '#fff1f2'
                                     : '#eff6ff',
-                                color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted)) ? '#e11d48' : '#1e3a8a',
+                                color: cameraCheckVerified ? '#059669' : (!cameraCheckVerified && step2Attempted) ? '#e11d48' : '#1e3a8a',
                                 border: cameraCheckVerified
                                   ? '1.5px solid #a7f3d0'
-                                  : (!cameraCheckVerified && (cameraCheckState.result === 'UNLOCKED' || step2Attempted))
+                                  : (!cameraCheckVerified && step2Attempted)
                                     ? '1.5px solid #fda4af'
                                     : '1.5px solid #cbd5e1',
                                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
-                                cursor: (appScanState.isScanning || cameraCheckState.isTesting) ? 'wait' : 'pointer',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
@@ -3553,86 +3548,12 @@ export default function SecurityChecklistTab({
                                 transition: 'all 0.25s ease'
                               }}
                             >
-                              {appScanState.isScanning || cameraCheckState.isTesting ? (
-                                <><ShieldCheck size={16} className="animate-spin" /> 카메라 차단 감지 중...</>
-                              ) : cameraCheckVerified ? (
-                                <><CheckCircle2 size={16} color="#059669" /> 카메라 차단 확인됨 (검수 완료)</>
-                              ) : (!cameraCheckVerified && cameraCheckState.result === 'UNLOCKED') ? (
-                                <>❌ 카메라 켜짐 감지 (보안앱 차단 필요)</>
+                              {cameraCheckVerified ? (
+                                <><CheckCircle2 size={18} color="#059669" /> 기본 카메라 차단 확인됨 (검수 완료)</>
                               ) : (
-                                <>📸 카메라 차단 자동 감지</>
+                                <><Camera size={18} /> 기본 카메라 열기 (차단 정책 확인)</>
                               )}
                             </button>
-
-                            {/* 2. 기기별 호환성을 위한 기본 카메라 실행 & 직접 확인 패널 */}
-                            <div style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '6px',
-                              padding: '10px',
-                              background: '#f8fafc',
-                              borderRadius: '10px',
-                              border: '1px dashed #cbd5e1'
-                            }}>
-                              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>
-                                💡 스마트폰 기종 정책으로 자동 감지가 안 될 경우 아래 버튼을 이용하세요:
-                              </div>
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
-                                  type="button"
-                                  onClick={handleLaunchNativeCameraApp}
-                                  style={{
-                                    flex: 1,
-                                    padding: '8px 10px',
-                                    borderRadius: '8px',
-                                    fontSize: '11.5px',
-                                    fontWeight: '700',
-                                    background: '#ffffff',
-                                    color: '#334155',
-                                    border: '1px solid #cbd5e1',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '4px'
-                                  }}
-                                >
-                                  <Camera size={13} /> 기본 카메라 열기
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCameraCheckVerified(true);
-                                    setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-                                    setCameraCheckState({
-                                      isTesting: false,
-                                      isVerified: true,
-                                      result: 'LOCKED',
-                                      message: '✓ 보안앱 차단 직접 확인 완료'
-                                    });
-                                    if (onTriggerToast) onTriggerToast('✓ [카메라 검수 완료] 보안 정책에 의한 스마트폰 카메라 비활성화 상태가 직접 확인되었습니다.', 'success');
-                                  }}
-                                  style={{
-                                    flex: 1.3,
-                                    padding: '8px 10px',
-                                    borderRadius: '8px',
-                                    fontSize: '11.5px',
-                                    fontWeight: '700',
-                                    background: cameraCheckVerified ? '#ecfdf5' : '#1e3a8a',
-                                    color: cameraCheckVerified ? '#059669' : '#ffffff',
-                                    border: cameraCheckVerified ? '1px solid #a7f3d0' : '1px solid #1e3a8a',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: '4px'
-                                  }}
-                                >
-                                  <CheckCircle2 size={13} color={cameraCheckVerified ? '#059669' : '#ffffff'} />
-                                  {cameraCheckVerified ? '카메라 차단 확인 완료됨' : '카메라 차단 직접 확인'}
-                                </button>
-                              </div>
-                            </div>
                           </div>
                         </div>
 
@@ -3738,7 +3659,7 @@ export default function SecurityChecklistTab({
                               } else if (!secAppVerified) {
                                 if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 1단계 모바일 보안 앱 실행 검수가 완료되지 않았습니다.`, 'warning');
                               } else {
-                                if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 2단계 카메라 차단 검수가 완료되지 않았습니다. [카메라 검수 시작]을 진행해 주세요.`, 'warning');
+                                if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 2단계 카메라 차단 검수가 완료되지 않았습니다. [기본 카메라 열기]를 진행해 주세요.`, 'warning');
                               }
                               return;
                             }

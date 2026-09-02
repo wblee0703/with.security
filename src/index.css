@@ -22,21 +22,58 @@
   padding: 2px 4px !important;
 }
 
-/* Custom Sleek Scrollbar Utility */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Global Ultra-Thin Sleek Scrollbar (Popups, Dropdowns, Modals, Cards) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
 }
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+
+::-webkit-scrollbar {
+  width: 3.5px;
+  height: 3.5px;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb {
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
+  transition: background 0.2s ease;
 }
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+
+::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+/* Custom Sleek Scrollbar Utility */
+.custom-scrollbar,
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar,
+.thin-scrollbar::-webkit-scrollbar {
+  width: 3.5px !important;
+  height: 3.5px !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track,
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-radius: 9999px !important;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
 }
 
 

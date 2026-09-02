@@ -318,23 +318,23 @@ export default function WebDesktopLayout({
                 alignItems: 'start',
                 width: '100%'
               }}>
-                {/* Left Column: 사업장 출입 보안 서약 */}
-                <div style={{ minWidth: 0 }}>
-                  <SecurityChecklistTab
-                    onTriggerToast={onTriggerToast}
-                    isWebSplit={true}
-                    externalDate={sharedDate}
-                    onDateChange={setSharedDate}
-                  />
-                </div>
-
-                {/* Right Column: 업무전후 TBM */}
+                {/* Left Column: 업무전후 TBM */}
                 <div style={{ minWidth: 0 }}>
                   <TbmSection
                     onTriggerToast={onTriggerToast}
                     selectedDate={sharedDate}
                     onDateChange={setSharedDate}
                     isStandalone={false}
+                  />
+                </div>
+
+                {/* Right Column: 사업장 출입 보안 서약 */}
+                <div style={{ minWidth: 0 }}>
+                  <SecurityChecklistTab
+                    onTriggerToast={onTriggerToast}
+                    isWebSplit={true}
+                    externalDate={sharedDate}
+                    onDateChange={setSharedDate}
                   />
                 </div>
               </div>
