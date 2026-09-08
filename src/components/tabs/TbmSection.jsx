@@ -1116,6 +1116,51 @@ export default function TbmSection({
                   </div>
                 </div>
 
+                {/* Pre / Post TBM Guidance & Handover Notes */}
+                {(() => {
+                  const preNotes = (tbm.preCheck?.notes || tbm.notes || '').trim();
+                  const postNotes = (tbm.postCheck?.handoverNotes || tbm.postCheck?.notes || '').trim();
+                  if (!preNotes && !postNotes) return null;
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {preNotes && (
+                        <div style={{
+                          background: '#ffffff',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #bae6fd',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ fontWeight: '800', color: '#0284c7', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>📢 {postNotes ? '업무 전 전달 사항 및 지도내역:' : '전달 사항 및 지도내역:'}</span>
+                          </div>
+                          <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.45', wordBreak: 'break-word', color: '#0f172a' }}>
+                            {preNotes}
+                          </div>
+                        </div>
+                      )}
+
+                      {postNotes && (
+                        <div style={{
+                          background: '#ffffff',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #bbf7d0',
+                          fontSize: '12px'
+                        }}>
+                          <div style={{ fontWeight: '800', color: '#16a34a', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span>🏁 업무 후 전달사항 및 특이사항:</span>
+                          </div>
+                          <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.45', wordBreak: 'break-word', color: '#0f172a' }}>
+                            {postNotes}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Card Action Buttons */}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
                   <button
@@ -1892,7 +1937,7 @@ export default function TbmSection({
                   {/* 2. Absentee Selection (Vacation / Half-day / Education) */}
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span>미참여 인원 (휴가 / 반차 / 교육 등)</span>
+                      <span>미참여 인원 (휴가 / 반차 / 출장 / 교육 등)</span>
                       {formData.absentees.length > 0 && (
                         <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
                           {formData.absentees.length}명 등록됨
@@ -1944,6 +1989,7 @@ export default function TbmSection({
                         >
                           <option value="휴가">🏖️ 휴가</option>
                           <option value="오전반차">🌅 오전반차</option>
+                          <option value="출장">🚗 출장</option>
                           <option value="교육">📚 교육</option>
                           <option value="기타">기타 사유</option>
                         </select>
@@ -2564,6 +2610,7 @@ export default function TbmSection({
                         >
                           <option value="오후반차">🌇 오후반차</option>
                           <option value="휴가">🏖️ 휴가</option>
+                          <option value="출장">🚗 출장</option>
                           <option value="교육">📚 교육</option>
                           <option value="기타">기타 사유</option>
                         </select>
