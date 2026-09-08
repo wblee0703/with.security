@@ -56,20 +56,35 @@ export function getApiServerUrl() {
     return formatted;
   }
 
-  // 2. In native mobile app (Capacitor), do NOT use relative '/api' unless explicit server URL is set!
-  if (Capacitor.isNativePlatform()) {
-    return null;
-  }
-
-  // 3. If running locally on PC browser (http://localhost:3000 or http://192.168.0.x:3000)
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname.toLowerCase();
-    if (!host.includes('github.io') && !host.includes('github.com')) {
-      return ''; // Use relative '/api' via local Vite dev server proxy
+  // 2. Check environment variable VITE_API_URL (e.g. set in .env for Gabia host / server)
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    const envUrl = String(import.meta.env.VITE_API_URL).trim();
+    if (envUrl && isApiEndpoint(envUrl)) {
+      const formatted = envUrl.replace(/\/+$/, '');
+      if (!(typeof window !== 'undefined' && window.location.protocol === 'https:' && formatted.startsWith('http://'))) {
+        return formatted;
+      }
     }
   }
 
-  // 4. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
+  // 3. In native mobile app (Capacitor)
+  if (Capacitor.isNativePlatform()) {
+    const hosted = localStorage.getItem('with_security_hosted_app_url');
+    if (hosted && isApiEndpoint(hosted)) {
+      return hosted.replace(/\/+$/, '');
+    }
+    return null;
+  }
+
+  // 4. If running locally on PC browser or on a custom Gabia hosting domain
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (!host.includes('github.io') && !host.includes('github.com')) {
+      return ''; // Use relative '/api' via local Vite dev server proxy or Gabia Node server
+    }
+  }
+
+  // 5. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
   return null;
 }
 
@@ -1761,13 +1776,15 @@ class SecurityDatabase {
     const localSites = await this.getSites();
     const localUsers = await this.getRegisteredUsers();
     const localWorkLogs = await this.getWorkLogs();
+    const localEduLogs = await this.getAll('edu_logs');
+    const localTbms = await this.getTbms();
     const localVault = await this.getAll('vault');
     const localOtp = await this.getAll('otp');
     const localIncidents = await this.getAll('incidents');
 
     // GitHub Pages / Local hosting is a static frontend host: merge local ground-truth data cleanly
     if (!isApiEndpoint(formattedUrl)) {
-      const totalCount = localChecklists.length + localSites.length + localUsers.length + localWorkLogs.length + localVault.length + localOtp.length + localIncidents.length;
+      const totalCount = localChecklists.length + localSites.length + localUsers.length + localWorkLogs.length + localEduLogs.length + localTbms.length + localVault.length + localOtp.length + localIncidents.length;
       return {
         success: true,
         message: `통합 웹 & 모바일 데이터베이스 연동 성공! (총 ${totalCount}건 데이터 실시간 동기화 완료)`,
@@ -1777,6 +1794,8 @@ class SecurityDatabase {
           sites: localSites.length,
           users: localUsers.length,
           workLogs: localWorkLogs.length,
+          eduLogs: localEduLogs.length,
+          tbms: localTbms.length,
           vault: localVault.length,
           otp: localOtp.length,
           incidents: localIncidents.length
@@ -1797,17 +1816,20 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || {};
 
-        let remoteChecklists = Array.isArray(remoteData.checklists) ? remoteData.checklists : [];
+        let remoteChecklists = Array.isArray(remoteData.checklists) ? remoteData.checklists : (Array.isArray(remoteData.security_logs) ? remoteData.security_logs : []);
         let remoteSites = Array.isArray(remoteData.sites) ? remoteData.sites : [];
         let remoteUsers = Array.isArray(remoteData.users) ? remoteData.users : [];
+        let remoteWorkLogs = Array.isArray(remoteData.work_logs) ? remoteData.work_logs : [];
+        let remoteEduLogs = Array.isArray(remoteData.edu_logs) ? remoteData.edu_logs : [];
+        let remoteTbms = Array.isArray(remoteData.tbms) ? remoteData.tbms : [];
         let remoteVault = Array.isArray(remoteData.vault) ? remoteData.vault : [];
         let remoteOtp = Array.isArray(remoteData.otp) ? remoteData.otp : [];
         let remoteIncidents = Array.isArray(remoteData.incidents) ? remoteData.incidents : [];
 
         const mergeStore = (localArr, remoteArr, key = 'id') => {
           const map = new Map();
-          (localArr || []).forEach(item => { if (item && item[key]) map.set(item[key], item); });
-          (remoteArr || []).forEach(item => { if (item && item[key]) map.set(item[key], { ...(map.get(item[key]) || {}), ...item }); });
+          (localArr || []).forEach(item => { if (item && item[key]) map.set(String(item[key]), item); });
+          (remoteArr || []).forEach(item => { if (item && item[key]) map.set(String(item[key]), { ...(map.get(String(item[key])) || {}), ...item }); });
           return Array.from(map.values());
         };
 
@@ -1824,6 +1846,9 @@ class SecurityDatabase {
 
         const mergedUsers = mergeStore(localUsers, remoteUsers, 'username')
           .filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
+        const mergedWorkLogs = mergeStore(localWorkLogs, remoteWorkLogs, 'id');
+        const mergedEduLogs = mergeStore(localEduLogs, remoteEduLogs, 'id');
+        const mergedTbms = mergeStore(localTbms, remoteTbms, 'id');
         const mergedVault = mergeStore(localVault, remoteVault, 'id');
         const mergedOtp = mergeStore(localOtp, remoteOtp, 'id');
         const mergedIncidents = mergeStore(localIncidents, remoteIncidents, 'id');
@@ -1832,6 +1857,9 @@ class SecurityDatabase {
         for (const item of mergedChecklists) await this.putItem('checklists', item);
         for (const item of mergedSites) await this.putItem('sites', item);
         for (const item of mergedUsers) await this.putItem('users', item);
+        for (const item of mergedWorkLogs) await this.putItem('work_logs', item);
+        for (const item of mergedEduLogs) await this.putItem('edu_logs', item);
+        for (const item of mergedTbms) await this.putItem('tbms', item);
         for (const item of mergedVault) await this.putItem('vault', item);
         for (const item of mergedOtp) await this.putItem('otp', item);
         for (const item of mergedIncidents) await this.putItem('incidents', item);
@@ -1839,6 +1867,8 @@ class SecurityDatabase {
         localStorage.setItem('with_security_checklists_backup', JSON.stringify(mergedChecklists));
         localStorage.setItem('with_security_sites_backup', JSON.stringify(mergedSites));
         localStorage.setItem('with_security_users_db', JSON.stringify(mergedUsers));
+        localStorage.setItem('with_security_work_logs', JSON.stringify(mergedWorkLogs));
+        localStorage.setItem('with_security_tbms_backup', JSON.stringify(mergedTbms));
 
         // Push back merged state to server
         try {
@@ -1849,6 +1879,9 @@ class SecurityDatabase {
               checklists: mergedChecklists,
               sites: mergedSites,
               users: mergedUsers,
+              work_logs: mergedWorkLogs,
+              edu_logs: mergedEduLogs,
+              tbms: mergedTbms,
               vault: mergedVault,
               otp: mergedOtp,
               incidents: mergedIncidents
@@ -1858,7 +1891,7 @@ class SecurityDatabase {
           console.warn('Push merged sync warning:', pushErr);
         }
 
-        const totalCount = mergedChecklists.length + mergedSites.length + mergedUsers.length + mergedVault.length + mergedOtp.length + mergedIncidents.length;
+        const totalCount = mergedChecklists.length + mergedSites.length + mergedUsers.length + mergedWorkLogs.length + mergedEduLogs.length + mergedTbms.length + mergedVault.length + mergedOtp.length + mergedIncidents.length;
 
         return {
           success: true,
@@ -1868,6 +1901,9 @@ class SecurityDatabase {
             checklists: mergedChecklists.length,
             sites: mergedSites.length,
             users: mergedUsers.length,
+            workLogs: mergedWorkLogs.length,
+            eduLogs: mergedEduLogs.length,
+            tbms: mergedTbms.length,
             vault: mergedVault.length,
             otp: mergedOtp.length,
             incidents: mergedIncidents.length
@@ -1955,9 +1991,16 @@ class SecurityDatabase {
       })();
       const localMap = new Map(localOverrides.map(l => [(l.id || l.log_id), l]));
 
+      let serverLogs = [];
       const res = await safeFetchApi('/api/work-logs');
-      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
-        const mapped = res.data.map(item => {
+      if (res && res.ok) {
+        try {
+          const json = await res.json();
+          serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+        } catch (e) {}
+      }
+      if (serverLogs.length > 0) {
+        const mapped = serverLogs.map(item => {
           let cleanDate = '';
           if (item.log_date) {
             cleanDate = String(item.log_date).trim().slice(0, 10);

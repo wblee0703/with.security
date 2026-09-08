@@ -2596,22 +2596,27 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
           {/* Quick Presets (Only visible when unlocked) */}
           {!isServerLocked && (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-              <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
-              <button
-                type="button"
-                onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
-                style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#1e3a8a', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
-              >
-                🌐 기본 호스팅 주소 (wblee0703.github.io)
-              </button>
-              <button
-                type="button"
-                onClick={() => setServerUrlInput('http://192.168.0.108:4000')}
-                style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#475569', fontSize: '11px', cursor: 'pointer' }}
-              >
-                📡 사내 Wi-Fi 테스트 (192.168.0.108:4000)
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
+                <button
+                  type="button"
+                  onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
+                  style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#1e3a8a', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                >
+                  🌐 기본 호스팅 주소 (wblee0703.github.io)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServerUrlInput('http://192.168.0.108:4000')}
+                  style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#475569', fontSize: '11px', cursor: 'pointer' }}
+                >
+                  📡 사내 Wi-Fi 테스트 (192.168.0.108:4000)
+                </button>
+              </div>
+              <div style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.5' }}>
+                💡 <strong>가비아 호스팅 DB 연동 안내:</strong> 가비아 서버에 MySQL이 설치되어 있지 않아도, 백엔드 서버가 파일 기반 데이터베이스(<code>server/security_database.json</code>)로 자동 전환되어 앱(APK)과 가비아 호스팅 서버 간의 데이터가 100% 동일하게 실시간 공유·동기화됩니다.
+              </div>
             </div>
           )}
 

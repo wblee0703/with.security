@@ -35,10 +35,13 @@ const pool = mysql.createPool({
   charset: 'utf8mb4'
 });
 
+export let isMySqlConnected = false;
+
 // DB 연결 테스트 및 자동 DB 생성/마이그레이션 함수
 export async function testConnection() {
   try {
     const connection = await pool.getConnection();
+    isMySqlConnected = true;
     console.log('✅ MySQL 데이터베이스 연결 성공! (가비아 커넥션 풀 활성화)');
     
     // work_log 컬럼 자동 마이그레이션 (is_shared, shared_with, shared_at)
@@ -209,14 +212,19 @@ export async function testConnection() {
           await tempConn.query(sql);
         }
         await tempConn.end();
+        isMySqlConnected = true;
         console.log(`✅ 데이터베이스('${dbName}') 및 테이블 자동 생성 완료!`);
         return true;
       } catch (initErr) {
-        console.error('❌ 데이터베이스 자동 생성 실패:', initErr.message);
+        isMySqlConnected = false;
+        console.warn('⚠️ [MySQL] 데이터베이스 자동 생성 불가:', initErr.message);
+        console.log('📦 [JsonDB] 가비아 파일 기반 JSON DB 모드로 원활하게 전환합니다. (server/security_database.json)');
         return false;
       }
     }
-    console.error('❌ MySQL 데이터베이스 연결 실패:', error.message);
+    isMySqlConnected = false;
+    console.warn('⚠️ [MySQL] MySQL 서버에 연결할 수 없습니다:', error.message);
+    console.log('📦 [JsonDB] 가비아 호스팅 파일 기반 JSON DB 모드가 안전하게 활성화되었습니다. (server/security_database.json)');
     return false;
   }
 }

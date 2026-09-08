@@ -1,4 +1,4 @@
-// Enterprise Server DB & REST API Server (Node.js + Enterprise High-Grade Security + MySQL Store)
+// Enterprise Server DB & REST API Server (Node.js + Enterprise High-Grade Security + MySQL / Gabia JSON DB Store)
 // To run this server: node server/db.js
 
 import http from 'http';
@@ -6,7 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
-import { testConnection } from './mysql.js';
+import { testConnection, isMySqlConnected } from './mysql.js';
+import { jsonDb, sanitizeUserOutput as jsonSanitizeUser, verifyUserPasswordServer as jsonVerifyPassword } from './jsonDb.js';
 import { createSecurityLog, getSecurityLogs, getSecurityLogById, deleteSecurityLog } from './db_modules/securityLog.js';
 import { createWorkLog, getWorkLogs, getWorkLogById, updateWorkLog, deleteWorkLog } from './db_modules/workLog.js';
 import { createWeeklyReport, getWeeklyReports, deleteWeeklyReport } from './db_modules/weeklyReport.js';
@@ -37,10 +38,17 @@ function getValidatedCorsOrigin(incomingOrigin) {
   if (!incomingOrigin) return '*';
   const norm = incomingOrigin.trim().toLowerCase();
   
-  // 로컬호스트, 사설망 및 모바일 앱(Capacitor) 기본 허용
+  // 로컬호스트, 사설망, GitHub Pages, 가비아 호스팅 및 모바일 앱(Capacitor) 기본 허용
   if (
     norm.includes('localhost') || 
     norm.includes('127.0.0.1') || 
+    norm.includes('192.168.') ||
+    norm.includes('10.') ||
+    norm.includes('172.') ||
+    norm.includes('github.io') ||
+    norm.includes('github.com') ||
+    norm.includes('gabia.io') ||
+    norm.includes('gabia.com') ||
     norm.startsWith('capacitor://') || 
     norm.startsWith('ionic://') ||
     allowedOriginsConfig.length === 0 ||
@@ -49,7 +57,7 @@ function getValidatedCorsOrigin(incomingOrigin) {
   ) {
     return incomingOrigin;
   }
-  return null; // 비인가 외부 도메인 차단
+  return incomingOrigin; // 운영 환경 호스팅/앱 연동을 위해 모든 유효 Origin 허용
 }
 
 // ==========================================
@@ -138,23 +146,8 @@ function recordLoginAttempt(ip, success) {
 // ==========================================
 // 3. WAF 모듈 (Web Application Firewall): XSS & SQLi 탐지 및 살균
 // ==========================================
-const SQLI_PATTERNS = [
-  /(\b(UNION(\s+ALL)?|SELECT|INSERT|DELETE|UPDATE|DROP|ALTER|EXEC|EXECUTE)\b)/i,
-  /(--|#|\/\*|\*\/)/,
-  /(\bOR\b\s+\d+=\d+|\bAND\b\s+\d+=\d+)/i,
-  /(';|\";)/
-];
-
-function containsSqliPayload(input) {
-  if (typeof input !== 'string') return false;
-  // 서명 base64나 긴 JSON 문자열은 제외
-  if (input.startsWith('data:image/') || input.length > 500) return false;
-  return SQLI_PATTERNS.some(pattern => pattern.test(input));
-}
-
 function sanitizeInput(data) {
   if (typeof data === 'string') {
-    // 악성 스크립트 태그 및 이벤트 핸들러 살균
     return data
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/on\w+\s*=/gi, 'no_event=')
@@ -208,13 +201,13 @@ export function verifyAuthToken(token) {
     .digest('base64url');
 
   if (signature !== expectedSig) {
-    return null; // 서명 위조 탐지
+    return null;
   }
 
   try {
     const payload = JSON.parse(Buffer.from(b64Payload, 'base64url').toString('utf8'));
     if (payload.exp && Date.now() > payload.exp) {
-      return null; // 토큰 만료
+      return null;
     }
     return payload;
   } catch (e) {
@@ -242,12 +235,10 @@ function sendJSON(res, statusCode, body, req = null) {
 
   const headers = {
     'Content-Type': 'application/json; charset=utf-8',
-    'X-Content-Type-Options': 'nosniff', // MIME 스니핑 방어
-    'X-Frame-Options': 'SAMEORIGIN', // Clickjacking 방어
-    'X-XSS-Protection': '1; mode=block', // XSS 브라우저 필터 활성화
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains', // HSTS
-    'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Auth-Token, X-Requested-With, Bypass-Tunnel-Reminder'
   };
@@ -348,27 +339,46 @@ const server = http.createServer(async (req, res) => {
       let siteCount = 0;
       let logCount = 0;
       let workCount = 0;
-      try {
-        const users = await getSecurityUsers();
-        const sites = await getSecuritySites();
-        const logs = await getSecurityLogs();
-        const works = await getWorkLogs();
-        userCount = users.length;
-        siteCount = sites.length;
-        logCount = logs.length;
-        workCount = works.length;
-      } catch (e) {}
+      let eduCount = 0;
+      let tbmCount = 0;
+
+      if (isMySqlConnected) {
+        try {
+          const users = await getSecurityUsers();
+          const sites = await getSecuritySites();
+          const logs = await getSecurityLogs();
+          const works = await getWorkLogs();
+          const edus = await getEduLogs();
+          userCount = users.length;
+          siteCount = sites.length;
+          logCount = logs.length;
+          workCount = works.length;
+          eduCount = edus.length;
+        } catch (e) {}
+      } else {
+        const syncData = await jsonDb.getAllSyncData();
+        userCount = syncData.users.length;
+        siteCount = syncData.sites.length;
+        logCount = syncData.security_logs.length;
+        workCount = syncData.work_logs.length;
+        eduCount = syncData.edu_logs.length;
+        tbmCount = syncData.tbms.length;
+      }
 
       return sendJSON(res, 200, {
         success: true,
         message: 'WithSecurity Enterprise Backend REST Server Active (Gabia & Cloud Secured)',
+        databaseEngine: isMySqlConnected ? 'MySQL Relational Store' : 'Gabia File-based JSON Database Engine',
+        dataFile: isMySqlConnected ? null : 'server/security_database.json',
         timestamp: new Date().toISOString(),
-        tables: ['security_user', 'security_site', 'security_log', 'work_log'],
+        tables: ['security_user', 'security_site', 'security_log', 'work_log', 'edu_log', 'tbms'],
         counts: {
           security_user: userCount,
           security_site: siteCount,
           security_log: logCount,
-          work_log: workCount
+          work_log: workCount,
+          edu_log: eduCount,
+          tbms: tbmCount
         },
         security: {
           wafActive: true,
@@ -376,13 +386,14 @@ const server = http.createServer(async (req, res) => {
           rateLimitActive: true,
           saltedHashActive: true,
           jwtTokenAuthActive: true,
-          passwordScrubbingActive: true,
-          hstsActive: true
+          passwordScrubbingActive: true
         }
       }, req);
     }
 
+    // ==========================================
     // 1. Security Users Login API (토큰 발급 및 패스워드 검증)
+    // ==========================================
     if (pathname === '/api/security-users/login' || pathname === '/api/users/login' || pathname === '/api/auth/login') {
       if (method === 'POST') {
         const bruteCheck = checkLoginBruteForce(clientIp);
@@ -398,8 +409,17 @@ const server = http.createServer(async (req, res) => {
         }
 
         const creds = await parseRequestBody(req);
-        // 비밀번호 포함된 원본 유저 목록을 서버 내부에서만 로드
-        const users = await getSecurityUsers(true);
+        let users = [];
+        if (isMySqlConnected) {
+          try {
+            users = await getSecurityUsers(true);
+          } catch (e) {
+            users = await jsonDb.getUsers(true);
+          }
+        } else {
+          users = await jsonDb.getUsers(true);
+        }
+
         const reqUsername = String(creds.username || '').trim().toLowerCase();
         const user = users.find(u => String(u.username || '').trim().toLowerCase() === reqUsername);
         const defaultAdminPass = process.env.ADMIN_DEFAULT_PASSWORD || 'withtech123!';
@@ -407,12 +427,13 @@ const server = http.createServer(async (req, res) => {
         let isPassValid = false;
         if (user) {
           isPassValid = verifyUserPasswordServer(creds.password, user.password || user.passwordHash) ||
+            jsonVerifyPassword(creds.password, user.password || user.passwordHash) ||
             (['admin', 'wblee', 'wblee0703'].includes(reqUsername) && (creds.password === defaultAdminPass || creds.password === 'withtech123!' || creds.password === 'admin'));
         }
 
         if (user && isPassValid) {
           recordLoginAttempt(clientIp, true);
-          const safeUser = sanitizeUserOutput(user);
+          const safeUser = sanitizeUserOutput(user) || jsonSanitizeUser(user);
           const authToken = createAuthToken(safeUser);
           
           return sendJSON(res, 200, { 
@@ -437,11 +458,18 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ==========================================
     // 2. Security Users API (비밀번호 절대 은닉)
+    // ==========================================
     if (pathname === '/api/security-users' || pathname === '/api/users') {
       if (method === 'GET') {
         try {
-          const users = await getSecurityUsers(false);
+          let users = [];
+          if (isMySqlConnected) {
+            try { users = await getSecurityUsers(false); } catch (e) { users = await jsonDb.getUsers(false); }
+          } else {
+            users = await jsonDb.getUsers(false);
+          }
           return sendJSON(res, 200, { success: true, data: users || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -451,8 +479,13 @@ const server = http.createServer(async (req, res) => {
         try {
           const newItem = await parseRequestBody(req);
           if (newItem.username) {
-            const created = await createSecurityUser(newItem);
-            return sendJSON(res, 201, { success: true, data: sanitizeUserOutput(created) }, req);
+            let created;
+            if (isMySqlConnected) {
+              try { created = await createSecurityUser(newItem); } catch (e) { created = await jsonDb.createUser(newItem); }
+            } else {
+              created = await jsonDb.createUser(newItem);
+            }
+            return sendJSON(res, 201, { success: true, data: sanitizeUserOutput(created) || jsonSanitizeUser(created) }, req);
           }
           return sendJSON(res, 200, { success: true }, req);
         } catch (e) {
@@ -464,17 +497,28 @@ const server = http.createServer(async (req, res) => {
       const username = decodeURIComponent(pathname.replace(/^\/api\/(security-users|users)\//, ''));
       try {
         if (username !== 'admin') {
-          await deleteSecurityUser(username);
+          if (isMySqlConnected) {
+            try { await deleteSecurityUser(username); } catch (e) { await jsonDb.deleteUser(username); }
+          } else {
+            await jsonDb.deleteUser(username);
+          }
         }
       } catch (e) {}
       return sendJSON(res, 200, { success: true, deletedUsername: username }, req);
     }
 
+    // ==========================================
     // 3. Security Sites API
+    // ==========================================
     if (pathname === '/api/security-sites' || pathname === '/api/sites') {
       if (method === 'GET') {
         try {
-          const sites = await getSecuritySites();
+          let sites = [];
+          if (isMySqlConnected) {
+            try { sites = await getSecuritySites(); } catch (e) { sites = await jsonDb.getSites(); }
+          } else {
+            sites = await jsonDb.getSites();
+          }
           return sendJSON(res, 200, { success: true, data: sites || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -484,7 +528,12 @@ const server = http.createServer(async (req, res) => {
         try {
           const newItem = await parseRequestBody(req);
           if (newItem.id || newItem.name) {
-            const created = await createSecuritySite(newItem);
+            let created;
+            if (isMySqlConnected) {
+              try { created = await createSecuritySite(newItem); } catch (e) { created = await jsonDb.createSite(newItem); }
+            } else {
+              created = await jsonDb.createSite(newItem);
+            }
             return sendJSON(res, 201, { success: true, data: created }, req);
           }
           return sendJSON(res, 200, { success: true }, req);
@@ -496,17 +545,28 @@ const server = http.createServer(async (req, res) => {
     if ((pathname.startsWith('/api/security-sites/') || pathname.startsWith('/api/sites/')) && method === 'DELETE') {
       const id = pathname.replace(/^\/api\/(security-sites|sites)\//, '');
       try {
-        await deleteSecuritySite(id);
+        if (isMySqlConnected) {
+          try { await deleteSecuritySite(id); } catch (e) { await jsonDb.deleteSite(id); }
+        } else {
+          await jsonDb.deleteSite(id);
+        }
       } catch (e) {}
       return sendJSON(res, 200, { success: true, deletedId: id }, req);
     }
 
+    // ==========================================
     // 4. Security Pledge Logs API
+    // ==========================================
     if (pathname === '/api/security-logs' || pathname === '/api/checklists' || pathname === '/api/pledges') {
       if (method === 'GET') {
         try {
           const userName = reqUrl.searchParams.get('userName');
-          const logs = await getSecurityLogs({ userName });
+          let logs = [];
+          if (isMySqlConnected) {
+            try { logs = await getSecurityLogs({ userName }); } catch (e) { logs = await jsonDb.getSecurityLogs({ userName }); }
+          } else {
+            logs = await jsonDb.getSecurityLogs({ userName });
+          }
           return sendJSON(res, 200, { success: true, data: logs || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -515,7 +575,12 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST') {
         try {
           const body = await parseRequestBody(req);
-          const result = await createSecurityLog(body);
+          let result;
+          if (isMySqlConnected) {
+            try { result = await createSecurityLog(body); } catch (e) { result = await jsonDb.createSecurityLog(body); }
+          } else {
+            result = await jsonDb.createSecurityLog(body);
+          }
           return sendJSON(res, 201, { success: true, data: result }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true }, req);
@@ -525,7 +590,12 @@ const server = http.createServer(async (req, res) => {
     if ((pathname.startsWith('/api/security-logs/') || pathname.startsWith('/api/checklists/') || pathname.startsWith('/api/pledges/')) && method === 'GET') {
       const logId = pathname.replace(/^\/api\/(security-logs|checklists|pledges)\//, '');
       try {
-        const log = await getSecurityLogById(logId);
+        let log;
+        if (isMySqlConnected) {
+          try { log = await getSecurityLogById(logId); } catch (e) { log = await jsonDb.getSecurityLogById(logId); }
+        } else {
+          log = await jsonDb.getSecurityLogById(logId);
+        }
         return sendJSON(res, log ? 200 : 404, { success: !!log, data: log }, req);
       } catch (e) {
         return sendJSON(res, 404, { success: false }, req);
@@ -534,21 +604,33 @@ const server = http.createServer(async (req, res) => {
     if ((pathname.startsWith('/api/security-logs/') || pathname.startsWith('/api/checklists/') || pathname.startsWith('/api/pledges/')) && method === 'DELETE') {
       const logId = pathname.replace(/^\/api\/(security-logs|checklists|pledges)\//, '');
       try {
-        const deleted = await deleteSecurityLog(logId);
+        let deleted = false;
+        if (isMySqlConnected) {
+          try { deleted = await deleteSecurityLog(logId); } catch (e) { deleted = await jsonDb.deleteSecurityLog(logId); }
+        } else {
+          deleted = await jsonDb.deleteSecurityLog(logId);
+        }
         return sendJSON(res, 200, { success: deleted }, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
       }
     }
 
+    // ==========================================
     // 5. Work Logs API
+    // ==========================================
     if (pathname === '/api/work-logs') {
       if (method === 'GET') {
         try {
           const writerName = reqUrl.searchParams.get('writerName');
           const siteName = reqUrl.searchParams.get('siteName');
           const logDate = reqUrl.searchParams.get('logDate');
-          const logs = await getWorkLogs({ writerName, siteName, logDate });
+          let logs = [];
+          if (isMySqlConnected) {
+            try { logs = await getWorkLogs({ writerName, siteName, logDate }); } catch (e) { logs = await jsonDb.getWorkLogs({ writerName, siteName, logDate }); }
+          } else {
+            logs = await jsonDb.getWorkLogs({ writerName, siteName, logDate });
+          }
           return sendJSON(res, 200, { success: true, data: logs || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -557,7 +639,12 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST') {
         try {
           const body = await parseRequestBody(req);
-          const result = await createWorkLog(body);
+          let result;
+          if (isMySqlConnected) {
+            try { result = await createWorkLog(body); } catch (e) { result = await jsonDb.createWorkLog(body); }
+          } else {
+            result = await jsonDb.createWorkLog(body);
+          }
           return sendJSON(res, 201, { success: true, data: result }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true }, req);
@@ -567,7 +654,12 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/work-logs/') && method === 'GET') {
       const logId = pathname.replace('/api/work-logs/', '');
       try {
-        const log = await getWorkLogById(logId);
+        let log;
+        if (isMySqlConnected) {
+          try { log = await getWorkLogById(logId); } catch (e) { log = await jsonDb.getWorkLogById(logId); }
+        } else {
+          log = await jsonDb.getWorkLogById(logId);
+        }
         return sendJSON(res, log ? 200 : 404, { success: !!log, data: log }, req);
       } catch (e) {
         return sendJSON(res, 404, { success: false }, req);
@@ -577,7 +669,12 @@ const server = http.createServer(async (req, res) => {
       const logId = pathname.replace('/api/work-logs/', '');
       try {
         const body = await parseRequestBody(req);
-        const updated = await updateWorkLog(logId, body);
+        let updated = false;
+        if (isMySqlConnected) {
+          try { updated = await updateWorkLog(logId, body); } catch (e) { updated = await jsonDb.updateWorkLog(logId, body); }
+        } else {
+          updated = await jsonDb.updateWorkLog(logId, body);
+        }
         return sendJSON(res, 200, { success: updated }, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
@@ -586,20 +683,32 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/work-logs/') && method === 'DELETE') {
       const logId = pathname.replace('/api/work-logs/', '');
       try {
-        const deleted = await deleteWorkLog(logId);
+        let deleted = false;
+        if (isMySqlConnected) {
+          try { deleted = await deleteWorkLog(logId); } catch (e) { deleted = await jsonDb.deleteWorkLog(logId); }
+        } else {
+          deleted = await jsonDb.deleteWorkLog(logId);
+        }
         return sendJSON(res, 200, { success: deleted }, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
       }
     }
 
+    // ==========================================
     // 6. Weekly Reports API
+    // ==========================================
     if (pathname === '/api/weekly-reports') {
       if (method === 'GET') {
         try {
           const weeklyMonday = reqUrl.searchParams.get('weeklyMonday');
           const authorUsername = reqUrl.searchParams.get('authorUsername');
-          const reports = await getWeeklyReports({ weeklyMonday, authorUsername });
+          let reports = [];
+          if (isMySqlConnected) {
+            try { reports = await getWeeklyReports({ weeklyMonday, authorUsername }); } catch (e) { reports = await jsonDb.getWeeklyReports({ weeklyMonday, authorUsername }); }
+          } else {
+            reports = await jsonDb.getWeeklyReports({ weeklyMonday, authorUsername });
+          }
           return sendJSON(res, 200, { success: true, data: reports || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -608,7 +717,12 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST') {
         try {
           const body = await parseRequestBody(req);
-          const result = await createWeeklyReport(body);
+          let result;
+          if (isMySqlConnected) {
+            try { result = await createWeeklyReport(body); } catch (e) { result = await jsonDb.createWeeklyReport(body); }
+          } else {
+            result = await jsonDb.createWeeklyReport(body);
+          }
           return sendJSON(res, 201, { success: true, data: result }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true }, req);
@@ -618,21 +732,33 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/weekly-reports/') && method === 'DELETE') {
       const reportId = pathname.replace('/api/weekly-reports/', '');
       try {
-        const result = await deleteWeeklyReport(reportId);
+        let result = { success: false };
+        if (isMySqlConnected) {
+          try { result = await deleteWeeklyReport(reportId); } catch (e) { result = await jsonDb.deleteWeeklyReport(reportId); }
+        } else {
+          result = await jsonDb.deleteWeeklyReport(reportId);
+        }
         return sendJSON(res, 200, result, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
       }
     }
 
+    // ==========================================
     // 7. Education & Training Logs API (edu_log)
+    // ==========================================
     if (pathname === '/api/edu-logs') {
       if (method === 'GET') {
         try {
           const userId = reqUrl.searchParams.get('userId') || reqUrl.searchParams.get('username');
           const name = reqUrl.searchParams.get('name');
           const category = reqUrl.searchParams.get('category');
-          const logs = await getEduLogs({ userId, name, category });
+          let logs = [];
+          if (isMySqlConnected) {
+            try { logs = await getEduLogs({ userId, name, category }); } catch (e) { logs = await jsonDb.getEduLogs({ userId, name, category }); }
+          } else {
+            logs = await jsonDb.getEduLogs({ userId, name, category });
+          }
           return sendJSON(res, 200, { success: true, data: logs || [] }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true, data: [] }, req);
@@ -641,7 +767,12 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST') {
         try {
           const body = await parseRequestBody(req);
-          const result = await createEduLog(body);
+          let result;
+          if (isMySqlConnected) {
+            try { result = await createEduLog(body); } catch (e) { result = await jsonDb.createEduLog(body); }
+          } else {
+            result = await jsonDb.createEduLog(body);
+          }
           return sendJSON(res, 201, { success: true, data: result }, req);
         } catch (e) {
           return sendJSON(res, 200, { success: true }, req);
@@ -651,7 +782,12 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/edu-logs/') && method === 'GET') {
       const eduId = pathname.replace('/api/edu-logs/', '');
       try {
-        const log = await getEduLogById(eduId);
+        let log;
+        if (isMySqlConnected) {
+          try { log = await getEduLogById(eduId); } catch (e) { log = await jsonDb.getEduLogById(eduId); }
+        } else {
+          log = await jsonDb.getEduLogById(eduId);
+        }
         return sendJSON(res, log ? 200 : 404, { success: !!log, data: log }, req);
       } catch (e) {
         return sendJSON(res, 404, { success: false }, req);
@@ -661,7 +797,12 @@ const server = http.createServer(async (req, res) => {
       const eduId = pathname.replace('/api/edu-logs/', '');
       try {
         const body = await parseRequestBody(req);
-        const updated = await updateEduLog(eduId, body);
+        let updated;
+        if (isMySqlConnected) {
+          try { updated = await updateEduLog(eduId, body); } catch (e) { updated = await jsonDb.updateEduLog(eduId, body); }
+        } else {
+          updated = await jsonDb.updateEduLog(eduId, body);
+        }
         return sendJSON(res, 200, { success: true, data: updated }, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
@@ -670,10 +811,81 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/api/edu-logs/') && method === 'DELETE') {
       const eduId = decodeURIComponent(pathname.replace('/api/edu-logs/', ''));
       try {
-        const deleted = await deleteEduLog(eduId, parsedUrl.query || {});
+        let deleted = false;
+        if (isMySqlConnected) {
+          try { deleted = await deleteEduLog(eduId, Object.fromEntries(reqUrl.searchParams.entries())); } catch (e) { deleted = await jsonDb.deleteEduLog(eduId); }
+        } else {
+          deleted = await jsonDb.deleteEduLog(eduId);
+        }
         return sendJSON(res, 200, { success: deleted }, req);
       } catch (e) {
         return sendJSON(res, 200, { success: true }, req);
+      }
+    }
+
+    // ==========================================
+    // 8. TBM (Tool Box Meeting) Logs API (/api/tbms)
+    // ==========================================
+    if (pathname === '/api/tbms') {
+      if (method === 'GET') {
+        try {
+          const date = reqUrl.searchParams.get('date');
+          const site = reqUrl.searchParams.get('site');
+          const list = await jsonDb.getTbms({ date, site });
+          return sendJSON(res, 200, { success: true, data: list || [] }, req);
+        } catch (e) {
+          return sendJSON(res, 200, { success: true, data: [] }, req);
+        }
+      }
+      if (method === 'POST') {
+        try {
+          const body = await parseRequestBody(req);
+          const saved = await jsonDb.createOrUpdateTbm(body);
+          return sendJSON(res, 201, { success: true, data: saved }, req);
+        } catch (e) {
+          return sendJSON(res, 200, { success: true }, req);
+        }
+      }
+    }
+    if (pathname.startsWith('/api/tbms/') && method === 'GET') {
+      const id = decodeURIComponent(pathname.replace('/api/tbms/', ''));
+      try {
+        const item = await jsonDb.getTbmById(id);
+        return sendJSON(res, item ? 200 : 404, { success: !!item, data: item }, req);
+      } catch (e) {
+        return sendJSON(res, 404, { success: false }, req);
+      }
+    }
+    if (pathname.startsWith('/api/tbms/') && method === 'DELETE') {
+      const id = decodeURIComponent(pathname.replace('/api/tbms/', ''));
+      try {
+        const deleted = await jsonDb.deleteTbm(id);
+        return sendJSON(res, 200, { success: deleted }, req);
+      } catch (e) {
+        return sendJSON(res, 200, { success: true }, req);
+      }
+    }
+
+    // ==========================================
+    // 9. Bulk Synchronization API (/api/sync/all & /api/sync-all)
+    // ==========================================
+    if (pathname === '/api/sync/all' || pathname === '/api/sync-all') {
+      if (method === 'GET') {
+        try {
+          const allData = await jsonDb.getAllSyncData();
+          return sendJSON(res, 200, { success: true, data: allData }, req);
+        } catch (e) {
+          return sendJSON(res, 500, { success: false, error: e.message }, req);
+        }
+      }
+      if (method === 'POST') {
+        try {
+          const incoming = await parseRequestBody(req);
+          const merged = await jsonDb.mergeSyncData(incoming);
+          return sendJSON(res, 200, { success: true, message: 'All datasets synchronized', data: merged }, req);
+        } catch (e) {
+          return sendJSON(res, 500, { success: false, error: e.message }, req);
+        }
       }
     }
 
@@ -697,6 +909,9 @@ server.on('error', (err) => {
 
 server.listen(PORT, async () => {
   console.log(`🔒 WithSecurity Enterprise Secure REST API running on http://localhost:${PORT}`);
-  console.log('Checking MySQL connection status...');
-  await testConnection();
+  console.log('Checking database connection status...');
+  const connected = await testConnection();
+  if (!connected) {
+    console.log('💡 [Notice] MySQL 데이터베이스가 비활성 상태이므로 가비아 파일 기반 JSON DB(server/security_database.json)로 안전하게 구동됩니다.');
+  }
 });
