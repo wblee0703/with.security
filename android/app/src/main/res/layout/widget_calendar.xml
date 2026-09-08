@@ -17,20 +17,12 @@
 
         <ImageView
             android:id="@+id/iv_widget_logo"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
-            android:layout_marginEnd="6dp"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:adjustViewBounds="true"
+            android:maxWidth="130dp"
             android:src="@drawable/logo_withtech"
             android:scaleType="fitCenter" />
-
-        <TextView
-            android:id="@+id/tv_widget_app_title"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="WITH Calendar"
-            android:textColor="#0284C7"
-            android:textSize="14.5sp"
-            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/btn_open_app"

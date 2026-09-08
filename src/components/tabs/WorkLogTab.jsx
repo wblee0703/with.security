@@ -199,7 +199,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       title: '',
       details: '',
       subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
-      dueDate: ''
+      dueDate: logItem.dueDate || logItem.due_date || ''
     });
   };
 
@@ -843,10 +843,21 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Confirm Deletion directly without password
   const handleConfirmDelete = async () => {
     if (deleteTargetLog) {
-      const updatedLogs = await dbService.deleteWorkLog(deleteTargetLog.id);
-      setWorkLogs(updatedLogs);
+      const targetTitle = deleteTargetLog.title || '업무';
+      const targetId = deleteTargetLog.id;
+
+      // Close modal immediately and clear target log
+      setIsDeleteModalOpen(false);
       setDeleteTargetLog(null);
-      if (onTriggerToast) onTriggerToast(`'${title}' 업무 일지가 삭제되었습니다.`, 'info');
+
+      const updatedLogs = await dbService.deleteWorkLog(targetId);
+      setWorkLogs(updatedLogs);
+
+      if (onTriggerToast) {
+        onTriggerToast(`'${targetTitle}' 업무 일지가 삭제되었습니다.`, 'info');
+      }
+    } else {
+      setIsDeleteModalOpen(false);
     }
   };
 
@@ -1392,13 +1403,22 @@ export default function WorkLogTab({ onTriggerToast }) {
                       {(() => {
                         const logsForDate = groupedByDate[dateStr] || [];
                         const cardGroupsMap = logsForDate.reduce((acc, log) => {
-                          const sName = log.siteName || log.site_name || '';
+                          const isInternal = log.category !== '출장 업무';
+                          const sName = !isInternal ? (log.siteName || log.site_name || '').trim() : '';
                           const aName = log.authorName || log.name || '작성자';
-                          const key = `${log.category}___${sName}___${aName}`;
+                          const subCat = isInternal ? (log.subCategory || log.sub_category || '일반업무') : '';
+                          const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
+
+                          const key = isInternal
+                            ? `${log.category}___${subCat}___${dDate}___${aName}`
+                            : `${log.category}___${sName}___${aName}`;
+
                           if (!acc[key]) {
                             acc[key] = {
                               key,
                               category: log.category,
+                              subCategory: subCat,
+                              dueDate: dDate,
                               siteName: sName,
                               authorName: aName,
                               authorRank: log.authorRank || log.rank || '대리',
@@ -1419,6 +1439,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                             const isBTrip = b.category === '출장 업무';
                             if (isATrip && !isBTrip) return -1; // 출장 업무 카드가 최상단
                             if (!isATrip && isBTrip) return 1;
+                            // 사내 업무는 구분 순서(일반업무, 고객대응, 미팅, 교육)로 정렬
+                            if (a.subCategory !== b.subCategory) {
+                              const order = { '일반업무': 1, '고객대응': 2, '미팅': 3, '교육': 4 };
+                              const oA = order[a.subCategory] || 9;
+                              const oB = order[b.subCategory] || 9;
+                              if (oA !== oB) return oA - oB;
+                            }
                             return (a.createdAt || '').localeCompare(b.createdAt || '');
                           })
                           .map(group => {
@@ -1436,7 +1463,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   border: isCardScheduled ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1',
                                   borderLeft: isCardScheduled
                                     ? '4px solid #ea580c'
-                                    : (group.category === '출장 업무' ? '4px solid #7c3aed' : '4px solid #1e3a8a'),
+                                    : (group.category === '출장 업무' ? '4px solid #7c3aed' : (group.dueDate ? '4px solid #e11d48' : '4px solid #1e3a8a')),
                                   background: isCardScheduled ? '#fffbf5' : '#ffffff',
                                   boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                                   display: 'flex',
@@ -1444,7 +1471,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   gap: '10px'
                                 }}
                               >
-                                {/* Log Header Row 1: Category Badge + Business Trip Site + Group Action Button */}
+                                {/* Log Header Row 1: Category Badge + SubCategory & DueDate (for 사내 업무) / Business Trip Site (for 출장 업무) + Group Action Button */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                     <span style={{
@@ -1459,6 +1486,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
                                     </span>
 
+                                    {/* 출장 업무인 경우: 사업장명 표기 */}
                                     {group.category === '출장 업무' && group.siteName && (
                                       <span style={{
                                         padding: '4px 10px',
@@ -1473,6 +1501,58 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         gap: '4px'
                                       }}>
                                         {group.siteName}
+                                      </span>
+                                    )}
+
+                                    {/* 사내 업무인 경우: 사내업무 라벨 오른쪽에 구분 표기 */}
+                                    {group.category !== '출장 업무' && group.subCategory && (
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        background: (() => {
+                                          if (group.subCategory === '고객대응') return '#ecfdf5';
+                                          if (group.subCategory === '미팅') return '#f5f3ff';
+                                          if (group.subCategory === '교육') return '#fffbeb';
+                                          return '#eff6ff';
+                                        })(),
+                                        color: (() => {
+                                          if (group.subCategory === '고객대응') return '#059669';
+                                          if (group.subCategory === '미팅') return '#7c3aed';
+                                          if (group.subCategory === '교육') return '#d97706';
+                                          return '#1e3a8a';
+                                        })(),
+                                        border: (() => {
+                                          if (group.subCategory === '고객대응') return '1.5px solid #a7f3d0';
+                                          if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
+                                          if (group.subCategory === '교육') return '1.5px solid #fde68a';
+                                          return '1.5px solid #bfdbfe';
+                                        })(),
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        {group.subCategory}
+                                      </span>
+                                    )}
+
+                                    {/* 사내 업무인 경우: 구분 라벨 오른쪽에 납기 표기 */}
+                                    {group.category !== '출장 업무' && group.dueDate && (
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        background: '#fff1f2',
+                                        color: '#e11d48',
+                                        border: '1.5px solid #fecdd3',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        <Clock size={12} color="#e11d48" />
+                                        납기: {group.dueDate}
                                       </span>
                                     )}
                                   </div>
@@ -1718,75 +1798,19 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '2px' }}>
                                                     {itemIdx + 1}.
                                                   </span>
-                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                                      {/* 사내 업무 구분 배지 */}
-                                                      {item.category !== '출장 업무' && (item.subCategory || item.sub_category) && (
-                                                        <span style={{
-                                                          fontSize: '11px',
-                                                          fontWeight: '800',
-                                                          padding: '1px 6px',
-                                                          borderRadius: '4px',
-                                                          background: (() => {
-                                                            const sc = item.subCategory || item.sub_category;
-                                                            if (sc === '고객대응') return '#ecfdf5';
-                                                            if (sc === '미팅') return '#f5f3ff';
-                                                            if (sc === '교육') return '#fffbeb';
-                                                            return '#eff6ff';
-                                                          })(),
-                                                          color: (() => {
-                                                            const sc = item.subCategory || item.sub_category;
-                                                            if (sc === '고객대응') return '#059669';
-                                                            if (sc === '미팅') return '#7c3aed';
-                                                            if (sc === '교육') return '#d97706';
-                                                            return '#1e3a8a';
-                                                          })(),
-                                                          border: (() => {
-                                                            const sc = item.subCategory || item.sub_category;
-                                                            if (sc === '고객대응') return '1px solid #a7f3d0';
-                                                            if (sc === '미팅') return '1px solid #ddd6fe';
-                                                            if (sc === '교육') return '1px solid #fde68a';
-                                                            return '1px solid #bfdbfe';
-                                                          })(),
-                                                          flexShrink: 0
-                                                        }}>
-                                                          {item.subCategory || item.sub_category}
-                                                        </span>
-                                                      )}
-
-                                                      {/* 납기 배지 (입력된 경우) */}
-                                                      {(item.dueDate || item.due_date) && (
-                                                        <span style={{
-                                                          fontSize: '11px',
-                                                          fontWeight: '800',
-                                                          padding: '1px 6px',
-                                                          borderRadius: '4px',
-                                                          background: '#fff1f2',
-                                                          color: '#e11d48',
-                                                          border: '1px solid #fecdd3',
-                                                          display: 'inline-flex',
-                                                          alignItems: 'center',
-                                                          gap: '3px',
-                                                          flexShrink: 0
-                                                        }}>
-                                                          <Clock size={11} />
-                                                          납기: {item.dueDate || item.due_date}
-                                                        </span>
-                                                      )}
-
-                                                      <span style={{
-                                                        fontSize: '13.5px',
-                                                        fontWeight: '800',
-                                                        color: '#0f172a',
-                                                        whiteSpace: 'pre-wrap',
-                                                        wordBreak: 'break-word',
-                                                        overflowWrap: 'anywhere',
-                                                        lineHeight: '1.4'
-                                                      }}>
-                                                        {item.title}
-                                                      </span>
-                                                    </div>
-                                                  </div>
+                                                  <span style={{
+                                                    fontSize: '13.5px',
+                                                    fontWeight: '800',
+                                                    color: '#0f172a',
+                                                    whiteSpace: 'pre-wrap',
+                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'anywhere',
+                                                    lineHeight: '1.4',
+                                                    flex: 1,
+                                                    minWidth: 0
+                                                  }}>
+                                                    {item.title}
+                                                  </span>
                                                 </div>
 
                                                 {canModifyLog(item) && (
@@ -2295,7 +2319,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                   </div>
                   {['일반업무', '고객대응'].includes(form.subCategory || '일반업무') && (
                     <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
-                      💡 납기일을 입력하면 해당 날짜의 캘린더에 <strong>[납기: {form.subCategory}]</strong> 배지가 함께 표기됩니다.
+                      💡 납기일을 입력하면 해당 날짜의 캘린더에 <strong>[납기]</strong> 배지가 함께 표기됩니다.
                     </div>
                   )}
                 </div>
@@ -2848,7 +2872,10 @@ export default function WorkLogTab({ onTriggerToast }) {
               </div>
               <button
                 type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteTargetLog(null);
+                }}
                 style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px' }}
               >
                 <X size={20} />
@@ -2863,7 +2890,10 @@ export default function WorkLogTab({ onTriggerToast }) {
             <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
               <button
                 type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setDeleteTargetLog(null);
+                }}
                 className="glass-button"
                 style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer' }}
               >

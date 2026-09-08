@@ -216,8 +216,7 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         }
       } else if (hasDueTask && dateLogs.length === 0 && dateTbms.length === 0) {
         category = '납기';
-        const subCat = dueLogs[0].subCategory || dueLogs[0].sub_category || '사내';
-        cellWorkText = `[납기] ${subCat}`;
+        cellWorkText = '[납기]';
       } else if (hasInternalWork || dateLogs.length > 0 || dateTbms.length > 0) {
         category = '사내';
         cellWorkText = '사내업무';

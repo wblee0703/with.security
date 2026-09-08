@@ -774,7 +774,7 @@ export default function WorkLogCalendar({
                         return log.title || '출장 업무';
                       }
                       if (isDue) {
-                        return `[납기${subCat ? `: ${subCat}` : ''}] ${log.title}`;
+                        return `[납기] ${log.title}`;
                       }
                       if (subCat) {
                         return `[${subCat}] ${log.title}`;
