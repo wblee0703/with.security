@@ -1,5 +1,14 @@
 {
-  "appId": "com.company.withsharing",
-  "appName": "WITH Sharing",
-  "webDir": "dist"
+  "appId": "com.company.withsecurity",
+  "appName": "with.security",
+  "webDir": "dist",
+  "server": {
+    "url": "https://wblee0703.github.io/with.security",
+    "cleartext": true,
+    "androidScheme": "https",
+    "allowNavigation": [
+      "wblee0703.github.io",
+      "*.github.io"
+    ]
+  }
 }

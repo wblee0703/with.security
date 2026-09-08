@@ -2697,6 +2697,31 @@ class SecurityDatabase {
     notifyDataChanged();
     return true;
   }
+
+  getServerUrl() {
+    return getServerUrl();
+  }
+
+  setServerUrl(url) {
+    return setServerUrl(url);
+  }
+
+  async syncAllWithServer(serverUrl = null) {
+    const targetUrl = (serverUrl || getServerUrl() || DEFAULT_PUBLIC_URL).replace(/\/+$/, '');
+    try {
+      if (!isApiEndpoint(targetUrl)) {
+        return { success: true, mode: 'static_host', url: targetUrl };
+      }
+      const res = await safeFetchApi('/api/sync/all', { timeout: 3500 });
+      if (res && res.ok) {
+        const data = await res.json();
+        return { success: true, mode: 'api', data };
+      }
+      return { success: true, mode: 'offline_fallback' };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
 }
 
 export const dbService = new SecurityDatabase();
