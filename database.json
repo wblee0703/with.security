@@ -1,0 +1,81 @@
+{
+  "_metadata": {
+    "app_name": "WithSecurity",
+    "description": "Static JSON Database for GitHub Pages & Offline App",
+    "exported_at": "2026-01-01T00:00:00.000Z",
+    "version": "1.0.0"
+  },
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password": "046d1bf1917f8a7fb783fa6fdb46a53cb6ff090cf16e8b7c527e77a16bfad884",
+      "name": "이원배",
+      "role": "개발자",
+      "division": "영업/운영사업부",
+      "team": "운영1팀",
+      "rank": "대리",
+      "siteId": "ALL",
+      "phone": "010-9885-0393",
+      "email": "wblee@withtech.co.kr",
+      "education_date": "",
+      "education_expiry_date": "",
+      "education_name": "",
+      "trainings": [],
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "username": "wblee",
+      "password": "046d1bf1917f8a7fb783fa6fdb46a53cb6ff090cf16e8b7c527e77a16bfad884",
+      "name": "이원배",
+      "role": "일반",
+      "division": "영업/운영사업부",
+      "team": "운영1팀",
+      "rank": "대리",
+      "siteId": "site-001",
+      "phone": "010-9885-0393",
+      "email": "wblee@withtech.co.kr",
+      "education_date": "",
+      "education_expiry_date": "",
+      "education_name": "",
+      "trainings": [],
+      "created_at": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "sites": [
+    {
+      "id": "site-001",
+      "type": "보안앱O",
+      "name": "삼성전자 평택캠퍼스 P4 라인",
+      "address": "경기도 평택시 고덕면 삼성로 114",
+      "site_name": "삼성전자 평택캠퍼스 P4 라인 경기도 평택시 고덕면 삼성로 114",
+      "siteName": "삼성전자 평택캠퍼스 P4 라인 경기도 평택시 고덕면 삼성로 114"
+    },
+    {
+      "id": "site-002",
+      "type": "보안앱O",
+      "name": "SK하이닉스 이천 M16 공장",
+      "address": "경기도 이천시 부발읍 경충대로 2091",
+      "site_name": "SK하이닉스 이천 M16 공장 경기도 이천시 부발읍 경충대로 2091",
+      "siteName": "SK하이닉스 이천 M16 공장 경기도 이천시 부발읍 경충대로 2091"
+    },
+    {
+      "id": "site-003",
+      "type": "보안앱X",
+      "name": "일반 협력사 물류센터 (보안앱 예외)",
+      "address": "경기도 용인시 처인구 백암면 원설로 123",
+      "site_name": "일반 협력사 물류센터 (보안앱 예외) 경기도 용인시 처인구 백암면 원설로 123",
+      "siteName": "일반 협력사 물류센터 (보안앱 예외) 경기도 용인시 처인구 백암면 원설로 123"
+    }
+  ],
+  "checklists": [],
+  "security_logs": [],
+  "work_logs": [],
+  "weekly_reports": [],
+  "edu_logs": [],
+  "tbms": [],
+  "vault": [],
+  "otp": [],
+  "incidents": []
+}
