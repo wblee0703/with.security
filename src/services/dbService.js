@@ -2053,6 +2053,8 @@ class SecurityDatabase {
           rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
           role: preparedLog.authorRole || preparedLog.role || '일반',
           category: preparedLog.category || '사내 업무',
+          subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
+          dueDate: preparedLog.dueDate || preparedLog.due_date || '',
           siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
           logDate: preparedLog.date || new Date().toISOString().split('T')[0],
           title: preparedLog.title,

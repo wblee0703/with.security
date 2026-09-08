@@ -74,6 +74,8 @@ CREATE TABLE IF NOT EXISTS work_log (
   `rank` VARCHAR(50) DEFAULT '' COMMENT '해당 계정 직급',
   `role` VARCHAR(50) DEFAULT '일반' COMMENT '해당 계정 권한',
   category VARCHAR(50) DEFAULT '사내 업무' COMMENT '업무 분류 (사내 업무 / 출장 업무)',
+  sub_category VARCHAR(100) DEFAULT '' COMMENT '사내 업무 구분 (일반업무 / 고객대응 / 미팅 / 교육)',
+  due_date VARCHAR(50) DEFAULT '' COMMENT '납기일 (선택 입력)',
   site_name VARCHAR(255) DEFAULT '' COMMENT '출장 사업장명',
   log_date DATE NOT NULL COMMENT '업무일지 작성 날짜',
   title VARCHAR(200) NOT NULL COMMENT '업무일지 제목',

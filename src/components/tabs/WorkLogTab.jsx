@@ -68,11 +68,11 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Inline editing state for editing task directly inside list card
   const [inlineEditingId, setInlineEditingId] = useState(null);
-  const [inlineForm, setInlineForm] = useState({ title: '', details: '' });
+  const [inlineForm, setInlineForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
   // Inline adding state for adding new task directly inside list card without modal
   const [inlineAddingCardKey, setInlineAddingCardKey] = useState(null);
-  const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '' });
+  const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
   // Drag & Drop Task Reorder Handlers
   const handleDragStart = (e, item) => {
@@ -155,13 +155,15 @@ export default function WorkLogTab({ onTriggerToast }) {
     setInlineEditingId(item.id);
     setInlineForm({
       title: item.title || '',
-      details: item.details || ''
+      details: item.details || '',
+      subCategory: item.subCategory || item.sub_category || '일반업무',
+      dueDate: item.dueDate || item.due_date || ''
     });
   };
 
   const handleCancelInlineEdit = () => {
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
   };
 
   const handleSaveInlineEdit = async (item) => {
@@ -173,13 +175,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     const updatedLogItem = {
       ...item,
       title: inlineForm.title.trim(),
-      details: inlineForm.details.trim()
+      details: inlineForm.details.trim(),
+      subCategory: item.category === '출장 업무' ? '' : (inlineForm.subCategory || '일반업무'),
+      sub_category: item.category === '출장 업무' ? '' : (inlineForm.subCategory || '일반업무'),
+      dueDate: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
+      due_date: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : ''
     };
 
     const updatedLogs = await dbService.saveWorkLog(updatedLogItem);
     setWorkLogs(updatedLogs);
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
     if (onTriggerToast) {
       onTriggerToast(`'${updatedLogItem.title}' 업무가 수정되었습니다.`, 'success');
@@ -189,12 +195,17 @@ export default function WorkLogTab({ onTriggerToast }) {
   const handleStartInlineAdd = (logItem, cardKey) => {
     setInlineEditingId(null);
     setInlineAddingCardKey(cardKey);
-    setInlineNewForm({ title: '', details: '' });
+    setInlineNewForm({
+      title: '',
+      details: '',
+      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      dueDate: ''
+    });
   };
 
   const handleCancelInlineAdd = () => {
     setInlineAddingCardKey(null);
-    setInlineNewForm({ title: '', details: '' });
+    setInlineNewForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
   };
 
   const handleSaveInlineAdd = async (primaryLog) => {
@@ -205,10 +216,17 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     const now = new Date();
     const timeStr = `${primaryLog.date || getTodayIsoDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const isInternal = (primaryLog.category || '사내 업무') !== '출장 업무';
+    const subCat = isInternal ? (inlineNewForm.subCategory || '일반업무') : '';
+    const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (inlineNewForm.dueDate || '') : '';
 
     const newLogItem = {
       id: `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       category: primaryLog.category || '사내 업무',
+      subCategory: subCat,
+      sub_category: subCat,
+      dueDate: dDate,
+      due_date: dDate,
       date: primaryLog.date || getTodayIsoDate(),
       title: inlineNewForm.title.trim(),
       details: inlineNewForm.details.trim(),
@@ -226,7 +244,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const updatedLogs = await dbService.saveWorkLog(newLogItem);
     setWorkLogs(updatedLogs);
     setInlineAddingCardKey(null);
-    setInlineNewForm({ title: '', details: '' });
+    setInlineNewForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
     if (onTriggerToast) {
       onTriggerToast(`'${newLogItem.title}' 업무가 추가되었습니다.`, 'success');
@@ -548,6 +566,8 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const [form, setForm] = useState({
     category: '사내 업무',
+    subCategory: '일반업무',
+    dueDate: '',
     date: getTodayIsoDate(),
     title: '',
     details: '',
@@ -663,6 +683,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: '사내 업무',
+      subCategory: '일반업무',
+      dueDate: '',
       date: selectedDate || getTodayIsoDate(),
       title: '',
       details: '',
@@ -676,6 +698,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: logItem.category || '사내 업무',
+      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      dueDate: logItem.dueDate || logItem.due_date || '',
       date: logItem.date || getTodayIsoDate(),
       title: '',
       details: '',
@@ -689,6 +713,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(logItem.id);
     setForm({
       category: logItem.category || '사내 업무',
+      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      dueDate: logItem.dueDate || logItem.due_date || '',
       date: logItem.date || getTodayIsoDate(),
       title: logItem.title || '',
       details: logItem.details || '',
@@ -715,9 +741,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     const authorDivision = currentUser?.division || '';
     const authorRole = currentUser?.role || '일반';
 
+    const isInternal = form.category !== '출장 업무';
+    const curSubCat = isInternal ? (form.subCategory || '일반업무') : '';
+    const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
+
     const newLogItem = {
       id: editingLogId || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       category: form.category,
+      subCategory: curSubCat,
+      sub_category: curSubCat,
+      dueDate: curDueDate,
+      due_date: curDueDate,
       date: form.date,
       title: form.title.trim(),
       details: form.details.trim(),
@@ -740,9 +774,15 @@ export default function WorkLogTab({ onTriggerToast }) {
       for (let i = 0; i < extraTasks.length; i++) {
         const ext = extraTasks[i];
         if (ext.title && ext.title.trim()) {
+          const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : '';
+          const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
           const extraLogItem = {
             id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
             category: form.category,
+            subCategory: extSubCat,
+            sub_category: extSubCat,
+            dueDate: extDueDate,
+            due_date: extDueDate,
             date: form.date,
             title: ext.title.trim(),
             details: (ext.details || '').trim(),
@@ -852,18 +892,23 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = workLogs.filter(log => {
     const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
-    const matchesDate = viewAllDates || log.date === selectedDate;
+    const matchesDate = viewAllDates || log.date === selectedDate || (log.dueDate && log.dueDate === selectedDate) || (log.due_date && log.due_date === selectedDate);
     const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
     const matchesQuery = !searchQuery.trim() ||
       log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.authorName.toLowerCase().includes(searchQuery.toLowerCase());
+      (log.details && log.details.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.authorName && log.authorName.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.subCategory && log.subCategory.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (log.sub_category && log.sub_category.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesUser && matchesDate && matchesCategory && matchesQuery;
   });
 
   // Group logs by Date (descending)
   const groupedByDate = filteredLogs.reduce((acc, log) => {
-    const d = log.date || '기타 날짜';
+    const logDue = log.dueDate || log.due_date;
+    const d = (!viewAllDates && logDue === selectedDate && log.date !== selectedDate)
+      ? selectedDate
+      : (log.date || '기타 날짜');
     if (!acc[d]) acc[d] = [];
     acc[d].push(log);
     return acc;
@@ -1536,6 +1581,81 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                 />
                                               </div>
 
+                                              {/* 사내 업무 구분 & 납기일 선택 (인라인 수정 모드) */}
+                                              {item.category !== '출장 업무' && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f1f5f9', padding: '6px 10px', borderRadius: '4px' }}>
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>구분:</span>
+                                                    <select
+                                                      value={inlineForm.subCategory || '일반업무'}
+                                                      onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setInlineForm({
+                                                          ...inlineForm,
+                                                          subCategory: val,
+                                                          dueDate: ['일반업무', '고객대응'].includes(val) ? inlineForm.dueDate : ''
+                                                        });
+                                                      }}
+                                                      style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        border: '1.5px solid #cbd5e1',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: '700',
+                                                        background: '#ffffff',
+                                                        color: '#0f172a',
+                                                        outline: 'none'
+                                                      }}
+                                                    >
+                                                      <option value="일반업무">일반업무</option>
+                                                      <option value="고객대응">고객대응</option>
+                                                      <option value="미팅">미팅</option>
+                                                      <option value="교육">교육</option>
+                                                    </select>
+                                                  </div>
+
+                                                  {['일반업무', '고객대응'].includes(inlineForm.subCategory || '일반업무') && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                      <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#e11d48', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                                        <Clock size={11} /> 납기:
+                                                      </span>
+                                                      <input
+                                                        type="date"
+                                                        value={inlineForm.dueDate || ''}
+                                                        onChange={(e) => setInlineForm({ ...inlineForm, dueDate: e.target.value })}
+                                                        style={{
+                                                          padding: '3px 6px',
+                                                          borderRadius: '4px',
+                                                          border: '1.5px solid #cbd5e1',
+                                                          fontSize: '11.5px',
+                                                          fontWeight: '600',
+                                                          background: '#ffffff',
+                                                          color: '#0f172a',
+                                                          outline: 'none'
+                                                        }}
+                                                      />
+                                                      {inlineForm.dueDate && (
+                                                        <button
+                                                          type="button"
+                                                          onClick={() => setInlineForm({ ...inlineForm, dueDate: '' })}
+                                                          style={{
+                                                            padding: '2px 5px',
+                                                            fontSize: '10.5px',
+                                                            background: '#ffffff',
+                                                            border: '1px solid #cbd5e1',
+                                                            borderRadius: '3px',
+                                                            cursor: 'pointer',
+                                                            color: '#64748b'
+                                                          }}
+                                                        >
+                                                          삭제
+                                                        </button>
+                                                      )}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+
                                               <textarea
                                                 rows={2}
                                                 value={inlineForm.details}
@@ -1595,22 +1715,78 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             <>
                                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', width: '100%', minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1, minWidth: 0 }}>
-                                                  <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '1px' }}>
+                                                  <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '2px' }}>
                                                     {itemIdx + 1}.
                                                   </span>
-                                                  <span style={{
-                                                    fontSize: '13.5px',
-                                                    fontWeight: '800',
-                                                    color: '#0f172a',
-                                                    whiteSpace: 'pre-wrap',
-                                                    wordBreak: 'break-word',
-                                                    overflowWrap: 'anywhere',
-                                                    lineHeight: '1.4',
-                                                    flex: 1,
-                                                    minWidth: 0
-                                                  }}>
-                                                    {item.title}
-                                                  </span>
+                                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                      {/* 사내 업무 구분 배지 */}
+                                                      {item.category !== '출장 업무' && (item.subCategory || item.sub_category) && (
+                                                        <span style={{
+                                                          fontSize: '11px',
+                                                          fontWeight: '800',
+                                                          padding: '1px 6px',
+                                                          borderRadius: '4px',
+                                                          background: (() => {
+                                                            const sc = item.subCategory || item.sub_category;
+                                                            if (sc === '고객대응') return '#ecfdf5';
+                                                            if (sc === '미팅') return '#f5f3ff';
+                                                            if (sc === '교육') return '#fffbeb';
+                                                            return '#eff6ff';
+                                                          })(),
+                                                          color: (() => {
+                                                            const sc = item.subCategory || item.sub_category;
+                                                            if (sc === '고객대응') return '#059669';
+                                                            if (sc === '미팅') return '#7c3aed';
+                                                            if (sc === '교육') return '#d97706';
+                                                            return '#1e3a8a';
+                                                          })(),
+                                                          border: (() => {
+                                                            const sc = item.subCategory || item.sub_category;
+                                                            if (sc === '고객대응') return '1px solid #a7f3d0';
+                                                            if (sc === '미팅') return '1px solid #ddd6fe';
+                                                            if (sc === '교육') return '1px solid #fde68a';
+                                                            return '1px solid #bfdbfe';
+                                                          })(),
+                                                          flexShrink: 0
+                                                        }}>
+                                                          {item.subCategory || item.sub_category}
+                                                        </span>
+                                                      )}
+
+                                                      {/* 납기 배지 (입력된 경우) */}
+                                                      {(item.dueDate || item.due_date) && (
+                                                        <span style={{
+                                                          fontSize: '11px',
+                                                          fontWeight: '800',
+                                                          padding: '1px 6px',
+                                                          borderRadius: '4px',
+                                                          background: '#fff1f2',
+                                                          color: '#e11d48',
+                                                          border: '1px solid #fecdd3',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          gap: '3px',
+                                                          flexShrink: 0
+                                                        }}>
+                                                          <Clock size={11} />
+                                                          납기: {item.dueDate || item.due_date}
+                                                        </span>
+                                                      )}
+
+                                                      <span style={{
+                                                        fontSize: '13.5px',
+                                                        fontWeight: '800',
+                                                        color: '#0f172a',
+                                                        whiteSpace: 'pre-wrap',
+                                                        wordBreak: 'break-word',
+                                                        overflowWrap: 'anywhere',
+                                                        lineHeight: '1.4'
+                                                      }}>
+                                                        {item.title}
+                                                      </span>
+                                                    </div>
+                                                  </div>
                                                 </div>
 
                                                 {canModifyLog(item) && (
@@ -1751,6 +1927,81 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           placeholder="추가할 업무명을 입력하세요."
                                         />
                                       </div>
+
+                                      {/* 사내 업무 구분 & 납기일 선택 (인라인 추가 모드) */}
+                                      {group.category !== '출장 업무' && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>구분:</span>
+                                            <select
+                                              value={inlineNewForm.subCategory || '일반업무'}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setInlineNewForm({
+                                                  ...inlineNewForm,
+                                                  subCategory: val,
+                                                  dueDate: ['일반업무', '고객대응'].includes(val) ? inlineNewForm.dueDate : ''
+                                                });
+                                              }}
+                                              style={{
+                                                padding: '3px 8px',
+                                                borderRadius: '4px',
+                                                border: '1.5px solid #cbd5e1',
+                                                fontSize: '11.5px',
+                                                fontWeight: '700',
+                                                background: '#ffffff',
+                                                color: '#0f172a',
+                                                outline: 'none'
+                                              }}
+                                            >
+                                              <option value="일반업무">일반업무</option>
+                                              <option value="고객대응">고객대응</option>
+                                              <option value="미팅">미팅</option>
+                                              <option value="교육">교육</option>
+                                            </select>
+                                          </div>
+
+                                          {['일반업무', '고객대응'].includes(inlineNewForm.subCategory || '일반업무') && (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#e11d48', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                                                <Clock size={11} /> 납기:
+                                              </span>
+                                              <input
+                                                type="date"
+                                                value={inlineNewForm.dueDate || ''}
+                                                onChange={(e) => setInlineNewForm({ ...inlineNewForm, dueDate: e.target.value })}
+                                                style={{
+                                                  padding: '3px 6px',
+                                                  borderRadius: '4px',
+                                                  border: '1.5px solid #cbd5e1',
+                                                  fontSize: '11.5px',
+                                                  fontWeight: '600',
+                                                  background: '#ffffff',
+                                                  color: '#0f172a',
+                                                  outline: 'none'
+                                                }}
+                                              />
+                                              {inlineNewForm.dueDate && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setInlineNewForm({ ...inlineNewForm, dueDate: '' })}
+                                                  style={{
+                                                    padding: '2px 5px',
+                                                    fontSize: '10.5px',
+                                                    background: '#ffffff',
+                                                    border: '1px solid #cbd5e1',
+                                                    borderRadius: '3px',
+                                                    cursor: 'pointer',
+                                                    color: '#64748b'
+                                                  }}
+                                                >
+                                                  삭제
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
 
                                       <textarea
                                         rows={2}
@@ -1910,7 +2161,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                   </label>
                   <select
                     value={form.category}
-                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                    onChange={(e) => setForm({
+                      ...form,
+                      category: e.target.value,
+                      subCategory: e.target.value === '사내 업무' ? (form.subCategory || '일반업무') : '',
+                      dueDate: e.target.value === '사내 업무' ? form.dueDate : ''
+                    })}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
@@ -1949,6 +2205,101 @@ export default function WorkLogTab({ onTriggerToast }) {
                   />
                 </div>
               </div>
+
+              {/* SubCategory Selection & Optional Due Date for 사내 업무 */}
+              {form.category === '사내 업무' && (
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px'
+                }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: ['일반업무', '고객대응'].includes(form.subCategory || '일반업무') ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#1e3a8a', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                        🏢 사내 업무 구분 *
+                      </label>
+                      <select
+                        value={form.subCategory || '일반업무'}
+                        onChange={(e) => setForm({
+                          ...form,
+                          subCategory: e.target.value,
+                          dueDate: ['일반업무', '고객대응'].includes(e.target.value) ? form.dueDate : ''
+                        })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          border: '1.5px solid #93c5fd',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="일반업무">일반업무</option>
+                        <option value="고객대응">고객대응</option>
+                        <option value="미팅">미팅</option>
+                        <option value="교육">교육</option>
+                      </select>
+                    </div>
+
+                    {/* Due Date (납기) - Only for 일반업무 and 고객대응, Optional */}
+                    {['일반업무', '고객대응'].includes(form.subCategory || '일반업무') && (
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                          ⏰ 납기 (선택 입력)
+                        </label>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <input
+                            type="date"
+                            value={form.dueDate || ''}
+                            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                            style={{
+                              flex: 1,
+                              padding: '10px 12px',
+                              borderRadius: '4px',
+                              background: '#ffffff',
+                              border: '1.5px solid #cbd5e1',
+                              color: '#0f172a',
+                              fontSize: '13px',
+                              outline: 'none'
+                            }}
+                          />
+                          {form.dueDate && (
+                            <button
+                              type="button"
+                              onClick={() => setForm({ ...form, dueDate: '' })}
+                              style={{
+                                padding: '0 8px',
+                                background: '#ffffff',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '4px',
+                                color: '#64748b',
+                                fontSize: '11px',
+                                cursor: 'pointer'
+                              }}
+                              title="납기 삭제"
+                            >
+                              초기화
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {['일반업무', '고객대응'].includes(form.subCategory || '일반업무') && (
+                    <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
+                      💡 납기일을 입력하면 해당 날짜의 캘린더에 <strong>[납기: {form.subCategory}]</strong> 배지가 함께 표기됩니다.
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Site Selection Field for Business Trip (출장 업무) */}
               {form.category === '출장 업무' && (

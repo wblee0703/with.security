@@ -13,6 +13,10 @@ try {
     if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
     fs.copyFileSync(rootLogo, path.resolve(publicDir, 'LOGO+WITHTECH.png'));
     fs.copyFileSync(rootLogo, path.resolve(srcDir, 'LOGO+WITHTECH.png'));
+    const androidDrawableDir = path.resolve(__dirname, 'android/app/src/main/res/drawable');
+    if (fs.existsSync(androidDrawableDir)) {
+      fs.copyFileSync(rootLogo, path.resolve(androidDrawableDir, 'logo_withtech.png'));
+    }
   }
 } catch (e) {
   console.error('Error syncing logo file:', e);

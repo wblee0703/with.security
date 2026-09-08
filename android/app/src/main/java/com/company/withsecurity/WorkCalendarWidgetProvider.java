@@ -433,6 +433,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
             views.setOnClickPendingIntent(R.id.btn_open_app, openAppPending);
+            views.setOnClickPendingIntent(R.id.iv_widget_logo, openAppPending);
+            views.setOnClickPendingIntent(R.id.tv_widget_app_title, openAppPending);
 
             // 9. Click Bottom Summary Box -> Open App to selected date
             Intent summaryIntent = new Intent(context, WorkCalendarWidgetProvider.class);

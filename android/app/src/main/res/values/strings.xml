@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">WithSecurity</string>
     <string name="title_activity_main">WithSecurity</string>
+    <string name="widget_name">WITH Calendar</string>
     <string name="package_name">com.company.withsecurity</string>
     <string name="custom_url_scheme">com.company.withsecurity</string>
 </resources>

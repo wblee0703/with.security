@@ -158,11 +158,13 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
 
     const workDatesMap = {};
 
-    // Collect all distinct dates from workLogs and tbms
+    // Collect all distinct dates from workLogs and tbms (including due dates)
     const allDates = new Set();
     (workLogs || []).forEach(log => {
       const date = log.date || (log.createdAt ? log.createdAt.split('T')[0] : null);
       if (date) allDates.add(date);
+      const due = log.dueDate || log.due_date;
+      if (due) allDates.add(due);
     });
     (tbms || []).forEach(tbm => {
       const date = tbm.date || (tbm.createdAt ? tbm.createdAt.split('T')[0] : null);
@@ -171,11 +173,13 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
 
     allDates.forEach(dateStr => {
       const dateLogs = (workLogs || []).filter(l => (l.date || '').startsWith(dateStr));
+      const dueLogs = (workLogs || []).filter(l => (l.dueDate || l.due_date || '').startsWith(dateStr));
       const dateTbms = (tbms || []).filter(t => (t.date || '').startsWith(dateStr));
 
       let hasBusinessTrip = false;
       let tripSiteName = '';
       let hasInternalWork = false;
+      const hasDueTask = dueLogs.length > 0;
 
       dateLogs.forEach(l => {
         const isTrip = l.category === '출장 업무' || Boolean(l.siteName || l.site_name);
@@ -210,6 +214,10 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         } else {
           cellWorkText = '출장지';
         }
+      } else if (hasDueTask && dateLogs.length === 0 && dateTbms.length === 0) {
+        category = '납기';
+        const subCat = dueLogs[0].subCategory || dueLogs[0].sub_category || '사내';
+        cellWorkText = `[납기] ${subCat}`;
       } else if (hasInternalWork || dateLogs.length > 0 || dateTbms.length > 0) {
         category = '사내';
         cellWorkText = '사내업무';
@@ -225,6 +233,13 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         if (!site) site = first.site || first.siteName || '';
         if (dateLogs.length > 1) {
           title = `${title} 외 ${dateLogs.length - 1}건`;
+        }
+      } else if (dueLogs.length > 0) {
+        const firstDue = dueLogs[0];
+        title = `[납기] ${firstDue.workTitle || firstDue.title || '업무 납기일'}`;
+        status = '납기 예정';
+        if (dueLogs.length > 1) {
+          title = `${title} 외 ${dueLogs.length - 1}건`;
         }
       } else if (dateTbms.length > 0) {
         const firstTbm = dateTbms[0];

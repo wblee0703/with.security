@@ -133,12 +133,24 @@ export default function WorkLogCalendar({
   const calendarDays = getCalendarDays();
   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-  // Map work logs by date for O(1) cell lookup
+  // Map work logs by date for O(1) cell lookup (including dueDate markers)
   const logsByDate = workLogs.reduce((acc, log) => {
     const d = log.date;
     if (d) {
       if (!acc[d]) acc[d] = [];
       acc[d].push(log);
+    }
+    // Register dueDate marker on calendar if dueDate exists
+    const dueDate = log.dueDate || log.due_date;
+    if (dueDate) {
+      if (!acc[dueDate]) acc[dueDate] = [];
+      if (dueDate !== d) {
+        acc[dueDate].push({
+          ...log,
+          isDueMarker: true,
+          displayAsDue: true
+        });
+      }
     }
     return acc;
   }, {});
@@ -711,17 +723,45 @@ export default function WorkLogCalendar({
                     const isBTrip = b.category === '출장 업무';
                     if (isATrip && !isBTrip) return -1; // 출장 업무가 최상단으로 이동
                     if (!isATrip && isBTrip) return 1;
+                    if (a.isDueMarker && !b.isDueMarker) return -1; // 납기 마커가 그 다음 상단
+                    if (!a.isDueMarker && b.isDueMarker) return 1;
                     return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
                   })
                   .map((log) => {
                     const isBusinessTrip = log.category === '출장 업무';
+                    const isDue = log.isDueMarker || (log.dueDate && log.dueDate === cell.dateStr) || (log.due_date && log.due_date === cell.dateStr);
                     const isBeingDragged = draggedLog?.id === log.id || touchState?.log?.id === log.id;
-                    const canEditThis = !canModifyLog || canModifyLog(log);
-                    const bg = isBusinessTrip ? '#faf5ff' : '#eff6ff';
-                    const borderColor = isBusinessTrip ? '#e9d5ff' : '#cbd5e1';
-                    const textColor = isBusinessTrip ? '#7c3aed' : '#1e3a8a';
+                    const canEditThis = !log.isDueMarker && (!canModifyLog || canModifyLog(log));
+                    const subCat = log.subCategory || log.sub_category || '';
 
-                    // Format display text: For 출장 업무, show Site Name and Location
+                    // Styling based on category, due status, or subCategory
+                    let bg = '#eff6ff';
+                    let borderColor = '#cbd5e1';
+                    let textColor = '#1e3a8a';
+
+                    if (isBusinessTrip) {
+                      bg = '#faf5ff';
+                      borderColor = '#e9d5ff';
+                      textColor = '#7c3aed';
+                    } else if (isDue) {
+                      bg = '#fff1f2';
+                      borderColor = '#fecdd3';
+                      textColor = '#e11d48';
+                    } else if (subCat === '고객대응') {
+                      bg = '#ecfdf5';
+                      borderColor = '#a7f3d0';
+                      textColor = '#059669';
+                    } else if (subCat === '미팅') {
+                      bg = '#f5f3ff';
+                      borderColor = '#ddd6fe';
+                      textColor = '#7c3aed';
+                    } else if (subCat === '교육') {
+                      bg = '#fffbeb';
+                      borderColor = '#fde68a';
+                      textColor = '#d97706';
+                    }
+
+                    // Format display text: For 출장 업무, show Site Name; for due date, show [납기: 구분] title; for subCategory, show [구분] title
                     const displayText = (() => {
                       if (isBusinessTrip) {
                         const sName = (log.siteName || log.site_name || '').trim();
@@ -733,17 +773,23 @@ export default function WorkLogCalendar({
                         if (sAddr) return sAddr;
                         return log.title || '출장 업무';
                       }
+                      if (isDue) {
+                        return `[납기${subCat ? `: ${subCat}` : ''}] ${log.title}`;
+                      }
+                      if (subCat) {
+                        return `[${subCat}] ${log.title}`;
+                      }
                       return log.title;
                     })();
 
                     return (
                       <div
-                        key={log.id}
+                        key={log.isDueMarker ? `due-${log.id}` : log.id}
                         draggable={canEditThis}
                         onDragStart={(e) => handleDragStart(e, log)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={(e) => handleTouchStart(e, log)}
-                        title={`[${log.category}] ${isBusinessTrip ? `사업장: ${displayText} / 업무명: ${log.title}` : log.title}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})\n세부내용: ${log.details || '없음'}\n💡 드래그하여 다른 날짜로 이동 가능`}
+                        title={`[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`}
                         style={{
                           padding: '2px 5px',
                           borderRadius: '4px',
@@ -770,15 +816,19 @@ export default function WorkLogCalendar({
                           WebkitUserSelect: 'none'
                         }}
                       >
-                        <span
-                          style={{
-                            width: '4px',
-                            height: '4px',
-                            borderRadius: '50%',
-                            background: log.isShared ? '#16a34a' : textColor,
-                            flexShrink: 0
-                          }}
-                        />
+                        {isDue ? (
+                          <Clock size={10} color="#e11d48" style={{ flexShrink: 0 }} />
+                        ) : (
+                          <span
+                            style={{
+                              width: '4px',
+                              height: '4px',
+                              borderRadius: '50%',
+                              background: log.isShared ? '#16a34a' : textColor,
+                              flexShrink: 0
+                            }}
+                          />
+                        )}
                         <span
                           style={{
                             overflow: 'hidden',
