@@ -1204,6 +1204,19 @@ class SecurityDatabase {
       safeUser.passwordHash = await hashPassword(safeUser.password);
     }
 
+    // 0. Remove from deleted blacklist if re-registering
+    try {
+      const delRaw = localStorage.getItem('with_security_deleted_users');
+      if (delRaw) {
+        let delList = JSON.parse(delRaw);
+        if (Array.isArray(delList)) {
+          const uKey = String(safeUser.username || '').trim().toLowerCase();
+          delList = delList.filter(d => String(d).trim().toLowerCase() !== uKey);
+          localStorage.setItem('with_security_deleted_users', JSON.stringify(delList));
+        }
+      }
+    } catch (e) {}
+
     // 1. Save to IndexedDB
     try {
       await this.putItem('users', safeUser);
@@ -1233,6 +1246,59 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(safeUser)
       });
+    } catch (e) {}
+
+    notifyDataChanged();
+    return safeUser;
+  }
+
+  async updateUserAccount(targetUser) {
+    let safeUser = { ...targetUser };
+    if (safeUser.password && !safeUser.passwordHash) {
+      safeUser.passwordHash = await hashPassword(safeUser.password);
+    }
+
+    // 1. Save to IndexedDB
+    try {
+      await this.putItem('users', safeUser);
+    } catch (e) {
+      console.warn('IndexedDB updateUserAccount fallback:', e);
+    }
+
+    // 2. Keep localStorage user database in sync
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
+      if (!Array.isArray(currentUsers)) currentUsers = [];
+      const uname = String(safeUser.username || '').trim().toLowerCase();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      if (existingIdx >= 0) {
+        currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
+      } else {
+        currentUsers.push(safeUser);
+      }
+      localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
+    } catch (e) {}
+
+    // 3. Send to Server if available
+    try {
+      await safeFetchApi('/api/security-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(safeUser)
+      });
+    } catch (e) {}
+
+    // 4. Only update with_security_active_user IF targetUser is the currently logged-in user
+    try {
+      const activeRaw = localStorage.getItem('with_security_active_user');
+      if (activeRaw) {
+        const activeUser = JSON.parse(activeRaw);
+        if (String(activeUser.username || '').trim().toLowerCase() === String(safeUser.username || '').trim().toLowerCase()) {
+          const updatedActive = { ...activeUser, ...safeUser };
+          localStorage.setItem('with_security_active_user', JSON.stringify(updatedActive));
+        }
+      }
     } catch (e) {}
 
     notifyDataChanged();
@@ -1453,6 +1519,18 @@ class SecurityDatabase {
   async getRegisteredUsers() {
     let usersList = [];
 
+    // 0. Gather deleted users blacklist to avoid resurrection
+    let deletedUsernames = new Set();
+    try {
+      const delRaw = localStorage.getItem('with_security_deleted_users');
+      if (delRaw) {
+        const arr = JSON.parse(delRaw);
+        if (Array.isArray(arr)) {
+          deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
+        }
+      }
+    } catch (e) {}
+
     // 1. Gather all existing local users first to preserve local password & passwordHash
     const localUsersMap = new Map();
     try {
@@ -1460,7 +1538,10 @@ class SecurityDatabase {
       if (Array.isArray(dbUsers)) {
         for (const u of dbUsers) {
           if (u && u.username) {
-            localUsersMap.set(String(u.username).trim().toLowerCase(), u);
+            const k = String(u.username).trim().toLowerCase();
+            if (!deletedUsernames.has(k)) {
+              localUsersMap.set(k, u);
+            }
           }
         }
       }
@@ -1474,6 +1555,7 @@ class SecurityDatabase {
           for (const u of lsUsers) {
             if (u && u.username) {
               const k = String(u.username).trim().toLowerCase();
+              if (deletedUsernames.has(k)) continue;
               if (!localUsersMap.has(k)) {
                 localUsersMap.set(k, u);
               } else {
@@ -1493,40 +1575,42 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
-          usersList = remoteData.map(u => {
-            const uKey = String(u.username || '').trim().toLowerCase();
-            const existingLocal = localUsersMap.get(uKey);
+          usersList = remoteData
+            .filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()))
+            .map(u => {
+              const uKey = String(u.username || '').trim().toLowerCase();
+              const existingLocal = localUsersMap.get(uKey);
 
-            let parsedTrainings = [];
-            if (u.trainings) {
-              parsedTrainings = typeof u.trainings === 'string' ? JSON.parse(u.trainings) : u.trainings;
-            } else if (existingLocal?.trainings) {
-              parsedTrainings = existingLocal.trainings;
-            }
-            if (Array.isArray(parsedTrainings)) {
-              parsedTrainings = parsedTrainings.filter(t => 
-                !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
-                !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
-                t.title !== '사내 정기 정보보안 및 안전 교육'
-              );
-            }
+              let parsedTrainings = [];
+              if (u.trainings) {
+                parsedTrainings = typeof u.trainings === 'string' ? JSON.parse(u.trainings) : u.trainings;
+              } else if (existingLocal?.trainings) {
+                parsedTrainings = existingLocal.trainings;
+              }
+              if (Array.isArray(parsedTrainings)) {
+                parsedTrainings = parsedTrainings.filter(t => 
+                  !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
+                  !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+                  t.title !== '사내 정기 정보보안 및 안전 교육'
+                );
+              }
 
-            return {
-              ...existingLocal,
-              ...u,
-              // Crucial: preserve local password and passwordHash when server strips it
-              password: existingLocal?.password || u.password || '',
-              passwordHash: existingLocal?.passwordHash || u.passwordHash || existingLocal?.password || u.password || '',
-              trainings: parsedTrainings,
-              educationDate: (u.educationDate && u.educationDate !== '2025-08-20') ? u.educationDate : (existingLocal?.educationDate && existingLocal.educationDate !== '2025-08-20' ? existingLocal.educationDate : ''),
-              educationExpiryDate: (u.educationExpiryDate && u.educationExpiryDate !== '2026-08-19') ? u.educationExpiryDate : (existingLocal?.educationExpiryDate && existingLocal.educationExpiryDate !== '2026-08-19' ? existingLocal.educationExpiryDate : ''),
-              educationName: (u.educationName && u.educationName !== '사내 정기 정보보안 및 안전 교육') ? u.educationName : (existingLocal?.educationName && existingLocal.educationName !== '사내 정기 정보보안 및 안전 교육' ? existingLocal.educationName : '')
-            };
-          });
+              return {
+                ...existingLocal,
+                ...u,
+                // Crucial: preserve local password and passwordHash when server strips it
+                password: existingLocal?.password || u.password || '',
+                passwordHash: existingLocal?.passwordHash || u.passwordHash || existingLocal?.password || u.password || '',
+                trainings: parsedTrainings,
+                educationDate: (u.educationDate && u.educationDate !== '2025-08-20') ? u.educationDate : (existingLocal?.educationDate && existingLocal.educationDate !== '2025-08-20' ? existingLocal.educationDate : ''),
+                educationExpiryDate: (u.educationExpiryDate && u.educationExpiryDate !== '2026-08-19') ? u.educationExpiryDate : (existingLocal?.educationExpiryDate && existingLocal.educationExpiryDate !== '2026-08-19' ? existingLocal.educationExpiryDate : ''),
+                educationName: (u.educationName && u.educationName !== '사내 정기 정보보안 및 안전 교육') ? u.educationName : (existingLocal?.educationName && existingLocal.educationName !== '사내 정기 정보보안 및 안전 교육' ? existingLocal.educationName : '')
+              };
+            });
 
-          // Also include pure-local accounts created while offline
+          // Also include pure-local accounts created while offline (excluding deleted)
           for (const [uname, localU] of localUsersMap.entries()) {
-            if (!usersList.some(u => String(u.username || '').trim().toLowerCase() === uname)) {
+            if (!deletedUsernames.has(uname) && !usersList.some(u => String(u.username || '').trim().toLowerCase() === uname)) {
               usersList.push(localU);
             }
           }
@@ -1540,7 +1624,7 @@ class SecurityDatabase {
     } catch (e) {}
 
     if (!usersList || usersList.length === 0) {
-      usersList = Array.from(localUsersMap.values());
+      usersList = Array.from(localUsersMap.values()).filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
     }
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
@@ -1579,69 +1663,11 @@ class SecurityDatabase {
       }
     }
 
-    // Ensure default wblee user exists (without hardcoded dummy education)
-    const wbleeIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
-    if (wbleeIdx === -1) {
-      const defaultWblee = {
-        username: 'wblee',
-        password: defaultAdminPass,
-        passwordHash: defaultAdminHash,
-        name: '이원배',
-        role: '일반',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'SITE-001',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        educationDate: '',
-        educationExpiryDate: '',
-        educationName: '',
-        trainings: []
-      };
-      usersList.push(defaultWblee);
-      try {
-        await this.putItem('users', defaultWblee);
-      } catch (e) {}
-    } else {
-      if (!usersList[wbleeIdx].passwordHash) {
-        usersList[wbleeIdx].password = defaultAdminPass;
-        usersList[wbleeIdx].passwordHash = defaultAdminHash;
-        try { await this.putItem('users', usersList[wbleeIdx]); } catch (e) {}
-      }
-    }
-
-    // Ensure default wblee0703 user exists (without hardcoded dummy education)
-    const wblee0703Idx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'wblee0703');
-    if (wblee0703Idx === -1) {
-      const defaultWblee0703 = {
-        username: 'wblee0703',
-        password: defaultAdminPass,
-        passwordHash: defaultAdminHash,
-        name: '이원배',
-        role: '개발자',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'ALL',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        educationDate: '',
-        educationExpiryDate: '',
-        educationName: '',
-        trainings: []
-      };
-      usersList.push(defaultWblee0703);
-      try {
-        await this.putItem('users', defaultWblee0703);
-      } catch (e) {}
-    } else {
-      if (!usersList[wblee0703Idx].passwordHash) {
-        usersList[wblee0703Idx].password = defaultAdminPass;
-        usersList[wblee0703Idx].passwordHash = defaultAdminHash;
-        try { await this.putItem('users', usersList[wblee0703Idx]); } catch (e) {}
-      }
-    }
+    // 최종적으로 deletedUsernames 필터링 및 localStorage 최신화
+    usersList = usersList.filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
+    try {
+      localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
+    } catch (e) {}
 
     return usersList;
   }
@@ -1657,12 +1683,47 @@ class SecurityDatabase {
   async deleteUser(username) {
     if (!username || username === 'admin') return false;
 
+    const uname = String(username).trim();
+    const unameLower = uname.toLowerCase();
+
+    // 1. Mark in deleted users blacklist (localStorage)
     try {
-      await safeFetchApi(`/api/security-users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+      const delRaw = localStorage.getItem('with_security_deleted_users');
+      let delList = delRaw ? JSON.parse(delRaw) : [];
+      if (!Array.isArray(delList)) delList = [];
+      if (!delList.some(d => String(d).trim().toLowerCase() === unameLower)) {
+        delList.push(unameLower);
+        localStorage.setItem('with_security_deleted_users', JSON.stringify(delList));
+      }
     } catch (e) {}
 
+    // 2. Remove from localStorage users DB
     try {
-      await this.deleteItem('users', username);
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      if (lsRaw) {
+        let currentUsers = JSON.parse(lsRaw);
+        if (Array.isArray(currentUsers)) {
+          currentUsers = currentUsers.filter(u => String(u.username || '').trim().toLowerCase() !== unameLower);
+          localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
+        }
+      }
+    } catch (e) {}
+
+    // 3. Remove user-specific storage keys
+    try {
+      localStorage.removeItem(`with_security_user_trainings_${uname}`);
+      localStorage.removeItem(`with_security_user_trainings_${unameLower}`);
+    } catch (e) {}
+
+    // 4. Remote Server DELETE API
+    try {
+      await safeFetchApi(`/api/security-users/${encodeURIComponent(uname)}`, { method: 'DELETE' });
+    } catch (e) {}
+
+    // 5. Delete from IndexedDB
+    try {
+      await this.deleteItem('users', uname);
+      await this.deleteItem('users', unameLower);
     } catch (e) {}
 
     notifyDataChanged();
@@ -1752,7 +1813,17 @@ class SecurityDatabase {
 
         const mergedChecklists = mergeStore(localChecklists, remoteChecklists, 'id');
         const mergedSites = mergeStore(localSites, remoteSites, 'id');
-        const mergedUsers = mergeStore(localUsers, remoteUsers, 'username');
+        let deletedUsernames = new Set();
+        try {
+          const delRaw = localStorage.getItem('with_security_deleted_users');
+          if (delRaw) {
+            const arr = JSON.parse(delRaw);
+            if (Array.isArray(arr)) deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
+          }
+        } catch (e) {}
+
+        const mergedUsers = mergeStore(localUsers, remoteUsers, 'username')
+          .filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
         const mergedVault = mergeStore(localVault, remoteVault, 'id');
         const mergedOtp = mergeStore(localOtp, remoteOtp, 'id');
         const mergedIncidents = mergeStore(localIncidents, remoteIncidents, 'id');

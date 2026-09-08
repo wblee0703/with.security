@@ -733,7 +733,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     const ok = await dbService.deleteUser(targetUser.username);
     if (ok) {
-      setMgmtUsers(prevUsers => prevUsers.filter(u => u.username !== targetUser.username));
+      const unameLower = String(targetUser.username || '').trim().toLowerCase();
+      setMgmtUsers(prevUsers => prevUsers.filter(u => String(u.username || '').trim().toLowerCase() !== unameLower));
       if (onTriggerToast) onTriggerToast(`'${targetUser.name}(${targetUser.username})' 사용자 계정이 성공적으로 삭제되었습니다.`, 'success');
     } else {
       if (onTriggerToast) onTriggerToast('계정 삭제에 실패했습니다.', 'warning');
@@ -753,7 +754,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       role: newRole
     };
 
-    await dbService.saveUserProfile(updatedUser);
+    await dbService.updateUserAccount(updatedUser);
 
     // Update modal state in real-time
     setMgmtUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? updatedUser : u));

@@ -93,54 +93,6 @@ export async function getSecurityUsers(includePassword = false) {
       console.warn('Auto admin account seed warning:', e.message);
     }
   }
-
-  // wblee 계정도 없을 경우 생성
-  const wbleeUser = Array.isArray(users) && users.find(u => u.username === 'wblee');
-  if (!wbleeUser) {
-    try {
-      await createSecurityUser({
-        username: 'wblee',
-        password: hashPasswordServer(defaultAdminPass),
-        name: '이원배',
-        role: '일반',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'SITE-001',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        education_date: '',
-        education_expiry_date: '',
-        education_name: '',
-        trainings: []
-      });
-      users = await query('SELECT * FROM security_user ORDER BY id ASC');
-    } catch (e) {}
-  }
-
-  // wblee0703 계정도 없을 경우 생성
-  const wblee0703User = Array.isArray(users) && users.find(u => u.username === 'wblee0703');
-  if (!wblee0703User) {
-    try {
-      await createSecurityUser({
-        username: 'wblee0703',
-        password: hashPasswordServer(defaultAdminPass),
-        name: '이원배',
-        role: '개발자',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'ALL',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        education_date: '',
-        education_expiry_date: '',
-        education_name: '',
-        trainings: []
-      });
-      users = await query('SELECT * FROM security_user ORDER BY id ASC');
-    } catch (e) {}
-  }
   if (!Array.isArray(users) || users.length === 0) {
     users = [
       {
@@ -153,32 +105,6 @@ export async function getSecurityUsers(includePassword = false) {
         team: '운영1팀',
         rank: '대리',
         siteId: 'ALL',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr'
-      },
-      {
-        id: 2,
-        username: 'wblee0703',
-        password: hashPasswordServer(defaultAdminPass),
-        name: '이원배',
-        role: '개발자',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'ALL',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr'
-      },
-      {
-        id: 3,
-        username: 'wblee',
-        password: hashPasswordServer(defaultAdminPass),
-        name: '이원배',
-        role: '일반',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'SITE-001',
         phone: '010-9885-0393',
         email: 'wblee@withtech.co.kr'
       }
