@@ -1,16 +1,22 @@
 import React from 'react';
 import { LogOut, X, AlertTriangle } from 'lucide-react';
-import { useModalBack } from '../../services/modalBackHandler';
+import { useModalBack, modalBackHandler } from '../../services/modalBackHandler';
 import { Capacitor } from '@capacitor/core';
 
-export default function ExitConfirmModal({ isOpen, onClose }) {
+export default function ExitConfirmModal({ isOpen, onClose, onExitConfirmed }) {
   useModalBack(isOpen, onClose, 'app-exit-confirm-modal');
 
   if (!isOpen) return null;
 
   const handleConfirmExit = () => {
     window.__allowAppExit = true;
+    modalBackHandler.stack = [];
+    modalBackHandler.suppressNextPopstateCount = 999;
+
     onClose();
+    if (typeof onExitConfirmed === 'function') {
+      onExitConfirmed();
+    }
 
     // 1. Android / iOS Native Capacitor App
     if (Capacitor.isNativePlatform()) {
@@ -28,19 +34,29 @@ export default function ExitConfirmModal({ isOpen, onClose }) {
           return;
         }
       } catch (e) { }
+      return;
     }
 
-    // 2. Web Browser (모바일 모드 / 웹 모드)
+    // 2. Web Browser (모바일 웹 브라우저 & PC 웹)
+    // First attempt window.close()
     try {
       window.close();
     } catch (e) { }
 
-    // Fallback: If window.close() is blocked by browser security policy, go back
-    setTimeout(() => {
+    // If referrer from an external site exists, navigate back to referrer
+    if (document.referrer && !document.referrer.includes(window.location.host)) {
       try {
-        window.history.go(-2);
-      } catch (e) { }
-    }, 100);
+        window.location.replace(document.referrer);
+        return;
+      } catch (e) {}
+    }
+
+    // Attempt history back to exit the site
+    try {
+      if (window.history.length > 1) {
+        window.history.back();
+      }
+    } catch (e) {}
   };
 
   return (

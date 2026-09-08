@@ -589,8 +589,18 @@ export default function WorkLogTab({ onTriggerToast }) {
     const handleDataChange = () => {
       loadData();
     };
+    const handleWidgetDate = (e) => {
+      if (e?.detail?.targetDate) {
+        setSelectedDate(e.detail.targetDate);
+        setViewAllDates(false);
+      }
+    };
     window.addEventListener('with_security_data_changed', handleDataChange);
-    return () => window.removeEventListener('with_security_data_changed', handleDataChange);
+    window.addEventListener('with_security_widget_select_date', handleWidgetDate);
+    return () => {
+      window.removeEventListener('with_security_data_changed', handleDataChange);
+      window.removeEventListener('with_security_widget_select_date', handleWidgetDate);
+    };
   }, []);
 
   // Helper for Korean Date Formatting (e.g. 2026년 08월 11일 (화))

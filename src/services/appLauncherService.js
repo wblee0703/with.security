@@ -141,3 +141,89 @@ export async function shareReportText({ title, text }) {
   return { success: false };
 }
 
+/**
+ * Synchronize current work logs and TBM data to Android Native Home Screen Calendar Widget
+ * @param {{ workLogs?: Array<any>, tbms?: Array<any> }} options
+ */
+export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+
+    const workDatesMap = {};
+
+    // Collect dates with work logs
+    (workLogs || []).forEach(log => {
+      const date = log.date || (log.createdAt ? log.createdAt.split('T')[0] : null);
+      if (date) {
+        workDatesMap[date] = { hasWork: true };
+      }
+    });
+
+    // Collect dates with TBMs
+    (tbms || []).forEach(tbm => {
+      const date = tbm.date || (tbm.createdAt ? tbm.createdAt.split('T')[0] : null);
+      if (date) {
+        workDatesMap[date] = { hasWork: true };
+      }
+    });
+
+    // Find today's main work & TBM status
+    const todayWorkLogs = (workLogs || []).filter(l => (l.date || '').startsWith(todayStr));
+    const todayTbms = (tbms || []).filter(t => (t.date || '').startsWith(todayStr));
+
+    let todayTitle = '';
+    let todaySite = '';
+    let todayStatus = '점검 대기';
+
+    if (todayWorkLogs.length > 0) {
+      const first = todayWorkLogs[0];
+      todayTitle = first.workTitle || first.title || first.content || '일일 업무 등록됨';
+      todaySite = first.site || first.siteName || '';
+    } else if (todayTbms.length > 0) {
+      const firstTbm = todayTbms[0];
+      todayTitle = firstTbm.workTitle || 'TBM 진행';
+      todaySite = firstTbm.site || '';
+    }
+
+    if (todayTbms.length > 0) {
+      const isCompleted = todayTbms.some(t => t.postCheck?.isCompleted || t.status === 'completed');
+      todayStatus = isCompleted ? 'TBM 완료' : 'TBM 진행중';
+    } else if (todayWorkLogs.length > 0) {
+      todayStatus = '업무 작성됨';
+    }
+
+    await NativeAppLauncher.updateWidgetData({
+      workDatesJson: JSON.stringify(workDatesMap),
+      todayTitle,
+      todaySite,
+      todayStatus
+    });
+  } catch (err) {
+    console.warn('syncCalendarWidget error:', err);
+  }
+}
+
+/**
+ * Check if the app was launched by tapping the Android Home Screen Widget
+ * @returns {Promise<{ fromWidget: boolean, targetTab: string, targetDate: string }>}
+ */
+export async function checkWidgetLaunchIntent() {
+  if (!Capacitor.isNativePlatform()) {
+    return { fromWidget: false, targetTab: '', targetDate: '' };
+  }
+
+  try {
+    const res = await NativeAppLauncher.getWidgetLaunchData();
+    return res || { fromWidget: false, targetTab: '', targetDate: '' };
+  } catch (err) {
+    console.warn('checkWidgetLaunchIntent error:', err);
+    return { fromWidget: false, targetTab: '', targetDate: '' };
+  }
+}
+

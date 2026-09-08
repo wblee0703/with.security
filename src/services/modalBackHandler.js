@@ -19,6 +19,7 @@ class ModalBackHandler {
 
     if (!isNative) {
       const seedHistory = () => {
+        if (window.__allowAppExit) return;
         try {
           if (!window.history.state || !window.history.state.isAppRoot) {
             window.history.pushState({ isAppRoot: true }, '', window.location.href);
@@ -40,6 +41,7 @@ class ModalBackHandler {
 
     // 1. Android Native Back Button Bridge Interface for MainActivity.java
     window.__handleNativeBackPressed = () => {
+      if (window.__allowAppExit) return false;
       if (this.hasOpenModals()) {
         this.closeTopModal();
         return true;
@@ -66,6 +68,11 @@ class ModalBackHandler {
 
     // 2. Listen to browser & Mobile Web popstate events
     window.addEventListener('popstate', (e) => {
+      // If app exit has been confirmed, do NOT trap or re-push history!
+      if (window.__allowAppExit) {
+        return;
+      }
+
       // If back was triggered programmatically (e.g. clicking 'X' or 'Cancel' in modal), ignore this event
       if (this.suppressNextPopstateCount > 0) {
         this.suppressNextPopstateCount--;

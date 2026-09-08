@@ -315,14 +315,20 @@ export default function TbmSection({
     return new Promise((resolve, reject) => {
       if (!file) return reject(new Error('파일이 존재하지 않습니다.'));
 
-      // 1. Check file extension security
-      const fileNameParts = file.name.split('.');
-      if (fileNameParts.length < 2) {
-        return reject(new Error('보안 정책: 확장자가 누락된 파일은 업로드할 수 없습니다.'));
+      // 1. Check file extension security (Safely infer from MIME type if camera blob/capture omits extension)
+      const rawName = file.name || 'camera_photo.jpg';
+      const fileNameParts = rawName.split('.');
+      let ext = fileNameParts.length >= 2 ? fileNameParts.pop().toLowerCase() : '';
+      if (!ext && file.type && file.type.startsWith('image/')) {
+        const mimeSub = file.type.split('/')[1]?.toLowerCase();
+        ext = mimeSub === 'jpeg' ? 'jpg' : (mimeSub || 'jpg');
       }
-      const ext = fileNameParts.pop().toLowerCase();
-      if (!ALLOWED_PHOTO_EXTENSIONS.includes(ext)) {
-        return reject(new Error(`보안 정책: 허용되지 않은 파일 형식(.${ext})입니다. 핸드폰 카메라 촬영 및 캡처 이미지(JPG, PNG, WEBP, HEIC)만 등록할 수 있습니다.`));
+      if (!ext || !ALLOWED_PHOTO_EXTENSIONS.includes(ext)) {
+        if (file.type && file.type.startsWith('image/')) {
+          ext = 'jpg';
+        } else {
+          return reject(new Error(`보안 정책: 허용되지 않은 파일 형식(${ext ? '.' + ext : '확장자 없음'})입니다. 핸드폰 카메라 촬영 및 캡처 이미지(JPG, PNG, WEBP, HEIC)만 등록할 수 있습니다.`));
+        }
       }
 
       // 2. Check MIME type
@@ -468,6 +474,20 @@ export default function TbmSection({
     }));
   };
 
+  const handleTriggerCamera = (type = 'pre') => {
+    const inputRef = type === 'pre' ? cameraInputRef : postCameraInputRef;
+    if (inputRef && inputRef.current) {
+      inputRef.current.click();
+    }
+  };
+
+  const handleTriggerGallery = (type = 'pre') => {
+    const inputRef = type === 'pre' ? galleryInputRef : postGalleryInputRef;
+    if (inputRef && inputRef.current) {
+      inputRef.current.click();
+    }
+  };
+
   // Load Initial Data
   const loadData = async () => {
     try {
@@ -482,6 +502,8 @@ export default function TbmSection({
 
       const tbms = await dbService.getTbms();
       setTbmList(tbms || []);
+
+      window.dispatchEvent(new CustomEvent('with_security_data_changed'));
     } catch (err) {
       console.error('Failed to load TBM data:', err);
     }
@@ -2230,36 +2252,56 @@ export default function TbmSection({
                         </span>
                       </label>
 
-                      {/* Hidden File Inputs for Camera & Upload */}
+                      {/* Hidden File Inputs for Camera & Upload (Positioned offscreen so mobile webviews reliably trigger camera) */}
                       <input
                         ref={cameraInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        accept="image/*"
                         capture="environment"
                         onChange={(e) => {
                           handlePhotoFilesSelected(e.target.files);
                           e.target.value = '';
                         }}
-                        style={{ display: 'none' }}
+                        style={{
+                          position: 'absolute',
+                          top: '-9999px',
+                          left: '-9999px',
+                          opacity: 0,
+                          width: '1px',
+                          height: '1px',
+                          pointerEvents: 'none'
+                        }}
+                        tabIndex={-1}
+                        aria-hidden="true"
                       />
 
                       <input
                         ref={galleryInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        accept="image/*"
                         multiple
                         onChange={(e) => {
                           handlePhotoFilesSelected(e.target.files);
                           e.target.value = '';
                         }}
-                        style={{ display: 'none' }}
+                        style={{
+                          position: 'absolute',
+                          top: '-9999px',
+                          left: '-9999px',
+                          opacity: 0,
+                          width: '1px',
+                          height: '1px',
+                          pointerEvents: 'none'
+                        }}
+                        tabIndex={-1}
+                        aria-hidden="true"
                       />
 
                       {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                         <button
                           type="button"
-                          onClick={() => cameraInputRef.current?.click()}
+                          onClick={() => handleTriggerCamera('pre')}
                           style={{
                             padding: '9px 12px',
                             borderRadius: '8px',
@@ -2281,7 +2323,7 @@ export default function TbmSection({
 
                         <button
                           type="button"
-                          onClick={() => galleryInputRef.current?.click()}
+                          onClick={() => handleTriggerGallery('pre')}
                           style={{
                             padding: '9px 12px',
                             borderRadius: '8px',
@@ -2839,36 +2881,56 @@ export default function TbmSection({
                         </span>
                       </label>
 
-                      {/* Hidden File Inputs for Post Camera & Upload */}
+                      {/* Hidden File Inputs for Post Camera & Upload (Positioned offscreen so mobile webviews reliably trigger camera) */}
                       <input
                         ref={postCameraInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        accept="image/*"
                         capture="environment"
                         onChange={(e) => {
                           handlePostPhotoFilesSelected(e.target.files);
                           e.target.value = '';
                         }}
-                        style={{ display: 'none' }}
+                        style={{
+                          position: 'absolute',
+                          top: '-9999px',
+                          left: '-9999px',
+                          opacity: 0,
+                          width: '1px',
+                          height: '1px',
+                          pointerEvents: 'none'
+                        }}
+                        tabIndex={-1}
+                        aria-hidden="true"
                       />
 
                       <input
                         ref={postGalleryInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif,.webp"
+                        accept="image/*"
                         multiple
                         onChange={(e) => {
                           handlePostPhotoFilesSelected(e.target.files);
                           e.target.value = '';
                         }}
-                        style={{ display: 'none' }}
+                        style={{
+                          position: 'absolute',
+                          top: '-9999px',
+                          left: '-9999px',
+                          opacity: 0,
+                          width: '1px',
+                          height: '1px',
+                          pointerEvents: 'none'
+                        }}
+                        tabIndex={-1}
+                        aria-hidden="true"
                       />
 
                       {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
                         <button
                           type="button"
-                          onClick={() => postCameraInputRef.current?.click()}
+                          onClick={() => handleTriggerCamera('post')}
                           style={{
                             padding: '9px 12px',
                             borderRadius: '8px',
@@ -2890,7 +2952,7 @@ export default function TbmSection({
 
                         <button
                           type="button"
-                          onClick={() => postGalleryInputRef.current?.click()}
+                          onClick={() => handleTriggerGallery('post')}
                           style={{
                             padding: '9px 12px',
                             borderRadius: '8px',

@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <!-- 1. Header: App Logo & Month Title & Prev/Next & Refresh -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="6dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🛡️ with.security"
+            android:textColor="#0284C7"
+            android:textSize="11.5sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Month Navigation: Prev, Title, Next, Refresh -->
+        <TextView
+            android:id="@+id/btn_prev_month"
+            android:layout_width="26dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_nav_btn"
+            android:gravity="center"
+            android:text="◀"
+            android:textColor="#334155"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/tv_month_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:layout_marginEnd="6dp"
+            android:text="2026년 9월"
+            android:textColor="#0F172A"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btn_next_month"
+            android:layout_width="26dp"
+            android:layout_height="24dp"
+            android:background="@drawable/widget_nav_btn"
+            android:gravity="center"
+            android:text="▶"
+            android:textColor="#334155"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/btn_refresh"
+            android:layout_width="26dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/widget_nav_btn"
+            android:gravity="center"
+            android:text="🔄"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 2. Days of Week Header Row (일 월 화 수 목 금 토) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="3dp">
+
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="일" android:textColor="#DC2626" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="월" android:textColor="#64748B" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="화" android:textColor="#64748B" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="수" android:textColor="#64748B" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="목" android:textColor="#64748B" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="금" android:textColor="#64748B" android:textSize="10sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:text="토" android:textColor="#2563EB" android:textSize="10sp" android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 3. Calendar Grid (6 rows x 7 days) -->
+    <LinearLayout
+        android:id="@+id/layout_calendar_grid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Row 0: Cells 0..6 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_0" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_0" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_1" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_1" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_2" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_2" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_3" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_3" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_4" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_4" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_5" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_5" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_6" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_6" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 1: Cells 7..13 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_7" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_7" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_7" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_8" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_8" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_8" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_9" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_9" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_9" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_10" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_10" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_10" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_11" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_11" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_11" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_12" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_12" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_12" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_13" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_13" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_13" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 2: Cells 14..20 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_14" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_14" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_14" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_15" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_15" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_15" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_16" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_16" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_16" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_17" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_17" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_17" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_18" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_18" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_18" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_19" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_19" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_19" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_20" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_20" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_20" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 3: Cells 21..27 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_21" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_21" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_21" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_22" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_22" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_22" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_23" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_23" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_23" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_24" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_24" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_24" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_25" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_25" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_25" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_26" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_26" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_26" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_27" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_27" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_27" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 4: Cells 28..34 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_28" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_28" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_28" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_29" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_29" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_29" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_30" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_30" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_30" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_31" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_31" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_31" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_32" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_32" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_32" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_33" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_33" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_33" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_34" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_34" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_34" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Row 5: Cells 35..41 -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
+            <LinearLayout android:id="@+id/cell_35" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_35" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_35" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_36" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_36" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_36" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_37" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_37" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_37" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_38" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_38" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_38" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_39" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_39" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_39" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_40" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_40" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_40" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/cell_41" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical" android:gravity="center">
+                <TextView android:id="@+id/tv_day_41" android:layout_width="20dp" android:layout_height="20dp" android:gravity="center" android:textSize="9.5sp" android:textColor="#334155" />
+                <ImageView android:id="@+id/iv_dot_41" android:layout_width="4dp" android:layout_height="4dp" android:layout_marginTop="1dp" android:src="@drawable/widget_work_dot" android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 4. Today Work Summary Card at Bottom (Tap to Open App) -->
+    <LinearLayout
+        android:id="@+id/layout_today_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/widget_summary_bg"
+        android:padding="8dp"
+        android:layout_marginTop="4dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_today_date_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="📌 오늘 업무 일정"
+                android:textColor="#0369A1"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_today_status_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="TBM 완료"
+                android:textColor="#16A34A"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_today_work_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="등록된 일일업무를 확인하려면 터치하세요"
+            android:textColor="#334155"
+            android:textSize="11.5sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+</LinearLayout>

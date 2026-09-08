@@ -54,6 +54,65 @@ public class NativeAppLauncherPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void updateWidgetData(PluginCall call) {
+        try {
+            Context context = getContext();
+            String workDatesJson = call.getString("workDatesJson", "{}");
+            String todayTitle = call.getString("todayTitle", "");
+            String todaySite = call.getString("todaySite", "");
+            String todayStatus = call.getString("todayStatus", "점검 대기");
+
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                    WorkCalendarWidgetProvider.PREFS_NAME,
+                    Context.MODE_PRIVATE
+            );
+
+            prefs.edit()
+                    .putString(WorkCalendarWidgetProvider.KEY_WORK_DATES_JSON, workDatesJson)
+                    .putString(WorkCalendarWidgetProvider.KEY_TODAY_TITLE, todayTitle)
+                    .putString(WorkCalendarWidgetProvider.KEY_TODAY_SITE, todaySite)
+                    .putString(WorkCalendarWidgetProvider.KEY_TODAY_STATUS, todayStatus)
+                    .apply();
+
+            WorkCalendarWidgetProvider.updateAllWidgets(context);
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to update widget data: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void getWidgetLaunchData(PluginCall call) {
+        try {
+            android.app.Activity activity = getActivity();
+            JSObject ret = new JSObject();
+            if (activity != null && activity.getIntent() != null) {
+                Intent intent = activity.getIntent();
+                boolean fromWidget = intent.getBooleanExtra("fromWidget", false);
+                String targetTab = intent.getStringExtra("targetTab");
+                String targetDate = intent.getStringExtra("targetDate");
+
+                ret.put("fromWidget", fromWidget);
+                ret.put("targetTab", targetTab != null ? targetTab : "");
+                ret.put("targetDate", targetDate != null ? targetDate : "");
+
+                // Clear extra once consumed
+                intent.removeExtra("fromWidget");
+            } else {
+                ret.put("fromWidget", false);
+                ret.put("targetTab", "");
+                ret.put("targetDate", "");
+            }
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to get widget launch data: " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
     public void launchApp(PluginCall call) {
         String target = call.getString("target");
         if (target == null || target.trim().isEmpty()) {

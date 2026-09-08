@@ -10,12 +10,14 @@ import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import TrainingExpiryModal from './components/common/TrainingExpiryModal';
 import ExitConfirmModal from './components/common/ExitConfirmModal';
-import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw } from 'lucide-react';
+import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw, LogOut } from 'lucide-react';
 import { dbService } from './services/dbService';
+import { syncCalendarWidget, checkWidgetLaunchIntent } from './services/appLauncherService';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
+  const [isAppExited, setIsAppExited] = useState(false);
 
   // Helper to determine initial default tab based on platform/device mode
   const getDefaultTab = () => {
@@ -186,6 +188,7 @@ export default function App() {
   // Listen to Back Button Exit Request (웹 브라우저 모바일 모드에서만 종료 확인 팝업창 노출)
   useEffect(() => {
     const handleRequestExit = () => {
+      if (window.__allowAppExit) return;
       const isNative = Capacitor.isNativePlatform();
       if (!isNative) {
         setIsExitModalOpen(true);
@@ -193,6 +196,59 @@ export default function App() {
     };
     window.addEventListener('with_security_request_exit', handleRequestExit);
     return () => window.removeEventListener('with_security_request_exit', handleRequestExit);
+  }, []);
+
+  // Sync Native Home Screen Calendar Widget Data & Handle Widget Launch
+  useEffect(() => {
+    async function syncWidget() {
+      if (!Capacitor.isNativePlatform()) return;
+      try {
+        const [workLogs, tbms] = await Promise.all([
+          dbService.getWorkLogs ? dbService.getWorkLogs() : [],
+          dbService.getTbms ? dbService.getTbms() : []
+        ]);
+        await syncCalendarWidget({ workLogs, tbms });
+      } catch (err) {
+        console.warn('Widget sync error:', err);
+      }
+    }
+
+    async function checkWidgetLaunch() {
+      if (!Capacitor.isNativePlatform()) return;
+      try {
+        const launchData = await checkWidgetLaunchIntent();
+        if (launchData && launchData.fromWidget) {
+          if (launchData.targetTab) {
+            setActiveTab(launchData.targetTab);
+          }
+          if (launchData.targetDate) {
+            window.dispatchEvent(new CustomEvent('with_security_widget_select_date', {
+              detail: { targetDate: launchData.targetDate }
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('checkWidgetLaunch error:', err);
+      }
+    }
+
+    syncWidget();
+    checkWidgetLaunch();
+
+    const handleFocusOrResume = () => {
+      syncWidget();
+      checkWidgetLaunch();
+    };
+
+    window.addEventListener('focus', handleFocusOrResume);
+    document.addEventListener('visibilitychange', handleFocusOrResume);
+    window.addEventListener('with_security_data_changed', syncWidget);
+
+    return () => {
+      window.removeEventListener('focus', handleFocusOrResume);
+      document.removeEventListener('visibilitychange', handleFocusOrResume);
+      window.removeEventListener('with_security_data_changed', syncWidget);
+    };
   }, []);
 
   // Check Education / Training Expiry Alert (Web: Login ONLY | App/Mobile: App Launch / Reopen / Login)
@@ -647,7 +703,7 @@ export default function App() {
                   호스팅 서버 및 실시간 앱 업데이트 설정
                 </div>
                 <div style={{ fontSize: '12px', color: '#1e3a8a', fontWeight: '700', marginTop: '2px' }}>
-                  WithSecurity 웹 & 모바일 자동 동기화
+                  WITH Sharing 웹 & 모바일 자동 동기화
                 </div>
               </div>
             </div>
@@ -747,7 +803,68 @@ export default function App() {
       <ExitConfirmModal
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
+        onExitConfirmed={() => setIsAppExited(true)}
       />
+
+      {/* Graceful Exited Screen for Web Browsers where window.close() is blocked by browser policy */}
+      {isAppExited && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 999999,
+          background: '#0f172a',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          textAlign: 'center',
+          color: '#ffffff',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'rgba(239, 68, 68, 0.15)',
+            border: '2px solid #ef4444',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#ef4444',
+            marginBottom: '16px'
+          }}>
+            <LogOut size={32} />
+          </div>
+          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 8px 0', letterSpacing: '-0.3px' }}>
+            with.security가 종료되었습니다
+          </h2>
+          <p style={{ fontSize: '13.5px', color: '#94a3b8', margin: '0 0 24px 0', lineHeight: '1.6', wordBreak: 'keep-all' }}>
+            브라우저 탭을 닫으시거나 홈 화면으로 이동해주세요.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              window.__allowAppExit = false;
+              setIsAppExited(false);
+              window.location.reload();
+            }}
+            style={{
+              padding: '12px 24px',
+              borderRadius: '10px',
+              background: '#0284c7',
+              color: '#ffffff',
+              fontSize: '14px',
+              fontWeight: '700',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)'
+            }}
+          >
+            앱 다시 시작하기
+          </button>
+        </div>
+      )}
     </div>
   );
 }

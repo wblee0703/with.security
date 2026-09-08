@@ -33,7 +33,7 @@ class ErrorBoundary extends React.Component {
           fontFamily: 'sans-serif'
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🛡️</div>
-          <h2 style={{ color: '#1e3a8a', marginBottom: '12px', fontSize: '20px' }}>WithSecurity 모바일 앱 초기화</h2>
+          <h2 style={{ color: '#1e3a8a', marginBottom: '12px', fontSize: '20px' }}>WITH Sharing 모바일 앱 초기화</h2>
           <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px', maxWidth: '320px' }}>
             앱 초기화 중 오류가 발생했습니다. 아래 버튼을 눌러 다시 시작해 주세요.
           </p>

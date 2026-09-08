@@ -34,10 +34,30 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Home Screen Calendar Widget Receiver -->
+        <receiver
+            android:name=".WorkCalendarWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.company.withsecurity.ACTION_PREV_MONTH" />
+                <action android:name="com.company.withsecurity.ACTION_NEXT_MONTH" />
+                <action android:name="com.company.withsecurity.ACTION_REFRESH" />
+                <action android:name="com.company.withsecurity.ACTION_OPEN_DATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/work_calendar_widget_info" />
+        </receiver>
     </application>
 
     <!-- Permissions for External App Querying & Launching -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
     <!-- Queries for Package Launchers (SK Hynix SSM, Knox, V3, LGD, etc.) -->

@@ -89,7 +89,7 @@ export default function PinLockModal({ isLocked, onUnlock }) {
           )}
         </div>
         <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', marginBottom: '6px' }}>
-          {isSuccess ? '보안 인증 완료' : 'WithSecurity 인증'}
+          {isSuccess ? '보안 인증 완료' : 'WITH Sharing 인증'}
         </h2>
         <p style={{ fontSize: '13px', color: error ? '#e11d48' : '#64748b' }}>
           {error ? '잘못된 PIN 번호입니다 (테스트 PIN: 123456)' : '생체 인증 또는 보안 PIN 6자리를 입력하세요'}
