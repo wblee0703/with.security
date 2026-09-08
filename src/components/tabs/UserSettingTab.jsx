@@ -156,6 +156,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [serverUnlockPassword, setServerUnlockPassword] = useState('');
   useModalBack(isServerUnlockModalOpen, () => setIsServerUnlockModalOpen(false), 'server-unlock-modal');
 
+  // JSON File-based Database States
+  const jsonFileInputRef = useRef(null);
+  const [isExportingJson, setIsExportingJson] = useState(false);
+  const [isImportingJson, setIsImportingJson] = useState(false);
+
   // Multi-Training Management States
   const [trainings, setTrainings] = useState([]);
   const [selectedTrainingCategory, setSelectedTrainingCategory] = useState('전체');
@@ -466,6 +471,75 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     setServerConnectionStatus(null);
     if (onTriggerToast) {
       onTriggerToast('기본 도메인(wblee0703.github.io)으로 초기화되었습니다.', 'info');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // JSON File-based Database Handlers (Serverless/GitHub Mode)
+  // -------------------------------------------------------------
+  const handleExportJson = async () => {
+    try {
+      setIsExportingJson(true);
+      const filename = await dbMigrationService.downloadFullDatabaseJSON();
+      if (onTriggerToast) {
+        onTriggerToast(`전체 데이터베이스 파일이 다운로드되었습니다. (${filename})`, 'success');
+      }
+    } catch (err) {
+      if (onTriggerToast) onTriggerToast(`내보내기 실패: ${err.message}`, 'warning');
+    } finally {
+      setIsExportingJson(false);
+    }
+  };
+
+  const handleImportJsonFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsImportingJson(true);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const content = event.target.result;
+          const res = await dbMigrationService.importFullDatabaseFromJSON(content);
+          if (res.success) {
+            if (onTriggerToast) onTriggerToast(res.message, 'success');
+            const active = await dbService.getUserProfile();
+            if (active) setCurrentUser(active);
+            if (typeof loadUserMgmtList === 'function') await loadUserMgmtList();
+          } else {
+            if (onTriggerToast) onTriggerToast(res.message, 'warning');
+          }
+        } catch (parseErr) {
+          if (onTriggerToast) onTriggerToast(`JSON 파일 분석 오류: ${parseErr.message}`, 'warning');
+        } finally {
+          setIsImportingJson(false);
+          if (jsonFileInputRef.current) jsonFileInputRef.current.value = '';
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    } catch (err) {
+      setIsImportingJson(false);
+      if (onTriggerToast) onTriggerToast(`불러오기 오류: ${err.message}`, 'warning');
+    }
+  };
+
+  const handleLoadBaselineJson = async () => {
+    if (!window.confirm('기본 JSON 데이터베이스를 불러와 병합하시겠습니까?')) return;
+    try {
+      setIsImportingJson(true);
+      const res = await dbMigrationService.loadBaselineJSON();
+      if (res.success) {
+        if (onTriggerToast) onTriggerToast(res.message, 'success');
+        const active = await dbService.getUserProfile();
+        if (active) setCurrentUser(active);
+        if (typeof loadUserMgmtList === 'function') await loadUserMgmtList();
+      } else {
+        if (onTriggerToast) onTriggerToast(res.message, 'warning');
+      }
+    } catch (err) {
+      if (onTriggerToast) onTriggerToast(`기본 데이터 로드 실패: ${err.message}`, 'warning');
+    } finally {
+      setIsImportingJson(false);
     }
   };
 
@@ -2710,6 +2784,122 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 <Key size={14} /> 서버 연동 수정 잠금 해제 (개발자 인증)
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* JSON File-Based Database Manager (Serverless / GitHub Pages / Offline Mode) */}
+      {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+        <div className="glass-panel" style={{
+          marginTop: '16px',
+          padding: '20px',
+          borderRadius: '16px',
+          border: '1.5px solid #cbd5e1',
+          background: '#ffffff',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ padding: '8px', borderRadius: '10px', background: '#ecfdf5', color: '#059669' }}>
+                <Database size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
+                  📂 JSON 파일 데이터베이스 관리 (서버/DB 없는 환경 전용)
+                </h3>
+                <p style={{ margin: '2px 0 0 0', fontSize: '12px', color: '#64748b' }}>
+                  별도의 데이터베이스 서버 없이도 파일 백업 & 불러오기를 통해 앱과 웹 간 데이터를 손쉽게 공유할 수 있습니다.
+                </p>
+              </div>
+            </div>
+            <span style={{ fontSize: '11px', fontWeight: '700', padding: '4px 10px', borderRadius: '20px', background: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1' }}>
+              JSON File Engine Active
+            </span>
+          </div>
+
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', marginBottom: '16px', fontSize: '12px', color: '#334155', lineHeight: '1.6' }}>
+            💡 <strong>가비아 호스팅 전 데이터 공유 방법:</strong>
+            <ol style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
+              <li>데이터가 작성된 PC에서 <strong>[전체 데이터 백업 (JSON 다운로드)]</strong>를 클릭합니다.</li>
+              <li>다운로드된 <code>with_security_database_*.json</code> 파일을 카카오톡, 이메일 등으로 스마트폰에 전송합니다.</li>
+              <li>스마트폰 앱에서 <strong>[데이터 불러오기 (JSON 업로드)]</strong>를 선택하면 모든 데이터(계정, 사업장, 서약서, 업무일지, TBM 등)가 100% 동일하게 반영됩니다.</li>
+            </ol>
+          </div>
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={jsonFileInputRef}
+            onChange={handleImportJsonFile}
+            accept=".json,application/json"
+            style={{ display: 'none' }}
+          />
+
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleExportJson}
+              disabled={isExportingJson}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                background: '#1e3a8a',
+                border: 'none',
+                color: '#ffffff',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(30, 58, 138, 0.2)'
+              }}
+            >
+              <Download size={15} /> 전체 데이터 백업 (JSON 다운로드)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => jsonFileInputRef.current?.click()}
+              disabled={isImportingJson}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                background: '#ffffff',
+                border: '1.5px solid #059669',
+                color: '#059669',
+                fontSize: '12.5px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <FileCode size={15} /> 데이터 불러오기 (JSON 업로드)
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLoadBaselineJson}
+              disabled={isImportingJson}
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                color: '#64748b',
+                fontSize: '12px',
+                fontWeight: '600',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <RefreshCw size={13} /> 기본값 복원 (초기 JSON 로드)
+            </button>
           </div>
         </div>
       )}

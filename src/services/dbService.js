@@ -1784,10 +1784,32 @@ class SecurityDatabase {
 
     // GitHub Pages / Local hosting is a static frontend host: merge local ground-truth data cleanly
     if (!isApiEndpoint(formattedUrl)) {
+      if (localUsers.length === 0 && localSites.length === 0) {
+        try {
+          const paths = ['./database.json', 'database.json', '/with.security/database.json'];
+          for (const p of paths) {
+            try {
+              const r = await fetch(p);
+              if (r && r.ok) {
+                const initData = await r.json();
+                if (initData && typeof initData === 'object') {
+                  if (Array.isArray(initData.users)) for (const u of initData.users) await this.putItem('users', u);
+                  if (Array.isArray(initData.sites)) for (const s of initData.sites) await this.putItem('sites', s);
+                  if (Array.isArray(initData.checklists)) for (const c of initData.checklists) await this.putItem('checklists', c);
+                  if (Array.isArray(initData.work_logs)) for (const w of initData.work_logs) await this.putItem('work_logs', w);
+                  if (Array.isArray(initData.tbms)) for (const t of initData.tbms) await this.putItem('tbms', t);
+                  break;
+                }
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+      }
+
       const totalCount = localChecklists.length + localSites.length + localUsers.length + localWorkLogs.length + localEduLogs.length + localTbms.length + localVault.length + localOtp.length + localIncidents.length;
       return {
         success: true,
-        message: `통합 웹 & 모바일 데이터베이스 연동 성공! (총 ${totalCount}건 데이터 실시간 동기화 완료)`,
+        message: `JSON 파일 데이터베이스 연동 활성 상태 (총 ${totalCount}건)`,
         count: totalCount,
         details: {
           checklists: localChecklists.length,
