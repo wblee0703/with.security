@@ -46,6 +46,7 @@
                 <action android:name="com.company.withsecurity.ACTION_NEXT_MONTH" />
                 <action android:name="com.company.withsecurity.ACTION_REFRESH" />
                 <action android:name="com.company.withsecurity.ACTION_OPEN_DATE" />
+                <action android:name="com.company.withsecurity.ACTION_SELECT_DATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

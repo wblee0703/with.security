@@ -15,10 +15,7 @@ import android.widget.RemoteViews;
 import org.json.JSONObject;
 
 import java.util.Calendar;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Locale;
-import java.util.Set;
 
 public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
@@ -30,10 +27,13 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     public static final String KEY_TODAY_TITLE = "widget_today_title";
     public static final String KEY_TODAY_SITE = "widget_today_site";
     public static final String KEY_TODAY_STATUS = "widget_today_status";
+    public static final String KEY_SELECTED_DATE = "widget_selected_date";
 
     public static final String ACTION_PREV_MONTH = "com.company.withsecurity.ACTION_PREV_MONTH";
     public static final String ACTION_NEXT_MONTH = "com.company.withsecurity.ACTION_NEXT_MONTH";
     public static final String ACTION_REFRESH = "com.company.withsecurity.ACTION_REFRESH";
+    public static final String ACTION_SELECT_DATE = "com.company.withsecurity.ACTION_SELECT_DATE";
+    public static final String ACTION_OPEN_APP = "com.company.withsecurity.ACTION_OPEN_APP";
     public static final String ACTION_OPEN_DATE = "com.company.withsecurity.ACTION_OPEN_DATE";
     public static final String EXTRA_TARGET_DATE = "extra_target_date";
 
@@ -89,14 +89,31 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             prefs.edit().putInt(KEY_MONTH_OFFSET, offset + 1).apply();
             updateAllWidgets(context);
         } else if (ACTION_REFRESH.equals(action)) {
-            prefs.edit().putInt(KEY_MONTH_OFFSET, 0).apply();
+            Calendar cal = Calendar.getInstance();
+            String todayStr = String.format(Locale.KOREA, "%04d-%02d-%02d",
+                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
+            prefs.edit()
+                    .putInt(KEY_MONTH_OFFSET, 0)
+                    .putString(KEY_SELECTED_DATE, todayStr)
+                    .apply();
             updateAllWidgets(context);
-        } else if (ACTION_OPEN_DATE.equals(action)) {
-            String date = intent.getStringExtra(EXTRA_TARGET_DATE);
+        } else if (ACTION_SELECT_DATE.equals(action)) {
+            // Selecting a date purely updates the widget state without opening the app
+            String targetDate = intent.getStringExtra(EXTRA_TARGET_DATE);
+            if (targetDate != null && !targetDate.isEmpty()) {
+                prefs.edit().putString(KEY_SELECTED_DATE, targetDate).apply();
+                updateAllWidgets(context);
+            }
+        } else if (ACTION_OPEN_APP.equals(action) || ACTION_OPEN_DATE.equals(action)) {
+            // Explicit user action to launch app (from top "앱 열기" button or bottom summary card)
+            String targetDate = intent.getStringExtra(EXTRA_TARGET_DATE);
+            if (targetDate == null || targetDate.isEmpty()) {
+                targetDate = prefs.getString(KEY_SELECTED_DATE, "");
+            }
             Intent appIntent = new Intent(context, MainActivity.class);
             appIntent.putExtra("targetTab", "workLog");
-            if (date != null && !date.isEmpty()) {
-                appIntent.putExtra("targetDate", date);
+            if (targetDate != null && !targetDate.isEmpty()) {
+                appIntent.putExtra("targetDate", targetDate);
             }
             appIntent.putExtra("fromWidget", true);
             appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
@@ -129,7 +146,13 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             int realDay = realTodayCal.get(Calendar.DAY_OF_MONTH);
             String realTodayDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", realYear, realMonth + 1, realDay);
 
-            // 2. Display Month Calculation based on offset
+            // 2. Currently Selected Date (Defaults to Real Today)
+            String selectedDateStr = prefs.getString(KEY_SELECTED_DATE, "");
+            if (selectedDateStr.isEmpty()) {
+                selectedDateStr = realTodayDateStr;
+            }
+
+            // 3. Display Month Calculation based on offset
             int monthOffset = prefs.getInt(KEY_MONTH_OFFSET, 0);
             Calendar displayCal = Calendar.getInstance();
             displayCal.set(Calendar.DAY_OF_MONTH, 1);
@@ -142,28 +165,31 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
             views.setTextViewText(R.id.tv_month_title, String.format(Locale.KOREA, "%d년 %d월", displayYear, displayMonth + 1));
 
-            // 3. Parse Stored Work Dates from SharedPreferences
-            Set<String> workDateSet = new HashSet<>();
+            // 4. Parse Stored Work Dates from SharedPreferences
+            JSONObject workDatesMap = null;
             String workDatesJson = prefs.getString(KEY_WORK_DATES_JSON, "");
             if (!workDatesJson.isEmpty()) {
                 try {
-                    JSONObject json = new JSONObject(workDatesJson);
-                    Iterator<String> keys = json.keys();
-                    while (keys.hasNext()) {
-                        workDateSet.add(keys.next());
-                    }
+                    workDatesMap = new JSONObject(workDatesJson);
                 } catch (Exception e) {
                     Log.w(TAG, "Error parsing work dates JSON", e);
                 }
             }
 
-            // 4. Compute Month Days Grid (6 rows x 7 cols = 42 cells)
+            // 5. Compute Month Days Grid (6 rows x 7 cols = 42 cells)
             int firstDayOfWeek = displayCal.get(Calendar.DAY_OF_WEEK); // 1 = Sunday, 7 = Saturday
             int daysInCurrentMonth = displayCal.getActualMaximum(Calendar.DAY_OF_MONTH);
 
             Calendar prevMonthCal = (Calendar) displayCal.clone();
             prevMonthCal.add(Calendar.MONTH, -1);
             int daysInPrevMonth = prevMonthCal.getActualMaximum(Calendar.DAY_OF_MONTH);
+            int prevYear = prevMonthCal.get(Calendar.YEAR);
+            int prevMonth = prevMonthCal.get(Calendar.MONTH);
+
+            Calendar nextMonthCal = (Calendar) displayCal.clone();
+            nextMonthCal.add(Calendar.MONTH, 1);
+            int nextYear = nextMonthCal.get(Calendar.YEAR);
+            int nextMonth = nextMonthCal.get(Calendar.MONTH);
 
             int startCellIndex = firstDayOfWeek - 1; // 0-indexed column for day 1
 
@@ -173,89 +199,228 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 int cellId = CELL_IDS[i];
 
                 if (i < startCellIndex) {
-                    // Prev Month Days
+                    // Previous Month Days
                     int dayNum = daysInPrevMonth - (startCellIndex - i - 1);
-                    views.setTextViewText(tvDayId, String.valueOf(dayNum));
-                    views.setTextColor(tvDayId, Color.parseColor("#CBD5E1"));
-                    views.setInt(tvDayId, "setBackgroundColor", Color.TRANSPARENT);
-                    views.setViewVisibility(ivDotId, View.GONE);
-
-                    // Setup Click to Open Calendar
-                    setCellClickIntent(context, views, cellId, null);
-                } else if (i < startCellIndex + daysInCurrentMonth) {
-                    // Current Month Days
-                    int dayNum = i - startCellIndex + 1;
-                    String dateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", displayYear, displayMonth + 1, dayNum);
-                    boolean isToday = (displayYear == realYear && displayMonth == realMonth && dayNum == realDay);
-                    boolean hasWork = workDateSet.contains(dateStr);
+                    String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", prevYear, prevMonth + 1, dayNum);
+                    boolean isSelected = cellDateStr.equals(selectedDateStr);
+                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
+                    boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
 
                     views.setTextViewText(tvDayId, String.valueOf(dayNum));
 
-                    int col = i % 7;
-                    if (isToday) {
-                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_today_circle);
-                        views.setTextColor(tvDayId, Color.WHITE);
+                    if (isSelected) {
+                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_selected_circle);
+                        views.setTextColor(tvDayId, Color.parseColor("#0284C7"));
                     } else {
                         views.setInt(tvDayId, "setBackgroundColor", Color.TRANSPARENT);
-                        if (col == 0) {
-                            views.setTextColor(tvDayId, Color.parseColor("#DC2626")); // Sunday
-                        } else if (col == 6) {
-                            views.setTextColor(tvDayId, Color.parseColor("#2563EB")); // Saturday
+                        if (isHoliday) {
+                            views.setTextColor(tvDayId, Color.parseColor("#F87171")); // Soft red for prev holiday
                         } else {
-                            views.setTextColor(tvDayId, Color.parseColor("#334155")); // Weekday
+                            views.setTextColor(tvDayId, Color.parseColor("#CBD5E1"));
                         }
                     }
 
                     views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
-                    setCellClickIntent(context, views, cellId, dateStr);
+                    setCellSelectIntent(context, views, cellId, cellDateStr);
+                } else if (i < startCellIndex + daysInCurrentMonth) {
+                    // Current Month Days
+                    int dayNum = i - startCellIndex + 1;
+                    String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", displayYear, displayMonth + 1, dayNum);
+                    boolean isToday = cellDateStr.equals(realTodayDateStr);
+                    boolean isSelected = cellDateStr.equals(selectedDateStr);
+                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
+                    boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
+
+                    views.setTextViewText(tvDayId, String.valueOf(dayNum));
+
+                    int col = i % 7;
+                    boolean isRedDay = (col == 0 || isHoliday); // Sunday or Korean Public/Alternative Holiday
+
+                    if (isSelected && isToday) {
+                        // Today & Selected: Solid primary circle
+                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_today_circle);
+                        views.setTextColor(tvDayId, Color.WHITE);
+                    } else if (isSelected) {
+                        // Selected Date: Outlined circle
+                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_selected_circle);
+                        views.setTextColor(tvDayId, isRedDay ? Color.parseColor("#DC2626") : Color.parseColor("#0284C7"));
+                    } else if (isToday) {
+                        // Today: Solid primary circle
+                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_today_circle);
+                        views.setTextColor(tvDayId, Color.WHITE);
+                    } else {
+                        views.setInt(tvDayId, "setBackgroundColor", Color.TRANSPARENT);
+                        if (isRedDay) {
+                            views.setTextColor(tvDayId, Color.parseColor("#DC2626")); // Sunday & Holidays (Red)
+                        } else if (col == 6) {
+                            views.setTextColor(tvDayId, Color.parseColor("#2563EB")); // Saturday (Blue)
+                        } else {
+                            views.setTextColor(tvDayId, Color.parseColor("#334155")); // Weekday (Dark Gray)
+                        }
+                    }
+
+                    views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
+                    setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else {
                     // Next Month Days
                     int dayNum = i - (startCellIndex + daysInCurrentMonth) + 1;
-                    views.setTextViewText(tvDayId, String.valueOf(dayNum));
-                    views.setTextColor(tvDayId, Color.parseColor("#CBD5E1"));
-                    views.setInt(tvDayId, "setBackgroundColor", Color.TRANSPARENT);
-                    views.setViewVisibility(ivDotId, View.GONE);
+                    String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", nextYear, nextMonth + 1, dayNum);
+                    boolean isSelected = cellDateStr.equals(selectedDateStr);
+                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
+                    boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
 
-                    setCellClickIntent(context, views, cellId, null);
+                    views.setTextViewText(tvDayId, String.valueOf(dayNum));
+
+                    if (isSelected) {
+                        views.setInt(tvDayId, "setBackgroundResource", R.drawable.widget_selected_circle);
+                        views.setTextColor(tvDayId, Color.parseColor("#0284C7"));
+                    } else {
+                        views.setInt(tvDayId, "setBackgroundColor", Color.TRANSPARENT);
+                        if (isHoliday) {
+                            views.setTextColor(tvDayId, Color.parseColor("#F87171")); // Soft red for next holiday
+                        } else {
+                            views.setTextColor(tvDayId, Color.parseColor("#CBD5E1"));
+                        }
+                    }
+
+                    views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
+                    setCellSelectIntent(context, views, cellId, cellDateStr);
                 }
             }
 
-            // 5. Today's Summary Card
-            String todayTitle = prefs.getString(KEY_TODAY_TITLE, "");
-            String todaySite = prefs.getString(KEY_TODAY_SITE, "");
-            String todayStatus = prefs.getString(KEY_TODAY_STATUS, "점검 대기");
+            // 6. Selected Date Work Summary Card at Bottom
+            int selYear = realYear, selMonth = realMonth + 1, selDay = realDay;
+            try {
+                String[] parts = selectedDateStr.split("-");
+                if (parts.length == 3) {
+                    selYear = Integer.parseInt(parts[0]);
+                    selMonth = Integer.parseInt(parts[1]);
+                    selDay = Integer.parseInt(parts[2]);
+                }
+            } catch (Exception ignored) {}
 
-            views.setTextViewText(R.id.tv_today_date_label, String.format(Locale.KOREA, "📌 오늘 (%d월 %d일)", realMonth + 1, realDay));
-            views.setTextViewText(R.id.tv_today_status_badge, todayStatus);
+            boolean isSelToday = selectedDateStr.equals(realTodayDateStr);
+            String selHolidayName = KoreanHolidays.getHolidayName(selectedDateStr);
+            if ((selHolidayName == null || selHolidayName.isEmpty()) && workDatesMap != null && workDatesMap.has(selectedDateStr)) {
+                try {
+                    JSONObject item = workDatesMap.getJSONObject(selectedDateStr);
+                    String h = item.optString("holidayName", "");
+                    if (!h.isEmpty()) selHolidayName = h;
+                } catch (Exception ignored) {}
+            }
+            boolean isSelHoliday = (selHolidayName != null && !selHolidayName.isEmpty());
 
-            if ("TBM 완료".equals(todayStatus) || "완료".equals(todayStatus)) {
-                views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#16A34A"));
+            // Display or hide holiday badge
+            if (isSelHoliday) {
+                views.setViewVisibility(R.id.tv_holiday_badge, View.VISIBLE);
+                views.setTextViewText(R.id.tv_holiday_badge, "🚩 " + selHolidayName);
             } else {
-                views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#D97706"));
+                views.setViewVisibility(R.id.tv_holiday_badge, View.GONE);
             }
 
-            if (!todayTitle.isEmpty() || !todaySite.isEmpty()) {
-                String combined = todaySite.isEmpty() ? todayTitle : ("[" + todaySite + "] " + todayTitle);
+            String dateLabel;
+            if (isSelToday) {
+                dateLabel = isSelHoliday
+                        ? String.format(Locale.KOREA, "📌 오늘 (%d월 %d일) [%s]", selMonth, selDay, selHolidayName)
+                        : String.format(Locale.KOREA, "📌 오늘 (%d월 %d일) 업무 일정", selMonth, selDay);
+            } else {
+                dateLabel = isSelHoliday
+                        ? String.format(Locale.KOREA, "📌 선택일자 (%d월 %d일) [%s]", selMonth, selDay, selHolidayName)
+                        : String.format(Locale.KOREA, "📌 선택일자 (%d월 %d일) 업무 일정", selMonth, selDay);
+            }
+            views.setTextViewText(R.id.tv_today_date_label, dateLabel);
+
+            String workTitle = "";
+            String workSite = "";
+            String workStatus = "";
+            boolean hasWork = false;
+
+            if (workDatesMap != null && workDatesMap.has(selectedDateStr)) {
+                try {
+                    JSONObject item = workDatesMap.getJSONObject(selectedDateStr);
+                    workTitle = item.optString("title", "");
+                    workSite = item.optString("site", "");
+                    workStatus = item.optString("status", "업무 등록됨");
+                    hasWork = true;
+                } catch (Exception e) {
+                    hasWork = true;
+                }
+            } else if (isSelToday) {
+                workTitle = prefs.getString(KEY_TODAY_TITLE, "");
+                workSite = prefs.getString(KEY_TODAY_SITE, "");
+                workStatus = prefs.getString(KEY_TODAY_STATUS, "");
+                if (!workTitle.isEmpty() || !workSite.isEmpty()) {
+                    hasWork = true;
+                }
+            }
+
+            if (hasWork) {
+                if (workStatus == null || workStatus.isEmpty()) {
+                    workStatus = "업무 등록됨";
+                }
+                views.setTextViewText(R.id.tv_today_status_badge, workStatus);
+
+                if ("TBM 완료".equals(workStatus) || "완료".equals(workStatus)) {
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#16A34A"));
+                } else if (workStatus.contains("진행중")) {
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#D97706"));
+                } else {
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#0284C7"));
+                }
+
+                String combined = "";
+                if (!workSite.isEmpty() && !workTitle.isEmpty()) {
+                    combined = "[" + workSite + "] " + workTitle;
+                } else if (!workTitle.isEmpty()) {
+                    combined = workTitle;
+                } else if (!workSite.isEmpty()) {
+                    combined = "[" + workSite + "] 일일업무";
+                } else {
+                    combined = "등록된 일일 업무가 있습니다. (터치하여 앱에서 확인)";
+                }
+
+                if (isSelHoliday) {
+                    combined = combined + " (공휴일 근무)";
+                }
+
                 views.setTextViewText(R.id.tv_today_work_content, combined);
             } else {
-                views.setTextViewText(R.id.tv_today_work_content, "등록된 일일업무를 확인하려면 터치하세요");
+                if (isSelHoliday) {
+                    views.setTextViewText(R.id.tv_today_status_badge, "공휴일 휴무");
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#DC2626"));
+                    views.setTextViewText(R.id.tv_today_work_content, selHolidayName + " (공휴일) - 등록된 업무 일지가 없습니다.");
+                } else {
+                    views.setTextViewText(R.id.tv_today_status_badge, "일정 없음");
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#94A3B8"));
+                    views.setTextViewText(R.id.tv_today_work_content, "해당 일자에 등록된 업무 일지가 없습니다.");
+                }
             }
 
-            // 6. Navigation Buttons PendingIntents
+            // 7. Navigation Buttons PendingIntents
             setBroadcastPendingIntent(context, views, R.id.btn_prev_month, ACTION_PREV_MONTH, 101);
             setBroadcastPendingIntent(context, views, R.id.btn_next_month, ACTION_NEXT_MONTH, 102);
             setBroadcastPendingIntent(context, views, R.id.btn_refresh, ACTION_REFRESH, 103);
 
-            // 7. Click Summary Box -> Open App to WorkLog
-            Intent openAppIntent = new Intent(context, MainActivity.class);
-            openAppIntent.putExtra("targetTab", "workLog");
-            openAppIntent.putExtra("targetDate", realTodayDateStr);
-            openAppIntent.putExtra("fromWidget", true);
-            openAppIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            PendingIntent summaryPending = PendingIntent.getActivity(
+            // 8. Top "📱 앱 열기" Button PendingIntent -> Launches App with targetDate
+            Intent openAppIntent = new Intent(context, WorkCalendarWidgetProvider.class);
+            openAppIntent.setAction(ACTION_OPEN_APP);
+            openAppIntent.putExtra(EXTRA_TARGET_DATE, selectedDateStr);
+            PendingIntent openAppPending = PendingIntent.getBroadcast(
                     context,
-                    200,
+                    201,
                     openAppIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            views.setOnClickPendingIntent(R.id.btn_open_app, openAppPending);
+
+            // 9. Click Bottom Summary Box -> Open App to selected date
+            Intent summaryIntent = new Intent(context, WorkCalendarWidgetProvider.class);
+            summaryIntent.setAction(ACTION_OPEN_APP);
+            summaryIntent.putExtra(EXTRA_TARGET_DATE, selectedDateStr);
+            PendingIntent summaryPending = PendingIntent.getBroadcast(
+                    context,
+                    202,
+                    summaryIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
             views.setOnClickPendingIntent(R.id.layout_today_summary, summaryPending);
@@ -266,14 +431,12 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    private static void setCellClickIntent(Context context, RemoteViews views, int cellId, String dateStr) {
-        if (cellId == 0) return;
+    private static void setCellSelectIntent(Context context, RemoteViews views, int cellId, String dateStr) {
+        if (cellId == 0 || dateStr == null) return;
         Intent intent = new Intent(context, WorkCalendarWidgetProvider.class);
-        intent.setAction(ACTION_OPEN_DATE);
-        if (dateStr != null) {
-            intent.putExtra(EXTRA_TARGET_DATE, dateStr);
-        }
-        int requestCode = 1000 + (dateStr != null ? dateStr.hashCode() : cellId);
+        intent.setAction(ACTION_SELECT_DATE);
+        intent.putExtra(EXTRA_TARGET_DATE, dateStr);
+        int requestCode = 2000 + Math.abs(dateStr.hashCode() % 5000);
         PendingIntent pendingIntent = PendingIntent.getBroadcast(
                 context,
                 requestCode,

@@ -1,5 +1,6 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
+import { getHolidayName } from '../data/holidays.js';
 
 const NativeAppLauncher = registerPlugin('NativeAppLauncher');
 
@@ -157,46 +158,63 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
 
     const workDatesMap = {};
 
-    // Collect dates with work logs
+    // Collect all distinct dates from workLogs and tbms
+    const allDates = new Set();
     (workLogs || []).forEach(log => {
       const date = log.date || (log.createdAt ? log.createdAt.split('T')[0] : null);
-      if (date) {
-        workDatesMap[date] = { hasWork: true };
-      }
+      if (date) allDates.add(date);
     });
-
-    // Collect dates with TBMs
     (tbms || []).forEach(tbm => {
       const date = tbm.date || (tbm.createdAt ? tbm.createdAt.split('T')[0] : null);
-      if (date) {
-        workDatesMap[date] = { hasWork: true };
-      }
+      if (date) allDates.add(date);
     });
 
-    // Find today's main work & TBM status
-    const todayWorkLogs = (workLogs || []).filter(l => (l.date || '').startsWith(todayStr));
-    const todayTbms = (tbms || []).filter(t => (t.date || '').startsWith(todayStr));
+    allDates.forEach(dateStr => {
+      const dateLogs = (workLogs || []).filter(l => (l.date || '').startsWith(dateStr));
+      const dateTbms = (tbms || []).filter(t => (t.date || '').startsWith(dateStr));
 
-    let todayTitle = '';
-    let todaySite = '';
-    let todayStatus = '점검 대기';
+      let title = '';
+      let site = '';
+      let status = '점검 대기';
 
-    if (todayWorkLogs.length > 0) {
-      const first = todayWorkLogs[0];
-      todayTitle = first.workTitle || first.title || first.content || '일일 업무 등록됨';
-      todaySite = first.site || first.siteName || '';
-    } else if (todayTbms.length > 0) {
-      const firstTbm = todayTbms[0];
-      todayTitle = firstTbm.workTitle || 'TBM 진행';
-      todaySite = firstTbm.site || '';
-    }
+      if (dateLogs.length > 0) {
+        const first = dateLogs[0];
+        title = first.workTitle || first.title || first.content || '일일 업무';
+        site = first.site || first.siteName || '';
+        if (dateLogs.length > 1) {
+          title = `${title} 외 ${dateLogs.length - 1}건`;
+        }
+      } else if (dateTbms.length > 0) {
+        const firstTbm = dateTbms[0];
+        title = firstTbm.workTitle || 'TBM 진행';
+        site = firstTbm.site || '';
+        if (dateTbms.length > 1) {
+          title = `${title} 외 ${dateTbms.length - 1}건`;
+        }
+      }
 
-    if (todayTbms.length > 0) {
-      const isCompleted = todayTbms.some(t => t.postCheck?.isCompleted || t.status === 'completed');
-      todayStatus = isCompleted ? 'TBM 완료' : 'TBM 진행중';
-    } else if (todayWorkLogs.length > 0) {
-      todayStatus = '업무 작성됨';
-    }
+      if (dateTbms.length > 0) {
+        const isCompleted = dateTbms.some(t => t.postCheck?.isCompleted || t.status === 'completed');
+        status = isCompleted ? 'TBM 완료' : 'TBM 진행중';
+      } else if (dateLogs.length > 0) {
+        status = '업무 등록됨';
+      }
+
+      workDatesMap[dateStr] = {
+        hasWork: true,
+        title,
+        site,
+        status,
+        holidayName: getHolidayName(dateStr) || '',
+        count: dateLogs.length + dateTbms.length
+      };
+    });
+
+    // Find today's specific info
+    const todayInfo = workDatesMap[todayStr];
+    let todayTitle = todayInfo ? todayInfo.title : '';
+    let todaySite = todayInfo ? todayInfo.site : '';
+    let todayStatus = todayInfo ? todayInfo.status : '점검 대기';
 
     await NativeAppLauncher.updateWidgetData({
       workDatesJson: JSON.stringify(workDatesMap),
