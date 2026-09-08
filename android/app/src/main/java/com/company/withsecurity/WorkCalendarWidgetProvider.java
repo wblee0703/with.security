@@ -56,6 +56,15 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         R.id.tv_day_35, R.id.tv_day_36, R.id.tv_day_37, R.id.tv_day_38, R.id.tv_day_39, R.id.tv_day_40, R.id.tv_day_41
     };
 
+    private static final int[] TV_WORK_IDS = {
+        R.id.tv_work_0, R.id.tv_work_1, R.id.tv_work_2, R.id.tv_work_3, R.id.tv_work_4, R.id.tv_work_5, R.id.tv_work_6,
+        R.id.tv_work_7, R.id.tv_work_8, R.id.tv_work_9, R.id.tv_work_10, R.id.tv_work_11, R.id.tv_work_12, R.id.tv_work_13,
+        R.id.tv_work_14, R.id.tv_work_15, R.id.tv_work_16, R.id.tv_work_17, R.id.tv_work_18, R.id.tv_work_19, R.id.tv_work_20,
+        R.id.tv_work_21, R.id.tv_work_22, R.id.tv_work_23, R.id.tv_work_24, R.id.tv_work_25, R.id.tv_work_26, R.id.tv_work_27,
+        R.id.tv_work_28, R.id.tv_work_29, R.id.tv_work_30, R.id.tv_work_31, R.id.tv_work_32, R.id.tv_work_33, R.id.tv_work_34,
+        R.id.tv_work_35, R.id.tv_work_36, R.id.tv_work_37, R.id.tv_work_38, R.id.tv_work_39, R.id.tv_work_40, R.id.tv_work_41
+    };
+
     private static final int[] IV_DOT_IDS = {
         R.id.iv_dot_0, R.id.iv_dot_1, R.id.iv_dot_2, R.id.iv_dot_3, R.id.iv_dot_4, R.id.iv_dot_5, R.id.iv_dot_6,
         R.id.iv_dot_7, R.id.iv_dot_8, R.id.iv_dot_9, R.id.iv_dot_10, R.id.iv_dot_11, R.id.iv_dot_12, R.id.iv_dot_13,
@@ -63,6 +72,11 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         R.id.iv_dot_21, R.id.iv_dot_22, R.id.iv_dot_23, R.id.iv_dot_24, R.id.iv_dot_25, R.id.iv_dot_26, R.id.iv_dot_27,
         R.id.iv_dot_28, R.id.iv_dot_29, R.id.iv_dot_30, R.id.iv_dot_31, R.id.iv_dot_32, R.id.iv_dot_33, R.id.iv_dot_34,
         R.id.iv_dot_35, R.id.iv_dot_36, R.id.iv_dot_37, R.id.iv_dot_38, R.id.iv_dot_39, R.id.iv_dot_40, R.id.iv_dot_41
+    };
+
+    private static final int[] ROW_IDS = {
+        R.id.row_calendar_0, R.id.row_calendar_1, R.id.row_calendar_2,
+        R.id.row_calendar_3, R.id.row_calendar_4, R.id.row_calendar_5
     };
 
     @Override
@@ -193,8 +207,18 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
             int startCellIndex = firstDayOfWeek - 1; // 0-indexed column for day 1
 
+            // Dynamically show only the rows needed for this month.
+            // Next month days that fall on the same row as this month's end remain visible.
+            // Unused week rows (e.g. Row 5 when only 5 rows are needed) are hidden (View.GONE).
+            int lastCellIndex = startCellIndex + daysInCurrentMonth - 1;
+            int rowsNeeded = (lastCellIndex / 7) + 1; // 4, 5, or 6
+            for (int r = 0; r < 6; r++) {
+                views.setViewVisibility(ROW_IDS[r], r < rowsNeeded ? View.VISIBLE : View.GONE);
+            }
+
             for (int i = 0; i < 42; i++) {
                 int tvDayId = TV_DAY_IDS[i];
+                int tvWorkId = TV_WORK_IDS[i];
                 int ivDotId = IV_DOT_IDS[i];
                 int cellId = CELL_IDS[i];
 
@@ -203,7 +227,6 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     int dayNum = daysInPrevMonth - (startCellIndex - i - 1);
                     String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", prevYear, prevMonth + 1, dayNum);
                     boolean isSelected = cellDateStr.equals(selectedDateStr);
-                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
                     boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
 
                     views.setTextViewText(tvDayId, String.valueOf(dayNum));
@@ -220,7 +243,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else if (i < startCellIndex + daysInCurrentMonth) {
                     // Current Month Days
@@ -228,7 +251,6 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", displayYear, displayMonth + 1, dayNum);
                     boolean isToday = cellDateStr.equals(realTodayDateStr);
                     boolean isSelected = cellDateStr.equals(selectedDateStr);
-                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
                     boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
 
                     views.setTextViewText(tvDayId, String.valueOf(dayNum));
@@ -259,14 +281,13 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else {
                     // Next Month Days
                     int dayNum = i - (startCellIndex + daysInCurrentMonth) + 1;
                     String cellDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", nextYear, nextMonth + 1, dayNum);
                     boolean isSelected = cellDateStr.equals(selectedDateStr);
-                    boolean hasWork = workDatesMap != null && workDatesMap.has(cellDateStr);
                     boolean isHoliday = KoreanHolidays.isHoliday(cellDateStr);
 
                     views.setTextViewText(tvDayId, String.valueOf(dayNum));
@@ -283,7 +304,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    views.setViewVisibility(ivDotId, hasWork ? View.VISIBLE : View.GONE);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 }
             }
@@ -428,6 +449,58 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             appWidgetManager.updateAppWidget(appWidgetId, views);
         } catch (Throwable t) {
             Log.e(TAG, "Failed to updateAppWidget ID: " + appWidgetId, t);
+        }
+    }
+
+    private static void bindCellWork(RemoteViews views, int tvWorkId, int ivDotId, String cellDateStr, JSONObject workDatesMap) {
+        String cellWorkText = "";
+        String cellCategory = "";
+
+        if (workDatesMap != null && workDatesMap.has(cellDateStr)) {
+            JSONObject item = workDatesMap.optJSONObject(cellDateStr);
+            if (item != null) {
+                cellWorkText = item.optString("cellWorkText", "");
+                cellCategory = item.optString("category", "");
+
+                if (cellWorkText.isEmpty()) {
+                    String site = item.optString("site", "");
+                    if (!site.isEmpty()) {
+                        cellWorkText = site;
+                        cellCategory = "출장";
+                    } else if ("출장 업무".equals(cellCategory) || "출장".equals(cellCategory)) {
+                        cellWorkText = "출장지";
+                        cellCategory = "출장";
+                    } else {
+                        cellWorkText = "사내업무";
+                        cellCategory = "사내";
+                    }
+                }
+
+                // Strip redundant "출장" suffix so only site name is shown (e.g. "SKH 이천사업장")
+                if ("출장".equals(cellCategory)) {
+                    if (cellWorkText.endsWith(" 출장")) {
+                        cellWorkText = cellWorkText.substring(0, cellWorkText.length() - 3).trim();
+                    } else if (cellWorkText.endsWith("출장") && cellWorkText.length() > 2) {
+                        cellWorkText = cellWorkText.substring(0, cellWorkText.length() - 2).trim();
+                    }
+                }
+            }
+        }
+
+        if (!cellWorkText.isEmpty()) {
+            views.setTextViewText(tvWorkId, cellWorkText);
+            views.setViewVisibility(tvWorkId, View.VISIBLE);
+            if ("출장".equals(cellCategory)) {
+                views.setTextColor(tvWorkId, Color.parseColor("#7C3AED")); // Purple for 출장
+                views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
+            } else {
+                views.setTextColor(tvWorkId, Color.parseColor("#0284C7")); // Blue for 사내
+                views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_internal);
+            }
+            if (ivDotId != 0) views.setViewVisibility(ivDotId, View.GONE);
+        } else {
+            views.setViewVisibility(tvWorkId, View.GONE);
+            if (ivDotId != 0) views.setViewVisibility(ivDotId, View.GONE);
         }
     }
 

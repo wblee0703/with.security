@@ -173,21 +173,63 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
       const dateLogs = (workLogs || []).filter(l => (l.date || '').startsWith(dateStr));
       const dateTbms = (tbms || []).filter(t => (t.date || '').startsWith(dateStr));
 
+      let hasBusinessTrip = false;
+      let tripSiteName = '';
+      let hasInternalWork = false;
+
+      dateLogs.forEach(l => {
+        const isTrip = l.category === '출장 업무' || Boolean(l.siteName || l.site_name);
+        if (isTrip) {
+          hasBusinessTrip = true;
+          const s = (l.siteName || l.site_name || '').trim();
+          if (!tripSiteName && s) tripSiteName = s;
+        } else {
+          hasInternalWork = true;
+        }
+      });
+
+      dateTbms.forEach(t => {
+        const s = (t.site || '').trim();
+        if (s) {
+          hasBusinessTrip = true;
+          if (!tripSiteName) tripSiteName = s;
+        } else {
+          hasInternalWork = true;
+        }
+      });
+
+      let cellWorkText = '';
+      let category = '';
+
+      if (hasBusinessTrip) {
+        category = '출장';
+        if (tripSiteName) {
+          // Remove redundant '출장' suffix if present; just display site name (e.g. 'SKH 이천사업장')
+          const cleanedSite = tripSiteName.replace(/\s*출장$/g, '').trim();
+          cellWorkText = cleanedSite || tripSiteName;
+        } else {
+          cellWorkText = '출장지';
+        }
+      } else if (hasInternalWork || dateLogs.length > 0 || dateTbms.length > 0) {
+        category = '사내';
+        cellWorkText = '사내업무';
+      }
+
       let title = '';
-      let site = '';
+      let site = tripSiteName;
       let status = '점검 대기';
 
       if (dateLogs.length > 0) {
         const first = dateLogs[0];
         title = first.workTitle || first.title || first.content || '일일 업무';
-        site = first.site || first.siteName || '';
+        if (!site) site = first.site || first.siteName || '';
         if (dateLogs.length > 1) {
           title = `${title} 외 ${dateLogs.length - 1}건`;
         }
       } else if (dateTbms.length > 0) {
         const firstTbm = dateTbms[0];
         title = firstTbm.workTitle || 'TBM 진행';
-        site = firstTbm.site || '';
+        if (!site) site = firstTbm.site || '';
         if (dateTbms.length > 1) {
           title = `${title} 외 ${dateTbms.length - 1}건`;
         }
@@ -205,6 +247,8 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         title,
         site,
         status,
+        category,
+        cellWorkText,
         holidayName: getHolidayName(dateStr) || '',
         count: dateLogs.length + dateTbms.length
       };
