@@ -39,6 +39,24 @@ export async function scanInstalledSecurityApps() {
 }
 
 /**
+ * Checks if device camera is blocked/disabled by enterprise MDM/Knox/SSM security policy
+ * @returns {Promise<{ isBlocked: boolean, reason: string }>}
+ */
+export async function checkCameraSecurityStatus() {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const res = await NativeAppLauncher.checkCameraSecurityStatus();
+      if (res && typeof res.isBlocked === 'boolean') {
+        return res;
+      }
+    } catch (e) {
+      console.warn('NativeAppLauncher checkCameraSecurityStatus error:', e);
+    }
+  }
+  return { isBlocked: false, reason: 'NOT_NATIVE' };
+}
+
+/**
  * Launch external application and VERIFY that the app actually opened on mobile screen (focus lost).
  * @param {string} targetScheme
  * @returns {Promise<{ success: boolean, method: string, reason?: string }>}

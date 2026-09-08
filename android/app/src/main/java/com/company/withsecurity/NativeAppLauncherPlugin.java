@@ -1,5 +1,6 @@
 package com.company.withsecurity;
 
+import android.app.admin.DevicePolicyManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -7,7 +8,10 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
 import android.net.Uri;
+import android.os.Build;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -24,6 +28,50 @@ import java.util.Set;
 
 @CapacitorPlugin(name = "NativeAppLauncher")
 public class NativeAppLauncherPlugin extends Plugin {
+
+    @PluginMethod
+    public void checkCameraSecurityStatus(PluginCall call) {
+        try {
+            Context context = getContext();
+            boolean isBlocked = false;
+            String reason = "";
+
+            // 1. DevicePolicyManager Check (Standard Enterprise MDM / Knox / SSM / DeviceOn)
+            try {
+                DevicePolicyManager dpm = (DevicePolicyManager) context.getSystemService(Context.DEVICE_POLICY_SERVICE);
+                if (dpm != null && dpm.getCameraDisabled(null)) {
+                    isBlocked = true;
+                    reason = "DPM_CAMERA_DISABLED";
+                }
+            } catch (Exception ignored) {}
+
+            // 2. CameraManager Hardware Check
+            if (!isBlocked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    CameraManager cm = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+                    if (cm != null) {
+                        String[] ids = cm.getCameraIdList();
+                        if (ids == null || ids.length == 0) {
+                            isBlocked = true;
+                            reason = "NO_CAMERAS_AVAILABLE";
+                        }
+                    }
+                } catch (CameraAccessException e) {
+                    if (e.getReason() == CameraAccessException.CAMERA_DISABLED) {
+                        isBlocked = true;
+                        reason = "CAMERA_DISABLED_BY_POLICY";
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("isBlocked", isBlocked);
+            ret.put("reason", reason);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Camera security check failed: " + e.getMessage());
+        }
+    }
 
     @PluginMethod
     public void shareText(PluginCall call) {
