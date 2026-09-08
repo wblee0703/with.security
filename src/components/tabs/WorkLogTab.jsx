@@ -176,8 +176,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       ...item,
       title: inlineForm.title.trim(),
       details: inlineForm.details.trim(),
-      subCategory: item.category === '출장 업무' ? '' : (inlineForm.subCategory || '일반업무'),
-      sub_category: item.category === '출장 업무' ? '' : (inlineForm.subCategory || '일반업무'),
+      subCategory: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
+      sub_category: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
       dueDate: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
       due_date: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : ''
     };
@@ -198,7 +198,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setInlineNewForm({
       title: '',
       details: '',
-      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
       dueDate: logItem.dueDate || logItem.due_date || ''
     });
   };
@@ -217,7 +217,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const now = new Date();
     const timeStr = `${primaryLog.date || getTodayIsoDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const isInternal = (primaryLog.category || '사내 업무') !== '출장 업무';
-    const subCat = isInternal ? (inlineNewForm.subCategory || '일반업무') : '';
+    const subCat = isInternal ? (inlineNewForm.subCategory || '일반업무') : (inlineNewForm.subCategory || '작업');
     const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (inlineNewForm.dueDate || '') : '';
 
     const newLogItem = {
@@ -698,7 +698,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: logItem.category || '사내 업무',
-      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
       dueDate: logItem.dueDate || logItem.due_date || '',
       date: logItem.date || getTodayIsoDate(),
       title: '',
@@ -713,7 +713,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(logItem.id);
     setForm({
       category: logItem.category || '사내 업무',
-      subCategory: logItem.subCategory || logItem.sub_category || '일반업무',
+      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
       dueDate: logItem.dueDate || logItem.due_date || '',
       date: logItem.date || getTodayIsoDate(),
       title: logItem.title || '',
@@ -742,7 +742,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const authorRole = currentUser?.role || '일반';
 
     const isInternal = form.category !== '출장 업무';
-    const curSubCat = isInternal ? (form.subCategory || '일반업무') : '';
+    const curSubCat = isInternal ? (form.subCategory || '일반업무') : (form.subCategory || '작업');
     const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
 
     const newLogItem = {
@@ -774,7 +774,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       for (let i = 0; i < extraTasks.length; i++) {
         const ext = extraTasks[i];
         if (ext.title && ext.title.trim()) {
-          const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : '';
+          const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : (ext.subCategory || curSubCat || '작업');
           const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
           const extraLogItem = {
             id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
@@ -1406,12 +1406,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                           const isInternal = log.category !== '출장 업무';
                           const sName = !isInternal ? (log.siteName || log.site_name || '').trim() : '';
                           const aName = log.authorName || log.name || '작성자';
-                          const subCat = isInternal ? (log.subCategory || log.sub_category || '일반업무') : '';
+                          const subCat = isInternal
+                            ? (log.subCategory || log.sub_category || '일반업무')
+                            : (log.subCategory || log.sub_category || '작업');
                           const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
 
                           const key = isInternal
                             ? `${log.category}___${subCat}___${dDate}___${aName}`
-                            : `${log.category}___${sName}___${aName}`;
+                            : `${log.category}___${sName}___${subCat}___${aName}`;
 
                           if (!acc[key]) {
                             acc[key] = {
@@ -1439,8 +1441,18 @@ export default function WorkLogTab({ onTriggerToast }) {
                             const isBTrip = b.category === '출장 업무';
                             if (isATrip && !isBTrip) return -1; // 출장 업무 카드가 최상단
                             if (!isATrip && isBTrip) return 1;
+                            // 출장 업무끼리는 같은 사업장 먼저 묶고 -> 구분 순서('작업': 1, '미팅': 2, '점검': 3)로 정렬
+                            if (isATrip && isBTrip) {
+                              if (a.siteName !== b.siteName) {
+                                return (a.siteName || '').localeCompare(b.siteName || '');
+                              }
+                              const tripOrder = { '작업': 1, '미팅': 2, '점검': 3 };
+                              const oA = tripOrder[a.subCategory] || 9;
+                              const oB = tripOrder[b.subCategory] || 9;
+                              if (oA !== oB) return oA - oB;
+                            }
                             // 사내 업무는 구분 순서(일반업무, 고객대응, 미팅, 교육)로 정렬
-                            if (a.subCategory !== b.subCategory) {
+                            if (!isATrip && !isBTrip && a.subCategory !== b.subCategory) {
                               const order = { '일반업무': 1, '고객대응': 2, '미팅': 3, '교육': 4 };
                               const oA = order[a.subCategory] || 9;
                               const oB = order[b.subCategory] || 9;
@@ -1471,7 +1483,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   gap: '10px'
                                 }}
                               >
-                                {/* Log Header Row 1: Category Badge + SubCategory & DueDate (for 사내 업무) / Business Trip Site (for 출장 업무) + Group Action Button */}
+                                {/* Log Header Row 1: Category Badge + SubCategory & DueDate (for 사내 업무) / Business Trip Site & SubCategory (for 출장 업무) + Group Action Button */}
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: '12px' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                     <span style={{
@@ -1501,6 +1513,36 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         gap: '4px'
                                       }}>
                                         {group.siteName}
+                                      </span>
+                                    )}
+
+                                    {/* 출장 업무인 경우: 사업장명 오른쪽에 업무 구분(작업, 미팅, 점검) 표기 */}
+                                    {group.category === '출장 업무' && group.subCategory && (
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        background: (() => {
+                                          if (group.subCategory === '미팅') return '#f5f3ff';
+                                          if (group.subCategory === '점검') return '#fffbeb';
+                                          return '#eff6ff';
+                                        })(),
+                                        color: (() => {
+                                          if (group.subCategory === '미팅') return '#7c3aed';
+                                          if (group.subCategory === '점검') return '#d97706';
+                                          return '#1e40af';
+                                        })(),
+                                        border: (() => {
+                                          if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
+                                          if (group.subCategory === '점검') return '1.5px solid #fde68a';
+                                          return '1.5px solid #bfdbfe';
+                                        })(),
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        {group.subCategory}
                                       </span>
                                     )}
 
@@ -1660,6 +1702,33 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   placeholder="업무명을 입력하세요"
                                                 />
                                               </div>
+
+                                              {/* 출장 업무 구분 (인라인 수정 모드) */}
+                                              {item.category === '출장 업무' && (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f5f3ff', padding: '6px 10px', borderRadius: '4px' }}>
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#7c3aed' }}>출장 구분:</span>
+                                                    <select
+                                                      value={inlineForm.subCategory || '작업'}
+                                                      onChange={(e) => setInlineForm({ ...inlineForm, subCategory: e.target.value })}
+                                                      style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        border: '1.5px solid #cbd5e1',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: '700',
+                                                        background: '#ffffff',
+                                                        color: '#0f172a',
+                                                        outline: 'none'
+                                                      }}
+                                                    >
+                                                      <option value="작업">작업</option>
+                                                      <option value="미팅">미팅</option>
+                                                      <option value="점검">점검</option>
+                                                    </select>
+                                                  </div>
+                                                </div>
+                                              )}
 
                                               {/* 사내 업무 구분 & 납기일 선택 (인라인 수정 모드) */}
                                               {item.category !== '출장 업무' && (
@@ -1952,6 +2021,33 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         />
                                       </div>
 
+                                      {/* 출장 업무 구분 (인라인 추가 모드) */}
+                                      {group.category === '출장 업무' && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f5f3ff', padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd6fe' }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#7c3aed' }}>출장 구분:</span>
+                                            <select
+                                              value={inlineNewForm.subCategory || '작업'}
+                                              onChange={(e) => setInlineNewForm({ ...inlineNewForm, subCategory: e.target.value })}
+                                              style={{
+                                                padding: '3px 8px',
+                                                borderRadius: '4px',
+                                                border: '1.5px solid #cbd5e1',
+                                                fontSize: '11.5px',
+                                                fontWeight: '700',
+                                                background: '#ffffff',
+                                                color: '#0f172a',
+                                                outline: 'none'
+                                              }}
+                                            >
+                                              <option value="작업">작업</option>
+                                              <option value="미팅">미팅</option>
+                                              <option value="점검">점검</option>
+                                            </select>
+                                          </div>
+                                        </div>
+                                      )}
+
                                       {/* 사내 업무 구분 & 납기일 선택 (인라인 추가 모드) */}
                                       {group.category !== '출장 업무' && (
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f8fafc', padding: '6px 10px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
@@ -2185,12 +2281,17 @@ export default function WorkLogTab({ onTriggerToast }) {
                   </label>
                   <select
                     value={form.category}
-                    onChange={(e) => setForm({
-                      ...form,
-                      category: e.target.value,
-                      subCategory: e.target.value === '사내 업무' ? (form.subCategory || '일반업무') : '',
-                      dueDate: e.target.value === '사내 업무' ? form.dueDate : ''
-                    })}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setForm({
+                        ...form,
+                        category: newCat,
+                        subCategory: newCat === '사내 업무'
+                          ? (['일반업무', '고객대응', '미팅', '교육'].includes(form.subCategory) ? form.subCategory : '일반업무')
+                          : (['작업', '미팅', '점검'].includes(form.subCategory) ? form.subCategory : '작업'),
+                        dueDate: newCat === '사내 업무' ? form.dueDate : ''
+                      });
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
@@ -2325,37 +2426,64 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
               )}
 
-              {/* Site Selection Field for Business Trip (출장 업무) */}
+              {/* Site Selection & Trip SubCategory for Business Trip (출장 업무) */}
               {form.category === '출장 업무' && (
-                <div>
-                  <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                    🚗 출장 방문 사업장 선택 *
-                  </label>
-                  <select
-                    value={form.siteName}
-                    onChange={(e) => setForm({ ...form, siteName: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 14px',
-                      borderRadius: '4px',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '13px',
-                      outline: 'none',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="">-- 출장 방문 사업장을 선택하세요 --</option>
-                    {siteOptions.map(site => {
-                      const siteFullName = site.site_name || site.siteName || (site.address ? `${site.name} ${site.address}` : site.name);
-                      return (
-                        <option key={site.id} value={siteFullName}>
-                          {siteFullName}
-                        </option>
-                      );
-                    })}
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                      🚗 출장 방문 사업장 *
+                    </label>
+                    <select
+                      value={form.siteName}
+                      onChange={(e) => setForm({ ...form, siteName: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="">-- 사업장 선택 --</option>
+                      {siteOptions.map(site => {
+                        const siteFullName = site.site_name || site.siteName || (site.address ? `${site.name} ${site.address}` : site.name);
+                        return (
+                          <option key={site.id} value={siteFullName}>
+                            {siteFullName}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                      📌 업무 구분 *
+                    </label>
+                    <select
+                      value={form.subCategory || '작업'}
+                      onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1.5px solid #c4b5fd',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="작업">작업</option>
+                      <option value="미팅">미팅</option>
+                      <option value="점검">점검</option>
+                    </select>
+                  </div>
                 </div>
               )}
 

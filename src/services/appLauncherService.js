@@ -205,14 +205,26 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
       let cellWorkText = '';
       let category = '';
 
+      const tripLogs = dateLogs.filter(l => l.category === '출장 업무' || Boolean(l.siteName || l.site_name));
+      let tripSubCat = '';
+      if (tripLogs.length > 0) {
+        tripSubCat = (tripLogs[0].subCategory || tripLogs[0].sub_category || '작업').trim();
+      }
+
       if (hasBusinessTrip) {
         category = '출장';
         if (tripSiteName) {
           // Remove redundant '출장' suffix if present; just display site name (e.g. 'SKH 이천사업장')
           const cleanedSite = tripSiteName.replace(/\s*출장$/g, '').trim();
-          cellWorkText = cleanedSite || tripSiteName;
+          const baseSite = cleanedSite || tripSiteName;
+          const subText = tripSubCat ? ` ${tripSubCat}` : '';
+          if (tripLogs.length > 1) {
+            cellWorkText = `${baseSite}${subText} ${tripLogs.length}건`;
+          } else {
+            cellWorkText = `${baseSite}${subText}`;
+          }
         } else {
-          cellWorkText = '출장지';
+          cellWorkText = tripSubCat ? `출장 ${tripSubCat}` : '출장지';
         }
       } else if (hasDueTask && dateLogs.length === 0 && dateTbms.length === 0) {
         category = '납기';

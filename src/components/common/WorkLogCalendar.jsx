@@ -717,22 +717,81 @@ export default function WorkLogCalendar({
                   overflowX: 'hidden'
                 }}
               >
-                {[...dayLogs]
-                  .sort((a, b) => {
+                {(() => {
+                  const sortedLogs = [...dayLogs].sort((a, b) => {
                     const isATrip = a.category === '출장 업무';
                     const isBTrip = b.category === '출장 업무';
-                    if (isATrip && !isBTrip) return -1; // 출장 업무가 최상단으로 이동
+                    if (isATrip && !isBTrip) return -1; // 출장 업무가 최상단
                     if (!isATrip && isBTrip) return 1;
                     if (a.isDueMarker && !b.isDueMarker) return -1; // 납기 마커가 그 다음 상단
                     if (!a.isDueMarker && b.isDueMarker) return 1;
                     return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
-                  })
-                  .map((log) => {
-                    const isBusinessTrip = log.category === '출장 업무';
-                    const isDue = log.isDueMarker || (log.dueDate && log.dueDate === cell.dateStr) || (log.due_date && log.due_date === cell.dateStr);
+                  });
+
+                  // Group business trips by siteName + subCategory
+                  const tripGroupsMap = new Map();
+                  const nonTripLogs = [];
+
+                  for (const log of sortedLogs) {
+                    if (log.category === '출장 업무' && !log.isDueMarker) {
+                      const sName = (log.siteName || log.site_name || '').trim();
+                      const sAddr = (log.siteAddress || log.site_address || log.location || '').trim();
+                      let baseSite = sName;
+                      if (!baseSite && sAddr) baseSite = sAddr;
+                      if (!baseSite) baseSite = '출장';
+
+                      const subCat = (log.subCategory || log.sub_category || '작업').trim();
+                      const groupKey = `${baseSite}___${subCat}`;
+
+                      if (!tripGroupsMap.has(groupKey)) {
+                        tripGroupsMap.set(groupKey, {
+                          siteName: baseSite,
+                          subCategory: subCat,
+                          count: 0,
+                          firstLog: log,
+                          logs: []
+                        });
+                      }
+                      const grp = tripGroupsMap.get(groupKey);
+                      grp.count += 1;
+                      grp.logs.push(log);
+                    } else {
+                      nonTripLogs.push(log);
+                    }
+                  }
+
+                  const displayItems = [];
+
+                  // 1. Add grouped trip items
+                  for (const [key, grp] of tripGroupsMap.entries()) {
+                    displayItems.push({
+                      isTripGroup: true,
+                      key: `trip-grp-${cell.dateStr}-${key}`,
+                      siteName: grp.siteName,
+                      subCategory: grp.subCategory,
+                      count: grp.count,
+                      log: grp.firstLog,
+                      logs: grp.logs
+                    });
+                  }
+
+                  // 2. Add non-trip items
+                  for (const log of nonTripLogs) {
+                    displayItems.push({
+                      isTripGroup: false,
+                      key: log.isDueMarker ? `due-${log.id}` : log.id,
+                      log
+                    });
+                  }
+
+                  return displayItems.map((item) => {
+                    const log = item.log;
+                    const isBusinessTrip = item.isTripGroup || log.category === '출장 업무';
+                    const isDue = !item.isTripGroup && (log.isDueMarker || (log.dueDate && log.dueDate === cell.dateStr) || (log.due_date && log.due_date === cell.dateStr));
                     const isBeingDragged = draggedLog?.id === log.id || touchState?.log?.id === log.id;
-                    const canEditThis = !log.isDueMarker && (!canModifyLog || canModifyLog(log));
-                    const subCat = log.subCategory || log.sub_category || '';
+                    const canEditThis = !isDue && (!canModifyLog || canModifyLog(log));
+                    const subCat = item.isTripGroup ? item.subCategory : (log.subCategory || log.sub_category || '');
+                    const isShared = item.isTripGroup ? item.logs.some(l => l.isShared) : Boolean(log.isShared);
 
                     // Styling based on category, due status, or subCategory
                     let bg = '#eff6ff';
@@ -761,17 +820,15 @@ export default function WorkLogCalendar({
                       textColor = '#d97706';
                     }
 
-                    // Format display text: For 출장 업무, show Site Name; for due date, show [납기: 구분] title; for subCategory, show [구분] title
+                    // Format display text:
+                    // 출장 업무: 1건이면 "사업장 구분", 2건 이상이면 "사업장 구분 N건" (예: "SKH 이천 작업 2건")
                     const displayText = (() => {
-                      if (isBusinessTrip) {
-                        const sName = (log.siteName || log.site_name || '').trim();
-                        const sAddr = (log.siteAddress || log.site_address || log.location || '').trim();
-                        if (sName && sAddr && !sName.includes(sAddr)) {
-                          return `${sName} (${sAddr})`;
+                      if (item.isTripGroup) {
+                        const base = `${item.siteName} ${item.subCategory}`.trim();
+                        if (item.count > 1) {
+                          return `${base} ${item.count}건`;
                         }
-                        if (sName) return sName;
-                        if (sAddr) return sAddr;
-                        return log.title || '출장 업무';
+                        return base;
                       }
                       if (isDue) {
                         return `[납기] ${log.title}`;
@@ -782,14 +839,18 @@ export default function WorkLogCalendar({
                       return log.title;
                     })();
 
+                    const tooltipText = item.isTripGroup
+                      ? `[출장 업무 - ${item.subCategory}] ${item.siteName} (${item.count}건 등록)\n${item.logs.map((l, i) => `${i + 1}. ${l.title}${l.details ? ` (${l.details})` : ''}`).join('\n')}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`
+                      : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`;
+
                     return (
                       <div
-                        key={log.isDueMarker ? `due-${log.id}` : log.id}
+                        key={item.key}
                         draggable={canEditThis}
                         onDragStart={(e) => handleDragStart(e, log)}
                         onDragEnd={handleDragEnd}
                         onTouchStart={(e) => handleTouchStart(e, log)}
-                        title={`[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`}
+                        title={tooltipText}
                         style={{
                           padding: '2px 5px',
                           borderRadius: '4px',
@@ -824,7 +885,7 @@ export default function WorkLogCalendar({
                               width: '4px',
                               height: '4px',
                               borderRadius: '50%',
-                              background: log.isShared ? '#16a34a' : textColor,
+                              background: isShared ? '#16a34a' : textColor,
                               flexShrink: 0
                             }}
                           />
@@ -841,7 +902,7 @@ export default function WorkLogCalendar({
                         >
                           {displayText}
                         </span>
-                        {log.isShared && (
+                        {isShared && (
                           <Share2
                             size={11}
                             color="#16a34a"
@@ -850,7 +911,8 @@ export default function WorkLogCalendar({
                         )}
                       </div>
                     );
-                  })}
+                  });
+                })()}
               </div>
             </div>
           );
