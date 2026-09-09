@@ -57,6 +57,30 @@ export default function SiteSettingTab({ onTriggerToast }) {
     }
   };
 
+  // 보안앱 있는 사업장 우선, 사업장 이름 가나다순 정렬 헬퍼
+  const sortSitesList = (list) => {
+    if (!Array.isArray(list)) return [];
+    return [...list].sort((a, b) => {
+      const aSec = a.type === '보안앱O' || a.type === '보안어플O' || (!a.type && a.type !== '보안앱X' && a.type !== '보안어플X');
+      const bSec = b.type === '보안앱O' || b.type === '보안어플O' || (!b.type && b.type !== '보안앱X' && b.type !== '보안어플X');
+
+      // 1. 보안앱 있는 사업장 우선
+      if (aSec && !bSec) return -1;
+      if (!aSec && bSec) return 1;
+
+      // 2. 사업장 이름 가나다순
+      const nameA = (a.name || '').trim();
+      const nameB = (b.name || '').trim();
+      const nameComp = nameA.localeCompare(nameB, 'ko', { sensitivity: 'base' });
+      if (nameComp !== 0) return nameComp;
+
+      // 3. 위치(주소) 가나다순
+      const addrA = (a.address || '').trim();
+      const addrB = (b.address || '').trim();
+      return addrA.localeCompare(addrB, 'ko', { sensitivity: 'base' });
+    });
+  };
+
   const loadSites = async () => {
     try {
       const siteList = await dbService.getSites();
@@ -69,7 +93,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
           appUrl: localApp.appUrl || ''
         };
       });
-      setSites(mapped);
+      setSites(sortSitesList(mapped));
     } catch (err) {
       console.error('Failed to load entrance sites:', err);
     }
@@ -447,7 +471,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          {sites.map((s) => {
+          {sortSitesList(sites).map((s) => {
             const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
             const displayType = isSecAppO ? '보안앱O' : '보안앱X';
 

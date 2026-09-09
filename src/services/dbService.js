@@ -967,6 +967,29 @@ class SecurityDatabase {
     return this.putItem('incidents', incident);
   }
 
+  _sortSites(sites) {
+    if (!Array.isArray(sites)) return [];
+    return [...sites].sort((a, b) => {
+      const aIsSec = a.type === '보안앱O' || a.type === '보안어플O' || (!a.type && a.type !== '보안앱X' && a.type !== '보안어플X');
+      const bIsSec = b.type === '보안앱O' || b.type === '보안어플O' || (!b.type && b.type !== '보안앱X' && b.type !== '보안어플X');
+
+      // 1. 보안앱 있는 사업장 우선 표시
+      if (aIsSec && !bIsSec) return -1;
+      if (!aIsSec && bIsSec) return 1;
+
+      // 2. 사업장 이름 가나다순 정렬
+      const nameA = (a.name || '').trim();
+      const nameB = (b.name || '').trim();
+      const nameComp = nameA.localeCompare(nameB, 'ko', { sensitivity: 'base' });
+      if (nameComp !== 0) return nameComp;
+
+      // 3. 이름이 동일할 경우 사업장 위치(주소)순 정렬
+      const addrA = (a.address || '').trim();
+      const addrB = (b.address || '').trim();
+      return addrA.localeCompare(addrB, 'ko', { sensitivity: 'base' });
+    });
+  }
+
   async getSites(forceRemote = false) {
     // 1. Instant Local Cache Return (0.1ms)
     if (!forceRemote) {
@@ -976,7 +999,7 @@ class SecurityDatabase {
           const list = JSON.parse(backup);
           if (Array.isArray(list) && list.length > 0) {
             this._revalidateSitesInBackground().catch(() => {});
-            return list;
+            return this._sortSites(list);
           }
         }
       } catch (e) {}
@@ -985,7 +1008,7 @@ class SecurityDatabase {
         const dbSites = await this.getAll('sites');
         if (Array.isArray(dbSites) && dbSites.length > 0) {
           this._revalidateSitesInBackground().catch(() => {});
-          return dbSites;
+          return this._sortSites(dbSites);
         }
       } catch (e) {}
     }
@@ -1007,17 +1030,18 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
-          localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
-          localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(remoteData));
-          await this.replaceCollection('sites', remoteData);
-          return remoteData;
+          const sorted = this._sortSites(remoteData);
+          localStorage.setItem('with_security_sites_backup', JSON.stringify(sorted));
+          localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(sorted));
+          await this.replaceCollection('sites', sorted);
+          return sorted;
         }
       }
     } catch (e) {}
 
     try {
       const backup = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
-      if (backup) return JSON.parse(backup);
+      if (backup) return this._sortSites(JSON.parse(backup));
     } catch (e) {}
 
     return [];
@@ -1248,7 +1272,7 @@ class SecurityDatabase {
           if (json.token) {
             localStorage.setItem('with_security_auth_token', json.token);
           }
-          await this.saveUserProfile(json.user);
+          await this.saveUserProfile(json.user, false);
           return { success: true, user: json.user, token: json.token };
         }
       }
@@ -1338,15 +1362,7 @@ class SecurityDatabase {
     // If correct password provided, unlock and login successfully
     if (foundUser && isPasswordCorrect) {
       this.recordLocalLoginAttempt(uName, true);
-      await this.saveUserProfile(foundUser);
-      // Auto sync user to server if server is online
-      try {
-        await safeFetchApi('/api/security-users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(foundUser)
-        });
-      } catch (e) {}
+      await this.saveUserProfile(foundUser, false);
       return { success: true, user: foundUser };
     }
 
@@ -1538,7 +1554,7 @@ class SecurityDatabase {
     return safeUser;
   }
 
-  async saveUserProfile(userProfile) {
+  async saveUserProfile(userProfile, syncRemote = true) {
     let safeUser = { ...userProfile };
     if (safeUser.password && !safeUser.passwordHash) {
       safeUser.passwordHash = await hashPassword(safeUser.password);
@@ -1562,7 +1578,7 @@ class SecurityDatabase {
       console.warn('IndexedDB saveUserProfile fallback:', e);
     }
 
-    // Keep localStorage user database in sync
+    // Keep localStorage user database in sync with deduplication
     try {
       const lsRaw = localStorage.getItem('with_security_users_db');
       let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
@@ -1574,16 +1590,19 @@ class SecurityDatabase {
       } else {
         currentUsers.push(safeUser);
       }
+      currentUsers = this._deduplicateUsers(currentUsers);
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
     } catch (e) {}
 
-    try {
-      await safeFetchApi('/api/security-users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(safeUser)
-      });
-    } catch (e) {}
+    if (syncRemote) {
+      try {
+        await safeFetchApi('/api/security-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(safeUser)
+        });
+      } catch (e) {}
+    }
 
     // 사용자 정보(이름, 직급, 소속팀, 사업부 등) 실제 변경 시에만 비동기로 일괄 동기화 (로그인 시 블로킹 방지)
     if (previousUser && (previousUser.name !== safeUser.name || previousUser.rank !== safeUser.rank || previousUser.team !== safeUser.team || previousUser.division !== safeUser.division)) {
@@ -1749,6 +1768,51 @@ class SecurityDatabase {
     }
   }
 
+  _deduplicateUsers(usersList) {
+    if (!Array.isArray(usersList)) return [];
+
+    let deletedUsernames = new Set();
+    try {
+      const delRaw = localStorage.getItem('with_security_deleted_users');
+      if (delRaw) {
+        const arr = JSON.parse(delRaw);
+        if (Array.isArray(arr)) {
+          deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
+        }
+      }
+    } catch (e) {}
+
+    const userMap = new Map();
+    for (const u of usersList) {
+      if (!u || !u.username) continue;
+      const uname = String(u.username).trim().toLowerCase();
+      if (deletedUsernames.has(uname)) continue;
+
+      if (!userMap.has(uname)) {
+        userMap.set(uname, { ...u, username: String(u.username).trim() });
+      } else {
+        const prev = userMap.get(uname);
+        userMap.set(uname, {
+          ...prev,
+          ...u,
+          username: String(prev.username || u.username).trim(),
+          name: u.name || prev.name || '',
+          role: (u.role === '개발자' || prev.role === '개발자') ? '개발자' : (u.role || prev.role || '일반'),
+          division: u.division || prev.division || '',
+          team: u.team || prev.team || '',
+          rank: u.rank || prev.rank || '',
+          phone: u.phone || prev.phone || '',
+          email: u.email || prev.email || '',
+          password: prev.password || u.password || '',
+          passwordHash: prev.passwordHash || u.passwordHash || prev.password || u.password || '',
+          trainings: (Array.isArray(u.trainings) && u.trainings.length > 0) ? u.trainings : (prev.trainings || [])
+        });
+      }
+    }
+
+    return Array.from(userMap.values());
+  }
+
   async getRegisteredUsers(forceRemote = false) {
     // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
     if (!forceRemote) {
@@ -1758,7 +1822,11 @@ class SecurityDatabase {
           const list = JSON.parse(lsRaw);
           if (Array.isArray(list) && list.length > 0) {
             this._revalidateUsersInBackground().catch(() => {});
-            return await this._ensureAdminInList(list);
+            const deduped = this._deduplicateUsers(list);
+            if (deduped.length !== list.length) {
+              localStorage.setItem('with_security_users_db', JSON.stringify(deduped));
+            }
+            return await this._ensureAdminInList(deduped);
           }
         }
       } catch (e) {}
@@ -1767,7 +1835,8 @@ class SecurityDatabase {
         const dbUsers = await this.getAll('users');
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           this._revalidateUsersInBackground().catch(() => {});
-          return await this._ensureAdminInList(dbUsers);
+          const deduped = this._deduplicateUsers(dbUsers);
+          return await this._ensureAdminInList(deduped);
         }
       } catch (e) {}
     }
@@ -1789,7 +1858,7 @@ class SecurityDatabase {
     }
     const defaultAdminHash = cachedDefaultAdminHash;
 
-    const list = [...usersList];
+    const list = this._deduplicateUsers(usersList);
     const adminIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
     if (adminIdx === -1) {
       list.unshift({
@@ -1910,6 +1979,7 @@ class SecurityDatabase {
               };
             });
 
+          usersList = this._deduplicateUsers(rawMapped);
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
             await this.replaceCollection('users', usersList);
@@ -1961,8 +2031,8 @@ class SecurityDatabase {
       }
     }
 
-    // 최종적으로 deletedUsernames 필터링 및 localStorage 최신화
-    usersList = usersList.filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
+    // 최종적으로 중복 제거 및 localStorage 최신화
+    usersList = this._deduplicateUsers(usersList);
     try {
       localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
     } catch (e) {}
@@ -3013,14 +3083,15 @@ class SecurityDatabase {
     let secLogsCount = 0;
 
     if (syncData.users && Array.isArray(syncData.users)) {
-      usersCount = syncData.users.length;
-      const normalizedUsers = syncData.users.map(u => {
+      const rawNormalized = syncData.users.map(u => {
         let trainings = u.trainings;
         if (typeof trainings === 'string' && (trainings.startsWith('[') || trainings.startsWith('{'))) {
           try { trainings = JSON.parse(trainings); } catch (e) {}
         }
         return { ...u, trainings: Array.isArray(trainings) ? trainings : [] };
       });
+      const normalizedUsers = this._deduplicateUsers(rawNormalized);
+      usersCount = normalizedUsers.length;
       localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(normalizedUsers));
       localStorage.setItem('with_security_users_db', JSON.stringify(normalizedUsers));
       await this.replaceCollection('users', normalizedUsers);
