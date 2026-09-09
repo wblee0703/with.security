@@ -3,24 +3,44 @@ import { Capacitor } from '@capacitor/core';
 
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
-// 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (호스팅 사이트 및 모바일 기본 DB)
+// 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (기본 클라우드 DB)
 export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec';
 
-export function getServerUrl() {
-  const url = localStorage.getItem('with_security_server_url');
-  if (url && isApiEndpoint(url) && !url.includes('googleusercontent.com') && !url.includes('macros/echo')) {
-    return url;
+// 1. 구글 스프레드시트 클라우드 DB 전용 URL 관리
+export function getGoogleSheetsUrl() {
+  const custom = localStorage.getItem('with_security_google_sheets_url');
+  if (custom && custom.includes('script.google.com') && !custom.includes('macros/echo') && !custom.includes('googleusercontent.com')) {
+    return custom.trim().replace(/\/+$/, '');
   }
-  if (import.meta.env && import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
+  return DEFAULT_GOOGLE_SHEETS_URL;
+}
+
+export function setGoogleSheetsUrl(url) {
+  if (!url || !url.trim()) {
+    localStorage.removeItem('with_security_google_sheets_url');
+  } else {
+    let formatted = url.trim().replace(/\/+$/, '');
+    localStorage.setItem('with_security_google_sheets_url', formatted);
   }
-  if (DEFAULT_GOOGLE_SHEETS_URL) return DEFAULT_GOOGLE_SHEETS_URL;
+  notifyDataChanged();
+}
+
+// 2. 웹 호스팅 / 백엔드 Node.js REST API 서버 전용 URL 관리
+export function getHostedServerUrl() {
+  const custom = localStorage.getItem('with_security_hosted_server_url') || localStorage.getItem('with_security_server_url');
+  if (custom && !custom.includes('script.google.com') && !custom.includes('macros/echo') && !custom.includes('googleusercontent.com')) {
+    return custom.trim().replace(/\/+$/, '');
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    return String(import.meta.env.VITE_API_URL).trim().replace(/\/+$/, '');
+  }
   return DEFAULT_PUBLIC_URL;
 }
 
-export function setServerUrl(url) {
+export function setHostedServerUrl(url) {
   localStorage.removeItem('with_security_hosted_app_url');
   if (!url || !url.trim()) {
+    localStorage.removeItem('with_security_hosted_server_url');
     localStorage.removeItem('with_security_server_url');
   } else {
     let formatted = url.trim();
@@ -28,7 +48,21 @@ export function setServerUrl(url) {
       formatted = 'http://' + formatted;
     }
     formatted = formatted.replace(/\/+$/, '');
+    localStorage.setItem('with_security_hosted_server_url', formatted);
     localStorage.setItem('with_security_server_url', formatted);
+  }
+  notifyDataChanged();
+}
+
+export function getServerUrl() {
+  return getHostedServerUrl();
+}
+
+export function setServerUrl(url) {
+  if (url && url.includes('script.google.com')) {
+    setGoogleSheetsUrl(url);
+  } else {
+    setHostedServerUrl(url);
   }
 }
 
@@ -46,48 +80,29 @@ export function isApiEndpoint(url) {
   return !lower.includes('github.io') && !lower.includes('github.com');
 }
 
-// Get REST API Base URL helper (prevents Mixed Content errors on HTTPS GitHub Pages)
+// Get REST API Base URL helper (prioritizes Google Sheets for Cloud DB, retains MySQL for Local Dev)
 export function getApiServerUrl() {
-  const url = localStorage.getItem('with_security_server_url');
-
-  // 0. Clean up invalid/broken redirect URLs if previously cached
-  if (url && (url.includes('googleusercontent.com') || url.includes('macros/echo'))) {
-    localStorage.removeItem('with_security_server_url');
-  }
-
-  // 1. If explicit server URL is saved by user
-  if (url && isApiEndpoint(url) && !url.includes('googleusercontent.com') && !url.includes('macros/echo')) {
-    const formatted = url.replace(/\/+$/, '');
-    // If page is loaded over HTTPS, block unencrypted http:// to prevent Mixed Content browser error
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && formatted.startsWith('http://')) {
-      return null;
-    }
-    return formatted;
-  }
-
-  // 2. Check environment variable VITE_API_URL (e.g. set in .env for Gabia host / server)
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
-    const envUrl = String(import.meta.env.VITE_API_URL).trim();
-    if (envUrl && isApiEndpoint(envUrl)) {
-      const formatted = envUrl.replace(/\/+$/, '');
-      if (!(typeof window !== 'undefined' && window.location.protocol === 'https:' && formatted.startsWith('http://'))) {
-        return formatted;
-      }
-    }
-  }
-
-  // 3. If running locally on PC browser (Local Dev Mode -> MySQL Node Server 100% 유지)
+  // 1. If running locally on PC browser (Local Dev Mode -> MySQL Node Server 100% 유지)
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
-    // Local development (localhost / 127.0.0.1) retains Express + MySQL port 4000
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
       return ''; // Use relative '/api' via local Vite dev server proxy -> http://localhost:4000 (MySQL)
     }
   }
 
-  // 4. In native mobile app (Capacitor) or Hosted Site (GitHub Pages / Mobile Web) -> Default to Google Sheets Web App!
-  if (DEFAULT_GOOGLE_SHEETS_URL && isApiEndpoint(DEFAULT_GOOGLE_SHEETS_URL)) {
-    return DEFAULT_GOOGLE_SHEETS_URL.replace(/\/+$/, '');
+  // 2. 구글 스프레드시트 클라우드 DB 연동 (모바일 앱 APK, 모바일 웹, GitHub Pages 호스팅 환경)
+  const sheetUrl = getGoogleSheetsUrl();
+  if (sheetUrl && sheetUrl.includes('script.google.com')) {
+    return sheetUrl;
+  }
+
+  // 3. 백엔드 Node.js/MySQL 서버가 명시적으로 설정된 경우 (가비아 호스팅 등)
+  const hostedUrl = getHostedServerUrl();
+  if (hostedUrl && isApiEndpoint(hostedUrl)) {
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && hostedUrl.startsWith('http://')) {
+      return null;
+    }
+    return hostedUrl;
   }
 
   return null;
@@ -221,19 +236,35 @@ async function safeFetchApi(endpoint, options = {}) {
   const fetchPromise = (async () => {
     try {
       const controller = new AbortController();
-      const timeoutMs = isGoogleSheet ? 12000 : (finalOptions.timeout || 3500);
+      const timeoutMs = isGoogleSheet ? 20000 : (finalOptions.timeout || 4000);
       const tid = setTimeout(() => controller.abort(), timeoutMs);
-      const authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_auth_token') : null;
-      const headers = {
-        'Bypass-Tunnel-Reminder': 'true',
-        ...(authToken ? { 'Authorization': `Bearer ${authToken}`, 'X-Auth-Token': authToken } : {}),
-        ...(finalOptions.headers || {})
-      };
+      
+      // ⭐ CRITICAL: 구글 스프레드시트 Web App은 OPTIONS preflight를 지원하지 않습니다!
+      // 따라서 커스텀 헤더(Authorization, Bypass-Tunnel-Reminder 등)를 절대 붙이지 않아야 100% 정상 통신됩니다.
+      let headers = {};
+      if (isGoogleSheet) {
+        headers = { ...(finalOptions.headers || {}) };
+        delete headers['Bypass-Tunnel-Reminder'];
+        delete headers['Authorization'];
+        delete headers['X-Auth-Token'];
+      } else {
+        const authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_auth_token') : null;
+        headers = {
+          'Bypass-Tunnel-Reminder': 'true',
+          ...(authToken ? { 'Authorization': `Bearer ${authToken}`, 'X-Auth-Token': authToken } : {}),
+          ...(finalOptions.headers || {})
+        };
+      }
+
       const res = await fetch(fullUrl, {
         ...finalOptions,
         headers,
+        redirect: 'follow',
         signal: controller.signal
-      }).catch(() => null);
+      }).catch((err) => {
+        console.warn(`Fetch error for [${fullUrl}]:`, err);
+        return null;
+      });
       clearTimeout(tid);
 
       if (res && res.ok && method === 'GET') {
@@ -1854,12 +1885,38 @@ class SecurityDatabase {
     notifyDataChanged();
   }
 
+  getGoogleSheetsUrl() {
+    return getGoogleSheetsUrl();
+  }
+
+  setGoogleSheetsUrl(url) {
+    setGoogleSheetsUrl(url);
+  }
+
+  getHostedServerUrl() {
+    return getHostedServerUrl();
+  }
+
+  setHostedServerUrl(url) {
+    setHostedServerUrl(url);
+  }
+
   getServerUrl() {
     return getServerUrl();
   }
 
   setServerUrl(url) {
     setServerUrl(url);
+  }
+
+  async testGoogleSheetsConnection(url = null) {
+    const target = (url || getGoogleSheetsUrl() || '').trim();
+    return this.testServerConnection(target);
+  }
+
+  async testHostedServerConnection(url = null) {
+    const target = (url || getHostedServerUrl() || '').trim();
+    return this.testServerConnection(target);
   }
 
 
@@ -2759,105 +2816,197 @@ class SecurityDatabase {
     return setServerUrl(url);
   }
 
-  async syncAllWithServer(serverUrl = null) {
-    const targetUrl = (serverUrl || getServerUrl() || DEFAULT_PUBLIC_URL).replace(/\/+$/, '');
-    try {
-      if (!isApiEndpoint(targetUrl)) {
-        return { success: true, mode: 'static_host', url: targetUrl };
-      }
-      const isSheet = targetUrl.includes('script.google.com');
-      const res = await safeFetchApi('/api/sync/all', { timeout: 15000 });
-      if (res && res.ok) {
-        const data = await res.json();
-        const syncData = data.data || data;
+  /**
+   * 공통 원격 데이터 동기화 수신 및 로컬 캐시/IndexedDB 적재 메서드
+   */
+  async _applySyncPayload(syncData, isSheet = false) {
+    if (!syncData) return { success: false, message: '동기화할 데이터가 비어 있습니다.' };
 
-        let usersCount = 0;
-        let sitesCount = 0;
-        let workLogsCount = 0;
-        let secLogsCount = 0;
+    let usersCount = 0;
+    let sitesCount = 0;
+    let workLogsCount = 0;
+    let secLogsCount = 0;
 
-        if (syncData.users && Array.isArray(syncData.users)) {
-          usersCount = syncData.users.length;
-          localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(syncData.users));
-          localStorage.setItem('with_security_users_db', JSON.stringify(syncData.users));
-          try {
-            for (const u of syncData.users) await this.putItem('users', u);
-          } catch (e) {}
+    if (syncData.users && Array.isArray(syncData.users)) {
+      usersCount = syncData.users.length;
+      const normalizedUsers = syncData.users.map(u => {
+        let trainings = u.trainings;
+        if (typeof trainings === 'string' && (trainings.startsWith('[') || trainings.startsWith('{'))) {
+          try { trainings = JSON.parse(trainings); } catch (e) {}
         }
-        if (syncData.sites && Array.isArray(syncData.sites)) {
-          sitesCount = syncData.sites.length;
-          localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
-          localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
-          try {
-            for (const s of syncData.sites) await this.putItem('sites', s);
-          } catch (e) {}
-        }
-        if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
-          workLogsCount = syncData.work_logs.length;
-          localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
-          try {
-            for (const w of syncData.work_logs) await this.putItem('work_logs', w);
-          } catch (e) {}
-        }
-        const checklists = syncData.checklists || syncData.security_logs;
-        if (checklists && Array.isArray(checklists)) {
-          secLogsCount = checklists.length;
-          const consolidated = this._consolidateChecklists(checklists);
-          localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
-          localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
-          try {
-            for (const c of consolidated) await this.putItem('checklists', c);
-          } catch (e) {}
-        }
-        if (syncData.tbms && Array.isArray(syncData.tbms)) {
-          localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
-          try {
-            for (const t of syncData.tbms) await this.putItem('tbms', t);
-          } catch (e) {}
-        }
-        if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
-          localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
-          try {
-            for (const wr of syncData.weekly_reports) await this.putItem('weekly_reports', wr);
-          } catch (e) {}
-        }
-        if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
-          try {
-            for (const e of syncData.edu_logs) await this.putItem('edu_logs', e);
-          } catch (e) {}
-        }
-        if (syncData.vault && Array.isArray(syncData.vault)) {
-          try {
-            for (const v of syncData.vault) await this.putItem('vault', v);
-          } catch (e) {}
-        }
-        if (syncData.incidents && Array.isArray(syncData.incidents)) {
-          try {
-            for (const inc of syncData.incidents) await this.putItem('incidents', inc);
-          } catch (e) {}
-        }
-
-        this.notifyDataChanged();
-        const total = usersCount + sitesCount + workLogsCount + secLogsCount;
-        return { 
-          success: true, 
-          count: total,
-          mode: isSheet ? 'google_sheet' : 'api', 
-          message: isSheet ? `구글 스프레드시트(Withsharing_DB) 전체 데이터 실시간 동기화 완료! (총 ${total}건)` : `원격 API 서버 데이터 실시간 동기화 완료! (총 ${total}건)`, 
-          data: syncData
-        };
-      }
-      return { success: true, mode: 'offline_fallback' };
-    } catch (e) {
-      return { success: false, error: e.message, message: `동기화 오류: ${e.message}` };
+        return { ...u, trainings: Array.isArray(trainings) ? trainings : [] };
+      });
+      localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(normalizedUsers));
+      localStorage.setItem('with_security_users_db', JSON.stringify(normalizedUsers));
+      try {
+        for (const u of normalizedUsers) await this.putItem('users', u);
+      } catch (e) {}
     }
+
+    if (syncData.sites && Array.isArray(syncData.sites)) {
+      sitesCount = syncData.sites.length;
+      localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
+      localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
+      try {
+        for (const s of syncData.sites) await this.putItem('sites', s);
+      } catch (e) {}
+    }
+
+    if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
+      workLogsCount = syncData.work_logs.length;
+      localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
+      try {
+        for (const w of syncData.work_logs) await this.putItem('work_logs', w);
+      } catch (e) {}
+    }
+
+    const checklists = syncData.checklists || syncData.security_logs;
+    if (checklists && Array.isArray(checklists)) {
+      secLogsCount = checklists.length;
+      const consolidated = this._consolidateChecklists(checklists);
+      localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
+      localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
+      try {
+        for (const c of consolidated) await this.putItem('checklists', c);
+      } catch (e) {}
+    }
+
+    if (syncData.tbms && Array.isArray(syncData.tbms)) {
+      localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
+      try {
+        for (const t of syncData.tbms) await this.putItem('tbms', t);
+      } catch (e) {}
+    }
+
+    if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
+      localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
+      try {
+        for (const wr of syncData.weekly_reports) await this.putItem('weekly_reports', wr);
+      } catch (e) {}
+    }
+
+    if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
+      try {
+        for (const e of syncData.edu_logs) await this.putItem('edu_logs', e);
+      } catch (e) {}
+    }
+
+    if (syncData.vault && Array.isArray(syncData.vault)) {
+      try {
+        for (const v of syncData.vault) await this.putItem('vault', v);
+      } catch (e) {}
+    }
+
+    if (syncData.incidents && Array.isArray(syncData.incidents)) {
+      try {
+        for (const inc of syncData.incidents) await this.putItem('incidents', inc);
+      } catch (e) {}
+    }
+
+    this.notifyDataChanged();
+    const total = usersCount + sitesCount + workLogsCount + secLogsCount;
+    return {
+      success: true,
+      count: total,
+      mode: isSheet ? 'google_sheet' : 'api',
+      message: isSheet
+        ? `구글 스프레드시트(Withsharing_DB) 전체 데이터 실시간 동기화 완료! (총 ${total}건)`
+        : `원격 API 서버 데이터 실시간 동기화 완료! (총 ${total}건)`,
+      counts: {
+        users: usersCount,
+        sites: sitesCount,
+        work_logs: workLogsCount,
+        security_logs: secLogsCount
+      },
+      data: syncData
+    };
+  }
+
+  /**
+   * 구글 스프레드시트(Withsharing_DB)로부터 전체 데이터 직접 동기화 수신
+   */
+  async syncFromGoogleSheets(url = null) {
+    const sheetUrl = (url || getGoogleSheetsUrl() || DEFAULT_GOOGLE_SHEETS_URL).trim().replace(/\/+$/, '');
+    if (!sheetUrl || !sheetUrl.includes('script.google.com')) {
+      return { success: false, message: '유효한 구글 스프레드시트 웹 앱 URL이 설정되지 않았습니다.' };
+    }
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 20000);
+      const queryUrl = `${sheetUrl}${sheetUrl.includes('?') ? '&' : '?'}action=getAll`;
+      const res = await fetch(queryUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const rawText = await res.text();
+        let json = null;
+        try {
+          json = JSON.parse(rawText);
+        } catch (e) {
+          return {
+            success: false,
+            message: '구글 스프레드시트 권한 오류: Apps Script [배포 관리]에서 [액세스 권한]을 "모든 사용자(Anyone)"로 변경해 주세요.'
+          };
+        }
+
+        if (json && json.success && json.data) {
+          return await this._applySyncPayload(json.data, true);
+        } else {
+          return { success: false, message: `구글 스프레드시트 응답 오류: ${json?.error || '데이터 없음'}` };
+        }
+      } else {
+        return { success: false, message: `구글 스프레드시트 서버 응답 실패 [HTTP ${res.status}]` };
+      }
+    } catch (err) {
+      return { success: false, message: `구글 스프레드시트 통신 실패: ${err.message}` };
+    }
+  }
+
+  /**
+   * 통합 서버 및 구글 스프레드시트 전체 동기화 실행기
+   */
+  async syncAllWithServer(serverUrl = null) {
+    const sheetUrl = getGoogleSheetsUrl();
+    const hostedUrl = getHostedServerUrl();
+    const targetUrl = (serverUrl || hostedUrl || DEFAULT_PUBLIC_URL).replace(/\/+$/, '');
+
+    // 1. 구글 스프레드시트 URL이 명시적으로 전달되었거나 타겟인 경우
+    if (targetUrl.includes('script.google.com')) {
+      return this.syncFromGoogleSheets(targetUrl);
+    }
+
+    // 2. Node.js 백엔드 REST API 서버 엔드포인트인 경우
+    if (isApiEndpoint(targetUrl)) {
+      try {
+        const res = await safeFetchApi('/api/sync/all', { timeout: 15000 });
+        if (res && res.ok) {
+          const data = await res.json();
+          const syncData = data.data || data;
+          return await this._applySyncPayload(syncData, false);
+        }
+      } catch (e) {
+        console.warn('API sync failed, checking Google Sheets fallback:', e);
+      }
+    }
+
+    // 3. 정적 호스팅(GitHub Pages) 또는 백엔드 연결 불가 시 구글 스프레드시트 클라우드 DB로 동기화 진행
+    if (sheetUrl && sheetUrl.includes('script.google.com')) {
+      return this.syncFromGoogleSheets(sheetUrl);
+    }
+
+    return { success: true, mode: 'static_host', url: targetUrl };
   }
 
   /**
    * 내 컴퓨터(로컬)의 모든 데이터(업무일지, 서약서, 계정 등)를 구글 스프레드시트로 일괄 업로드
    */
   async uploadAllLocalDataToGoogleSheet(targetUrl = null) {
-    const rawUrl = (targetUrl || this.getServerUrl() || '').trim();
+    const rawUrl = (targetUrl || this.getGoogleSheetsUrl() || this.getServerUrl() || '').trim();
     if (!rawUrl.includes('script.google.com')) {
       return { success: false, message: '구글 스프레드시트 웹 앱 URL이 올바르게 설정되지 않았습니다.' };
     }

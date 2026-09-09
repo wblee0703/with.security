@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
-import { dbService } from '../../services/dbService';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
+import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL } from '../../services/dbService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
@@ -143,12 +143,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
   }, [loginAlertModal.isOpen]);
 
-  // Remote Backend Server Config States & Initial Lock Protection
-  const [serverUrlInput, setServerUrlInput] = useState('');
-  const [activeServerUrl, setActiveServerUrl] = useState('');
-  const [isTestingServer, setIsTestingServer] = useState(false);
+  // Remote Backend Server & Google Sheets Config States & Lock Protection
+  const [hostedServerUrlInput, setHostedServerUrlInput] = useState('');
+  const [activeHostedServerUrl, setActiveHostedServerUrl] = useState('');
+  const [sheetsUrlInput, setSheetsUrlInput] = useState('');
+  const [activeSheetsUrl, setActiveSheetsUrl] = useState('');
+
+  const [isTestingHosted, setIsTestingHosted] = useState(false);
+  const [isTestingSheets, setIsTestingSheets] = useState(false);
+  const [isSyncingSheets, setIsSyncingSheets] = useState(false);
   const [isUploadingToSheet, setIsUploadingToSheet] = useState(false);
-  const [serverConnectionStatus, setServerConnectionStatus] = useState(null);
+
+  const [hostedConnectionStatus, setHostedConnectionStatus] = useState(null);
+  const [sheetsConnectionStatus, setSheetsConnectionStatus] = useState(null);
+
   const [isServerLocked, setIsServerLocked] = useState(() => {
     return localStorage.getItem('with_security_server_locked') === 'true';
   });
@@ -206,9 +214,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         setAuthMode('login');
         setLoginForm({ username: '', password: '' });
       }
-      const sUrl = dbService.getServerUrl();
-      setActiveServerUrl(sUrl);
-      setServerUrlInput(sUrl);
+      const hUrl = dbService.getHostedServerUrl();
+      setActiveHostedServerUrl(hUrl);
+      setHostedServerUrlInput(hUrl);
+
+      const sUrl = dbService.getGoogleSheetsUrl();
+      setActiveSheetsUrl(sUrl);
+      setSheetsUrlInput(sUrl);
     }
     loadUser();
     window.addEventListener('with_security_data_changed', loadUser);
@@ -395,17 +407,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
   };
 
-  // Server Connection Test
-  const handleTestServer = async () => {
-    if (!serverUrlInput.trim()) {
-      if (onTriggerToast) onTriggerToast('테스트할 서버 URL을 입력해 주세요.', 'warning');
+  // 1. Hosted Web / Backend Server Connection Test
+  const handleTestHostedServer = async () => {
+    if (!hostedServerUrlInput.trim()) {
+      if (onTriggerToast) onTriggerToast('테스트할 웹 호스팅/서버 URL을 입력해 주세요.', 'warning');
       return;
     }
-    setIsTestingServer(true);
-    setServerConnectionStatus(null);
-    const res = await dbService.testServerConnection(serverUrlInput);
-    setIsTestingServer(false);
-    setServerConnectionStatus({
+    setIsTestingHosted(true);
+    setHostedConnectionStatus(null);
+    const res = await dbService.testHostedServerConnection(hostedServerUrlInput);
+    setIsTestingHosted(false);
+    setHostedConnectionStatus({
       type: res.success ? 'success' : 'error',
       message: res.message
     });
@@ -414,9 +426,59 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
   };
 
-  // Local Computer Data -> Google Spreadsheet Bulk Upload
+  // 2. Google Sheets Cloud DB Connection Test
+  const handleTestGoogleSheets = async () => {
+    if (!sheetsUrlInput.trim()) {
+      if (onTriggerToast) onTriggerToast('테스트할 구글 스프레드시트 웹 앱 URL을 입력해 주세요.', 'warning');
+      return;
+    }
+    setIsTestingSheets(true);
+    setSheetsConnectionStatus(null);
+    const res = await dbService.testGoogleSheetsConnection(sheetsUrlInput);
+    setIsTestingSheets(false);
+    setSheetsConnectionStatus({
+      type: res.success ? 'success' : 'error',
+      message: res.message
+    });
+    if (onTriggerToast) {
+      onTriggerToast(res.message, res.success ? 'success' : 'warning');
+    }
+  };
+
+  // 3. Direct Full Sync from Google Sheets (Withsharing_DB -> App)
+  const handleSyncGoogleSheets = async () => {
+    const url = sheetsUrlInput.trim() || dbService.getGoogleSheetsUrl();
+    if (!url || !url.includes('script.google.com')) {
+      if (onTriggerToast) onTriggerToast('구글 스프레드시트 웹 앱 URL을 먼저 입력해 주세요.', 'warning');
+      return;
+    }
+    setIsSyncingSheets(true);
+    setSheetsConnectionStatus(null);
+    const res = await dbService.syncFromGoogleSheets(url);
+    setIsSyncingSheets(false);
+    if (res.success) {
+      setSheetsConnectionStatus({
+        type: 'success',
+        message: res.message
+      });
+      if (onTriggerToast) onTriggerToast(res.message, 'success');
+      const active = await dbService.getUserProfile();
+      if (active) setCurrentUser(active);
+      if (typeof loadUserMgmtList === 'function') {
+        await loadUserMgmtList();
+      }
+    } else {
+      setSheetsConnectionStatus({
+        type: 'error',
+        message: res.message
+      });
+      if (onTriggerToast) onTriggerToast(res.message, 'warning');
+    }
+  };
+
+  // 4. Local Computer Data -> Google Spreadsheet Bulk Upload
   const handleUploadLocalToGoogleSheet = async () => {
-    const url = serverUrlInput.trim() || dbService.getServerUrl();
+    const url = sheetsUrlInput.trim() || dbService.getGoogleSheetsUrl();
     if (!url || !url.includes('script.google.com')) {
       if (onTriggerToast) onTriggerToast('구글 스프레드시트(Apps Script) 웹 앱 URL을 먼저 입력해 주세요.', 'warning');
       return;
@@ -431,13 +493,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       const res = await dbService.uploadAllLocalDataToGoogleSheet(url);
       if (res.success) {
         if (onTriggerToast) onTriggerToast(res.message, 'success');
-        setServerConnectionStatus({
+        setSheetsConnectionStatus({
           type: 'success',
           message: res.message
         });
       } else {
         if (onTriggerToast) onTriggerToast(res.message, 'warning');
-        setServerConnectionStatus({
+        setSheetsConnectionStatus({
           type: 'error',
           message: res.message
         });
@@ -449,31 +511,31 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
   };
 
-  // Save Server URL & Lock Configuration
-  const handleSaveServerUrl = async () => {
-    if (!serverUrlInput.trim()) {
-      handleResetServerUrl();
-      return;
-    }
-    setIsTestingServer(true);
-    setServerConnectionStatus(null);
-    dbService.setServerUrl(serverUrlInput);
-    const updated = dbService.getServerUrl();
-    setActiveServerUrl(updated);
+  // 5. Save Both URLs & Apply Lock
+  const handleSaveServerUrls = async () => {
+    dbService.setHostedServerUrl(hostedServerUrlInput);
+    dbService.setGoogleSheetsUrl(sheetsUrlInput);
+
+    const updatedH = dbService.getHostedServerUrl();
+    const updatedS = dbService.getGoogleSheetsUrl();
+    setActiveHostedServerUrl(updatedH);
+    setActiveSheetsUrl(updatedS);
+
     localStorage.setItem('with_security_server_locked', 'true');
     setIsServerLocked(true);
 
-    // Perform live remote server data sync & merge
-    const syncRes = await dbService.syncAllWithServer(updated);
-    setIsTestingServer(false);
+    setIsTestingSheets(true);
+    // Perform full remote server / Google Sheets data sync
+    const syncRes = await dbService.syncAllWithServer();
+    setIsTestingSheets(false);
 
     if (syncRes.success) {
-      setServerConnectionStatus({
+      setSheetsConnectionStatus({
         type: 'success',
-        message: `${syncRes.message} (초기 설정 완료 및 수정 방지 잠금 적용됨)`
+        message: `${syncRes.message || '동기화 완료'} (초기 설정 완료 및 수정 방지 잠금 적용됨)`
       });
       if (onTriggerToast) {
-        onTriggerToast('서버 연동 설정이 완료되고 안전하게 고정(잠금)되었습니다.', 'success');
+        onTriggerToast('호스팅 및 구글 스프레드시트 연동 설정이 안전하게 저장 및 고정(잠금)되었습니다.', 'success');
       }
       const active = await dbService.getUserProfile();
       if (active) setCurrentUser(active);
@@ -481,26 +543,28 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         await loadUserMgmtList();
       }
     } else {
-      setServerConnectionStatus({
-        type: 'warning',
-        message: syncRes.message || '서버 등록 완료 및 잠금 적용됨'
-      });
       if (onTriggerToast) {
-        onTriggerToast(`서버 연동이 등록되고 수정 방지 잠금이 적용되었습니다.`, 'info');
+        onTriggerToast(`설정이 저장되고 잠금이 적용되었습니다. (${syncRes.message || '상태 점검 요망'})`, 'info');
       }
     }
   };
 
-  // Reset Server URL (Requires confirmation)
-  const handleResetServerUrl = () => {
-    setServerUrlInput('https://wblee0703.github.io/with.security');
-    dbService.setServerUrl('https://wblee0703.github.io/with.security');
-    setActiveServerUrl('https://wblee0703.github.io/with.security');
+  // 6. Reset Both Server URLs
+  const handleResetServerUrls = () => {
+    setHostedServerUrlInput(DEFAULT_PUBLIC_URL);
+    dbService.setHostedServerUrl(DEFAULT_PUBLIC_URL);
+    setActiveHostedServerUrl(DEFAULT_PUBLIC_URL);
+
+    setSheetsUrlInput(DEFAULT_GOOGLE_SHEETS_URL);
+    dbService.setGoogleSheetsUrl(DEFAULT_GOOGLE_SHEETS_URL);
+    setActiveSheetsUrl(DEFAULT_GOOGLE_SHEETS_URL);
+
     localStorage.setItem('with_security_server_locked', 'true');
     setIsServerLocked(true);
-    setServerConnectionStatus(null);
+    setHostedConnectionStatus(null);
+    setSheetsConnectionStatus(null);
     if (onTriggerToast) {
-      onTriggerToast('기본 도메인(wblee0703.github.io)으로 초기화되었습니다.', 'info');
+      onTriggerToast('기본 호스팅 도메인 및 공식 구글 시트 URL로 초기화되었습니다.', 'info');
     }
   };
 
@@ -2557,18 +2621,18 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         </div>
       )}
 
-      {/* Remote Backend Server Configuration Card (Visible ONLY for Developer Role) */}
+      {/* Remote Backend Server & Google Spreadsheet Cloud DB Configuration Card (Visible ONLY for Developer Role) */}
       {currentUser?.role === '개발자' && (
-        <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #cbd5e1', background: '#eff6ff', marginTop: '2px' }}>
+        <div className="glass-panel" style={{ padding: '20px', borderRadius: '12px', border: '1.5px solid #cbd5e1', background: '#f8fafc', marginTop: '4px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ fontSize: '15px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Globe size={18} /> 호스팅 백엔드 서버 연동 설정 (개발자 전용)
+              <Globe size={18} /> 호스팅 서버 & 구글 스프레드시트 통합 연동 (개발자 전용)
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{
-                padding: '4px 10px',
+                padding: '5px 12px',
                 borderRadius: '20px',
-                fontSize: '11px',
+                fontSize: '11.5px',
                 fontWeight: '700',
                 display: 'flex',
                 alignItems: 'center',
@@ -2578,194 +2642,307 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 border: isServerLocked ? '1.5px solid #6ee7b7' : '1.5px solid #fde68a'
               }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: isServerLocked ? '#10b981' : '#f59e0b' }}></span>
-                {isServerLocked ? '🔒 서버 연동 고정됨 (수정 잠금)' : '🔓 초기 설정 모드 (수정 가능)'}
+                {isServerLocked ? '🔒 연동 설정 고정됨 (수정 잠금)' : '🔓 설정 수정 모드 (변경 가능)'}
               </span>
             </div>
           </div>
 
-          <p style={{ fontSize: '12px', color: '#475569', marginBottom: '14px', lineHeight: '1.5' }}>
-            {isServerLocked ? (
-              <>
-                현재 앱은 <strong style={{ color: '#1e3a8a' }}>{activeServerUrl || '기본 도메인(wblee0703.github.io)'}</strong>으로 안전하게 고정되어 있습니다.<br />
-                향후 가비아 호스팅 등으로 서버 도메인을 이전할 때만 <strong>[수정 잠금 해제]</strong>를 진행해 주세요.
-              </>
-            ) : (
-              <>
-                모바일 APK 설치 후 맨 처음 접속 시 백엔드 DB 주소를 연결합니다.<br />
-                - 가비아 호스팅 이전 기본 주소: <code style={{ color: '#1e3a8a', background: '#ffffff', padding: '1px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}>https://wblee0703.github.io/with.security</code><br />
-                - 저장을 완료하면 이후 실수로 변경되지 않도록 <strong>자동으로 수정 방지 잠금</strong>이 적용됩니다.
-              </>
-            )}
+          <p style={{ fontSize: '12.5px', color: '#475569', marginBottom: '16px', lineHeight: '1.6' }}>
+            앱과 모바일 웹이 원활하게 작동하도록 <strong>웹 호스팅 주소</strong>와 <strong>구글 스프레드시트 클라우드 DB</strong>를 각각 독립적으로 설정하고 실시간 통신 상태를 점검합니다.
           </p>
 
-          {/* URL Input */}
-          <div style={{ marginBottom: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
-                백엔드 DB API 서버 주소 (Base API URL)
-              </label>
-              {serverUrlInput.includes('script.google.com') && (
-                <span style={{ fontSize: '11px', fontWeight: '700', color: '#047857', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #86efac' }}>
-                  📊 구글 시트(Withsharing_DB) 모드
-                </span>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#1e3a8a' }} />
-                <input
-                  type="text"
-                  disabled={isServerLocked}
-                  placeholder="예: https://script.google.com/macros/s/.../exec 또는 https://wblee0703.github.io/with.security"
-                  value={serverUrlInput}
-                  onChange={(e) => setServerUrlInput(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px 10px 38px',
-                    borderRadius: '12px',
-                    background: isServerLocked ? '#f1f5f9' : '#ffffff',
-                    border: isServerLocked ? '1.5px solid #cbd5e1' : (serverUrlInput.includes('script.google.com') ? '1.5px solid #059669' : '1.5px solid #1e3a8a'),
-                    color: '#0f172a',
-                    fontSize: '13px',
-                    fontWeight: '700',
-                    outline: 'none',
-                    cursor: isServerLocked ? 'not-allowed' : 'text'
-                  }}
-                />
+          {/* ========================================================================= */}
+          {/* 1. 웹 호스팅 / 백엔드 REST API 서버 연동 카드 */}
+          {/* ========================================================================= */}
+          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '16px', border: '1.5px solid #e2e8f0', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Globe size={15} /> 1. 웹 호스팅 / 백엔드 서버 연동
               </div>
+              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                현재 연결: <strong style={{ color: '#1e3a8a' }}>{activeHostedServerUrl || 'GitHub Pages 기본값'}</strong>
+              </span>
             </div>
-          </div>
 
-          {/* Quick Presets (Only visible when unlocked) */}
-          {!isServerLocked && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '11px', color: '#64748b', alignSelf: 'center' }}>빠른 선택:</span>
+            <div style={{ position: 'relative', marginBottom: '10px' }}>
+              <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+              <input
+                type="text"
+                disabled={isServerLocked}
+                placeholder="예: https://wblee0703.github.io/with.security 또는 http://192.168.0.108:4000"
+                value={hostedServerUrlInput}
+                onChange={(e) => setHostedServerUrlInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 38px',
+                  borderRadius: '8px',
+                  background: isServerLocked ? '#f8fafc' : '#ffffff',
+                  border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #94a3b8',
+                  color: '#0f172a',
+                  fontSize: '12.5px',
+                  fontWeight: '600',
+                  outline: 'none',
+                  cursor: isServerLocked ? 'not-allowed' : 'text'
+                }}
+              />
+            </div>
+
+            {!isServerLocked && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>빠른 선택:</span>
                 <button
                   type="button"
-                  onClick={() => setServerUrlInput('https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec')}
-                  style={{ padding: '4px 10px', borderRadius: '8px', background: '#ecfdf5', border: '1.5px solid #10b981', color: '#047857', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }}
+                  onClick={() => setHostedServerUrlInput('https://wblee0703.github.io/with.security')}
+                  style={{ padding: '3px 8px', borderRadius: '6px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
                 >
-                  📊 구글 스프레드시트 웹 앱 (공식 DB)
+                  🌐 GitHub Pages
                 </button>
                 <button
                   type="button"
-                  onClick={() => setServerUrlInput('https://wblee0703.github.io/with.security')}
-                  style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#1e3a8a', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}
+                  onClick={() => setHostedServerUrlInput('http://192.168.0.108:4000')}
+                  style={{ padding: '3px 8px', borderRadius: '6px', background: '#f8fafc', border: '1px solid #cbd5e1', color: '#475569', fontSize: '11px', cursor: 'pointer' }}
                 >
-                  🌐 GitHub Pages 호스팅
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setServerUrlInput('http://192.168.0.108:4000')}
-                  style={{ padding: '4px 10px', borderRadius: '8px', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#475569', fontSize: '11px', cursor: 'pointer' }}
-                >
-                  📡 사내 Wi-Fi (192.168.0.108:4000)
+                  📡 사내 로컬 서버 (192.168.0.108:4000)
                 </button>
               </div>
+            )}
 
-              {/* Google Spreadsheet Withsharing_DB Guide Card */}
-              <div style={{ fontSize: '11px', color: '#065f46', background: '#f0fdf4', padding: '10px 12px', borderRadius: '8px', border: '1px solid #bbf7d0', lineHeight: '1.6' }}>
-                📊 <strong>구글 스프레드시트 (Withsharing_DB) 연동 안내:</strong><br />
-                1. 생성하신 <strong>Withsharing_DB</strong> 스프레드시트의 <strong>[확장 프로그램] &gt; [Apps Script]</strong>를 엽니다.<br />
-                2. 프로젝트의 <strong><code>google_apps_script.js</code></strong> 파일 전체 코드를 복사해 붙여넣습니다.<br />
-                3. 상단 함수에서 <strong><code>initDatabase</code></strong> 선택 후 [실행]을 누르면 1초 만에 모든 시트 탭과 헤더가 자동 생성됩니다.<br />
-                4. <strong>[배포] &gt; [새 배포] &gt; [웹 앱]</strong> (액세스 권한: <em>모든 사용자</em>)으로 배포 후, 발급된 URL을 위 입력창에 붙여넣고 <strong>[초기 설정 완료 및 영구 고정(잠금)]</strong>을 누르면 구글 시트 클라우드 DB가 즉시 작동합니다!
+            {hostedConnectionStatus && (
+              <div style={{
+                padding: '9px 12px',
+                borderRadius: '8px',
+                marginBottom: '10px',
+                fontSize: '11.5px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: hostedConnectionStatus.type === 'success' ? '#ecfdf5' : '#fff1f2',
+                color: hostedConnectionStatus.type === 'success' ? '#059669' : '#e11d48',
+                border: hostedConnectionStatus.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fda4af'
+              }}>
+                {hostedConnectionStatus.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                {hostedConnectionStatus.message}
               </div>
+            )}
 
-            </div>
-          )}
-
-          {/* Connection Test Result Feedback */}
-          {serverConnectionStatus && (
-            <div style={{
-              padding: '10px 14px',
-              borderRadius: '10px',
-              marginBottom: '14px',
-              fontSize: '12px',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: serverConnectionStatus.type === 'success' ? '#ecfdf5' : '#fff1f2',
-              color: serverConnectionStatus.type === 'success' ? '#059669' : '#e11d48',
-              border: serverConnectionStatus.type === 'success' ? '1.5px solid #a7f3d0' : '1.5px solid #fda4af'
-            }}>
-              {serverConnectionStatus.type === 'success' ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
-              {serverConnectionStatus.message}
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
             <button
               type="button"
-              onClick={handleTestServer}
-              disabled={isTestingServer}
+              onClick={handleTestHostedServer}
+              disabled={isTestingHosted}
               style={{
-                padding: '10px 16px',
-                borderRadius: '12px',
+                padding: '8px 14px',
+                borderRadius: '8px',
                 background: '#ffffff',
                 border: '1.5px solid #cbd5e1',
-                color: '#0f172a',
-                fontSize: '12.5px',
+                color: '#1e293b',
+                fontSize: '12px',
                 fontWeight: '700',
                 cursor: 'pointer',
-                display: 'flex',
+                display: 'inline-flex',
                 alignItems: 'center',
                 gap: '6px'
               }}
             >
-              <RefreshCw size={14} className={isTestingServer ? 'spin-anim' : ''} />
-              연결 상태 확인
+              <RefreshCw size={13} className={isTestingHosted ? 'spin-anim' : ''} />
+              호스팅/서버 연결 상태 확인
             </button>
+          </div>
 
-            {/* 1-Click Upload Local Computer Data to Google Sheet */}
-            <button
-              type="button"
-              onClick={handleUploadLocalToGoogleSheet}
-              disabled={isUploadingToSheet || isTestingServer}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '12px',
-                background: '#ecfdf5',
-                border: '1.5px solid #059669',
-                color: '#047857',
-                fontSize: '12.5px',
-                fontWeight: '800',
-                cursor: (isUploadingToSheet || isTestingServer) ? 'not-allowed' : 'pointer',
+          {/* ========================================================================= */}
+          {/* 2. 구글 스프레드시트 클라우드 DB 연동 카드 */}
+          {/* ========================================================================= */}
+          <div style={{ background: '#ffffff', borderRadius: '10px', padding: '16px', border: '1.5px solid #bbf7d0', marginBottom: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#047857', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Table size={15} /> 2. 구글 스프레드시트 클라우드 DB 연동 (Withsharing_DB)
+              </div>
+              <span style={{ fontSize: '11px', color: '#059669', background: '#dcfce7', padding: '2px 8px', borderRadius: '12px', fontWeight: '700' }}>
+                모바일 앱 & 웹 통합 DB
+              </span>
+            </div>
+
+            <div style={{ position: 'relative', marginBottom: '10px' }}>
+              <Database size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#059669' }} />
+              <input
+                type="text"
+                disabled={isServerLocked}
+                placeholder="예: https://script.google.com/macros/s/.../exec"
+                value={sheetsUrlInput}
+                onChange={(e) => setSheetsUrlInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px 10px 38px',
+                  borderRadius: '8px',
+                  background: isServerLocked ? '#f0fdf4' : '#ffffff',
+                  border: isServerLocked ? '1.5px solid #86efac' : '1.5px solid #10b981',
+                  color: '#064e3b',
+                  fontSize: '12.5px',
+                  fontWeight: '700',
+                  outline: 'none',
+                  cursor: isServerLocked ? 'not-allowed' : 'text'
+                }}
+              />
+            </div>
+
+            {!isServerLocked && (
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '12px', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>빠른 선택:</span>
+                <button
+                  type="button"
+                  onClick={() => setSheetsUrlInput(DEFAULT_GOOGLE_SHEETS_URL)}
+                  style={{ padding: '3px 8px', borderRadius: '6px', background: '#ecfdf5', border: '1.5px solid #10b981', color: '#047857', fontSize: '11px', fontWeight: '800', cursor: 'pointer' }}
+                >
+                  📊 공식 Withsharing_DB Web App URL 적용
+                </button>
+              </div>
+            )}
+
+            {/* Google Apps Script Quick Deployment Guide */}
+            <div style={{ fontSize: '11.5px', color: '#065f46', background: '#f0fdf4', padding: '10px 12px', borderRadius: '8px', border: '1px solid #bbf7d0', lineHeight: '1.6', marginBottom: '12px' }}>
+              💡 <strong>구글 시트 연동 안내:</strong><br />
+              - Withsharing_DB 스프레드시트의 <strong>[Apps Script]</strong>에 <code>google_apps_script.js</code> 코드를 적용하고, <strong>[새 배포] &gt; [웹 앱]</strong> (액세스: <em>모든 사용자</em>)으로 배포된 URL을 입력합니다.<br />
+              - 아래 <strong>[구글 시트 전체 동기화]</strong> 버튼을 누르면 구글 시트에 보관된 모든 업무일지, 서약서, 사업장 데이터가 앱으로 즉시 불러와집니다.
+            </div>
+
+            {sheetsConnectionStatus && (
+              <div style={{
+                padding: '9px 12px',
+                borderRadius: '8px',
+                marginBottom: '12px',
+                fontSize: '11.5px',
+                fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 2px 8px rgba(5, 150, 105, 0.15)'
-              }}
-            >
-              <Upload size={14} className={isUploadingToSheet ? 'spin-anim' : ''} />
-              {isUploadingToSheet ? '구글 시트로 올리는 중...' : '📤 내 컴퓨터 데이터 → 구글 시트 일괄 올리기'}
-            </button>
+                gap: '8px',
+                background: sheetsConnectionStatus.type === 'success' ? '#ecfdf5' : '#fff1f2',
+                color: sheetsConnectionStatus.type === 'success' ? '#059669' : '#e11d48',
+                border: sheetsConnectionStatus.type === 'success' ? '1px solid #a7f3d0' : '1px solid #fda4af'
+              }}>
+                {sheetsConnectionStatus.type === 'success' ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                {sheetsConnectionStatus.message}
+              </div>
+            )}
 
-            {!isServerLocked ? (
+            {/* Sheets Action Buttons */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 type="button"
-                onClick={handleSaveServerUrl}
-                disabled={isTestingServer}
+                onClick={handleTestGoogleSheets}
+                disabled={isTestingSheets || isSyncingSheets}
                 style={{
-                  padding: '10px 18px',
-                  borderRadius: '6px',
-                  background: '#1e3a8a',
-                  border: 'none',
-                  color: '#ffffff',
-                  fontSize: '12.5px',
-                  fontWeight: '800',
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: '#ffffff',
+                  border: '1.5px solid #10b981',
+                  color: '#047857',
+                  fontSize: '12px',
+                  fontWeight: '700',
                   cursor: 'pointer',
-                  display: 'flex',
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 4px 12px rgba(15, 23, 42, 0.25)'
+                  gap: '6px'
                 }}
               >
-                <Save size={14} /> 초기 설정 완료 및 영구 고정(잠금)
+                <RefreshCw size={13} className={isTestingSheets ? 'spin-anim' : ''} />
+                구글 시트 연결 테스트
               </button>
+
+              <button
+                type="button"
+                onClick={handleSyncGoogleSheets}
+                disabled={isSyncingSheets || isTestingSheets}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: '#10b981',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(16, 185, 129, 0.2)'
+                }}
+              >
+                <Download size={13} className={isSyncingSheets ? 'spin-anim' : ''} />
+                {isSyncingSheets ? '구글 시트 데이터 불러오는 중...' : '📥 구글 시트 전체 동기화 (Withsharing_DB → 앱)'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleUploadLocalToGoogleSheet}
+                disabled={isUploadingToSheet || isSyncingSheets}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: '#ffffff',
+                  border: '1.5px solid #64748b',
+                  color: '#334155',
+                  fontSize: '12px',
+                  fontWeight: '700',
+                  cursor: (isUploadingToSheet || isSyncingSheets) ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Upload size={13} className={isUploadingToSheet ? 'spin-anim' : ''} />
+                {isUploadingToSheet ? '구글 시트로 올리는 중...' : '📤 내 컴퓨터 데이터 → 구글 시트 일괄 올리기'}
+              </button>
+            </div>
+          </div>
+
+          {/* ========================================================================= */}
+          {/* 3. 전체 저장 및 잠금 / 잠금 해제 제어 영역 */}
+          {/* ========================================================================= */}
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', paddingTop: '6px' }}>
+            {!isServerLocked ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSaveServerUrls}
+                  disabled={isTestingSheets || isTestingHosted}
+                  style={{
+                    padding: '10px 18px',
+                    borderRadius: '8px',
+                    background: '#1e3a8a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '12.5px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.2)'
+                  }}
+                >
+                  <Save size={14} /> 연동 설정 완료 및 영구 고정(잠금)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetServerUrls}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#64748b',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <RefreshCw size={13} /> 기본값 복원
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -2775,7 +2952,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 }}
                 style={{
                   padding: '10px 16px',
-                  borderRadius: '12px',
+                  borderRadius: '8px',
                   background: '#ffffff',
                   border: '1.5px solid #fda4af',
                   color: '#e11d48',
@@ -2787,7 +2964,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   gap: '6px'
                 }}
               >
-                <Key size={14} /> 서버 연동 수정 잠금 해제 (개발자 인증)
+                <Key size={14} /> 서버 & 시트 연동 수정 잠금 해제 (개발자 인증)
               </button>
             )}
           </div>
