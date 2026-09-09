@@ -149,15 +149,34 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
 
   // Determine target sheet
   let sheetName = 'work_logs';
-  if (endpoint.includes('/users') || endpoint.includes('/security-users')) sheetName = 'users';
-  else if (endpoint.includes('/sites') || endpoint.includes('/security-sites')) sheetName = 'sites';
-  else if (endpoint.includes('/work-logs')) sheetName = 'work_logs';
-  else if (endpoint.includes('/security-logs') || endpoint.includes('/checklists') || endpoint.includes('/pledges')) sheetName = 'security_logs';
-  else if (endpoint.includes('/edu-logs')) sheetName = 'edu_logs';
-  else if (endpoint.includes('/weekly-reports')) sheetName = 'weekly_reports';
-  else if (endpoint.includes('/tbms')) sheetName = 'tbms';
-  else if (endpoint.includes('/vault')) sheetName = 'vault';
-  else if (endpoint.includes('/incidents')) sheetName = 'incidents';
+  if (endpoint.includes('users') || endpoint.includes('security-users')) sheetName = 'users';
+  else if (endpoint.includes('sites') || endpoint.includes('security-sites')) sheetName = 'sites';
+  else if (endpoint.includes('work-logs') || endpoint.includes('work_logs') || endpoint.includes('worklogs')) sheetName = 'work_logs';
+  else if (endpoint.includes('security-logs') || endpoint.includes('security_logs') || endpoint.includes('checklists') || endpoint.includes('security-checklists') || endpoint.includes('pledges')) sheetName = 'security_logs';
+  else if (endpoint.includes('edu-logs') || endpoint.includes('edu_logs')) sheetName = 'edu_logs';
+  else if (endpoint.includes('weekly-reports') || endpoint.includes('weekly_reports')) sheetName = 'weekly_reports';
+  else if (endpoint.includes('tbms')) sheetName = 'tbms';
+  else if (endpoint.includes('vault')) sheetName = 'vault';
+  else if (endpoint.includes('incidents')) sheetName = 'incidents';
+
+  // ⭐ 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장되지 않고 오직 security_logs에만 저장되도록 강제
+  const isSecurityPledgeData = Boolean(
+    bodyData && (
+      String(bodyData.id || '').startsWith('PASS-') ||
+      String(bodyData.log_id || '').startsWith('PASS-') ||
+      bodyData.visitorName ||
+      bodyData.visitor_name ||
+      bodyData.visitor_phone ||
+      bodyData.pledge_terms ||
+      bodyData.docChecklist !== undefined ||
+      bodyData.gate_approved !== undefined ||
+      bodyData.pre_check_verified !== undefined
+    )
+  );
+
+  if (isSecurityPledgeData) {
+    sheetName = 'security_logs';
+  }
 
   if (endpoint.includes('/login')) {
     // Google Sheets is a database, not an authentication endpoint. Never convert login into create!
@@ -1169,7 +1188,7 @@ class SecurityDatabase {
           if (clSite === newSite.name) {
             try { await this.putItem('checklists', clItem); } catch (e) {}
             try {
-              await safeFetchApi('/api/security-checklists', {
+              await safeFetchApi('/api/security-logs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(clItem)
@@ -1743,7 +1762,7 @@ class SecurityDatabase {
           if ((targetUsername && clId && clId === targetUsername) || (!clId && clItem.visitorName === newUser.name)) {
             try { await this.putItem('checklists', clItem); } catch (e) {}
             try {
-              await safeFetchApi('/api/security-checklists', {
+              await safeFetchApi('/api/security-logs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(clItem)
@@ -2259,8 +2278,12 @@ class SecurityDatabase {
         if (raw) {
           const list = JSON.parse(raw);
           if (Array.isArray(list) && list.length > 0) {
+            const pureLogs = list.filter(item => {
+              const id = String(item.id || item.log_id || '').trim();
+              return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
+            });
             this._revalidateWorkLogsInBackground().catch(() => {});
-            return list;
+            return pureLogs;
           }
         }
       } catch (e) {}
@@ -2268,8 +2291,12 @@ class SecurityDatabase {
       try {
         const dbLogs = await this.getAll('work_logs');
         if (Array.isArray(dbLogs) && dbLogs.length > 0) {
+          const pureLogs = dbLogs.filter(item => {
+            const id = String(item.id || item.log_id || '').trim();
+            return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
+          });
           this._revalidateWorkLogsInBackground().catch(() => {});
-          return dbLogs;
+          return pureLogs;
         }
       } catch (e) {}
     }
@@ -2290,8 +2317,12 @@ class SecurityDatabase {
       if (res && res.ok) {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-        if (serverLogs.length > 0) {
-          const mapped = serverLogs.map(item => {
+        const pureServerLogs = serverLogs.filter(item => {
+          const id = String(item.id || item.log_id || '').trim();
+          return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
+        });
+        if (pureServerLogs.length > 0) {
+          const mapped = pureServerLogs.map(item => {
             let cleanDate = '';
             if (item.log_date) {
               cleanDate = String(item.log_date).trim().slice(0, 10);
@@ -2323,15 +2354,23 @@ class SecurityDatabase {
               id: itemId,
               log_id: itemId,
               category: item.category || '사내 업무',
+              subCategory: item.sub_category || item.subCategory || '',
+              sub_category: item.sub_category || item.subCategory || '',
+              dueDate: item.due_date || item.dueDate || '',
+              due_date: item.due_date || item.dueDate || '',
               title: item.title || '',
               details: item.tasks_done || item.details || '',
+              tasks_done: item.tasks_done || item.details || '',
+              tasksDone: item.tasks_done || item.details || '',
               siteName: item.site_name || item.siteName || '',
               site_name: item.site_name || item.siteName || '',
               date: cleanDate,
+              log_date: cleanDate,
               name: item.name || item.writer_name || item.authorName || '작성자',
               authorName: item.name || item.writer_name || item.authorName || '작성자',
               authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || '',
               writerId: item.writer_id || item.writerId || item.authorUsername || item.username || '',
+              writer_id: item.writer_id || item.writerId || item.authorUsername || item.username || '',
               division: item.division || '',
               team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
               authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
@@ -2339,9 +2378,13 @@ class SecurityDatabase {
               authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
               role: item.role || '일반',
               isShared: isSharedVal,
+              is_shared: isSharedVal ? 1 : 0,
               sharedWith: parsedSharedWith,
+              shared_with: parsedSharedWith,
               sharedAt: sharedAtVal,
-              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
+              shared_at: sharedAtVal,
+              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || ''),
+              created_at: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
             };
           });
 
@@ -2380,6 +2423,13 @@ class SecurityDatabase {
   }
 
   async saveWorkLog(logItem) {
+    if (!logItem) return null;
+    const targetId = String(logItem.id || logItem.log_id || '').trim();
+    // ⭐ 핵심 격리 규칙: 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장하지 않고 saveChecklist로 안전하게 전환
+    if (targetId.startsWith('PASS-') || logItem.visitorName || logItem.visitor_name || logItem.pledge_terms) {
+      return await this.saveChecklist(logItem);
+    }
+
     // ⭐ sharedWith를 '이름 직급 (소속)' 형태로만 정제 (예: '홍길동 대리 (운영1팀)')
     let cleanSharedWith = [];
     if (Array.isArray(logItem.sharedWith)) {
@@ -2442,23 +2492,35 @@ class SecurityDatabase {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          id: targetId,
+          log_id: targetId,
           logId: targetId,
           name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
+          writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
           writerId: preparedLog.authorUsername || preparedLog.writerId || '',
           division: preparedLog.authorDivision || preparedLog.division || '',
           team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
           rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
           role: preparedLog.authorRole || preparedLog.role || '일반',
           category: preparedLog.category || '사내 업무',
+          sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
           subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
+          due_date: preparedLog.dueDate || preparedLog.due_date || '',
           dueDate: preparedLog.dueDate || preparedLog.due_date || '',
+          site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
           siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+          log_date: preparedLog.date || new Date().toISOString().split('T')[0],
           logDate: preparedLog.date || new Date().toISOString().split('T')[0],
           title: preparedLog.title,
+          tasks_done: preparedLog.details || preparedLog.tasksDone || '',
           tasksDone: preparedLog.details || preparedLog.tasksDone || '',
+          is_shared: preparedLog.isShared ? 1 : 0,
           isShared: preparedLog.isShared ?? false,
+          shared_with: cleanSharedWith,
           sharedWith: cleanSharedWith,
-          sharedAt: preparedLog.sharedAt || ''
+          shared_at: preparedLog.sharedAt || '',
+          sharedAt: preparedLog.sharedAt || '',
+          created_at: preparedLog.createdAt || new Date().toISOString()
         })
       });
     } catch (e) {}
@@ -3094,15 +3156,27 @@ class SecurityDatabase {
     }
 
     if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
-      workLogsCount = syncData.work_logs.length;
-      localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
-      await this.replaceCollection('work_logs', syncData.work_logs);
+      const pureWorkLogs = syncData.work_logs.filter(item => {
+        const id = String(item.id || item.log_id || '').trim();
+        return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
+      });
+      workLogsCount = pureWorkLogs.length;
+      localStorage.setItem('with_security_work_logs', JSON.stringify(pureWorkLogs));
+      await this.replaceCollection('work_logs', pureWorkLogs);
     }
 
-    const checklists = syncData.checklists || syncData.security_logs;
-    if (checklists && Array.isArray(checklists)) {
-      secLogsCount = checklists.length;
-      const consolidated = this._consolidateChecklists(checklists);
+    // work_logs에 잘못 저장되어 있던 보안 서약(PASS-) 데이터가 있다면 security_logs/checklists에 안전하게 병합
+    const misplacedPledges = (syncData.work_logs && Array.isArray(syncData.work_logs))
+      ? syncData.work_logs.filter(item => {
+          const id = String(item.id || item.log_id || '').trim();
+          return id.startsWith('PASS-') || item.visitorName || item.visitor_name || item.pledge_terms;
+        })
+      : [];
+
+    const rawChecklists = (syncData.checklists || syncData.security_logs || []).concat(misplacedPledges);
+    if (rawChecklists && Array.isArray(rawChecklists) && rawChecklists.length > 0) {
+      secLogsCount = rawChecklists.length;
+      const consolidated = this._consolidateChecklists(rawChecklists);
       localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
       await this.replaceCollection('checklists', consolidated);
