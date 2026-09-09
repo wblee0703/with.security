@@ -156,6 +156,13 @@ function syncDatabaseHeaders() {
       sheet.clear();
       sheet.appendRow(targetHeaders);
       formatHeaderRow(sheet, targetHeaders.length);
+
+      // ⭐ 필요없는 잉여 열(컬럼) 자동 삭제
+      const maxCols = sheet.getMaxColumns();
+      if (maxCols > targetHeaders.length) {
+        try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
+      }
+
       if (sheetName === 'users') {
         INITIAL_USERS.forEach(u => appendObjectRow(sheet, targetHeaders, u));
       } else if (sheetName === 'sites') {
@@ -190,13 +197,19 @@ function syncDatabaseHeaders() {
     sheet.clear();
     sheet.appendRow(targetHeaders);
     formatHeaderRow(sheet, targetHeaders.length);
+
+    // ⭐ 필요없는 잉여 열(컬럼) 자동 삭제 (targetHeaders 이후 열 일괄 삭제)
+    const maxCols = sheet.getMaxColumns();
+    if (maxCols > targetHeaders.length) {
+      try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
+    }
     
     normalizedData.forEach(item => {
       appendObjectRow(sheet, targetHeaders, item);
     });
     
     try { sheet.autoResizeColumns(1, targetHeaders.length); } catch (e) {}
-    report[sheetName] = `${normalizedData.length}건 데이터 마이그레이션 완료`;
+    report[sheetName] = `${normalizedData.length}건 데이터 마이그레이션 및 불필요한 열 자동 정리 완료`;
   }
   
   // 기본 생성되었던 빈 '시트1' 또는 'Sheet1' 정리
