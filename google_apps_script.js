@@ -510,7 +510,7 @@ function doPost(e) {
     
     // [3] 데이터 삭제 (Delete)
     if (action === 'delete') {
-      const id = payload.id;
+      const id = String(payload.id || '').trim();
       const keyField = payload.key || 'id';
       const rows = sheet.getDataRange().getValues();
       if (rows.length <= 1) return jsonResponse({ success: true, message: 'Sheet is empty' });
@@ -519,15 +519,16 @@ function doPost(e) {
       const keyColIdx = headers.indexOf(keyField);
       const altKeyColIdx = headers.indexOf('log_id');
       
-      for (let i = 1; i < rows.length; i++) {
-        const val1 = keyColIdx !== -1 ? String(rows[i][keyColIdx]) : '';
-        const val2 = altKeyColIdx !== -1 ? String(rows[i][altKeyColIdx]) : '';
-        if (val1 === String(id) || val2 === String(id)) {
+      let deletedCount = 0;
+      for (let i = rows.length - 1; i >= 1; i--) {
+        const val1 = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
+        const val2 = altKeyColIdx !== -1 ? String(rows[i][altKeyColIdx] || '').trim() : '';
+        if ((val1 && val1 === id) || (val2 && val2 === id)) {
           sheet.deleteRow(i + 1);
-          return jsonResponse({ success: true, message: 'Row deleted', id: id });
+          deletedCount++;
         }
       }
-      return jsonResponse({ success: true, message: 'Item not found, treated as deleted' });
+      return jsonResponse({ success: true, message: 'Rows deleted: ' + deletedCount, id: id, count: deletedCount });
     }
     
     // [4] 일괄 데이터 덮어쓰기/마이그레이션 (Bulk Sync)

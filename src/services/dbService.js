@@ -2563,7 +2563,54 @@ class SecurityDatabase {
   // -------------------------------------------------------------
   // Work Log Persistence Methods (MySQL work_log Table Direct Sync)
   // -------------------------------------------------------------
+  _getWorkLogBlacklistKeys(log) {
+    if (!log) return [];
+    const keys = new Set();
+    const id = String(log.id || log.log_id || log.logId || '').trim();
+    if (id) keys.add(id);
+    const altId = String(log.log_id || '').trim();
+    if (altId) keys.add(altId);
+
+    const writer = String(log.authorUsername || log.writerId || log.writer_id || log.username || log.name || '').trim().toLowerCase();
+    const date = normalizeKstDate(log.date || log.log_date || log.dueDate || log.due_date);
+    const title = String(log.title || '').trim().toLowerCase();
+    if (writer && date && title) {
+      keys.add(`WORK::${writer}::${date}::${title}`);
+    }
+    return Array.from(keys);
+  }
+
+  _isWorkLogDeleted(log, deletedKeysSet) {
+    if (!log || !deletedKeysSet || deletedKeysSet.size === 0) return false;
+    const id = String(log.id || log.log_id || log.logId || '').trim();
+    if (id && deletedKeysSet.has(id)) return true;
+    const altId = String(log.log_id || '').trim();
+    if (altId && deletedKeysSet.has(altId)) return true;
+
+    const writer = String(log.authorUsername || log.writerId || log.writer_id || log.username || log.name || '').trim().toLowerCase();
+    const date = normalizeKstDate(log.date || log.log_date || log.dueDate || log.due_date);
+    const title = String(log.title || '').trim().toLowerCase();
+    if (writer && date && title) {
+      if (deletedKeysSet.has(`WORK::${writer}::${date}::${title}`)) return true;
+    }
+    return false;
+  }
+
+  _getDeletedWorkLogsSet() {
+    try {
+      const raw = localStorage.getItem('with_security_deleted_work_logs');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          return new Set(arr.map(k => String(k || '').trim()));
+        }
+      }
+    } catch (e) { }
+    return new Set();
+  }
+
   async getWorkLogs(forceRemote = false) {
+    const deletedSet = this._getDeletedWorkLogsSet();
     // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
     if (!forceRemote) {
       try {
@@ -2571,7 +2618,7 @@ class SecurityDatabase {
         if (raw) {
           const list = JSON.parse(raw);
           if (Array.isArray(list) && list.length > 0) {
-            const pureLogs = this._deduplicateWorkLogs(list);
+            const pureLogs = this._deduplicateWorkLogs(list).filter(l => !this._isWorkLogDeleted(l, deletedSet));
             this._revalidateWorkLogsInBackground().catch(() => { });
             return pureLogs;
           }
@@ -2581,7 +2628,7 @@ class SecurityDatabase {
       try {
         const dbLogs = await this.getAll('work_logs');
         if (Array.isArray(dbLogs) && dbLogs.length > 0) {
-          const pureLogs = this._deduplicateWorkLogs(dbLogs);
+          const pureLogs = this._deduplicateWorkLogs(dbLogs).filter(l => !this._isWorkLogDeleted(l, deletedSet));
           this._revalidateWorkLogsInBackground().catch(() => { });
           return pureLogs;
         }
@@ -2602,12 +2649,14 @@ class SecurityDatabase {
   }
 
   async _fetchWorkLogsRemote() {
+    const deletedSet = this._getDeletedWorkLogsSet();
     try {
       const res = await safeFetchApi('/api/work-logs');
       if (res && res.ok) {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-        const mapped = this._deduplicateWorkLogs(serverLogs);
+        const filteredServerLogs = serverLogs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
+        const mapped = this._deduplicateWorkLogs(filteredServerLogs);
         localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
         try {
           await this.replaceCollection('work_logs', mapped);
@@ -2621,7 +2670,9 @@ class SecurityDatabase {
       const raw = localStorage.getItem('with_security_work_logs');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return this._deduplicateWorkLogs(parsed);
+        if (Array.isArray(parsed)) {
+          return this._deduplicateWorkLogs(parsed.filter(l => !this._isWorkLogDeleted(l, deletedSet)));
+        }
       }
     } catch (e) { }
 
@@ -2680,6 +2731,20 @@ class SecurityDatabase {
       sharedWith: cleanSharedWith
     };
 
+    // 사용자가 명시적으로 재등록/저장하는 경우 삭제 블랙리스트에서 자동 해제
+    try {
+      const keysToUnblacklist = this._getWorkLogBlacklistKeys(preparedLog);
+      const delRaw = localStorage.getItem('with_security_deleted_work_logs');
+      if (delRaw) {
+        let delList = JSON.parse(delRaw);
+        if (Array.isArray(delList)) {
+          const unSet = new Set(keysToUnblacklist);
+          delList = delList.filter(k => !unSet.has(String(k || '').trim()));
+          localStorage.setItem('with_security_deleted_work_logs', JSON.stringify(delList));
+        }
+      }
+    } catch (e) { }
+
     // 1. Immediately update localStorage first
     const currentLocal = (() => {
       try {
@@ -2712,6 +2777,9 @@ class SecurityDatabase {
       updated = [preparedLog, ...currentLocal];
     }
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    try {
+      await this.replaceCollection('work_logs', updated);
+    } catch (e) { }
 
     // 2. Safe async sync with server
     try {
@@ -2756,14 +2824,64 @@ class SecurityDatabase {
     return updated;
   }
 
-  async deleteWorkLog(id) {
+  async deleteWorkLog(target) {
+    if (!target) return [];
+    const targetId = typeof target === 'string' || typeof target === 'number'
+      ? String(target).trim()
+      : String(target.id || target.log_id || target.logId || '').trim();
+
+    // 1. Find existing log to extract all identification keys (id, log_id, composite key)
+    const currentLocal = (() => {
+      try {
+        const raw = localStorage.getItem('with_security_work_logs');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const matchedLog = (typeof target === 'object' && target !== null)
+      ? target
+      : currentLocal.find(l => {
+        const lId = String(l.id || l.log_id || l.logId || '').trim();
+        return lId === targetId || String(l.id) === targetId || String(l.log_id) === targetId;
+      });
+
+    // 2. Add all keys to deleted work logs blacklist (localStorage) to permanently prevent resurrection
+    const keysToBlacklist = this._getWorkLogBlacklistKeys(matchedLog || { id: targetId });
+    if (targetId && !keysToBlacklist.includes(targetId)) keysToBlacklist.push(targetId);
+
     try {
-      await safeFetchApi(`/api/work-logs/${id}`, { method: 'DELETE' });
+      const delRaw = localStorage.getItem('with_security_deleted_work_logs');
+      let delList = delRaw ? JSON.parse(delRaw) : [];
+      if (!Array.isArray(delList)) delList = [];
+      for (const k of keysToBlacklist) {
+        if (k && !delList.includes(k)) delList.push(k);
+      }
+      localStorage.setItem('with_security_deleted_work_logs', JSON.stringify(delList));
     } catch (e) { }
 
-    const logs = await this.getWorkLogs();
-    const updated = logs.filter(l => l.id !== id);
+    const deletedSet = this._getDeletedWorkLogsSet();
+
+    // 3. Immediately filter local cache
+    const updated = currentLocal.filter(l => !this._isWorkLogDeleted(l, deletedSet));
     localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+
+    // 4. Update IndexedDB immediately
+    try {
+      if (targetId) await this.deleteItem('work_logs', targetId);
+      await this.replaceCollection('work_logs', updated);
+    } catch (e) { }
+
+    // 5. Invalidate request caches & prevent background revalidation collision
+    recentResponseCache.clear();
+    this._lastWorkLogsRevalidate = Date.now() + 5000; // block revalidation for 5s while server processes
+
+    // 6. Safe remote API delete
+    try {
+      await safeFetchApi(`/api/work-logs/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+    } catch (e) { }
+
     notifyDataChanged();
     return updated;
   }
@@ -3415,7 +3533,9 @@ class SecurityDatabase {
 
     // 3. work_logs
     if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
-      const dedupedWorkLogs = this._deduplicateWorkLogs(syncData.work_logs);
+      const deletedSet = this._getDeletedWorkLogsSet();
+      const filtered = syncData.work_logs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
+      const dedupedWorkLogs = this._deduplicateWorkLogs(filtered);
       workLogsCount = dedupedWorkLogs.length;
       localStorage.setItem('with_security_work_logs', JSON.stringify(dedupedWorkLogs));
       await this.replaceCollection('work_logs', dedupedWorkLogs);

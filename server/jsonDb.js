@@ -452,9 +452,12 @@ class JsonDatabaseManager {
   }
 
   async deleteWorkLog(id) {
-    const sId = String(id);
+    const sId = decodeURIComponent(String(id || '').trim());
     const initialLen = (this.cache.work_logs || []).length;
-    this.cache.work_logs = (this.cache.work_logs || []).filter(item => String(item.log_id || item.id) !== sId);
+    this.cache.work_logs = (this.cache.work_logs || []).filter(item => {
+      const itemId = String(item.log_id || item.id || '').trim();
+      return itemId !== sId && String(item.id || '').trim() !== sId && String(item.log_id || '').trim() !== sId;
+    });
     if (this.cache.work_logs.length !== initialLen) {
       this.queueSave();
       return true;

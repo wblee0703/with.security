@@ -823,13 +823,21 @@ export default function WorkLogTab({ onTriggerToast }) {
   const handleConfirmDelete = async () => {
     if (deleteTargetLog) {
       const targetTitle = deleteTargetLog.title || '업무';
-      const targetId = deleteTargetLog.id;
+      const targetId = deleteTargetLog.id || deleteTargetLog.log_id || deleteTargetLog.logId;
+      const targetObj = { ...deleteTargetLog };
 
       // Close modal immediately and clear target log
       setIsDeleteModalOpen(false);
       setDeleteTargetLog(null);
 
-      const updatedLogs = await dbService.deleteWorkLog(targetId);
+      // Optimistic UI update: 즉시 로컬 뷰에서 타겟 업무 제거
+      setWorkLogs(prev => prev.filter(l => {
+        const lId = String(l.id || l.log_id || l.logId || '').trim();
+        const tId = String(targetId).trim();
+        return lId !== tId && String(l.id) !== tId && String(l.log_id) !== tId;
+      }));
+
+      const updatedLogs = await dbService.deleteWorkLog(targetObj);
       setWorkLogs(updatedLogs);
 
       if (onTriggerToast) {

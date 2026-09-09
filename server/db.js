@@ -681,7 +681,8 @@ const server = http.createServer(async (req, res) => {
       }
     }
     if (pathname.startsWith('/api/work-logs/') && method === 'DELETE') {
-      const logId = pathname.replace('/api/work-logs/', '');
+      const rawLogId = pathname.replace('/api/work-logs/', '').trim();
+      const logId = decodeURIComponent(rawLogId);
       try {
         let deleted = false;
         if (isMySqlConnected) {

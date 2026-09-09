@@ -347,15 +347,15 @@ export async function updateWorkLog(logId, data) {
  * 업무일지 삭제
  */
 export async function deleteWorkLog(logId) {
-  const targetId = String(logId || '').trim();
+  const targetId = decodeURIComponent(String(logId || '').trim());
   if (!targetId) return false;
 
   const isPureNumber = /^\d+$/.test(targetId);
   const sql = isPureNumber
-    ? 'DELETE FROM work_log WHERE `log_id` = ? OR `id` = ?'
+    ? 'DELETE FROM work_log WHERE `id` = ? OR `log_id` = ?'
     : 'DELETE FROM work_log WHERE `log_id` = ?';
 
-  const params = isPureNumber ? [targetId, parseInt(targetId, 10)] : [targetId];
+  const params = isPureNumber ? [parseInt(targetId, 10), targetId] : [targetId];
 
   try {
     const result = await query(sql, params);
