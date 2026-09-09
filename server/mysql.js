@@ -217,14 +217,11 @@ export async function testConnection() {
         return true;
       } catch (initErr) {
         isMySqlConnected = false;
-        console.warn('⚠️ [MySQL] 데이터베이스 자동 생성 불가:', initErr.message);
-        console.log('📦 [JsonDB] 가비아 파일 기반 JSON DB 모드로 원활하게 전환합니다. (server/security_database.json)');
         return false;
       }
     }
     isMySqlConnected = false;
     console.warn('⚠️ [MySQL] MySQL 서버에 연결할 수 없습니다:', error.message);
-    console.log('📦 [JsonDB] 가비아 호스팅 파일 기반 JSON DB 모드가 안전하게 활성화되었습니다. (server/security_database.json)');
     return false;
   }
 }

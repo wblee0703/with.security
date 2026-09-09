@@ -4,11 +4,13 @@ import { Capacitor } from '@capacitor/core';
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
 // 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (호스팅 사이트 및 모바일 기본 DB)
-export const DEFAULT_GOOGLE_SHEETS_URL = '';
+export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec';
 
 export function getServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
-  if (url) return url;
+  if (url && isApiEndpoint(url) && !url.includes('googleusercontent.com') && !url.includes('macros/echo')) {
+    return url;
+  }
   if (import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
   }
@@ -48,8 +50,13 @@ export function isApiEndpoint(url) {
 export function getApiServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
 
+  // 0. Clean up invalid/broken redirect URLs if previously cached
+  if (url && (url.includes('googleusercontent.com') || url.includes('macros/echo'))) {
+    localStorage.removeItem('with_security_server_url');
+  }
+
   // 1. If explicit server URL is saved by user
-  if (url && isApiEndpoint(url)) {
+  if (url && isApiEndpoint(url) && !url.includes('googleusercontent.com') && !url.includes('macros/echo')) {
     const formatted = url.replace(/\/+$/, '');
     // If page is loaded over HTTPS, block unencrypted http:// to prevent Mixed Content browser error
     if (typeof window !== 'undefined' && window.location.protocol === 'https:' && formatted.startsWith('http://')) {
@@ -72,21 +79,13 @@ export function getApiServerUrl() {
   // 3. If running locally on PC browser (Local Dev Mode -> MySQL Node Server 100% 유지)
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
-    if (!host.includes('github.io') && !host.includes('github.com')) {
+    // Local development (localhost / 127.0.0.1) retains Express + MySQL port 4000
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
       return ''; // Use relative '/api' via local Vite dev server proxy -> http://localhost:4000 (MySQL)
     }
   }
 
-  // 4. In native mobile app (Capacitor)
-  if (Capacitor.isNativePlatform()) {
-    const sUrl = localStorage.getItem('with_security_server_url') || DEFAULT_GOOGLE_SHEETS_URL;
-    if (sUrl && isApiEndpoint(sUrl)) {
-      return sUrl.replace(/\/+$/, '');
-    }
-    return null;
-  }
-
-  // 5. On Hosted Site (GitHub Pages / Mobile Web) -> Default to Google Sheets Web App!
+  // 4. In native mobile app (Capacitor) or Hosted Site (GitHub Pages / Mobile Web) -> Default to Google Sheets Web App!
   if (DEFAULT_GOOGLE_SHEETS_URL && isApiEndpoint(DEFAULT_GOOGLE_SHEETS_URL)) {
     return DEFAULT_GOOGLE_SHEETS_URL.replace(/\/+$/, '');
   }
@@ -1863,192 +1862,7 @@ class SecurityDatabase {
     setServerUrl(url);
   }
 
-  // Master Sync Method to Fetch & Merge All Remote Server Datasets into IndexedDB
-  async syncAllWithServer(targetUrl) {
-    const sUrl = targetUrl || getServerUrl();
-    if (!sUrl || !sUrl.trim()) return { success: false, message: '서버 URL이 입력되지 않았습니다.' };
-    
-    let formattedUrl = sUrl.trim();
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-      formattedUrl = 'http://' + formattedUrl;
-    }
-    formattedUrl = formattedUrl.replace(/\/+$/, '');
 
-    // Get local datasets
-    const localChecklists = await this.getChecklists();
-    const localSites = await this.getSites();
-    const localUsers = await this.getRegisteredUsers();
-    const localWorkLogs = await this.getWorkLogs();
-    const localEduLogs = await this.getAll('edu_logs');
-    const localTbms = await this.getTbms();
-    const localVault = await this.getAll('vault');
-    const localOtp = await this.getAll('otp');
-    const localIncidents = await this.getAll('incidents');
-
-    // GitHub Pages / Local hosting is a static frontend host: merge local ground-truth data cleanly
-    if (!isApiEndpoint(formattedUrl)) {
-      if (localUsers.length === 0 && localSites.length === 0) {
-        try {
-          const paths = ['./database.json', 'database.json', '/with.security/database.json'];
-          for (const p of paths) {
-            try {
-              const r = await fetch(p);
-              if (r && r.ok) {
-                const initData = await r.json();
-                if (initData && typeof initData === 'object') {
-                  if (Array.isArray(initData.users)) for (const u of initData.users) await this.putItem('users', u);
-                  if (Array.isArray(initData.sites)) for (const s of initData.sites) await this.putItem('sites', s);
-                  if (Array.isArray(initData.checklists)) for (const c of initData.checklists) await this.putItem('checklists', c);
-                  if (Array.isArray(initData.work_logs)) for (const w of initData.work_logs) await this.putItem('work_logs', w);
-                  if (Array.isArray(initData.tbms)) for (const t of initData.tbms) await this.putItem('tbms', t);
-                  break;
-                }
-              }
-            } catch (e) {}
-          }
-        } catch (e) {}
-      }
-
-      const totalCount = localChecklists.length + localSites.length + localUsers.length + localWorkLogs.length + localEduLogs.length + localTbms.length + localVault.length + localOtp.length + localIncidents.length;
-      return {
-        success: true,
-        message: `JSON 파일 데이터베이스 연동 활성 상태 (총 ${totalCount}건)`,
-        count: totalCount,
-        details: {
-          checklists: localChecklists.length,
-          sites: localSites.length,
-          users: localUsers.length,
-          workLogs: localWorkLogs.length,
-          eduLogs: localEduLogs.length,
-          tbms: localTbms.length,
-          vault: localVault.length,
-          otp: localOtp.length,
-          incidents: localIncidents.length
-        }
-      };
-    }
-
-    try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 6000);
-      const res = await fetch(`${formattedUrl}/api/sync-all`, {
-        signal: controller.signal,
-        headers: { 'Bypass-Tunnel-Reminder': 'true' }
-      });
-      clearTimeout(tid);
-
-      if (res.ok) {
-        const json = await res.json();
-        const remoteData = json.data || {};
-
-        let remoteChecklists = Array.isArray(remoteData.checklists) ? remoteData.checklists : (Array.isArray(remoteData.security_logs) ? remoteData.security_logs : []);
-        let remoteSites = Array.isArray(remoteData.sites) ? remoteData.sites : [];
-        let remoteUsers = Array.isArray(remoteData.users) ? remoteData.users : [];
-        let remoteWorkLogs = Array.isArray(remoteData.work_logs) ? remoteData.work_logs : [];
-        let remoteEduLogs = Array.isArray(remoteData.edu_logs) ? remoteData.edu_logs : [];
-        let remoteTbms = Array.isArray(remoteData.tbms) ? remoteData.tbms : [];
-        let remoteVault = Array.isArray(remoteData.vault) ? remoteData.vault : [];
-        let remoteOtp = Array.isArray(remoteData.otp) ? remoteData.otp : [];
-        let remoteIncidents = Array.isArray(remoteData.incidents) ? remoteData.incidents : [];
-
-        const mergeStore = (localArr, remoteArr, key = 'id') => {
-          const map = new Map();
-          (localArr || []).forEach(item => { if (item && item[key]) map.set(String(item[key]), item); });
-          (remoteArr || []).forEach(item => { if (item && item[key]) map.set(String(item[key]), { ...(map.get(String(item[key])) || {}), ...item }); });
-          return Array.from(map.values());
-        };
-
-        const mergedChecklists = mergeStore(localChecklists, remoteChecklists, 'id');
-        const mergedSites = mergeStore(localSites, remoteSites, 'id');
-        let deletedUsernames = new Set();
-        try {
-          const delRaw = localStorage.getItem('with_security_deleted_users');
-          if (delRaw) {
-            const arr = JSON.parse(delRaw);
-            if (Array.isArray(arr)) deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
-          }
-        } catch (e) {}
-
-        const mergedUsers = mergeStore(localUsers, remoteUsers, 'username')
-          .filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
-        const mergedWorkLogs = mergeStore(localWorkLogs, remoteWorkLogs, 'id');
-        const mergedEduLogs = mergeStore(localEduLogs, remoteEduLogs, 'id');
-        const mergedTbms = mergeStore(localTbms, remoteTbms, 'id');
-        const mergedVault = mergeStore(localVault, remoteVault, 'id');
-        const mergedOtp = mergeStore(localOtp, remoteOtp, 'id');
-        const mergedIncidents = mergeStore(localIncidents, remoteIncidents, 'id');
-
-        // Write merged datasets into IndexedDB stores
-        for (const item of mergedChecklists) await this.putItem('checklists', item);
-        for (const item of mergedSites) await this.putItem('sites', item);
-        for (const item of mergedUsers) await this.putItem('users', item);
-        for (const item of mergedWorkLogs) await this.putItem('work_logs', item);
-        for (const item of mergedEduLogs) await this.putItem('edu_logs', item);
-        for (const item of mergedTbms) await this.putItem('tbms', item);
-        for (const item of mergedVault) await this.putItem('vault', item);
-        for (const item of mergedOtp) await this.putItem('otp', item);
-        for (const item of mergedIncidents) await this.putItem('incidents', item);
-
-        localStorage.setItem('with_security_checklists_backup', JSON.stringify(mergedChecklists));
-        localStorage.setItem('with_security_sites_backup', JSON.stringify(mergedSites));
-        localStorage.setItem('with_security_users_db', JSON.stringify(mergedUsers));
-        localStorage.setItem('with_security_work_logs', JSON.stringify(mergedWorkLogs));
-        localStorage.setItem('with_security_tbms_backup', JSON.stringify(mergedTbms));
-
-        // Push back merged state to server
-        try {
-          await fetch(`${formattedUrl}/api/sync-all`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
-            body: JSON.stringify({
-              checklists: mergedChecklists,
-              sites: mergedSites,
-              users: mergedUsers,
-              work_logs: mergedWorkLogs,
-              edu_logs: mergedEduLogs,
-              tbms: mergedTbms,
-              vault: mergedVault,
-              otp: mergedOtp,
-              incidents: mergedIncidents
-            })
-          });
-        } catch (pushErr) {
-          console.warn('Push merged sync warning:', pushErr);
-        }
-
-        const totalCount = mergedChecklists.length + mergedSites.length + mergedUsers.length + mergedWorkLogs.length + mergedEduLogs.length + mergedTbms.length + mergedVault.length + mergedOtp.length + mergedIncidents.length;
-
-        return {
-          success: true,
-          message: `백엔드 API 서버 데이터 (총 ${totalCount}건) 연동 성공!`,
-          count: totalCount,
-          details: {
-            checklists: mergedChecklists.length,
-            sites: mergedSites.length,
-            users: mergedUsers.length,
-            workLogs: mergedWorkLogs.length,
-            eduLogs: mergedEduLogs.length,
-            tbms: mergedTbms.length,
-            vault: mergedVault.length,
-            otp: mergedOtp.length,
-            incidents: mergedIncidents.length
-          }
-        };
-      } else {
-        return {
-          success: false,
-          message: `백엔드 API 응답 오류 [상태코드: ${res.status}]: ${formattedUrl}`
-        };
-      }
-    } catch (err) {
-      console.warn('syncAllWithServer failure:', err);
-    }
-
-    return {
-      success: false,
-      message: `백엔드 서버 연결 실패: 4000번 포트 API 서버(node server/db.js)가 실행되어 있지 않습니다. (${formattedUrl})`
-    };
-  }
 
   async testServerConnection(url) {
     if (!url || !url.trim()) {
@@ -2952,12 +2766,18 @@ class SecurityDatabase {
         return { success: true, mode: 'static_host', url: targetUrl };
       }
       const isSheet = targetUrl.includes('script.google.com');
-      const res = await safeFetchApi('/api/sync/all', { timeout: 12000 });
+      const res = await safeFetchApi('/api/sync/all', { timeout: 15000 });
       if (res && res.ok) {
         const data = await res.json();
         const syncData = data.data || data;
-        
+
+        let usersCount = 0;
+        let sitesCount = 0;
+        let workLogsCount = 0;
+        let secLogsCount = 0;
+
         if (syncData.users && Array.isArray(syncData.users)) {
+          usersCount = syncData.users.length;
           localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(syncData.users));
           localStorage.setItem('with_security_users_db', JSON.stringify(syncData.users));
           try {
@@ -2965,6 +2785,7 @@ class SecurityDatabase {
           } catch (e) {}
         }
         if (syncData.sites && Array.isArray(syncData.sites)) {
+          sitesCount = syncData.sites.length;
           localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
           localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
           try {
@@ -2972,22 +2793,63 @@ class SecurityDatabase {
           } catch (e) {}
         }
         if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
+          workLogsCount = syncData.work_logs.length;
           localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
+          try {
+            for (const w of syncData.work_logs) await this.putItem('work_logs', w);
+          } catch (e) {}
         }
-        if (syncData.security_logs && Array.isArray(syncData.security_logs)) {
-          localStorage.setItem('with_security_checklists_cache', JSON.stringify(syncData.security_logs));
+        const checklists = syncData.checklists || syncData.security_logs;
+        if (checklists && Array.isArray(checklists)) {
+          secLogsCount = checklists.length;
+          const consolidated = this._consolidateChecklists(checklists);
+          localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
+          localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
+          try {
+            for (const c of consolidated) await this.putItem('checklists', c);
+          } catch (e) {}
         }
+        if (syncData.tbms && Array.isArray(syncData.tbms)) {
+          localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
+          try {
+            for (const t of syncData.tbms) await this.putItem('tbms', t);
+          } catch (e) {}
+        }
+        if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
+          localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
+          try {
+            for (const wr of syncData.weekly_reports) await this.putItem('weekly_reports', wr);
+          } catch (e) {}
+        }
+        if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
+          try {
+            for (const e of syncData.edu_logs) await this.putItem('edu_logs', e);
+          } catch (e) {}
+        }
+        if (syncData.vault && Array.isArray(syncData.vault)) {
+          try {
+            for (const v of syncData.vault) await this.putItem('vault', v);
+          } catch (e) {}
+        }
+        if (syncData.incidents && Array.isArray(syncData.incidents)) {
+          try {
+            for (const inc of syncData.incidents) await this.putItem('incidents', inc);
+          } catch (e) {}
+        }
+
         this.notifyDataChanged();
+        const total = usersCount + sitesCount + workLogsCount + secLogsCount;
         return { 
           success: true, 
+          count: total,
           mode: isSheet ? 'google_sheet' : 'api', 
-          message: isSheet ? '구글 스프레드시트(Withsharing_DB) 전체 데이터 실시간 동기화 완료' : '원격 API 서버 데이터 실시간 동기화 완료', 
-          data 
+          message: isSheet ? `구글 스프레드시트(Withsharing_DB) 전체 데이터 실시간 동기화 완료! (총 ${total}건)` : `원격 API 서버 데이터 실시간 동기화 완료! (총 ${total}건)`, 
+          data: syncData
         };
       }
       return { success: true, mode: 'offline_fallback' };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: e.message, message: `동기화 오류: ${e.message}` };
     }
   }
 

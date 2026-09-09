@@ -14,10 +14,8 @@ with.sharing/ (또는 with.security/)
 ├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
 ├── node_modules/                 : npm 의존성 라이브러리 폴더
 ├── public/                       : Web & PWA 정적 자원 (manifest.json, 앱 아이콘 등)
-├── server/                       : 백엔드 Node.js REST API 서버 (MySQL & 가비아 파일 JSON DB 지원, Port 4000)
-│   ├── db.js                     : REST API 라우팅 서버 메인 엔트리 (MySQL/JSON DB 듀얼 모드 지원)
-│   ├── jsonDb.js                 : 가비아 호스팅 전용 파일 기반 JSON 데이터베이스 엔진
-│   ├── security_database.json    : 가비아 서버 영구 데이터 저장소 (사용자, 사업장, 서약, 업무일지, TBM 등)
+├── server/                       : 백엔드 Node.js REST API 서버 (MySQL 데이터베이스 연동, Port 4000)
+│   ├── db.js                     : REST API 라우팅 서버 메인 엔트리 (MySQL 지원)
 │   ├── init_db.js                : 데이터베이스 초기화 스크립트
 │   ├── mysql.js                  : MySQL 데이터베이스 커넥션 풀 (Keep-Alive & 자동 폴백)
 │   ├── schema.sql                : MySQL 데이터베이스 기본 테이블 DDL 스키마
