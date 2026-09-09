@@ -121,8 +121,10 @@ export default function App() {
     const savedUrl = dbService.getServerUrl();
     const hostedUrl = localStorage.getItem('with_security_hosted_app_url');
 
-    // 2. Automatically load remote live hosted application URL if configured (Browser Web only)
-    if (hostedUrl && (hostedUrl.startsWith('http://') || hostedUrl.startsWith('https://'))) {
+    // Clean up if hostedUrl was accidentally set to Google Apps Script
+    if (hostedUrl && (hostedUrl.includes('script.google.com') || hostedUrl.includes('googleusercontent.com'))) {
+      localStorage.removeItem('with_security_hosted_app_url');
+    } else if (hostedUrl && (hostedUrl.startsWith('http://') || hostedUrl.startsWith('https://'))) {
       const currentOrigin = window.location.origin.replace(/\/+$/, '');
       const targetOrigin = hostedUrl.replace(/\/+$/, '');
       if (!currentOrigin.includes(targetOrigin) && !targetOrigin.includes(currentOrigin)) {
@@ -348,15 +350,19 @@ export default function App() {
     targetUrl = targetUrl.replace(/\/+$/, '');
 
     dbService.setServerUrl(targetUrl);
-    localStorage.setItem('with_security_hosted_app_url', targetUrl);
+    if (!targetUrl.includes('script.google.com') && !targetUrl.includes('googleusercontent.com')) {
+      localStorage.setItem('with_security_hosted_app_url', targetUrl);
+    } else {
+      localStorage.removeItem('with_security_hosted_app_url');
+    }
 
     // Trigger full backend data sync
     const syncRes = await dbService.syncAllWithServer(targetUrl);
     setIsTestingInitialServer(false);
     setIsServerModalOpen(false);
 
-    // Redirect to live host URL if different origin (Browser Web only)
-    if (!isNative && targetUrl && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
+    // Redirect to live host URL if different origin (Browser Web only, never redirect for Google Apps Script)
+    if (!isNative && targetUrl && !targetUrl.includes('script.google.com') && !targetUrl.includes('googleusercontent.com') && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
       const currentOrigin = window.location.origin.replace(/\/+$/, '');
       if (!currentOrigin.includes(targetUrl) && !targetUrl.includes(currentOrigin)) {
         window.location.replace(targetUrl);
