@@ -2651,7 +2651,11 @@ class SecurityDatabase {
         if (!matchUser && !matchName) return false;
       }
       if (filter.category && filter.category !== '전체') {
-        if (item.category !== filter.category) return false;
+        if (filter.category === '기타') {
+          if (['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category)) return false;
+        } else if (item.category !== filter.category) {
+          return false;
+        }
       }
       return true;
     }).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
@@ -2706,39 +2710,7 @@ class SecurityDatabase {
       }
     } catch (e) {}
 
-      if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
-
-      const uKey = String(item.userId || item.name || '').trim().toLowerCase();
-      const tKey = String(item.title || '').trim().toLowerCase();
-      const cKey = String(item.completionDate || item.completion_date || '').trim();
-      const key = `${uKey}__${tKey}__${cKey}`;
-      if (!dedupMap.has(key)) {
-        dedupMap.set(key, item);
-      }
-    });
-    const uniqueLogs = Array.from(dedupMap.values());
-
-    // In-memory filter
-    return uniqueLogs.filter(item => {
-      if (filter.userId || filter.username || filter.name) {
-        const uTarget = String(filter.userId || filter.username || '').trim().toLowerCase();
-        const nTarget = String(filter.name || '').trim().toLowerCase();
-        const itemUser = String(item.userId || '').trim().toLowerCase();
-        const itemName = String(item.name || '').trim().toLowerCase();
-
-        const matchUser = uTarget && (itemUser === uTarget || itemName === uTarget);
-        const matchName = nTarget && (itemName === nTarget || itemUser === nTarget);
-        if (!matchUser && !matchName) return false;
-      }
-      if (filter.category && filter.category !== '전체') {
-        if (filter.category === '기타') {
-          if (['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category)) return false;
-        } else if (item.category !== filter.category) {
-          return false;
-        }
-      }
-      return true;
-    }).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+    return this._filterEduLogs(localLogs, filter);
   }
 
   async saveEduLog(eduItem) {
