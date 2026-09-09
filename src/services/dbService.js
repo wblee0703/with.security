@@ -184,7 +184,8 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
     });
   } else if (method === 'PUT') {
     const parts = endpoint.split('/');
-    const id = parts[parts.length - 1];
+    const id = decodeURIComponent(parts[parts.length - 1]);
+    const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'name' : 'id');
     fetchOptions.method = 'POST';
     fetchOptions.redirect = 'follow';
     fetchOptions.headers = {
@@ -194,6 +195,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
     fetchOptions.body = JSON.stringify({
       action: 'update',
       sheet: sheetName,
+      key: keyField,
       id: id,
       data: bodyData
     });
@@ -1529,10 +1531,10 @@ class SecurityDatabase {
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
     } catch (e) {}
 
-    // 3. Send to Server if available
+    // 3. Send to Server if available (PUT for update)
     try {
-      await safeFetchApi('/api/security-users', {
-        method: 'POST',
+      await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(safeUser)
       });
@@ -1594,10 +1596,10 @@ class SecurityDatabase {
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
     } catch (e) {}
 
-    if (syncRemote) {
+    if (syncRemote && safeUser.username) {
       try {
-        await safeFetchApi('/api/security-users', {
-          method: 'POST',
+        await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(safeUser)
         });

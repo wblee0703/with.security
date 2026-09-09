@@ -318,7 +318,7 @@ function doPost(e) {
     if (action === 'update') {
       const id = payload.id;
       const patch = payload.data || {};
-      const keyField = payload.key || 'id';
+      const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'name' : 'id'));
       
       const headers = ensureHeaders(sheet, Object.keys(patch));
       const rows = sheet.getDataRange().getValues();
@@ -329,7 +329,12 @@ function doPost(e) {
       }
       
       for (let i = 1; i < rows.length; i++) {
-        if (String(rows[i][keyColIdx]) === String(id)) {
+        const cellValue = String(rows[i][keyColIdx] || '').trim();
+        const isMatch = (sheetName === 'users')
+          ? cellValue.toLowerCase() === String(id).trim().toLowerCase()
+          : cellValue === String(id).trim();
+
+        if (isMatch) {
           const rowNum = i + 1;
           for (const [k, val] of Object.entries(patch)) {
             const colIdx = headers.indexOf(k);

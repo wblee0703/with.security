@@ -238,7 +238,7 @@ export default function SecurityChecklistTab({
 
     if (loginRes.success && loginRes.user) {
       const match = loginRes.user;
-      await dbService.saveUserProfile(match);
+      await dbService.saveUserProfile(match, false);
       setCurrentUser(match);
       const userTeam = match.team || match.department || '';
       setFormData(prev => ({

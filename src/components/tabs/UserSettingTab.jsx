@@ -652,7 +652,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           ...loginResult.user,
           role: loginResult.user.username === 'admin' ? '개발자' : (loginResult.user.role || '일반')
         };
-        await dbService.saveUserProfile(activeUser);
+        await dbService.saveUserProfile(activeUser, false);
         setCurrentUser(activeUser);
         setEditForm(activeUser);
         setLoginForm({ username: '', password: '' });
