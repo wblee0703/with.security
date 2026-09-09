@@ -892,7 +892,8 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = workLogs.filter(log => {
     const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
-    const matchesDate = viewAllDates || log.date === selectedDate || (log.dueDate && log.dueDate === selectedDate) || (log.due_date && log.due_date === selectedDate);
+    const logDate = log.date || log.log_date;
+    const matchesDate = viewAllDates || logDate === selectedDate;
     const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
     const matchesQuery = !searchQuery.trim() ||
       log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -905,10 +906,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Group logs by Date (descending)
   const groupedByDate = filteredLogs.reduce((acc, log) => {
-    const logDue = log.dueDate || log.due_date;
-    const d = (!viewAllDates && logDue === selectedDate && log.date !== selectedDate)
-      ? selectedDate
-      : (log.date || '기타 날짜');
+    const d = log.date || log.log_date || '기타 날짜';
     if (!acc[d]) acc[d] = [];
     acc[d].push(log);
     return acc;

@@ -416,11 +416,11 @@ function doPost(e) {
             const dateIdx = headers.indexOf('log_date');
             const titleIdx = headers.indexOf('title');
             const rowWriter = writerIdx !== -1 ? String(rows[i][writerIdx] || '').trim().toLowerCase() : '';
-            const rowDate = dateIdx !== -1 ? String(rows[i][dateIdx] || '').trim() : '';
+            const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
             const rowTitle = titleIdx !== -1 ? String(rows[i][titleIdx] || '').trim().toLowerCase() : '';
 
             const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
-            const itemDate = String(item.log_date || item.date || '').trim();
+            const itemDate = formatKstDate(item.log_date || item.date || '', true);
             const itemTitle = String(item.title || '').trim().toLowerCase();
 
             const compositeMatched = Boolean(itemWriter && itemDate && itemTitle &&
@@ -677,8 +677,11 @@ function normalizeObjectForSheet(sheetName, rawObj) {
 
   // 3. 업무 일지 (work_log)
   if (sheetName === 'work_logs') {
-    const idVal = obj.log_id || obj.logId || obj.id || `LOG-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
-    const lDate = obj.log_date || obj.logDate || obj.date || new Date().toISOString().split('T')[0];
+    const idVal = obj.log_id || obj.logId || obj.id || `LOG-${Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMddHHmmss')}`;
+    const rawLogDate = obj.log_date || obj.logDate || obj.date;
+    const lDate = rawLogDate ? formatKstDate(rawLogDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+    const rawDueDate = obj.due_date || obj.dueDate || '';
+    const dDate = rawDueDate ? formatKstDate(rawDueDate, true) : '';
     const sWith = obj.shared_with || obj.sharedWith || '';
     let isSh = 0;
     if (obj.is_shared !== undefined) isSh = obj.is_shared ? 1 : 0;
@@ -695,7 +698,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       role: obj.role || obj.authorRole || '일반',
       category: obj.category || obj.workType || '사내 업무',
       sub_category: obj.sub_category || obj.subCategory || '',
-      due_date: obj.due_date || obj.dueDate || '',
+      due_date: dDate,
       site_name: obj.site_name || obj.siteName || obj.site || '',
       log_date: lDate,
       title: obj.title || '업무 일지',
@@ -703,7 +706,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       is_shared: isSh,
       shared_with: (typeof sWith === 'object' && sWith !== null) ? JSON.stringify(sWith) : String(sWith || ''),
       shared_at: obj.shared_at || obj.sharedAt || '',
-      created_at: obj.created_at || obj.createdAt || new Date().toISOString()
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
     };
   }
 
@@ -711,7 +714,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
   if (sheetName === 'security_logs') {
     const idVal = obj.log_id || obj.logId || obj.id || `PASS-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}`;
     const docChk = obj.docChecklist || {};
-    const nowStr = new Date().toLocaleString('ko-KR', { hour12: false });
+    const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
     return {
       id: idVal,
       log_id: idVal,
@@ -741,7 +744,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     return {
       id: rId,
       report_id: rId,
-      weekly_monday: obj.weekly_monday || obj.weeklyMonday || new Date().toISOString().split('T')[0],
+      weekly_monday: formatKstDate(obj.weekly_monday || obj.weeklyMonday, true) || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'),
       week_text: obj.week_text || obj.weekText || '',
       author_name: obj.author_name || obj.authorName || obj.name || '',
       author_username: obj.author_username || obj.authorUsername || obj.writerId || obj.username || '',
@@ -755,7 +758,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       etc_tasks: obj.etc_tasks || obj.etcTasks || '',
       shared_with: (typeof sWith === 'object' && sWith !== null) ? JSON.stringify(sWith) : String(sWith || ''),
       shared_at: obj.shared_at || obj.sharedAt || '',
-      created_at: obj.created_at || obj.createdAt || new Date().toISOString()
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
     };
   }
 
@@ -772,14 +775,49 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       rank: obj.rank || obj.authorRank || '',
       category: obj.category || '법정',
       title: obj.title || '',
-      completion_date: obj.completion_date || obj.completionDate || obj.date || new Date().toISOString().split('T')[0],
-      expiry_date: obj.expiry_date || obj.expiryDate || '',
+      completion_date: formatKstDate(obj.completion_date || obj.completionDate || obj.date, true) || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'),
+      expiry_date: formatKstDate(obj.expiry_date || obj.expiryDate, true),
       memo: obj.memo || obj.notes || '',
-      created_at: obj.created_at || obj.createdAt || new Date().toISOString()
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
     };
   }
 
   return obj;
+}
+
+/**
+ * 한국 표준시(Asia/Seoul, KST) 기준 날짜 및 시간 포맷팅 헬퍼
+ * - 구글 시트 내부 Date 객체 또는 타임존 시차(UTC 등)로 인해 날짜가 1일씩 앞당겨지거나 밀리는 현상 원천 방지
+ */
+function formatKstDate(rawVal, isDateOnly) {
+  if (!rawVal && rawVal !== 0) return '';
+  if (rawVal instanceof Date) {
+    if (isDateOnly) {
+      return Utilities.formatDate(rawVal, 'Asia/Seoul', 'yyyy-MM-dd');
+    }
+    const full = Utilities.formatDate(rawVal, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    return full.endsWith('00:00:00') ? Utilities.formatDate(rawVal, 'Asia/Seoul', 'yyyy-MM-dd') : full;
+  }
+  const str = String(rawVal).trim();
+  if (!str) return '';
+  // ISO 문자열이나 UTC(Z) 포함 시 Date로 파싱하여 한국 시간 기준 변환
+  if (str.includes('T') || str.endsWith('Z')) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return isDateOnly
+          ? Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd')
+          : Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+    } catch (e) { }
+  }
+  if (isDateOnly) {
+    const m = str.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (m) {
+      return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+    }
+  }
+  return str;
 }
 
 function readSheetData(sheetName) {
@@ -787,30 +825,35 @@ function readSheetData(sheetName) {
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() <= 1) return [];
   
-  const rows = sheet.getDataRange().getValues();
+  const range = sheet.getDataRange();
+  const rows = range.getValues();
+  const displayRows = range.getDisplayValues();
   const headers = rows[0];
   const list = [];
   const keyMap = new Map();
+
+  const DATE_ONLY_COLS = [
+    'log_date', 'due_date', 'date', 'weekly_monday',
+    'completion_date', 'expiry_date', 'education_date', 'education_expiry_date'
+  ];
   
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
+    const displayRow = displayRows[i] || [];
     const obj = {};
     let hasData = false;
     
     headers.forEach((h, colIdx) => {
       let val = row[colIdx];
-      // Date 객체 변환 (한국 표준시 KST 기준 yyyy-MM-dd / yyyy-MM-dd HH:mm 포맷)
+      const isDateOnly = DATE_ONLY_COLS.includes(h);
+
+      // Date 객체 변환 (무조건 한국 표준시 Asia/Seoul KST 기준 yyyy-MM-dd 포맷)
       if (val instanceof Date) {
-        const timezone = Session.getScriptTimeZone() || 'Asia/Seoul';
-        const hours = val.getHours();
-        const minutes = val.getMinutes();
-        const seconds = val.getSeconds();
-        if (hours === 0 && minutes === 0 && seconds === 0) {
-          val = Utilities.formatDate(val, timezone, 'yyyy-MM-dd');
-        } else {
-          val = Utilities.formatDate(val, timezone, 'yyyy-MM-dd HH:mm:ss');
-        }
+        val = formatKstDate(val, isDateOnly);
+      } else if (isDateOnly && val) {
+        val = formatKstDate(val, true);
       }
+
       // JSON 객체/배열 형태 자동 역직렬화
       if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
         try { val = JSON.parse(val); } catch (e) {}
@@ -1016,7 +1059,7 @@ function cleanupDuplicates() {
         const dateIdx = headers.indexOf('log_date');
         const titleIdx = headers.indexOf('title');
         const writerVal = writerIdx !== -1 ? String(row[writerIdx] || '').trim().toLowerCase() : '';
-        const dateVal = dateIdx !== -1 ? String(row[dateIdx] || '').trim() : '';
+        const dateVal = dateIdx !== -1 ? formatKstDate(row[dateIdx], true) : '';
         const titleVal = titleIdx !== -1 ? String(row[titleIdx] || '').trim().toLowerCase() : '';
 
         key = (writerVal && dateVal && titleVal) ? `WORK::${writerVal}::${dateVal}::${titleVal}` : (logId || id);

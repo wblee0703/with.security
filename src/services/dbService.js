@@ -96,6 +96,42 @@ export function notifyDataChanged(immediate = false) {
   }, 250);
 }
 
+// 한국 표준시(KST) 기준 YYYY-MM-DD 날짜 문자열 정규화 헬퍼 (타임존 시차로 인한 날짜 밀림/왜곡 원천 방지)
+export function normalizeKstDate(val) {
+  if (!val && val !== 0) return '';
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const str = String(val).trim();
+  if (!str) return '';
+
+  // ISO 문자열이나 UTC(Z) 포함 시 Date로 파싱하여 브라우저 로컬(KST) 기준 변환
+  if (str.includes('T') || str.endsWith('Z')) {
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+    } catch (e) { }
+  }
+
+  // YYYY-MM-DD 패턴 추출 및 정규화
+  const match = str.match(/(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (match) {
+    const y = match[1];
+    const m = match[2].padStart(2, '0');
+    const d = match[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return (str.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(str)) ? str.slice(0, 10) : str;
+}
+
 // Check if target URL supports dynamic Node/Express REST API endpoints
 export function isApiEndpoint(url) {
   if (!url || !url.trim()) return false;
@@ -1914,27 +1950,8 @@ class SecurityDatabase {
     }
 
     // Clean Date to YYYY-MM-DD
-    let cleanDate = '';
     const rawDate = item.log_date || item.date || item.created_at || item.createdAt;
-    if (rawDate) {
-      if (rawDate instanceof Date) {
-        const y = rawDate.getFullYear();
-        const m = String(rawDate.getMonth() + 1).padStart(2, '0');
-        const d = String(rawDate.getDate()).padStart(2, '0');
-        cleanDate = `${y}-${m}-${d}`;
-      } else {
-        const str = String(rawDate).trim();
-        const match = str.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/);
-        if (match) {
-          cleanDate = match[0].replace(/[/.]/g, '-').split('-').map((p, idx) => idx > 0 ? p.padStart(2, '0') : p).join('-');
-        } else if (str.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(str)) {
-          cleanDate = str.slice(0, 10);
-        }
-      }
-    }
-    if (!cleanDate) {
-      cleanDate = new Date().toLocaleDateString('sv-SE');
-    }
+    const cleanDate = normalizeKstDate(rawDate) || new Date().toLocaleDateString('sv-SE');
 
     const title = String(item.title || item.workTitle || '일일 업무').trim();
     const authorUsername = String(item.writer_id || item.writerId || item.authorUsername || item.username || '').trim();
@@ -1975,7 +1992,8 @@ class SecurityDatabase {
     const rank = String(item.rank || item.writer_rank || item.authorRank || '').trim();
     const role = String(item.role || item.authorRole || '일반').trim();
     const division = String(item.division || item.authorDivision || '').trim();
-    const dueDate = item.due_date ? String(item.due_date).slice(0, 10) : (item.dueDate ? String(item.dueDate).slice(0, 10) : '');
+    const rawDueDate = item.due_date || item.dueDate || '';
+    const dueDate = rawDueDate ? normalizeKstDate(rawDueDate) : '';
     const subCategory = String(item.sub_category || item.subCategory || '').trim();
 
     return {
@@ -2648,10 +2666,17 @@ class SecurityDatabase {
       }
     }
 
+    const cleanDate = normalizeKstDate(logItem.date || logItem.log_date) || new Date().toLocaleDateString('sv-SE');
+    const cleanDueDate = normalizeKstDate(logItem.dueDate || logItem.due_date);
+
     const preparedLog = {
       ...logItem,
       id: targetId,
       log_id: targetId,
+      date: cleanDate,
+      log_date: cleanDate,
+      dueDate: cleanDueDate,
+      due_date: cleanDueDate,
       sharedWith: cleanSharedWith
     };
 
@@ -2668,12 +2693,12 @@ class SecurityDatabase {
     let existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
     if (existingIndex < 0) {
       const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
-      const pDate = String(preparedLog.date || preparedLog.log_date || '').trim();
+      const pDate = cleanDate;
       const pTitle = String(preparedLog.title || '').trim().toLowerCase();
       if (pWriter && pDate && pTitle) {
         existingIndex = currentLocal.findIndex(l => {
           const lWriter = String(l.authorUsername || l.writerId || l.writer_id || l.name || '').trim().toLowerCase();
-          const lDate = String(l.date || l.log_date || '').trim();
+          const lDate = normalizeKstDate(l.date || l.log_date);
           const lTitle = String(l.title || '').trim().toLowerCase();
           return lWriter === pWriter && lDate === pDate && lTitle === pTitle;
         });
@@ -2707,12 +2732,12 @@ class SecurityDatabase {
           category: preparedLog.category || '사내 업무',
           sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
           subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
-          due_date: preparedLog.dueDate || preparedLog.due_date || '',
-          dueDate: preparedLog.dueDate || preparedLog.due_date || '',
+          due_date: cleanDueDate,
+          dueDate: cleanDueDate,
           site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
           siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
-          log_date: preparedLog.date || new Date().toISOString().split('T')[0],
-          logDate: preparedLog.date || new Date().toISOString().split('T')[0],
+          log_date: cleanDate,
+          logDate: cleanDate,
           title: preparedLog.title,
           tasks_done: preparedLog.details || preparedLog.tasksDone || '',
           tasksDone: preparedLog.details || preparedLog.tasksDone || '',

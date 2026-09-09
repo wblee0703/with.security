@@ -21,14 +21,19 @@ export default function WorkLogCalendar({
   onMoveLogDate,
   canModifyLog
 }) {
-  // Current view year & month state (default to selectedDate or current date)
-  const initialDate = selectedDate ? new Date(selectedDate) : new Date();
-  const [currentYear, setCurrentYear] = useState(
-    isNaN(initialDate.getFullYear()) ? new Date().getFullYear() : initialDate.getFullYear()
-  );
-  const [currentMonth, setCurrentMonth] = useState(
-    isNaN(initialDate.getMonth()) ? new Date().getMonth() : initialDate.getMonth()
-  );
+  // Current view year & month state (default to selectedDate or current date, parsed in local time)
+  const parseYearMonth = (dateStr) => {
+    if (dateStr && typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+      const parts = dateStr.split('-');
+      return { y: parseInt(parts[0], 10), m: parseInt(parts[1], 10) - 1 };
+    }
+    const now = new Date();
+    return { y: now.getFullYear(), m: now.getMonth() };
+  };
+
+  const initialYM = parseYearMonth(selectedDate);
+  const [currentYear, setCurrentYear] = useState(initialYM.y);
+  const [currentMonth, setCurrentMonth] = useState(initialYM.m);
 
   // Drag & Drop States for Calendar Schedule Move
   const [draggedLog, setDraggedLog] = useState(null);
@@ -157,6 +162,10 @@ export default function WorkLogCalendar({
 
   // HTML5 Drag Handlers
   const handleDragStart = (e, log) => {
+    if (!log || log.isDueMarker) {
+      e.preventDefault();
+      return;
+    }
     if (canModifyLog && !canModifyLog(log)) {
       e.preventDefault();
       return;
@@ -198,7 +207,7 @@ export default function WorkLogCalendar({
     e.preventDefault();
     e.stopPropagation();
     if (draggedLog && cellDateStr && onMoveLogDate) {
-      if (draggedLog.date !== cellDateStr) {
+      if (!draggedLog.isDueMarker && draggedLog.date !== cellDateStr) {
         onMoveLogDate(draggedLog.id, cellDateStr);
       }
     }
@@ -206,8 +215,9 @@ export default function WorkLogCalendar({
     setDragOverDate(null);
   };
 
-  // Mobile Touch Drag Handlers
+  // Mobile Touch Drag Handlers (의도적인 롱프레스 450ms + 실제 드래그 이동 시에만 일정 이동 처리)
   const handleTouchStart = (e, log) => {
+    if (!log || log.isDueMarker) return;
     if (canModifyLog && !canModifyLog(log)) return;
     const touch = e.touches[0];
     if (!touch) return;
@@ -219,15 +229,18 @@ export default function WorkLogCalendar({
     touchTimerRef.current = setTimeout(() => {
       setTouchState({
         log,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        hasActuallyMoved: false,
         x: touch.clientX,
         y: touch.clientY,
         overDate: log.date
       });
       setDragOverDate(log.date);
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(30); } catch (err) { }
+        try { navigator.vibrate(35); } catch (err) { }
       }
-    }, 180);
+    }, 450);
   };
 
   const handleTouchMove = (e) => {
@@ -235,7 +248,7 @@ export default function WorkLogCalendar({
     if (!touch) return;
 
     if (!touchState) {
-      // If moved before timer triggers, cancel to allow normal scrolling
+      // 타이머 작동 전에 손가락이 10px 이상 움직이면 일반 스크롤로 간주하여 롱프레스 취소
       if (touchTimerRef.current) {
         clearTimeout(touchTimerRef.current);
         touchTimerRef.current = null;
@@ -247,6 +260,11 @@ export default function WorkLogCalendar({
       e.preventDefault();
     }
 
+    // 터치 이동 거리 확인 (단순 탭과 실제 셀 간 드래그 구분)
+    const dx = Math.abs(touch.clientX - (touchState.startX || touch.clientX));
+    const dy = Math.abs(touch.clientY - (touchState.startY || touch.clientY));
+    const moved = touchState.hasActuallyMoved || (dx > 15 || dy > 15);
+
     // Find date cell under the finger
     const elem = document.elementFromPoint(touch.clientX, touch.clientY);
     const cellElem = elem?.closest('[data-calendar-cell="true"]');
@@ -254,6 +272,7 @@ export default function WorkLogCalendar({
 
     setTouchState(prev => prev ? {
       ...prev,
+      hasActuallyMoved: moved,
       x: touch.clientX,
       y: touch.clientY,
       overDate: targetDate
@@ -269,8 +288,9 @@ export default function WorkLogCalendar({
       clearTimeout(touchTimerRef.current);
       touchTimerRef.current = null;
     }
-    if (touchState && touchState.overDate && onMoveLogDate) {
-      if (touchState.log && touchState.log.date !== touchState.overDate) {
+    // 실제 손가락이 다른 날짜 셀로 이동한 경우에만 일정 이동 실행 (단순 탭 및 스크롤 보호)
+    if (touchState && touchState.overDate && onMoveLogDate && touchState.hasActuallyMoved) {
+      if (touchState.log && !touchState.log.isDueMarker && touchState.log.date !== touchState.overDate) {
         onMoveLogDate(touchState.log.id, touchState.overDate);
       }
     }
@@ -849,7 +869,7 @@ export default function WorkLogCalendar({
                         draggable={canEditThis}
                         onDragStart={(e) => handleDragStart(e, log)}
                         onDragEnd={handleDragEnd}
-                        onTouchStart={(e) => handleTouchStart(e, log)}
+                        onTouchStart={canEditThis ? (e) => handleTouchStart(e, log) : undefined}
                         title={tooltipText}
                         style={{
                           padding: '2px 5px',
