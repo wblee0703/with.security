@@ -119,26 +119,14 @@ export default function App() {
 
     const isCompleted = localStorage.getItem('with_security_server_init_completed');
     const savedUrl = dbService.getServerUrl();
-    const hostedUrl = localStorage.getItem('with_security_hosted_app_url');
 
-    // Clean up if hostedUrl was accidentally set to Google Apps Script
-    if (hostedUrl && (hostedUrl.includes('script.google.com') || hostedUrl.includes('googleusercontent.com'))) {
-      localStorage.removeItem('with_security_hosted_app_url');
-    } else if (hostedUrl && (hostedUrl.startsWith('http://') || hostedUrl.startsWith('https://'))) {
-      const currentOrigin = window.location.origin.replace(/\/+$/, '');
-      const targetOrigin = hostedUrl.replace(/\/+$/, '');
-      if (!currentOrigin.includes(targetOrigin) && !targetOrigin.includes(currentOrigin)) {
-        console.log('🌐 Loading Live Remote Hosted Web Application:', hostedUrl);
-        window.location.replace(hostedUrl);
-        return;
-      }
-    }
+    // Remove any leftover legacy hostedUrl redirect traces from localStorage
+    localStorage.removeItem('with_security_hosted_app_url');
 
-    if (!isCompleted && !savedUrl && !hostedUrl) {
+    if (!isCompleted && !savedUrl) {
       setIsServerModalOpen(true);
     } else {
       if (savedUrl) setInitialServerUrl(savedUrl);
-      else if (hostedUrl) setInitialServerUrl(hostedUrl);
     }
   }, []);
 
@@ -350,27 +338,14 @@ export default function App() {
     targetUrl = targetUrl.replace(/\/+$/, '');
 
     dbService.setServerUrl(targetUrl);
-    if (!targetUrl.includes('script.google.com') && !targetUrl.includes('googleusercontent.com')) {
-      localStorage.setItem('with_security_hosted_app_url', targetUrl);
-    } else {
-      localStorage.removeItem('with_security_hosted_app_url');
-    }
+    localStorage.removeItem('with_security_hosted_app_url');
 
     // Trigger full backend data sync
     const syncRes = await dbService.syncAllWithServer(targetUrl);
     setIsTestingInitialServer(false);
     setIsServerModalOpen(false);
 
-    // Redirect to live host URL if different origin (Browser Web only, never redirect for Google Apps Script)
-    if (!isNative && targetUrl && !targetUrl.includes('script.google.com') && !targetUrl.includes('googleusercontent.com') && (targetUrl.startsWith('http://') || targetUrl.startsWith('https://'))) {
-      const currentOrigin = window.location.origin.replace(/\/+$/, '');
-      if (!currentOrigin.includes(targetUrl) && !targetUrl.includes(currentOrigin)) {
-        window.location.replace(targetUrl);
-        return;
-      }
-    }
-
-    showToast(syncRes.message || `웹 & 모바일 호스팅 서버 실시간 연동 완료: ${targetUrl}`);
+    showToast(syncRes.message || `웹 & 모바일 백엔드 DB 서버 실시간 연동 완료: ${targetUrl}`);
   };
 
   const handleSkipServerSetup = async () => {

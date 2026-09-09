@@ -14,9 +14,9 @@ export function getServerUrl() {
 }
 
 export function setServerUrl(url) {
+  localStorage.removeItem('with_security_hosted_app_url');
   if (!url || !url.trim()) {
     localStorage.removeItem('with_security_server_url');
-    localStorage.removeItem('with_security_hosted_app_url');
   } else {
     let formatted = url.trim();
     if (!formatted.startsWith('http://') && !formatted.startsWith('https://')) {
@@ -24,12 +24,6 @@ export function setServerUrl(url) {
     }
     formatted = formatted.replace(/\/+$/, '');
     localStorage.setItem('with_security_server_url', formatted);
-    // 구글 스프레드시트 웹 앱은 백엔드 API이므로 브라우저 리다이렉트 대상(hosted_app_url)에서 제외
-    if (formatted.includes('script.google.com') || formatted.includes('googleusercontent.com')) {
-      localStorage.removeItem('with_security_hosted_app_url');
-    } else {
-      localStorage.setItem('with_security_hosted_app_url', formatted);
-    }
   }
 }
 
@@ -74,9 +68,9 @@ export function getApiServerUrl() {
 
   // 3. In native mobile app (Capacitor)
   if (Capacitor.isNativePlatform()) {
-    const hosted = localStorage.getItem('with_security_hosted_app_url');
-    if (hosted && isApiEndpoint(hosted)) {
-      return hosted.replace(/\/+$/, '');
+    const sUrl = localStorage.getItem('with_security_server_url');
+    if (sUrl && isApiEndpoint(sUrl)) {
+      return sUrl.replace(/\/+$/, '');
     }
     return null;
   }
