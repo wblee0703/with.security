@@ -140,7 +140,10 @@ export default function SecurityChecklistTab({
   useEffect(() => {
     async function loadSitesAndUser() {
       try {
-        const siteList = await dbService.getSites();
+        const [siteList, activeUser] = await Promise.all([
+          dbService.getSites(),
+          dbService.getUserProfile()
+        ]);
         let deviceApps = {};
         try {
           const raw = localStorage.getItem('with_security_device_site_apps');
@@ -157,7 +160,6 @@ export default function SecurityChecklistTab({
         });
 
         setSites(mappedSites);
-        const activeUser = await dbService.getUserProfile();
         setCurrentUser(activeUser);
         const userTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
         setFormData(prev => ({

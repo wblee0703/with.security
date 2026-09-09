@@ -137,7 +137,7 @@ export default function App() {
   useEffect(() => {
     async function triggerAutoSync(force = false) {
       const now = Date.now();
-      if (!force && now - lastSyncTimeRef.current < 5000) return; // 5초 이내 중복 동기화 방지
+      if (!force && now - lastSyncTimeRef.current < 60000) return; // 60초 이내 중복 동기화 방지
       if (isSyncingRef.current) return; // 이미 동기화 진행 중이면 스킵
 
       const serverUrl = dbService.getServerUrl();
@@ -156,8 +156,8 @@ export default function App() {
 
     triggerAutoSync(true);
 
-    // Auto sync every 30 seconds
-    const interval = setInterval(() => triggerAutoSync(false), 30000);
+    // Auto sync every 2 minutes (120s) to avoid background thread saturation and UI lag
+    const interval = setInterval(() => triggerAutoSync(false), 120000);
 
     // Auto sync on app focus (throttled)
     const handleFocus = () => {

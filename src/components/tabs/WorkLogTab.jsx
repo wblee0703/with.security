@@ -576,13 +576,15 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const loadData = async () => {
     try {
-      const u = await dbService.getUserProfile();
+      const [u, logs, sites, users] = await Promise.all([
+        dbService.getUserProfile(),
+        dbService.getWorkLogs(),
+        dbService.getSites(),
+        dbService.getUsers()
+      ]);
       setCurrentUser(u);
-      const logs = await dbService.getWorkLogs();
-      setWorkLogs(logs);
-      const sites = await dbService.getSites();
+      setWorkLogs(logs || []);
       setSiteOptions(sites || []);
-      const users = await dbService.getUsers();
       setAllUsers(users || []);
 
       // Load saved share targets strictly for current user (개별 일방향 독립 관리)

@@ -1,6 +1,9 @@
 import { hashPassword, verifyPasswordHash } from './cryptoUtil';
 import { Capacitor } from '@capacitor/core';
 
+// Memory cache for default admin hash to avoid repeated PBKDF2/SHA-256 computation
+let cachedDefaultAdminHash = null;
+
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
 // 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (기본 클라우드 DB)
@@ -66,11 +69,21 @@ export function setServerUrl(url) {
   }
 }
 
-// Global Cross-View Data Change Broadcast Helper
-export function notifyDataChanged() {
-  if (typeof window !== 'undefined') {
+// Global Cross-View Data Change Broadcast Helper (Debounced to prevent burst re-renders)
+let notifyDebounceTimer = null;
+export function notifyDataChanged(immediate = false) {
+  if (typeof window === 'undefined') return;
+  if (immediate) {
+    if (notifyDebounceTimer) clearTimeout(notifyDebounceTimer);
+    notifyDebounceTimer = null;
     window.dispatchEvent(new CustomEvent('with_security_data_changed'));
+    return;
   }
+  if (notifyDebounceTimer) clearTimeout(notifyDebounceTimer);
+  notifyDebounceTimer = setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('with_security_data_changed'));
+    notifyDebounceTimer = null;
+  }, 120);
 }
 
 // Check if target URL supports dynamic Node/Express REST API endpoints
@@ -216,13 +229,13 @@ async function safeFetchApi(endpoint, options = {}) {
 
   // Invalidate cache on mutations
   if (method !== 'GET') {
-    recentResponseCache.delete(fullUrl);
+    recentResponseCache.clear();
   }
 
-  // Check 1.5s cache for GET requests
+  // Check 20s memory cache for GET requests (prevents rapid duplicate network roundtrips)
   if (method === 'GET') {
     const cached = recentResponseCache.get(fullUrl);
-    if (cached && (Date.now() - cached.timestamp < 1500)) {
+    if (cached && (Date.now() - cached.timestamp < 20000)) {
       return cached.response.clone();
     }
 
@@ -908,8 +921,9 @@ class SecurityDatabase {
           try {
             const db = await this.initDB('sites');
             const tx = db.transaction('sites', 'readwrite');
-            tx.objectStore('sites').clear();
-            for (const s of remoteData) await this.putItem('sites', s);
+            const store = tx.objectStore('sites');
+            store.clear();
+            for (const s of remoteData) store.put(s);
           } catch (e) {}
           return remoteData;
         }
@@ -1291,57 +1305,48 @@ class SecurityDatabase {
 
   async getUserProfile() {
     const cached = localStorage.getItem('with_security_active_user');
-    let user = cached ? JSON.parse(cached) : null;
+    if (!cached) return null;
 
-    const users = await this.getRegisteredUsers();
-    if (user && users.length > 0) {
-      const match = users.find(u => u.username === user.username);
-      if (match) {
-        user = { ...user, ...match };
-      }
+    let user = null;
+    try {
+      user = JSON.parse(cached);
+    } catch (e) {
+      return null;
     }
+    if (!user || !user.username) return null;
 
-    if (user) {
-      // Load user's isolated trainings list from localStorage if exists
-      try {
-        const uid = user.username || user.id || 'default';
-        const storedTrainings = localStorage.getItem(`with_security_user_trainings_${uid}`);
-        if (storedTrainings) {
-          try {
-            user.trainings = JSON.parse(storedTrainings);
-          } catch (e) {
-            user.trainings = [];
+    // Fast local user update from with_security_users_db without remote network roundtrip
+    try {
+      const localUsersRaw = localStorage.getItem('with_security_users_db');
+      if (localUsersRaw) {
+        const localUsers = JSON.parse(localUsersRaw);
+        if (Array.isArray(localUsers)) {
+          const match = localUsers.find(u => u.username === user.username);
+          if (match) {
+            user = { ...user, ...match };
           }
         }
-        if (!Array.isArray(user.trainings)) {
+      }
+    } catch (e) {}
+
+    // Load user's isolated trainings list from localStorage if exists
+    try {
+      const uid = user.username || user.id || 'default';
+      const storedTrainings = localStorage.getItem(`with_security_user_trainings_${uid}`);
+      if (storedTrainings) {
+        try {
+          user.trainings = JSON.parse(storedTrainings);
+        } catch (e) {
           user.trainings = [];
         }
+      }
+      if (!Array.isArray(user.trainings)) {
+        user.trainings = [];
+      }
 
-        // Filter out dummy/legacy placeholders if any
-        user.trainings = user.trainings.filter(t => !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-'));
-
-        // IndexedDB의 edu_logs 테이블 데이터가 있으면 비즈니스 키 기준으로 병합
-        const localEduLogs = await this.getAll('edu_logs').catch(() => []);
-        const userEduLogs = (localEduLogs || []).filter(e => 
-          (e.userId === user.username || e.name === user.name) &&
-          !String(e.id || e.eduId || '').startsWith('EDU-INIT-') &&
-          !String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')
-        );
-        if (userEduLogs.length > 0) {
-          const map = new Map();
-          (user.trainings || []).forEach(t => {
-            const key = `${(t.title || '').trim().toLowerCase()}__${(t.completionDate || t.completion_date || '').trim()}`;
-            map.set(key, t);
-          });
-          userEduLogs.forEach(e => {
-            const key = `${(e.title || '').trim().toLowerCase()}__${(e.completionDate || e.completion_date || '').trim()}`;
-            map.set(key, e);
-          });
-          user.trainings = Array.from(map.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
-        }
-      } catch (e) {}
-      localStorage.setItem('with_security_active_user', JSON.stringify(user));
-    }
+      // Filter out dummy/legacy placeholders if any
+      user.trainings = user.trainings.filter(t => !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-'));
+    } catch (e) {}
 
     return user;
   }
@@ -1765,7 +1770,7 @@ class SecurityDatabase {
 
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
-            for (const u of usersList) await this.putItem('users', u);
+            Promise.all(usersList.map(u => this.putItem('users', u))).catch(() => {});
           } catch (e) {}
         }
       }
@@ -1776,7 +1781,10 @@ class SecurityDatabase {
     }
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-    const defaultAdminHash = await hashPassword(defaultAdminPass);
+    if (!cachedDefaultAdminHash) {
+      cachedDefaultAdminHash = await hashPassword(defaultAdminPass);
+    }
+    const defaultAdminHash = cachedDefaultAdminHash;
 
     // Ensure default admin user always exists (without hardcoded dummy education)
     const adminIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
@@ -2902,7 +2910,7 @@ class SecurityDatabase {
         for (const inc of syncData.incidents) await this.putItem('incidents', inc);
       } catch (e) {}
     }
-
+    recentResponseCache.clear();
     this.notifyDataChanged();
     const total = usersCount + sitesCount + workLogsCount + secLogsCount;
     return {
