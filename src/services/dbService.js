@@ -221,7 +221,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   } else if (method === 'PUT') {
     const parts = endpoint.split('/');
     const id = decodeURIComponent(parts[parts.length - 1]);
-    const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'name' : 'id');
+    const keyField = (sheetName === 'users') ? 'username' : 'id';
     fetchOptions.method = 'POST';
     fetchOptions.redirect = 'follow';
     fetchOptions.headers = {
@@ -1018,6 +1018,10 @@ class SecurityDatabase {
     return this.putItem('incidents', incident);
   }
 
+  notifyDataChanged(immediate = false) {
+    notifyDataChanged(immediate);
+  }
+
   _sortSites(sites) {
     if (!Array.isArray(sites)) return [];
     return [...sites].sort((a, b) => {
@@ -1085,7 +1089,7 @@ class SecurityDatabase {
           localStorage.setItem('with_security_sites_backup', JSON.stringify(sorted));
           localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(sorted));
           await this.replaceCollection('sites', sorted);
-          this.notifyDataChanged(true);
+          notifyDataChanged(true);
           return sorted;
         }
       }
@@ -1100,31 +1104,71 @@ class SecurityDatabase {
   }
 
   async saveSite(site) {
+    if (!site) return null;
+    const targetId = String(site.id || `site-${Date.now().toString().slice(-6)}`).trim();
+    const siteObj = {
+      ...site,
+      id: targetId,
+      name: (site.name || '').trim(),
+      address: (site.address || '').trim(),
+      type: site.type || '보안앱O'
+    };
+
     let previousSite = null;
     try {
       const allSites = await this.getSites();
-      previousSite = allSites.find(s => String(s.id) === String(site.id));
+      previousSite = allSites.find(s => String(s.id) === String(siteObj.id));
     } catch (e) { }
 
+    // 1. Immediately update localStorage sites cache (0.1ms UI response)
+    try {
+      const backupRaw = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
+      let currentSites = backupRaw ? JSON.parse(backupRaw) : [];
+      if (!Array.isArray(currentSites)) currentSites = [];
+
+      const targetName = siteObj.name.toLowerCase();
+      const targetAddr = siteObj.address.toLowerCase();
+
+      // Find by ID OR (same name AND same address)
+      const existingIdx = currentSites.findIndex(s => {
+        if (targetId && String(s.id || '').trim() === targetId) return true;
+        const sName = String(s.name || '').trim().toLowerCase();
+        const sAddr = String(s.address || '').trim().toLowerCase();
+        return sName === targetName && sAddr === targetAddr;
+      });
+
+      if (existingIdx >= 0) {
+        currentSites[existingIdx] = { ...currentSites[existingIdx], ...siteObj };
+      } else {
+        currentSites.push(siteObj);
+      }
+
+      const sorted = this._sortSites(currentSites);
+      localStorage.setItem('with_security_sites_backup', JSON.stringify(sorted));
+      localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(sorted));
+    } catch (e) { }
+
+    // 2. Put into IndexedDB
+    try {
+      await this.putItem('sites', siteObj);
+    } catch (e) { }
+
+    // 3. Safe sync with server
     try {
       await safeFetchApi('/api/security-sites', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(site)
+        body: JSON.stringify(siteObj)
       });
     } catch (e) { }
 
-    try {
-      await this.putItem('sites', site);
-    } catch (e) { }
-
-    // 사업장 정보(사업장명, 위치, 보안앱 사용여부 등) 변경 시 기존 업무일지 및 서약서 데이터 일괄 동기화
+    // 4. 사업장 정보 변경 시 기존 업무일지 및 서약서 데이터 일괄 동기화
     if (previousSite) {
-      await this.cascadeUpdateSiteData(site, previousSite);
+      await this.cascadeUpdateSiteData(siteObj, previousSite);
     }
 
     notifyDataChanged();
-    return site;
+    return siteObj;
   }
 
   // 사업장 변경 시 기존 등록된 업무 일지(work_logs) 및 서약서(checklists)의 사업장 정보 일괄 업데이트
@@ -1227,16 +1271,33 @@ class SecurityDatabase {
   }
 
   async deleteSite(id) {
+    if (!id) return false;
+    const targetId = String(id).trim();
+
+    // 1. Immediately remove from localStorage cache
     try {
-      await safeFetchApi(`/api/security-sites/${id}`, { method: 'DELETE' });
+      const backupRaw = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
+      let currentSites = backupRaw ? JSON.parse(backupRaw) : [];
+      if (Array.isArray(currentSites)) {
+        const filtered = currentSites.filter(s => String(s.id).trim() !== targetId);
+        const sorted = this._sortSites(filtered);
+        localStorage.setItem('with_security_sites_backup', JSON.stringify(sorted));
+        localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(sorted));
+      }
     } catch (e) { }
 
+    // 2. Remove from IndexedDB
     try {
-      await this.deleteItem('sites', id);
+      await this.deleteItem('sites', targetId);
+    } catch (e) { }
+
+    // 3. Safe sync with server
+    try {
+      await safeFetchApi(`/api/security-sites/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
     } catch (e) { }
 
     notifyDataChanged();
-    return id;
+    return targetId;
   }
 
   async initDefaultSites() {

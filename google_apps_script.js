@@ -371,7 +371,7 @@ function doPost(e) {
       }
 
       const item = normalizeObjectForSheet(sheetName, rawData);
-      const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'name' : (item.log_id ? 'log_id' : 'id'));
+      const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'id' : (item.log_id ? 'log_id' : 'id'));
       const keyValue = String(item[keyField] || item.log_id || item.id || '').trim();
 
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(item);
@@ -391,12 +391,21 @@ function doPost(e) {
             const currentVal = String(rows[i][keyColIdx] || '').trim();
             isMatch = currentVal.toLowerCase() === keyValue.toLowerCase();
           } else if (sheetName === 'sites') {
-            const rowName = String(rows[i][keyColIdx !== -1 ? keyColIdx : 0] || '').trim();
-            const rowAddr = siteAddrColIdx !== -1 ? String(rows[i][siteAddrColIdx] || '').trim() : '';
-            const itemName = String(item.name || item.site_name || '').trim();
-            const itemAddr = String(item.address || '').trim();
-            isMatch = (rowName === itemName && (!itemAddr || !rowAddr || rowAddr === itemAddr)) ||
-                      (keyValue && String(rows[i][idColIdx] || '').trim() === keyValue);
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const nameColIdx = headers.indexOf('name') !== -1 ? headers.indexOf('name') : headers.indexOf('site_name');
+            const rowName = nameColIdx !== -1 ? String(rows[i][nameColIdx] || '').trim().toLowerCase() : '';
+            const rowAddr = siteAddrColIdx !== -1 ? String(rows[i][siteAddrColIdx] || '').trim().toLowerCase() : '';
+
+            const targetId = String(item.id || keyValue).trim();
+            const itemName = String(item.name || item.site_name || '').trim().toLowerCase();
+            const itemAddr = String(item.address || '').trim().toLowerCase();
+
+            // 1. ID가 일치하면 동일 사업장으로 판정
+            const idMatched = Boolean(targetId && rowId && rowId === targetId);
+            // 2. 사업장 식별 규칙 (User Rule #7): 반드시 사업장명(name)과 사업장 주소(address)의 조합으로 고유성을 식별
+            const compositeMatched = Boolean(itemName && itemAddr && rowName === itemName && rowAddr === itemAddr);
+
+            isMatch = idMatched || compositeMatched;
           } else if (sheetName === 'work_logs') {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
             const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
@@ -464,7 +473,7 @@ function doPost(e) {
     if (action === 'update') {
       const id = payload.id;
       const patch = normalizeObjectForSheet(sheetName, payload.data || {});
-      const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'name' : (patch.log_id ? 'log_id' : 'id')));
+      const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'id' : (patch.log_id ? 'log_id' : 'id')));
       
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(patch);
       const headers = ensureHeaders(sheet, targetHeaders);
@@ -984,11 +993,13 @@ function cleanupDuplicates() {
         }
         key = username;
       } else if (sheetName === 'sites') {
-        const nameIdx = headers.indexOf('name');
+        const nameIdx = headers.indexOf('name') !== -1 ? headers.indexOf('name') : headers.indexOf('site_name');
         const addrIdx = headers.indexOf('address');
-        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
-        const addr = addrIdx !== -1 ? String(row[addrIdx] || '').trim() : '';
-        key = name && addr ? (name + '::' + addr) : (headers.indexOf('id') !== -1 ? String(row[headers.indexOf('id')] || '').trim() : '');
+        const idIdx = headers.indexOf('id');
+        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim().toLowerCase() : '';
+        const addr = addrIdx !== -1 ? String(row[addrIdx] || '').trim().toLowerCase() : '';
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+        key = (name && addr) ? `SITE::${name}::${addr}` : (id ? `SITE_ID::${id}` : '');
       } else if (sheetName === 'work_logs') {
         const idIdx = headers.indexOf('id');
         const logIdIdx = headers.indexOf('log_id');

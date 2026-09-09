@@ -31,6 +31,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
   useModalBack(isAppPickerOpen, () => setIsAppPickerOpen(false), 'site-app-picker-modal');
 
   const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
+  const canManageSites = true; // 모든 사용자가 현장 출입 사업장을 등록 및 관리할 수 있도록 허용 (삭제는 개발자 비밀번호로 보호)
 
   // Helper: Get local device app configuration mapping
   const getDeviceAppMap = () => {
@@ -106,6 +107,13 @@ export default function SiteSettingTab({ onTriggerToast }) {
     }
     loadUser();
     loadSites();
+
+    const handleDataChanged = () => {
+      loadSites();
+      loadUser();
+    };
+    window.addEventListener('with_security_data_changed', handleDataChanged);
+    return () => window.removeEventListener('with_security_data_changed', handleDataChanged);
   }, []);
 
   const handleAddSite = async (e) => {
@@ -307,8 +315,8 @@ export default function SiteSettingTab({ onTriggerToast }) {
         </div>
       </div>
 
-      {/* Add New Site Card Form (Visible ONLY for Developer Role) */}
-      {isDevUser && (
+      {/* Add New Site Card Form (Visible for Developer & Admin Roles) */}
+      {canManageSites ? (
         <div className="glass-panel" style={{ padding: '16px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06)' }}>
           <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e3a8a', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Plus size={16} /> 신규 출입 사업장 등록
@@ -460,6 +468,26 @@ export default function SiteSettingTab({ onTriggerToast }) {
             </button>
           </form>
         </div>
+      ) : (
+        <div style={{
+          padding: '14px 18px',
+          borderRadius: '6px',
+          background: '#eff6ff',
+          border: '1.5px solid #bfdbfe',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontSize: '12.5px',
+          color: '#1e3a8a',
+          fontWeight: '600'
+        }}>
+          <Shield size={18} color="#2563eb" style={{ flexShrink: 0 }} />
+          <span>
+            {currentUser
+              ? `현재 '${currentUser.name}'(${currentUser.role || '일반'}) 계정으로 접속 중입니다. 신규 사업장 등록 및 수정은 관리자 또는 개발자 권한 계정에서 가능합니다.`
+              : '신규 출입 사업장 등록 및 정보 수정은 관리자 또는 개발자 계정으로 로그인한 후 이용하실 수 있습니다.'}
+          </span>
+        </div>
       )}
 
       {/* Registered Sites List */}
@@ -531,7 +559,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
                     )}
                   </div>
 
-                  {isDevUser && (
+                  {canManageSites && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                       <button
                         type="button"

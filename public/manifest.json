@@ -9,11 +9,11 @@
       "purpose": "any maskable"
     }
   ],
-  "start_url": "/",
+  "start_url": "./",
   "background_color": "#03060d",
   "theme_color": "#0b0f19",
   "display": "standalone",
   "orientation": "portrait",
-  "scope": "/",
+  "scope": "./",
   "description": "회사 사업장 출입 보안 서약, 서명 검증, 업무 일지 기록 및 2FA 보안 관리 앱"
 }

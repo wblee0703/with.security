@@ -6,7 +6,7 @@ import './index.css'
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -15,7 +15,20 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error("Critical App Error caught by ErrorBoundary:", error, errorInfo);
+    this.setState({ errorInfo });
   }
+
+  handleResetCache = () => {
+    try {
+      const gUrl = localStorage.getItem('with_security_google_sheets_url');
+      const sUrl = localStorage.getItem('with_security_server_url');
+      localStorage.clear();
+      sessionStorage.clear();
+      if (gUrl) localStorage.setItem('with_security_google_sheets_url', gUrl);
+      if (sUrl) localStorage.setItem('with_security_server_url', sUrl);
+    } catch (e) {}
+    window.location.reload();
+  };
 
   render() {
     if (this.state.hasError) {
@@ -33,24 +46,60 @@ class ErrorBoundary extends React.Component {
           fontFamily: 'sans-serif'
         }}>
           <div style={{ fontSize: '48px', marginBottom: '16px' }}>🛡️</div>
-          <h2 style={{ color: '#1e3a8a', marginBottom: '12px', fontSize: '20px' }}>WITH Sharing 모바일 앱 초기화</h2>
-          <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '20px', maxWidth: '320px' }}>
-            앱 초기화 중 오류가 발생했습니다. 아래 버튼을 눌러 다시 시작해 주세요.
+          <h2 style={{ color: '#60a5fa', marginBottom: '12px', fontSize: '20px' }}>WITH Sharing 앱 오류 감지</h2>
+          <p style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '16px', maxWidth: '340px', lineHeight: '1.5' }}>
+            앱 실행 중 오류가 발생했습니다.<br />아래 버튼을 눌러 다시 시작하거나 캐시를 초기화해 주세요.
           </p>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              padding: '12px 24px',
-              borderRadius: '6px',
-              background: '#1e3a8a',
-              border: 'none',
-              color: '#ffffff',
-              fontWeight: '800',
-              cursor: 'pointer'
-            }}
-          >
-            🔄 앱 다시 시작하기
-          </button>
+
+          {this.state.error && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '8px',
+              padding: '10px 14px',
+              color: '#f87171',
+              fontSize: '12px',
+              marginBottom: '16px',
+              maxWidth: '360px',
+              wordBreak: 'break-all',
+              textAlign: 'left'
+            }}>
+              <strong>오류 내용:</strong> {this.state.error.toString()}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '280px' }}>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '12px 20px',
+                borderRadius: '6px',
+                background: '#1e3a8a',
+                border: 'none',
+                color: '#ffffff',
+                fontWeight: '800',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}
+            >
+              🔄 다시 시작하기
+            </button>
+            <button
+              onClick={this.handleResetCache}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '6px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#94a3b8',
+                fontWeight: '600',
+                cursor: 'pointer',
+                fontSize: '12px'
+              }}
+            >
+              🧹 캐시 초기화 후 재시작
+            </button>
+          </div>
         </div>
       );
     }

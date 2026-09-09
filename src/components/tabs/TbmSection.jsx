@@ -502,8 +502,6 @@ export default function TbmSection({
 
       const tbms = await dbService.getTbms();
       setTbmList(tbms || []);
-
-      window.dispatchEvent(new CustomEvent('with_security_data_changed'));
     } catch (err) {
       console.error('Failed to load TBM data:', err);
     }
@@ -511,9 +509,18 @@ export default function TbmSection({
 
   useEffect(() => {
     loadData();
-    const handleDataChanged = () => loadData();
+    let debounceTimer = null;
+    const handleDataChanged = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        loadData();
+      }, 300);
+    };
     window.addEventListener('with_security_data_changed', handleDataChanged);
-    return () => window.removeEventListener('with_security_data_changed', handleDataChanged);
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      window.removeEventListener('with_security_data_changed', handleDataChanged);
+    };
   }, []);
 
   // Filtered TBM List for Selected Date
