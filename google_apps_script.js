@@ -60,7 +60,10 @@ const SCHEMAS = {
     'id', 'site', 'status', 'createdAt', 'data'
   ],
   tbms: [
-    'id', 'date', 'siteName', 'leader', 'content', 'createdAt'
+    'id', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
+    'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
+    'attendees', 'absentees', 'work_content', 'tools_used',
+    'pre_check', 'post_check', 'status', 'created_at', 'updated_at'
   ],
   vault: [
     'id', 'category', 'title', 'encryptedData', 'updatedAt'
@@ -783,6 +786,41 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     };
   }
 
+  // 7. TBM (tbms)
+  if (sheetName === 'tbms') {
+    const idVal = obj.id || obj.tbm_id || `TBM-${Date.now()}`;
+    const rawDate = obj.date || obj.log_date || '';
+    const dVal = rawDate ? formatKstDate(rawDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+    const atts = obj.attendees || [];
+    const abs = obj.absentees || [];
+    const preChk = obj.preCheck || obj.pre_check || {};
+    const postChk = obj.postCheck || obj.post_check || {};
+
+    return {
+      id: idVal,
+      date: dVal,
+      site: obj.site || obj.siteName || obj.site_name || '',
+      site_address: obj.siteAddress || obj.site_address || obj.address || '',
+      work_title: obj.workTitle || obj.work_title || obj.title || '',
+      work_area: obj.workArea || obj.work_area || '',
+      work_category: obj.workCategory || obj.work_category || '일반작업',
+      leader_division: obj.leaderDivision || obj.leader_division || obj.division || '',
+      leader_team: obj.leaderTeam || obj.leader_team || obj.team || '',
+      leader_name: obj.leaderName || obj.leader_name || obj.leader || '',
+      leader_rank: obj.leaderRank || obj.leader_rank || obj.rank || '대리',
+      leader_phone: obj.leaderPhone || obj.leader_phone || obj.phone || '',
+      attendees: (typeof atts === 'object' && atts !== null) ? JSON.stringify(atts) : String(atts || ''),
+      absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
+      work_content: obj.workContent || obj.work_content || obj.content || '',
+      tools_used: obj.toolsUsed || obj.tools_used || '',
+      pre_check: (typeof preChk === 'object' && preChk !== null) ? JSON.stringify(preChk) : String(preChk || ''),
+      post_check: (typeof postChk === 'object' && postChk !== null) ? JSON.stringify(postChk) : String(postChk || ''),
+      status: obj.status || (postChk && postChk.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED'),
+      created_at: obj.createdAt || obj.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      updated_at: obj.updatedAt || obj.updated_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
+    };
+  }
+
   return obj;
 }
 
@@ -932,6 +970,24 @@ function readSheetData(sheetName) {
         if (!obj.completionDate && obj.completion_date) obj.completionDate = obj.completion_date;
         if (!obj.expiryDate && obj.expiry_date) obj.expiryDate = obj.expiry_date;
         if (!obj.notes && obj.memo) obj.notes = obj.memo;
+      } else if (sheetName === 'tbms') {
+        if (!obj.site && obj.siteName) obj.site = obj.siteName;
+        if (!obj.siteName && obj.site) obj.siteName = obj.site;
+        if (!obj.siteAddress && obj.site_address) obj.siteAddress = obj.site_address;
+        if (!obj.workTitle && obj.work_title) obj.workTitle = obj.work_title;
+        if (!obj.workArea && obj.work_area) obj.workArea = obj.work_area;
+        if (!obj.workCategory && obj.work_category) obj.workCategory = obj.work_category;
+        if (!obj.leaderDivision && obj.leader_division) obj.leaderDivision = obj.leader_division;
+        if (!obj.leaderTeam && obj.leader_team) obj.leaderTeam = obj.leader_team;
+        if (!obj.leaderName && (obj.leader_name || obj.leader)) obj.leaderName = obj.leader_name || obj.leader;
+        if (!obj.leaderRank && obj.leader_rank) obj.leaderRank = obj.leader_rank;
+        if (!obj.leaderPhone && obj.leader_phone) obj.leaderPhone = obj.leader_phone;
+        if (!obj.workContent && (obj.work_content || obj.content)) obj.workContent = obj.work_content || obj.content;
+        if (!obj.toolsUsed && obj.tools_used) obj.toolsUsed = obj.tools_used;
+        if (!obj.preCheck && obj.pre_check) obj.preCheck = obj.pre_check;
+        if (!obj.postCheck && obj.post_check) obj.postCheck = obj.post_check;
+        if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
+        if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       }
 
       // 키별 중복 방지: 시트에 기존에 누적된 중복 행이 있더라도 가장 최신(아래쪽) 행 데이터만 반환

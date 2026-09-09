@@ -25,7 +25,8 @@ import {
   ChevronDown,
   ChevronUp,
   Camera,
-  ImageIcon
+  ImageIcon,
+  Edit
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
@@ -634,40 +635,145 @@ export default function TbmSection({
     setIsRegisterModalOpen(true);
   };
 
+  // Form Normalizer for Editing / Post-Work TBM Update
+  const normalizeTbmForForm = (rawTbm) => {
+    if (!rawTbm) return initialFormData;
+    const safeTbm = dbService._normalizeTbm(rawTbm) || rawTbm;
+
+    // Leader info fallbacks from allUsers if missing
+    let lDiv = safeTbm.leaderDivision || '';
+    let lTeam = safeTbm.leaderTeam || '';
+    let lName = safeTbm.leaderName || safeTbm.leader || '';
+    let lRank = safeTbm.leaderRank || '';
+    let lPhone = safeTbm.leaderPhone || '';
+
+    if (lName && (!lDiv || !lTeam || !lRank || !lPhone)) {
+      const match = allUsers.find(u => u.name === lName && (!lDiv || u.division === lDiv));
+      if (match) {
+        if (!lDiv) lDiv = match.division || '';
+        if (!lTeam) lTeam = match.team || match.department || '';
+        if (!lRank) lRank = match.rank || '대리';
+        if (!lPhone) lPhone = match.phone || '';
+      }
+    }
+
+    // Attendees fallback: ensure array and include leader
+    let safeAttendees = Array.isArray(safeTbm.attendees) ? [...safeTbm.attendees] : [];
+    if (safeAttendees.length === 0 && lDiv && lTeam) {
+      const teamUsers = allUsers.filter(u =>
+        (!lDiv || u.division === lDiv) &&
+        (!lTeam || u.team === lTeam || u.department === lTeam)
+      );
+      if (teamUsers.length > 0) {
+        safeAttendees = teamUsers.map(u => ({
+          name: u.name,
+          rank: u.rank || '사원',
+          team: u.team || u.department || lTeam,
+          division: u.division || lDiv,
+          phone: u.phone || ''
+        }));
+      }
+    }
+    // Ensure leader is present in attendees
+    if (lName && !safeAttendees.some(a => a.name === lName)) {
+      safeAttendees.unshift({
+        name: lName,
+        rank: lRank || '대리',
+        team: lTeam,
+        division: lDiv,
+        phone: lPhone
+      });
+    }
+
+    // Absentees fallback
+    const safeAbsentees = Array.isArray(safeTbm.absentees) ? safeTbm.absentees : [];
+
+    // PreCheck fallback
+    const rawPre = safeTbm.preCheck || safeTbm.pre_check || {};
+    const safePre = {
+      teamSafetySlogan: Boolean(rawPre.teamSafetySlogan),
+      prePpeCheck: Boolean(rawPre.prePpeCheck),
+      businessTripSafety: Boolean(rawPre.businessTripSafety),
+      hazardPredictionTraining: Boolean(rawPre.hazardPredictionTraining),
+      dangerPointCheck: Boolean(rawPre.dangerPointCheck),
+      emergencyResponseCheck: Boolean(rawPre.emergencyResponseCheck),
+      safetyDocTraining: Boolean(rawPre.safetyDocTraining),
+      selectedItems: Array.isArray(rawPre.selectedItems) ? rawPre.selectedItems : [],
+      notes: rawPre.notes || '',
+      photos: Array.isArray(rawPre.photos) ? rawPre.photos : [],
+      conductedAt: rawPre.conductedAt || getCurrentTimeStr(),
+      isCompleted: true
+    };
+
+    // PostCheck fallback
+    const rawPost = safeTbm.postCheck || safeTbm.post_check || {};
+    const safePost = {
+      cleanupCheck: rawPost.cleanupCheck !== undefined ? Boolean(rawPost.cleanupCheck) : true,
+      toolRecoveryCheck: rawPost.toolRecoveryCheck !== undefined ? Boolean(rawPost.toolRecoveryCheck) : true,
+      securityMediaCheck: rawPost.securityMediaCheck !== undefined ? Boolean(rawPost.securityMediaCheck) : true,
+      powerSafetyCheck: rawPost.powerSafetyCheck !== undefined ? Boolean(rawPost.powerSafetyCheck) : true,
+      workOutcome: rawPost.workOutcome || '계획 이행 완료',
+      workStatus: rawPost.workStatus || 'completed',
+      absentees: Array.isArray(rawPost.absentees) ? rawPost.absentees : (safeAbsentees || []),
+      selectedItems: Array.isArray(rawPost.selectedItems) ? rawPost.selectedItems : [],
+      handoverNotes: rawPost.handoverNotes || '',
+      photos: Array.isArray(rawPost.photos) ? rawPost.photos : [],
+      conductedAt: rawPost.conductedAt || getCurrentTimeStr(),
+      isCompleted: rawPost.isCompleted !== undefined ? Boolean(rawPost.isCompleted) : true
+    };
+
+    return {
+      ...initialFormData,
+      ...safeTbm,
+      id: safeTbm.id,
+      date: safeTbm.date || selectedDate || getTodayIsoDate(),
+      site: safeTbm.site || safeTbm.siteName || '',
+      siteAddress: safeTbm.siteAddress || safeTbm.site_address || '',
+      workTitle: safeTbm.workTitle || safeTbm.work_title || '',
+      workArea: safeTbm.workArea || safeTbm.work_area || '',
+      workCategory: safeTbm.workCategory || safeTbm.work_category || '일반작업',
+      leaderDivision: lDiv,
+      leaderTeam: lTeam,
+      leaderName: lName,
+      leaderRank: lRank,
+      leaderPhone: lPhone,
+      attendees: safeAttendees,
+      absentees: safeAbsentees,
+      workContent: safeTbm.workContent || safeTbm.work_content || safeTbm.content || '',
+      toolsUsed: safeTbm.toolsUsed || safeTbm.tools_used || '',
+      preCheck: safePre,
+      postCheck: safePost,
+      includePostCheckNow: true
+    };
+  };
+
   // Open Register Modal for Post-Work TBM Update
   const handleOpenPostWorkTbm = (tbm) => {
+    const normalized = normalizeTbmForForm(tbm);
     setEditingTbmId(tbm.id);
     setActiveStep(3); // Start directly at Post-Work step
-    setFormData({
-      ...tbm,
-      includePostCheckNow: true,
-      postCheck: {
-        ...(tbm.postCheck || {}),
-        workOutcome: tbm.postCheck?.workOutcome || '계획 이행 완료',
-        workStatus: tbm.postCheck?.workStatus || 'completed',
-        absentees: tbm.postCheck?.absentees || tbm.absentees || [],
-        selectedItems: tbm.postCheck?.selectedItems || [],
-        handoverNotes: tbm.postCheck?.handoverNotes || '',
-        photos: tbm.postCheck?.photos || [],
-        conductedAt: getCurrentTimeStr(),
-        isCompleted: true
-      }
-    });
+    setFormData(normalized);
     setIsRegisterModalOpen(true);
   };
 
   // Attendee Selection Helpers
   const toggleAttendee = (user) => {
-    const exists = formData.attendees.some(a => isSamePerson(a, user));
+    if (user.name === formData.leaderName) {
+      if (onTriggerToast) onTriggerToast('TBM 주관자(책임자)는 참여자에 필수 포함됩니다.', 'info');
+      return;
+    }
+    const attList = formData.attendees || [];
+    const exists = attList.some(a => isSamePerson(a, user));
     if (exists) {
       setFormData(prev => ({
         ...prev,
-        attendees: prev.attendees.filter(a => !isSamePerson(a, user))
+        attendees: (prev.attendees || []).filter(a => !isSamePerson(a, user))
       }));
     } else {
       setFormData(prev => {
+        const curAtts = prev.attendees || [];
         const nextAttendees = [
-          ...prev.attendees,
+          ...curAtts,
           {
             name: user.name,
             rank: user.rank || '사원',
@@ -1111,11 +1217,17 @@ export default function TbmSection({
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <UserCheck size={14} color="#0284c7" />
-                    <span>책임자: <strong style={{ color: '#0f172a' }}>{tbm.leaderName} {tbm.leaderRank}</strong></span>
+                    <span>책임자: <strong style={{ color: '#0f172a' }}>{tbm.leaderName || tbm.leader || '미지정'} {tbm.leaderRank || ''}</strong></span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                     <Users size={14} color="#64748b" />
-                    <span>참석인원: <strong style={{ color: '#0f172a' }}>{(tbm.attendees?.length || 0) + 1}명</strong></span>
+                    <span>참석인원: <strong style={{ color: '#0f172a' }}>{(() => {
+                      const leaderVal = tbm.leaderName || tbm.leader || '';
+                      const attendeesList = Array.isArray(tbm.attendees) ? tbm.attendees : [];
+                      const otherAtts = attendeesList.filter(a => a.name !== leaderVal);
+                      const total = otherAtts.length + (leaderVal ? 1 : 0);
+                      return `${total}명`;
+                    })()}</strong></span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
                     <Clock size={12} />
@@ -1128,47 +1240,32 @@ export default function TbmSection({
                   const preNotes = (tbm.preCheck?.notes || tbm.notes || '').trim();
                   const postNotes = (tbm.postCheck?.handoverNotes || tbm.postCheck?.notes || '').trim();
                   if (!preNotes && !postNotes) return null;
-
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px',
+                      fontSize: '11.5px',
+                      background: '#ffffff',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0'
+                    }}>
                       {preNotes && (
-                        <div style={{
-                          background: '#ffffff',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #bae6fd',
-                          fontSize: '12px'
-                        }}>
-                          <div style={{ fontWeight: '800', color: '#0284c7', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span>📢 {postNotes ? '업무 전 전달 사항 및 지도내역:' : '전달 사항 및 지도내역:'}</span>
-                          </div>
-                          <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.45', wordBreak: 'break-word', color: '#0f172a' }}>
-                            {preNotes}
-                          </div>
+                        <div style={{ color: '#334155' }}>
+                          <strong style={{ color: '#0284c7' }}>전달 사항:</strong> {preNotes}
                         </div>
                       )}
-
                       {postNotes && (
-                        <div style={{
-                          background: '#ffffff',
-                          padding: '8px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #bbf7d0',
-                          fontSize: '12px'
-                        }}>
-                          <div style={{ fontWeight: '800', color: '#16a34a', marginBottom: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span>🏁 업무 후 전달사항 및 특이사항:</span>
-                          </div>
-                          <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.45', wordBreak: 'break-word', color: '#0f172a' }}>
-                            {postNotes}
-                          </div>
+                        <div style={{ color: '#334155' }}>
+                          <strong style={{ color: '#059669' }}>인수인계 / 특이사항:</strong> {postNotes}
                         </div>
                       )}
                     </div>
                   );
                 })()}
 
-                {/* Card Action Buttons */}
+                {/* Card Action Buttons: Detailed View & Post-TBM / Edit */}
                 <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
                   <button
                     type="button"
@@ -1195,7 +1292,29 @@ export default function TbmSection({
                     <FileText size={13} color="#0284c7" /> 상세 일지
                   </button>
 
-                  {!isAllDone && (
+                  {isAllDone ? (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenPostWorkTbm(tbm)}
+                      style={{
+                        flex: 1.2,
+                        padding: '7px 10px',
+                        borderRadius: '6px',
+                        background: '#f8fafc',
+                        border: '1.5px solid #cbd5e1',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        color: '#0369a1',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <CheckSquare size={13} /> TBM 일지 수정
+                    </button>
+                  ) : (
                     <button
                       type="button"
                       onClick={() => handleOpenPostWorkTbm(tbm)}
@@ -1343,7 +1462,7 @@ export default function TbmSection({
               borderBottom: '1.5px solid #cbd5e1'
             }}>
               {(() => {
-                const isStep1Done = Boolean(formData.site?.trim() && formData.workTitle?.trim());
+                const isStep1Done = Boolean(formData.site?.trim() && formData.leaderDivision?.trim() && formData.leaderTeam?.trim() && formData.leaderName?.trim());
                 const isStep2Done = currentSelectedKeys.length > 0;
                 const isStep3Done = currentPostSelectedKeys.length > 0 || Boolean(formData.postCheck?.isCompleted);
 
@@ -1477,6 +1596,11 @@ export default function TbmSection({
                         }}
                       >
                         <option value=":::">-- 사업장을 선택해 주세요 --</option>
+                        {formData.site && !availableSites.some(s => s.name === formData.site && (s.address || '') === (formData.siteAddress || '')) && (
+                          <option value={`${formData.site}:::${formData.siteAddress || ''}`}>
+                            {formData.site} ({formData.siteAddress || '주소 미입력'})
+                          </option>
+                        )}
                         {availableSites.map((s, idx) => (
                           <option key={s.id || `${s.name}-${s.address}-${idx}`} value={`${s.name}:::${s.address || ''}`}>
                             {s.name} ({s.address || '주소 미입력'})
@@ -1525,6 +1649,7 @@ export default function TbmSection({
                         value={formData.leaderDivision}
                         onChange={(e) => {
                           const newDiv = e.target.value;
+                          if (newDiv === formData.leaderDivision) return;
                           const teams = getTeamsForDivision(newDiv) || [];
                           const defaultTeam = teams.length > 0 ? teams[0] : '';
                           const teamUsers = allUsers.filter(u =>
@@ -1566,6 +1691,9 @@ export default function TbmSection({
                         }}
                       >
                         <option value="">-- 사업부를 선택해 주세요 --</option>
+                        {formData.leaderDivision && !availableDivisions.includes(formData.leaderDivision) && (
+                          <option value={formData.leaderDivision}>{formData.leaderDivision}</option>
+                        )}
                         {availableDivisions.map(div => (
                           <option key={div} value={div}>{div}</option>
                         ))}
@@ -1582,6 +1710,7 @@ export default function TbmSection({
                         disabled={!formData.leaderDivision}
                         onChange={(e) => {
                           const newTeam = e.target.value;
+                          if (newTeam === formData.leaderTeam) return;
                           const teamUsers = allUsers.filter(u =>
                             (!formData.leaderDivision || u.division === formData.leaderDivision) &&
                             (!newTeam || u.team === newTeam || u.department === newTeam)
@@ -1623,6 +1752,9 @@ export default function TbmSection({
                         <option value="">
                           {!formData.leaderDivision ? '-- 먼저 사업부를 선택하세요 --' : '-- 부서를 선택해 주세요 --'}
                         </option>
+                        {formData.leaderTeam && !availableTeams.includes(formData.leaderTeam) && (
+                          <option value={formData.leaderTeam}>{formData.leaderTeam}</option>
+                        )}
                         {availableTeams.map(tm => (
                           <option key={tm} value={tm}>{tm}</option>
                         ))}
@@ -1642,7 +1774,19 @@ export default function TbmSection({
                         const newLeader = e.target.value;
                         const selUser = allUsers.find(u => u.name === newLeader && (!formData.leaderDivision || u.division === formData.leaderDivision));
                         setFormData(prev => {
-                          const sortedAttendees = [...prev.attendees].sort((a, b) => {
+                          const curAtts = prev.attendees || [];
+                          let nextAttendees = [...curAtts];
+                          // Ensure newLeader is in attendees
+                          if (newLeader && !nextAttendees.some(a => a.name === newLeader)) {
+                            nextAttendees.unshift({
+                              name: newLeader,
+                              rank: selUser?.rank || prev.leaderRank || '대리',
+                              team: selUser?.team || selUser?.department || prev.leaderTeam || '',
+                              division: selUser?.division || prev.leaderDivision || '',
+                              phone: selUser?.phone || prev.leaderPhone || ''
+                            });
+                          }
+                          const sortedAttendees = nextAttendees.sort((a, b) => {
                             if (a.name === newLeader) return -1;
                             if (b.name === newLeader) return 1;
                             return 0;
@@ -1668,6 +1812,11 @@ export default function TbmSection({
                       }}
                     >
                       <option value="">-- TBM 주관자를 선택해 주세요 --</option>
+                      {formData.leaderName && !filteredLeadersPool.some(u => u.name === formData.leaderName) && (
+                        <option value={formData.leaderName}>
+                          {formData.leaderName} ({formData.leaderRank || '주관자'})
+                        </option>
+                      )}
                       {filteredLeadersPool.map((u, idx) => (
                         <option key={u.id || `${u.name}-${u.rank}-${idx}`} value={u.name}>
                           {u.name} ({u.rank || '사원'})
@@ -1699,7 +1848,7 @@ export default function TbmSection({
                         border: isAttendeeDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
                         fontSize: '13px',
                         fontWeight: '600',
-                        color: formData.attendees.length > 0 ? '#0f172a' : '#64748b',
+                        color: (formData.attendees || []).length > 0 ? '#0f172a' : '#64748b',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
@@ -1711,11 +1860,11 @@ export default function TbmSection({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Users size={16} color={formData.attendees.length > 0 ? '#0284c7' : '#94a3b8'} />
+                        <Users size={16} color={(formData.attendees || []).length > 0 ? '#0284c7' : '#94a3b8'} />
                         <span>
-                          {formData.attendees.length === 0
+                          {(formData.attendees || []).length === 0
                             ? 'TBM 참여자 선택 (클릭하여 제안 목록 열기)'
-                            : `${formData.attendees.length}명 참여자 선택됨`}
+                            : `${(formData.attendees || []).length}명 참여자 선택됨`}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -1751,7 +1900,7 @@ export default function TbmSection({
                       }}>
                         {filteredAttendeesPool.length > 0 ? (
                           filteredAttendeesPool.map((user, idx) => {
-                            const isSelected = formData.attendees.some(a => isSamePerson(a, user));
+                            const isSelected = (formData.attendees || []).some(a => isSamePerson(a, user));
                             const isLeader = user.name === formData.leaderName;
                             return (
                               <div
@@ -1801,7 +1950,7 @@ export default function TbmSection({
                     )}
 
                     {/* Selected Attendees List Output (3 Columns: 1줄에 3명씩) */}
-                    {formData.attendees.length > 0 ? (
+                    {(formData.attendees || []).length > 0 ? (
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
@@ -1809,7 +1958,7 @@ export default function TbmSection({
                       }}>
                         {(() => {
                           // Ensure leader is always sorted first at the very beginning
-                          const sortedAttendees = [...formData.attendees].sort((a, b) => {
+                          const sortedAttendees = [...(formData.attendees || [])].sort((a, b) => {
                             if (a.name === formData.leaderName) return -1;
                             if (b.name === formData.leaderName) return 1;
                             return 0;
@@ -1862,8 +2011,8 @@ export default function TbmSection({
                     )}
                   </div>
 
-                  {/* Step 1 Next Button */}
-                  <div style={{ marginTop: '8px' }}>
+                  {/* Step 1 Action Buttons */}
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1887,11 +2036,11 @@ export default function TbmSection({
                       }}
                       className="glass-button-primary"
                       style={{
-                        width: '100%',
+                        flex: 1,
                         padding: '12px',
                         borderRadius: '12px',
                         fontWeight: '800',
-                        fontSize: '13.5px',
+                        fontSize: '13px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -1901,8 +2050,49 @@ export default function TbmSection({
                         boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
                       }}
                     >
-                      다음 단계 (업무 전 TBM) <ChevronRight size={18} />
+                      다음 단계 (업무 전 TBM) <ChevronRight size={16} />
                     </button>
+                    {(editingTbmId || formData.includePostCheckNow || formData.postCheck?.isCompleted) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!formData.site?.trim()) {
+                            if (onTriggerToast) onTriggerToast('사업장을 선택해주세요.', 'warning');
+                            return;
+                          }
+                          if (!formData.leaderDivision?.trim()) {
+                            if (onTriggerToast) onTriggerToast('사업부를 선택해주세요.', 'warning');
+                            return;
+                          }
+                          if (!formData.leaderTeam?.trim()) {
+                            if (onTriggerToast) onTriggerToast('부서를 선택해주세요.', 'warning');
+                            return;
+                          }
+                          if (!formData.leaderName?.trim()) {
+                            if (onTriggerToast) onTriggerToast('TBM 주관자를 선택해주세요.', 'warning');
+                            return;
+                          }
+                          setActiveStep(3);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '12px',
+                          borderRadius: '12px',
+                          background: '#f0fdf4',
+                          border: '1.5px solid #86efac',
+                          color: '#16a34a',
+                          fontWeight: '800',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        🏁 업무 후 TBM으로 바로 이동
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -1945,9 +2135,9 @@ export default function TbmSection({
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                       <span>미참여 인원 (휴가 / 반차 / 출장 / 교육 등)</span>
-                      {formData.absentees.length > 0 && (
+                      {(formData.absentees || []).length > 0 && (
                         <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
-                          {formData.absentees.length}명 등록됨
+                          {(formData.absentees || []).length}명 등록됨
                         </span>
                       )}
                     </label>
@@ -2009,7 +2199,7 @@ export default function TbmSection({
                               return;
                             }
                             const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedAbsenteeName?.trim());
-                            const exists = formData.absentees.some(a => a.name?.trim() === selectedAbsenteeName?.trim());
+                            const exists = (formData.absentees || []).some(a => a.name?.trim() === selectedAbsenteeName?.trim());
                             if (exists) {
                               if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
                               return;
@@ -2017,9 +2207,9 @@ export default function TbmSection({
                             setFormData(prev => ({
                               ...prev,
                               // Automatically exclude from attendees in Step 1
-                              attendees: prev.attendees.filter(a => a.name?.trim() !== selectedAbsenteeName?.trim()),
+                              attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedAbsenteeName?.trim()),
                               absentees: [
-                                ...prev.absentees,
+                                ...(prev.absentees || []),
                                 {
                                   name: selectedAbsenteeName,
                                   rank: targetUser?.rank || '사원',
@@ -2046,9 +2236,9 @@ export default function TbmSection({
                       </div>
 
                       {/* Absentee Tag Badges */}
-                      {formData.absentees.length > 0 && (
+                      {(formData.absentees || []).length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                          {formData.absentees.map((abs, idx) => (
+                          {(formData.absentees || []).map((abs, idx) => (
                             <span
                               key={idx}
                               style={{
@@ -2068,24 +2258,28 @@ export default function TbmSection({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const removed = formData.absentees[idx];
+                                  const removed = (formData.absentees || [])[idx];
                                   const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
                                   setFormData(prev => ({
                                     ...prev,
-                                    absentees: prev.absentees.filter((_, i) => i !== idx),
+                                    absentees: (prev.absentees || []).filter((_, i) => i !== idx),
                                     // Restore back to attendees if not already present
-                                    attendees: targetUser && !prev.attendees.some(a => a.name?.trim() === removed?.name?.trim())
-                                      ? [
-                                        ...prev.attendees,
-                                        {
-                                          name: targetUser.name,
-                                          rank: targetUser.rank || '사원',
-                                          team: targetUser.team || targetUser.department || prev.leaderTeam || '',
-                                          division: targetUser.division || prev.leaderDivision || '',
-                                          phone: targetUser.phone || ''
-                                        }
-                                      ]
-                                      : prev.attendees
+                                    attendees: (() => {
+                                      const attName = targetUser?.name || removed?.name;
+                                      if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
+                                        return [
+                                          ...(prev.attendees || []),
+                                          {
+                                            name: attName,
+                                            rank: targetUser?.rank || removed?.rank || '사원',
+                                            team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
+                                            division: targetUser?.division || prev.leaderDivision || '',
+                                            phone: targetUser?.phone || ''
+                                          }
+                                        ];
+                                      }
+                                      return prev.attendees || [];
+                                    })()
                                   }));
                                 }}
                                 style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
@@ -2475,9 +2669,9 @@ export default function TbmSection({
                       type="button"
                       onClick={() => setActiveStep(1)}
                       className="glass-button"
-                      style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700' }}
+                      style={{ flex: 1, padding: '12px 8px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12.5px' }}
                     >
-                      이전 단계
+                      기본정보 수정 (Step 1) ✏️
                     </button>
                     <button
                       type="button"
@@ -2532,17 +2726,63 @@ export default function TbmSection({
                     🏁 Step 3. 업무 후 TBM (작업 종료 및 정리·퇴실 점검)
                   </div>
 
+                  {/* Quick Shortcut to Review / Edit Step 1 & Step 2 Basic Info */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    marginBottom: '2px',
+                    gap: '8px'
+                  }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        📍 {formData.site || '사업장 미지정'} | 주관자: {formData.leaderName || '미지정'} ({(() => {
+                          const lName = formData.leaderName || '';
+                          const atts = formData.attendees || [];
+                          const others = atts.filter(a => a.name !== lName);
+                          const total = others.length + (lName ? 1 : 0);
+                          return `${total}명 참여`;
+                        })()})
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
+                        일자: {formData.date} | 업무전 기본정보 수정이 필요하신가요?
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep(1)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '8px',
+                        background: '#ffffff',
+                        border: '1.5px solid #16a34a',
+                        fontSize: '11.5px',
+                        fontWeight: '700',
+                        color: '#16a34a',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                      }}
+                    >
+                      기본정보 수정 ✏️
+                    </button>
+                  </div>
+
                   {/* 1. Post-Work Outcome Dropdown */}
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                       금일 작업 결과 현황 *
                     </label>
                     <select
-                      value={formData.postCheck.workOutcome || '계획 이행 완료'}
+                      value={formData.postCheck?.workOutcome || '계획 이행 완료'}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
                         includePostCheckNow: true,
-                        postCheck: { ...prev.postCheck, workOutcome: e.target.value }
+                        postCheck: { ...(prev.postCheck || {}), workOutcome: e.target.value }
                       }))}
                       style={{
                         width: '100%',
@@ -2552,7 +2792,7 @@ export default function TbmSection({
                         border: '1.5px solid #cbd5e1',
                         fontSize: '13px',
                         fontWeight: '700',
-                        color: formData.postCheck.workOutcome === '작업 미비 및 특이사항 발생' ? '#dc2626' : '#16a34a',
+                        color: formData.postCheck?.workOutcome === '작업 미비 및 특이사항 발생' ? '#dc2626' : '#16a34a',
                         outline: 'none'
                       }}
                     >
@@ -2565,9 +2805,9 @@ export default function TbmSection({
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                       <span>인원 변동 및 특이사항 (시작회의 기준) </span>
-                      {(formData.postCheck.absentees || []).length > 0 && (
+                      {(formData.postCheck?.absentees || []).length > 0 && (
                         <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
-                          {(formData.postCheck.absentees || []).length}명 등록됨
+                          {(formData.postCheck?.absentees || []).length}명 등록됨
                         </span>
                       )}
                     </label>
@@ -2630,7 +2870,7 @@ export default function TbmSection({
                               return;
                             }
                             const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedPostAbsenteeName?.trim());
-                            const curAbsList = formData.postCheck.absentees || [];
+                            const curAbsList = formData.postCheck?.absentees || [];
                             const exists = curAbsList.some(a => a.name?.trim() === selectedPostAbsenteeName?.trim());
                             if (exists) {
                               if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
@@ -2640,11 +2880,11 @@ export default function TbmSection({
                               ...prev,
                               includePostCheckNow: true,
                               // Automatically exclude from attendees
-                              attendees: prev.attendees.filter(a => a.name?.trim() !== selectedPostAbsenteeName?.trim()),
+                              attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedPostAbsenteeName?.trim()),
                               postCheck: {
-                                ...prev.postCheck,
+                                ...(prev.postCheck || {}),
                                 absentees: [
-                                  ...(prev.postCheck.absentees || []),
+                                  ...(prev.postCheck?.absentees || []),
                                   {
                                     name: selectedPostAbsenteeName,
                                     rank: targetUser?.rank || '사원',
@@ -2672,9 +2912,9 @@ export default function TbmSection({
                       </div>
 
                       {/* Post-Absentee Tag Badges */}
-                      {(formData.postCheck.absentees || []).length > 0 && (
+                      {(formData.postCheck?.absentees || []).length > 0 && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                          {(formData.postCheck.absentees || []).map((abs, idx) => (
+                          {(formData.postCheck?.absentees || []).map((abs, idx) => (
                             <span
                               key={idx}
                               style={{
@@ -2694,26 +2934,30 @@ export default function TbmSection({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const removed = (formData.postCheck.absentees || [])[idx];
+                                  const removed = (formData.postCheck?.absentees || [])[idx];
                                   const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
                                   setFormData(prev => ({
                                     ...prev,
                                     // Restore back to attendees if not already present
-                                    attendees: targetUser && !prev.attendees.some(a => a.name?.trim() === removed?.name?.trim())
-                                      ? [
-                                        ...prev.attendees,
-                                        {
-                                          name: targetUser.name,
-                                          rank: targetUser.rank || '사원',
-                                          team: targetUser.team || targetUser.department || prev.leaderTeam || '',
-                                          division: targetUser.division || prev.leaderDivision || '',
-                                          phone: targetUser.phone || ''
-                                        }
-                                      ]
-                                      : prev.attendees,
+                                    attendees: (() => {
+                                      const attName = targetUser?.name || removed?.name;
+                                      if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
+                                        return [
+                                          ...(prev.attendees || []),
+                                          {
+                                            name: attName,
+                                            rank: targetUser?.rank || removed?.rank || '사원',
+                                            team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
+                                            division: targetUser?.division || prev.leaderDivision || '',
+                                            phone: targetUser?.phone || ''
+                                          }
+                                        ];
+                                      }
+                                      return prev.attendees || [];
+                                    })(),
                                     postCheck: {
-                                      ...prev.postCheck,
-                                      absentees: (prev.postCheck.absentees || []).filter((_, i) => i !== idx)
+                                      ...(prev.postCheck || {}),
+                                      absentees: (prev.postCheck?.absentees || []).filter((_, i) => i !== idx)
                                     }
                                   }));
                                 }}
@@ -3100,14 +3344,22 @@ export default function TbmSection({
                   </div>
 
                   {/* Step 3 Action Buttons */}
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveStep(1)}
+                      className="glass-button"
+                      style={{ flex: 1, padding: '12px 6px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}
+                    >
+                      기본정보 수정
+                    </button>
                     <button
                       type="button"
                       onClick={() => setActiveStep(2)}
                       className="glass-button"
-                      style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700' }}
+                      style={{ flex: 1, padding: '12px 6px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}
                     >
-                      이전 단계
+                      이전 단계(업무전)
                     </button>
                     <button
                       type="button"
@@ -3208,7 +3460,7 @@ export default function TbmSection({
                   return (u.name && u.name.toLowerCase().includes(q)) || (u.team && u.team.toLowerCase().includes(q));
                 })
                 .map((user, idx) => {
-                  const isSelected = formData.attendees.some(a => isSamePerson(a, user));
+                  const isSelected = (formData.attendees || []).some(a => isSamePerson(a, user));
                   return (
                     <div
                       key={user.id || user.username || idx}
@@ -3251,7 +3503,7 @@ export default function TbmSection({
                 cursor: 'pointer'
               }}
             >
-              선택 완료 ({formData.attendees.length}명 선택됨)
+              선택 완료 ({(formData.attendees || []).length}명 선택됨)
             </button>
           </div>
         </div>
@@ -3361,19 +3613,19 @@ export default function TbmSection({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px', color: '#334155' }}>
                 <div style={{ background: '#f8fafc', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
                   {(() => {
-                    const otherAttendees = selectedTbm.attendees?.filter(a => a.name !== selectedTbm.leaderName) || [];
-                    const totalCount = otherAttendees.length + 1; // 주관자 + 타 참여자
+                    const otherAttendees = (selectedTbm.attendees || []).filter(a => a.name !== selectedTbm.leaderName);
+                    const totalCount = otherAttendees.length + (selectedTbm.leaderName ? 1 : 0); // 주관자 + 타 참여자
                     return (
                       <>
                         <strong>참석 인원 ({totalCount}명):</strong>{' '}
-                        <span style={{ color: '#0284c7', fontWeight: '700' }}>{selectedTbm.leaderName} (주관자)</span>
-                        {otherAttendees.map(a => `, ${a.name} (${a.rank})`)}
+                        <span style={{ color: '#0284c7', fontWeight: '700' }}>{selectedTbm.leaderName || '미지정'} (주관자)</span>
+                        {otherAttendees.map(a => `, ${a.name} (${a.rank || '사원'})`)}
                       </>
                     );
                   })()}
                 </div>
 
-                {selectedTbm.absentees && selectedTbm.absentees.length > 0 && (
+                {Array.isArray(selectedTbm.absentees) && selectedTbm.absentees.length > 0 && (
                   <div style={{ background: '#fff1f2', padding: '8px 12px', borderRadius: '6px', border: '1px solid #fecdd3', color: '#9f1239' }}>
                     <strong>🌴 미참여 인원 ({selectedTbm.absentees.length}명):</strong>{' '}
                     {selectedTbm.absentees.map((abs, idx) => (
@@ -3559,25 +3811,51 @@ export default function TbmSection({
               alignItems: 'center',
               background: '#f8fafc'
             }}>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '6px',
-                  background: '#ffffff',
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  color: '#334155',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <Printer size={15} /> 인쇄 / PDF
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    background: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Printer size={15} /> 인쇄 / PDF
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = selectedTbm;
+                    setIsDetailModalOpen(false);
+                    handleOpenPostWorkTbm(target);
+                  }}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '6px',
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    color: '#16a34a',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Edit size={15} /> 일지 수정 ✏️
+                </button>
+              </div>
 
               <button
                 type="button"

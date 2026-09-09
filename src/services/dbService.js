@@ -1189,14 +1189,12 @@ class SecurityDatabase {
       await this.putItem('sites', siteObj);
     } catch (e) { }
 
-    // 3. Safe sync with server
-    try {
-      await safeFetchApi('/api/security-sites', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(siteObj)
-      });
-    } catch (e) { }
+    // 3. Safe non-blocking sync with server
+    safeFetchApi('/api/security-sites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(siteObj)
+    }).catch(err => console.warn('Background site save sync warning:', err));
 
     // 4. 사업장 정보 변경 시 기존 업무일지 및 서약서 데이터 일괄 동기화
     if (previousSite) {
@@ -1327,10 +1325,9 @@ class SecurityDatabase {
       await this.deleteItem('sites', targetId);
     } catch (e) { }
 
-    // 3. Safe sync with server
-    try {
-      await safeFetchApi(`/api/security-sites/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
-    } catch (e) { }
+    // 3. Safe non-blocking sync with server
+    safeFetchApi(`/api/security-sites/${encodeURIComponent(targetId)}`, { method: 'DELETE' })
+      .catch(err => console.warn('Background site delete sync warning:', err));
 
     notifyDataChanged();
     return targetId;
@@ -2781,44 +2778,42 @@ class SecurityDatabase {
       await this.replaceCollection('work_logs', updated);
     } catch (e) { }
 
-    // 2. Safe async sync with server
-    try {
-      await safeFetchApi('/api/work-logs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: targetId,
-          log_id: targetId,
-          logId: targetId,
-          name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
-          writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
-          writerId: preparedLog.authorUsername || preparedLog.writerId || '',
-          division: preparedLog.authorDivision || preparedLog.division || '',
-          team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
-          rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
-          role: preparedLog.authorRole || preparedLog.role || '일반',
-          category: preparedLog.category || '사내 업무',
-          sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
-          subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
-          due_date: cleanDueDate,
-          dueDate: cleanDueDate,
-          site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
-          siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
-          log_date: cleanDate,
-          logDate: cleanDate,
-          title: preparedLog.title,
-          tasks_done: preparedLog.details || preparedLog.tasksDone || '',
-          tasksDone: preparedLog.details || preparedLog.tasksDone || '',
-          is_shared: preparedLog.isShared ? 1 : 0,
-          isShared: preparedLog.isShared ?? false,
-          shared_with: cleanSharedWith,
-          sharedWith: cleanSharedWith,
-          shared_at: preparedLog.sharedAt || '',
-          sharedAt: preparedLog.sharedAt || '',
-          created_at: preparedLog.createdAt || new Date().toISOString()
-        })
-      });
-    } catch (e) { }
+    // 2. Safe async sync with server (non-blocking, eliminates UI freeze/lag)
+    safeFetchApi('/api/work-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: targetId,
+        log_id: targetId,
+        logId: targetId,
+        name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
+        writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
+        writerId: preparedLog.authorUsername || preparedLog.writerId || '',
+        division: preparedLog.authorDivision || preparedLog.division || '',
+        team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
+        rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
+        role: preparedLog.authorRole || preparedLog.role || '일반',
+        category: preparedLog.category || '사내 업무',
+        sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
+        subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
+        due_date: cleanDueDate,
+        dueDate: cleanDueDate,
+        site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+        siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+        log_date: cleanDate,
+        date: cleanDate,
+        title: preparedLog.title,
+        tasks_done: preparedLog.details || preparedLog.tasksDone || '',
+        tasksDone: preparedLog.details || preparedLog.tasksDone || '',
+        is_shared: preparedLog.isShared ? 1 : 0,
+        isShared: preparedLog.isShared ?? false,
+        shared_with: cleanSharedWith,
+        sharedWith: cleanSharedWith,
+        shared_at: preparedLog.sharedAt || '',
+        sharedAt: preparedLog.sharedAt || '',
+        created_at: preparedLog.createdAt || new Date().toISOString()
+      })
+    }).catch(err => console.warn('Background work log save sync warning:', err));
 
     notifyDataChanged();
     return updated;
@@ -2877,10 +2872,9 @@ class SecurityDatabase {
     recentResponseCache.clear();
     this._lastWorkLogsRevalidate = Date.now() + 5000; // block revalidation for 5s while server processes
 
-    // 6. Safe remote API delete
-    try {
-      await safeFetchApi(`/api/work-logs/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
-    } catch (e) { }
+    // 6. Safe remote API delete (non-blocking, eliminates UI freeze/lag)
+    safeFetchApi(`/api/work-logs/${encodeURIComponent(targetId)}`, { method: 'DELETE' })
+      .catch(err => console.warn('Background work log delete sync warning:', err));
 
     notifyDataChanged();
     return updated;
@@ -3306,33 +3300,85 @@ class SecurityDatabase {
   // --- TBM (Tool Box Meeting) Domain CRUD ---
   // ==========================================
 
-  async getTbms(filterDate = null) {
-    let list = [];
+  _normalizeTbm(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const tbm = { ...raw };
+    tbm.id = String(tbm.id || tbm.tbm_id || tbm.tbmId || `tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`).trim();
+    tbm.date = normalizeKstDate(tbm.date || tbm.log_date || tbm.logDate) || new Date().toLocaleDateString('sv-SE');
+    tbm.site = (tbm.site || tbm.siteName || tbm.site_name || '').trim();
+    tbm.siteAddress = (tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
+    tbm.workTitle = (tbm.workTitle || tbm.work_title || tbm.title || '').trim();
+    tbm.workArea = (tbm.workArea || tbm.work_area || '').trim();
+    tbm.workCategory = (tbm.workCategory || tbm.work_category || '일반작업').trim();
+    tbm.leaderDivision = (tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
+    tbm.leaderTeam = (tbm.leaderTeam || tbm.leader_team || tbm.team || '').trim();
+    tbm.leaderName = (tbm.leaderName || tbm.leader_name || tbm.leader || '').trim();
+    tbm.leaderRank = (tbm.leaderRank || tbm.leader_rank || tbm.rank || '대리').trim();
+    tbm.leaderPhone = (tbm.leaderPhone || tbm.leader_phone || tbm.phone || '').trim();
+    tbm.workContent = (tbm.workContent || tbm.work_content || tbm.content || '').trim();
+    tbm.toolsUsed = (tbm.toolsUsed || tbm.tools_used || '').trim();
 
-    // 1. Try remote API if available
-    try {
-      const res = await safeFetchApi('/api/tbms');
-      if (res && res.ok) {
-        const json = await res.json();
-        const remoteData = json.data || json;
-        if (Array.isArray(remoteData) && remoteData.length > 0) {
-          localStorage.setItem('with_security_tbms_backup', JSON.stringify(remoteData));
-          try {
-            for (const item of remoteData) await this.putItem('tbms', item);
-          } catch (e) { }
-          list = remoteData;
-        }
-      }
-    } catch (e) { }
+    // Parse attendees safely
+    if (typeof tbm.attendees === 'string') {
+      try { tbm.attendees = JSON.parse(tbm.attendees); } catch (e) { tbm.attendees = []; }
+    }
+    if (!Array.isArray(tbm.attendees)) tbm.attendees = [];
 
-    // 2. Offline / Local fallback: LocalStorage + IndexedDB
-    if (list.length === 0) {
+    // Parse absentees safely
+    if (typeof tbm.absentees === 'string') {
+      try { tbm.absentees = JSON.parse(tbm.absentees); } catch (e) { tbm.absentees = []; }
+    }
+    if (!Array.isArray(tbm.absentees)) tbm.absentees = [];
+
+    // Parse preCheck safely
+    if (typeof tbm.preCheck === 'string') {
+      try { tbm.preCheck = JSON.parse(tbm.preCheck); } catch (e) { tbm.preCheck = {}; }
+    }
+    if (typeof tbm.pre_check === 'string') {
+      try { tbm.preCheck = JSON.parse(tbm.pre_check); } catch (e) { tbm.preCheck = tbm.preCheck || {}; }
+    } else if (tbm.pre_check && typeof tbm.pre_check === 'object') {
+      tbm.preCheck = tbm.pre_check;
+    }
+    if (!tbm.preCheck || typeof tbm.preCheck !== 'object') {
+      tbm.preCheck = { isCompleted: true, selectedItems: [], photos: [] };
+    }
+    if (!Array.isArray(tbm.preCheck.selectedItems)) tbm.preCheck.selectedItems = [];
+    if (!Array.isArray(tbm.preCheck.photos)) tbm.preCheck.photos = [];
+
+    // Parse postCheck safely
+    if (typeof tbm.postCheck === 'string') {
+      try { tbm.postCheck = JSON.parse(tbm.postCheck); } catch (e) { tbm.postCheck = {}; }
+    }
+    if (typeof tbm.post_check === 'string') {
+      try { tbm.postCheck = JSON.parse(tbm.post_check); } catch (e) { tbm.postCheck = tbm.postCheck || {}; }
+    } else if (tbm.post_check && typeof tbm.post_check === 'object') {
+      tbm.postCheck = tbm.post_check;
+    }
+    if (!tbm.postCheck || typeof tbm.postCheck !== 'object') {
+      tbm.postCheck = { isCompleted: false, selectedItems: [], photos: [], absentees: [] };
+    }
+    if (!Array.isArray(tbm.postCheck.selectedItems)) tbm.postCheck.selectedItems = [];
+    if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
+    if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
+
+    tbm.status = tbm.status || (tbm.postCheck?.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
+    tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
+
+    return tbm;
+  }
+
+  async getTbms(filterDate = null, forceRemote = false) {
+    // 1. Instant Local Cache Return (0.1ms) - completely eliminates UI freezing/lag
+    if (!forceRemote) {
       try {
         const raw = localStorage.getItem('with_security_tbms_backup');
         if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            list = parsed;
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            const normalizedList = list.map(item => this._normalizeTbm(item)).filter(Boolean);
+            this._revalidateTbmsInBackground().catch(() => { });
+            return this._filterAndSortTbms(normalizedList, filterDate);
           }
         }
       } catch (e) { }
@@ -3340,61 +3386,88 @@ class SecurityDatabase {
       try {
         const dbItems = await this.getAll('tbms');
         if (Array.isArray(dbItems) && dbItems.length > 0) {
-          if (list.length === 0) {
-            list = dbItems;
-          } else {
-            const map = new Map();
-            for (const item of list) map.set(item.id, item);
-            for (const item of dbItems) {
-              if (!map.has(item.id)) map.set(item.id, item);
-            }
-            list = Array.from(map.values());
+          const normalizedList = dbItems.map(item => this._normalizeTbm(item)).filter(Boolean);
+          this._revalidateTbmsInBackground().catch(() => { });
+          return this._filterAndSortTbms(normalizedList, filterDate);
+        }
+      } catch (e) { }
+    }
+
+    return await this._fetchTbmsRemote(filterDate);
+  }
+
+  async _revalidateTbmsInBackground() {
+    const now = Date.now();
+    if (this._lastTbmsRevalidate && (now - this._lastTbmsRevalidate < 30000)) return;
+    this._lastTbmsRevalidate = now;
+    await this._fetchTbmsRemote();
+  }
+
+  async _fetchTbmsRemote(filterDate = null) {
+    let list = [];
+    try {
+      const res = await safeFetchApi('/api/tbms');
+      if (res && res.ok) {
+        const json = await res.json();
+        const remoteData = json.data || json;
+        if (Array.isArray(remoteData) && remoteData.length > 0) {
+          const normalized = remoteData.map(item => this._normalizeTbm(item)).filter(Boolean);
+          localStorage.setItem('with_security_tbms_backup', JSON.stringify(normalized));
+          try {
+            for (const item of normalized) await this.putItem('tbms', item);
+          } catch (e) { }
+          list = normalized;
+          this.notifyDataChanged(true);
+        }
+      }
+    } catch (e) { }
+
+    if (list.length === 0) {
+      try {
+        const raw = localStorage.getItem('with_security_tbms_backup');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            list = parsed.map(item => this._normalizeTbm(item)).filter(Boolean);
           }
         }
       } catch (e) { }
     }
 
-    // Sort by createdAt / date descending
-    list.sort((a, b) => {
+    return this._filterAndSortTbms(list, filterDate);
+  }
+
+  _filterAndSortTbms(list, filterDate) {
+    const sorted = [...list].sort((a, b) => {
       const timeA = new Date(a.createdAt || a.date).getTime() || 0;
       const timeB = new Date(b.createdAt || b.date).getTime() || 0;
       return timeB - timeA;
     });
-
     if (filterDate) {
-      return list.filter(item => item.date === filterDate);
+      return sorted.filter(item => item.date === filterDate);
     }
-    return list;
+    return sorted;
   }
 
   async getTbmById(id) {
     if (!id) return null;
     const all = await this.getTbms();
-    return all.find(item => item.id === id) || null;
+    return all.find(item => String(item.id) === String(id)) || null;
   }
 
   async saveTbm(tbm) {
     if (!tbm) return null;
-    const now = new Date().toISOString();
-    const id = tbm.id || `tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const fullTbm = {
+    const fullTbm = this._normalizeTbm({
       ...tbm,
-      id,
-      createdAt: tbm.createdAt || now,
-      updatedAt: now
-    };
+      updatedAt: new Date().toISOString()
+    });
 
-    // 1. Put into IndexedDB
-    try {
-      await this.putItem('tbms', fullTbm);
-    } catch (e) { }
-
-    // 2. Put into LocalStorage cache
+    // 1. Immediately update LocalStorage cache (0.1ms UI response)
     try {
       const raw = localStorage.getItem('with_security_tbms_backup');
       let list = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(list)) list = [];
-      const idx = list.findIndex(item => item.id === id);
+      const idx = list.findIndex(item => String(item.id) === String(fullTbm.id));
       if (idx >= 0) {
         list[idx] = fullTbm;
       } else {
@@ -3403,14 +3476,17 @@ class SecurityDatabase {
       localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
     } catch (e) { }
 
-    // 3. Remote API sync
+    // 2. Put into IndexedDB immediately
     try {
-      await safeFetchApi('/api/tbms', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fullTbm)
-      });
+      await this.putItem('tbms', fullTbm);
     } catch (e) { }
+
+    // 3. Non-blocking background sync with server (never stalls the UI!)
+    safeFetchApi('/api/tbms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fullTbm)
+    }).catch(err => console.warn('Background TBM sync warning:', err));
 
     notifyDataChanged();
     return fullTbm;
@@ -3432,28 +3508,28 @@ class SecurityDatabase {
 
   async deleteTbm(id) {
     if (!id) return false;
+    const targetId = String(id).trim();
 
-    // 1. Delete from IndexedDB
-    try {
-      await this.deleteItem('tbms', id);
-    } catch (e) { }
-
-    // 2. Delete from LocalStorage
+    // 1. Immediately delete from LocalStorage cache (0.1ms UI response)
     try {
       const raw = localStorage.getItem('with_security_tbms_backup');
       if (raw) {
         let list = JSON.parse(raw);
         if (Array.isArray(list)) {
-          list = list.filter(item => item.id !== id);
+          list = list.filter(item => String(item.id) !== targetId);
           localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
         }
       }
     } catch (e) { }
 
-    // 3. Remote API delete
+    // 2. Delete from IndexedDB immediately
     try {
-      await safeFetchApi(`/api/tbms/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await this.deleteItem('tbms', targetId);
     } catch (e) { }
+
+    // 3. Non-blocking background sync with server
+    safeFetchApi(`/api/tbms/${encodeURIComponent(targetId)}`, { method: 'DELETE' })
+      .catch(err => console.warn('Background TBM delete warning:', err));
 
     notifyDataChanged();
     return true;
