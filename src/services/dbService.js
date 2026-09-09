@@ -174,6 +174,10 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
     targetUrl = `${baseUrl}?sheet=${sheetName}`;
     delete fetchOptions.body;
   } else if (method === 'POST') {
+    // Defense-in-depth: Reject incomplete user payload (e.g. auth credentials probe) from creating user rows
+    if (sheetName === 'users' && (!bodyData || !bodyData.username || !bodyData.name)) {
+      return { targetUrl: `${baseUrl}?action=ping`, fetchOptions: { method: 'GET' } };
+    }
     fetchOptions.method = 'POST';
     fetchOptions.redirect = 'follow';
     fetchOptions.headers = {
@@ -1263,34 +1267,7 @@ class SecurityDatabase {
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
 
-    // 1. Try secure remote backend login API first (Only for Node.js REST API server, NEVER for Google Sheets!)
-    const apiServerUrl = getApiServerUrl();
-    const isGoogleSheetTarget = Boolean(apiServerUrl && apiServerUrl.includes('script.google.com'));
-
-    if (!isGoogleSheetTarget && isApiEndpoint(apiServerUrl)) {
-      try {
-        const res = await safeFetchApi('/api/security-users/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: uName, password: pass })
-        });
-        if (res && res.ok) {
-          const json = await res.json().catch(() => null);
-          if (json && json.success && json.user) {
-            this.recordLocalLoginAttempt(uName, true);
-            if (json.token) {
-              localStorage.setItem('with_security_auth_token', json.token);
-            }
-            await this.saveUserProfile(json.user, false);
-            return { success: true, user: json.user, token: json.token };
-          }
-        }
-      } catch (e) {
-        console.warn('Backend login API attempt failed, falling back to local storage:', e);
-      }
-    }
-
-    // 2. Local fallback verification (for offline / pre-hosting / mobile app / local-first DB)
+    // Local-first & offline verification (pure local authentication, zero remote sheet row creation)
     const users = await this.getRegisteredUsers();
     let foundUser = null;
     let isPasswordCorrect = false;
@@ -1614,8 +1591,10 @@ class SecurityDatabase {
       } catch (e) {}
     }
 
-    // 사용자 정보(이름, 직급, 소속팀, 사업부 등) 실제 변경 시에만 비동기로 일괄 동기화 (로그인 시 블로킹 방지)
-    if (previousUser && (previousUser.name !== safeUser.name || previousUser.rank !== safeUser.rank || previousUser.team !== safeUser.team || previousUser.division !== safeUser.division)) {
+    // 사용자 정보(이름, 직급, 소속팀, 사업부 등) 실제 변경 시에만 비동기로 일괄 동기화 (동일 계정의 정보 수정 시에만 실행, 로그인 및 계정 전환 시 충돌 방지)
+    if (previousUser && previousUser.username && safeUser.username &&
+        String(previousUser.username).trim().toLowerCase() === String(safeUser.username).trim().toLowerCase() &&
+        (previousUser.name !== safeUser.name || previousUser.rank !== safeUser.rank || previousUser.team !== safeUser.team || previousUser.division !== safeUser.division)) {
       setTimeout(() => {
         this.cascadeUpdateUserData(safeUser, previousUser).catch(() => {});
       }, 50);
@@ -1989,7 +1968,7 @@ class SecurityDatabase {
               };
             });
 
-          usersList = this._deduplicateUsers(rawMapped);
+          usersList = this._deduplicateUsers(usersList);
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
             await this.replaceCollection('users', usersList);

@@ -274,6 +274,10 @@ function doPost(e) {
     // [1] 데이터 추가 (Create / Upsert - 중복 생성 방지)
     if (action === 'create') {
       const item = payload.data || {};
+      // 보안 및 무결성 검증: 사용자 계정 추가 시 필수 정보(username, name) 누락 시 생성 차단
+      if (sheetName === 'users' && (!item.username || !item.name)) {
+        return jsonResponse({ success: false, error: '유효하지 않은 사용자 데이터: username과 name은 필수 입력 항목입니다.' });
+      }
       const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'name' : 'id');
       const keyValue = String(item[keyField] || item.id || item.log_id || '').trim();
 
@@ -516,7 +520,24 @@ function readSheetData(sheetName) {
       }
 
       if (key) {
-        keyMap.set(key, obj);
+        if (sheetName === 'users' && keyMap.has(key)) {
+          const prev = keyMap.get(key);
+          keyMap.set(key, {
+            ...prev,
+            ...obj,
+            name: obj.name || prev.name || '',
+            role: (obj.role === '개발자' || prev.role === '개발자') ? '개발자' : (obj.role || prev.role || '일반'),
+            division: obj.division || prev.division || '',
+            team: obj.team || prev.team || '',
+            rank: obj.rank || prev.rank || '',
+            siteId: obj.siteId || prev.siteId || '',
+            phone: obj.phone || prev.phone || '',
+            email: obj.email || prev.email || '',
+            password: prev.password || obj.password || ''
+          });
+        } else {
+          keyMap.set(key, obj);
+        }
       } else {
         list.push(obj);
       }
@@ -557,10 +578,16 @@ function cleanupDuplicates() {
 
       if (sheetName === 'users') {
         const uIdx = headers.indexOf('username');
-        const idIdx = headers.indexOf('id');
+        const nameIdx = headers.indexOf('name');
         const username = uIdx !== -1 ? String(row[uIdx] || '').trim().toLowerCase() : '';
-        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
-        key = username || id;
+        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
+
+        // 이름이 누락된 유령/중복 계정 행은 최우선 삭제 대상 등록
+        if (!name) {
+          rowsToDelete.push(r + 1);
+          continue;
+        }
+        key = username;
       } else if (sheetName === 'sites') {
         const nameIdx = headers.indexOf('name');
         const addrIdx = headers.indexOf('address');
