@@ -1439,11 +1439,13 @@ export default function SecurityChecklistTab({
       const userAccount = (currentUser?.username || '').trim();
       const userTeam = (currentUser?.team || currentUser?.department || currentUser?.division || currentUser?.company || '').trim();
 
-      // Strict person identity matching (If division, team, rank, phone, name, role, username differs -> different person)
-      const isPrimaryVisitor = isSamePerson(currentUser, item);
+      // 해당 계정 아이디 일치 검사 또는 동일인 매칭
+      const itemUsername = String(item.username || item.userId || item.user_id || item.writer_id || '').trim().toLowerCase();
+      const currentAccount = String(currentUser?.username || '').trim().toLowerCase();
+      const isAccountMatch = Boolean(currentAccount && itemUsername && currentAccount === itemUsername);
 
+      const isPrimaryVisitor = isAccountMatch || isSamePerson(currentUser, item);
       const isCompanionVisitor = item.companions?.some(c => isSamePerson(currentUser, c));
-
       const isSelfPledge = isPrimaryVisitor || isCompanionVisitor;
 
       if (isManager) {

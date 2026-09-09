@@ -59,44 +59,73 @@ export const RANK_LIST = [
 export function isSamePerson(personA, personB) {
   if (!personA || !personB) return false;
 
-  const usernameA = (personA.username || personA.userId || personA.writer_id || '').trim().toLowerCase();
-  const usernameB = (personB.username || personB.userId || personB.writer_id || '').trim().toLowerCase();
+  // 1. 고유 계정 ID (username, writer_id 등) 추출
+  const getAccount = (p) => {
+    if (!p) return '';
+    return String(
+      p.username ||
+      p.writer_id ||
+      p.writerId ||
+      p.authorUsername ||
+      p.author_username ||
+      p.userId ||
+      p.user_id ||
+      ''
+    ).trim().toLowerCase();
+  };
 
-  const nameA = (personA.name || personA.visitorName || personA.userName || '').trim().toLowerCase();
-  const nameB = (personB.name || personB.visitorName || personB.userName || '').trim().toLowerCase();
+  const usernameA = getAccount(personA);
+  const usernameB = getAccount(personB);
 
-  const teamA = (personA.team || personA.department || personA.visitor_team || personA.belonging || '').trim().replace(/\s+/g, '').toLowerCase();
-  const teamB = (personB.team || personB.department || personB.visitor_team || personB.belonging || '').trim().replace(/\s+/g, '').toLowerCase();
+  // ⭐ 핵심 1: 두 대상 모두 고유 계정 ID가 존재하고 완전히 일치하면 -> 해당 계정으로 작성된 데이터 100% 동일인 확정!
+  if (usernameA && usernameB && usernameA === usernameB) {
+    return true;
+  }
 
-  const rankA = (personA.rank || personA.title || personA.visitor_rank || '').trim().toLowerCase();
-  const rankB = (personB.rank || personB.title || personB.visitor_rank || '').trim().toLowerCase();
+  // ⭐ 핵심 2: 계정 ID가 둘 다 존재하는데 서로 다르면 -> 확실히 다른 계정
+  if (usernameA && usernameB && usernameA !== usernameB) {
+    return false;
+  }
 
-  const divisionA = (personA.division || personA.businessUnit || '').trim().replace(/\s+/g, '').toLowerCase();
-  const divisionB = (personB.division || personB.businessUnit || '').trim().replace(/\s+/g, '').toLowerCase();
+  // 2. 계정 ID가 한쪽에 없거나 오프라인 서약 기록인 경우 이름/소속/직급 등 프로필 종합 평가
+  const nameA = String(personA.name || personA.authorName || personA.writerName || personA.visitorName || personA.userName || '').trim().toLowerCase();
+  const nameB = String(personB.name || personB.authorName || personB.writerName || personB.visitorName || personB.userName || '').trim().toLowerCase();
 
-  const phoneA = (personA.phone || personA.visitorPhone || personA.visitor_phone || '').trim().replace(/[-_\s]/g, '');
-  const phoneB = (personB.phone || personB.visitorPhone || personB.visitor_phone || '').trim().replace(/[-_\s]/g, '');
-
-  // 1. ID (username)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
-  if (usernameA && usernameB && usernameA !== usernameB) return false;
-
-  // 2. 이름 (name)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  // 이름이 둘 다 존재하는데 다르면 -> 다른 사람 (동명이인이 아닌 완전 타인)
   if (nameA && nameB && nameA !== nameB) return false;
 
-  // 3. 소속 (team/department)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
-  if (teamA && teamB && teamA !== teamB) return false;
+  const cleanTeam = (t) => {
+    let s = String(t || '').trim().replace(/\s+/g, '').toLowerCase();
+    if (s.includes('>')) s = s.split('>').pop().trim();
+    return s;
+  };
+  const teamA = cleanTeam(personA.team || personA.department || personA.visitor_team || personA.belonging);
+  const teamB = cleanTeam(personB.team || personB.department || personB.visitor_team || personB.belonging);
 
-  // 4. 직급 (rank)이 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  // 소속팀이 둘 다 존재하고 서로 상충되면(포함 관계도 아님) -> 다른 사람 (동명이인 판정)
+  if (teamA && teamB && teamA !== teamB && !teamA.includes(teamB) && !teamB.includes(teamA)) {
+    return false;
+  }
+
+  const rankA = String(personA.rank || personA.authorRank || personA.writerRank || personA.title || personA.visitor_rank || personA.visitorRank || '').trim().toLowerCase();
+  const rankB = String(personB.rank || personB.authorRank || personB.writerRank || personB.title || personB.visitor_rank || personB.visitorRank || '').trim().toLowerCase();
+
+  // 직급이 둘 다 존재하는데 다르면 -> 다른 사람 (동명이인 판정)
   if (rankA && rankB && rankA !== rankB) return false;
 
-  // 5. 사업부 (division)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
-  if (divisionA && divisionB && divisionA !== divisionB) return false;
+  const cleanPhone = (ph) => {
+    const s = String(ph || '').trim().replace(/[-_\s]/g, '');
+    if (!s || s === '01000000000' || s === '00000000000') return '';
+    return s;
+  };
+  const phoneA = cleanPhone(personA.phone || personA.visitorPhone || personA.visitor_phone);
+  const phoneB = cleanPhone(personB.phone || personB.visitorPhone || personB.visitor_phone);
 
-  // 6. 연락처 (phone)가 둘 다 존재하는데 다르면 -> 다른 사람 (Different Person)
+  // 연락처가 둘 다 유효하게 존재하는데 다르면 -> 다른 사람 (동명이인 판정)
   if (phoneA && phoneB && phoneA !== phoneB) return false;
 
-  // ID 또는 이름 중 최소 1개는 일치해야 동일인으로 판단
-  if ((usernameA && usernameB && usernameA === usernameB) || (nameA && nameB && nameA === nameB)) {
+  // 이름이 일치하거나, 계정 ID가 일치하면 동일인으로 판정
+  if ((nameA && nameB && nameA === nameB) || (usernameA && usernameB && usernameA === usernameB)) {
     return true;
   }
 

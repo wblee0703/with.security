@@ -759,6 +759,10 @@ function readSheetData(sheetName) {
         if (!obj.writerName && obj.name) obj.writerName = obj.name;
         if (!obj.authorUsername && obj.writer_id) obj.authorUsername = obj.writer_id;
         if (!obj.writerId && obj.writer_id) obj.writerId = obj.writer_id;
+        if (!obj.username && obj.writer_id) obj.username = obj.writer_id;
+        if (!obj.writer_id && obj.writerId) obj.writer_id = obj.writerId;
+        if (!obj.writer_id && obj.authorUsername) obj.writer_id = obj.authorUsername;
+        if (!obj.writer_id && obj.username) obj.writer_id = obj.username;
         if (!obj.authorTeam && obj.team) obj.authorTeam = obj.team;
         if (!obj.authorRank && obj.rank) obj.authorRank = obj.rank;
         if (!obj.authorDivision && obj.division) obj.authorDivision = obj.division;

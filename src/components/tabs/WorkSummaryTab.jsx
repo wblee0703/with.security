@@ -34,6 +34,7 @@ import {
 import { dbService } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
+import { isSamePerson } from '../../services/userMatcher';
 
 export default function WorkSummaryTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
@@ -533,37 +534,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }
   };
 
-  // User Identity Comparison Rule (동일인 및 동명이인 식별 기준):
-  // 이름(name), 직급(rank), 소속(team), 사업부(division), 아이디(username) 중 1개라도 다르면 서로 다른 사람(동명이인)으로 판단
-  const isSamePerson = (u1, u2) => {
-    if (!u1 || !u2) return false;
-    const name1 = (u1.name || u1.authorName || u1.writerName || u1.visitorName || '').trim();
-    const name2 = (u2.name || u2.authorName || u2.writerName || u2.visitorName || '').trim();
-    const rank1 = (u1.rank || u1.authorRank || u1.writerRank || '').trim();
-    const rank2 = (u2.rank || u2.authorRank || u2.writerRank || '').trim();
-    const team1 = (u1.team || u1.authorTeam || u1.writerTeam || u1.department || '').trim();
-    const team2 = (u2.team || u2.authorTeam || u2.writerTeam || u2.department || '').trim();
-    const div1 = (u1.division || u1.authorDivision || '').trim();
-    const div2 = (u2.division || u2.authorDivision || '').trim();
-    const id1 = (u1.username || u1.writerId || u1.authorUsername || u1.id || '').trim();
-    const id2 = (u2.username || u2.writerId || u2.authorUsername || u2.id || '').trim();
-
-    // 1. ID가 둘 다 존재하고 다르면 다른 사람
-    if (id1 && id2 && id1 !== id2) return false;
-
-    // 2. 이름, 직급, 소속, 사업부 중 1개라도 다르면 다른 사람 (동명이인 판정)
-    if (name1 && name2 && name1 !== name2) return false;
-    if (rank1 && rank2 && rank1 !== rank2) return false;
-    if (team1 && team2 && team1 !== team2) return false;
-    if (div1 && div2 && div1 !== div2) return false;
-
-    // 3. 이름이나 ID가 일치하고 상충되는 필드가 없으면 동일인
-    if (name1 && name2 && name1 === name2) return true;
-    if (id1 && id2 && id1 === id2) return true;
-
-    return false;
-  };
-
   // '이름 직급 (소속)' 문자열 또는 사용자 객체와 현재 사용자 매칭 검사기
   const isTargetMatchingMe = (target, my) => {
     if (!target || !my) return false;
@@ -583,6 +553,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // --- Helpers for User Filtering & Shared Task Detection ---
   const isMyAuthoredLog = (log) => {
     if (!currentUser) return true;
+    if (!log) return false;
+
+    // 1. 해당 계정 아이디(username / writer_id) 일치 시 최우선 노출 (100% 확정)
+    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();
+    const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim().toLowerCase();
+    if (logWriter && userAccount && logWriter === userAccount) {
+      return true;
+    }
+
     return isSamePerson(log, currentUser);
   };
 

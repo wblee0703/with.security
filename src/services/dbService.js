@@ -2371,6 +2371,7 @@ class SecurityDatabase {
               authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || '',
               writerId: item.writer_id || item.writerId || item.authorUsername || item.username || '',
               writer_id: item.writer_id || item.writerId || item.authorUsername || item.username || '',
+              username: item.writer_id || item.writerId || item.authorUsername || item.username || '',
               division: item.division || '',
               team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
               authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
