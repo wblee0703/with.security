@@ -2424,7 +2424,7 @@ class SecurityDatabase {
 
   async saveWorkLog(logItem) {
     if (!logItem) return null;
-    const targetId = String(logItem.id || logItem.log_id || '').trim();
+    const targetId = String(logItem.id || logItem.log_id || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`).trim();
     // ⭐ 핵심 격리 규칙: 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장하지 않고 saveChecklist로 안전하게 전환
     if (targetId.startsWith('PASS-') || logItem.visitorName || logItem.visitor_name || logItem.pledge_terms) {
       return await this.saveChecklist(logItem);
@@ -2462,6 +2462,8 @@ class SecurityDatabase {
 
     const preparedLog = {
       ...logItem,
+      id: targetId,
+      log_id: targetId,
       sharedWith: cleanSharedWith
     };
 
@@ -2475,7 +2477,6 @@ class SecurityDatabase {
       }
     })();
 
-    const targetId = preparedLog.id || preparedLog.log_id;
     const existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
     let updated;
     if (existingIndex >= 0) {
