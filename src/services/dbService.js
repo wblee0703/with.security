@@ -664,10 +664,12 @@ class SecurityDatabase {
         const json = await res.json();
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
-          const consolidated = this._consolidateChecklists(remoteData);
+          const normalized = remoteData.map(item => this._normalizeChecklist(item)).filter(Boolean);
+          const consolidated = this._consolidateChecklists(normalized);
           localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
           localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
           await this.replaceCollection('checklists', consolidated);
+          this.notifyDataChanged(true);
           return consolidated;
         }
       }
@@ -820,7 +822,18 @@ class SecurityDatabase {
     // 2. Guaranteed Local Persistence: Save to LocalStorage immediately
     try {
       const existing = await this.getChecklists();
-      const existingIndex = existing.findIndex(item => String(item.id) === String(targetId) || String(item.log_id) === String(targetId));
+      let existingIndex = existing.findIndex(item => String(item.id) === String(targetId) || String(item.log_id) === String(targetId));
+      if (existingIndex < 0) {
+        const vPhone = String(normalizedChecklist.visitorPhone || normalizedChecklist.visitor_phone || normalizedChecklist.phone || '').replace(/\D/g, '');
+        const sDate = String(normalizedChecklist.signature_date || normalizedChecklist.signatureDate || normalizedChecklist.date || '').trim();
+        if (vPhone && sDate) {
+          existingIndex = existing.findIndex(item => {
+            const iPhone = String(item.visitorPhone || item.visitor_phone || item.phone || '').replace(/\D/g, '');
+            const iDate = String(item.signature_date || item.signatureDate || item.date || '').trim();
+            return iPhone === vPhone && iDate === sDate;
+          });
+        }
+      }
       let updated;
       if (existingIndex >= 0) {
         updated = [...existing];
@@ -1072,6 +1085,7 @@ class SecurityDatabase {
           localStorage.setItem('with_security_sites_backup', JSON.stringify(sorted));
           localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(sorted));
           await this.replaceCollection('sites', sorted);
+          this.notifyDataChanged(true);
           return sorted;
         }
       }
@@ -1831,6 +1845,196 @@ class SecurityDatabase {
     return Array.from(userMap.values());
   }
 
+  _normalizeWorkLog(item) {
+    if (!item) return null;
+    let itemId = String(item.id || item.log_id || '').trim();
+    if (itemId.startsWith('PASS-') || item.visitorName || item.visitor_name || item.pledge_terms) {
+      return null;
+    }
+
+    // Clean Date to YYYY-MM-DD
+    let cleanDate = '';
+    const rawDate = item.log_date || item.date || item.created_at || item.createdAt;
+    if (rawDate) {
+      if (rawDate instanceof Date) {
+        const y = rawDate.getFullYear();
+        const m = String(rawDate.getMonth() + 1).padStart(2, '0');
+        const d = String(rawDate.getDate()).padStart(2, '0');
+        cleanDate = `${y}-${m}-${d}`;
+      } else {
+        const str = String(rawDate).trim();
+        const match = str.match(/\d{4}[-./]\d{1,2}[-./]\d{1,2}/);
+        if (match) {
+          cleanDate = match[0].replace(/[/.]/g, '-').split('-').map((p, idx) => idx > 0 ? p.padStart(2, '0') : p).join('-');
+        } else if (str.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(str)) {
+          cleanDate = str.slice(0, 10);
+        }
+      }
+    }
+    if (!cleanDate) {
+      cleanDate = new Date().toLocaleDateString('sv-SE');
+    }
+
+    const title = String(item.title || item.workTitle || '일일 업무').trim();
+    const authorUsername = String(item.writer_id || item.writerId || item.authorUsername || item.username || '').trim();
+
+    // If ID is missing (e.g. manually entered row in Google Sheets), generate a deterministic ID
+    if (!itemId) {
+      const wPart = authorUsername || String(item.name || item.writer_name || item.authorName || 'ROW').trim();
+      const dPart = cleanDate.replace(/\D/g, '');
+      const tPart = title.replace(/\s+/g, '').slice(0, 10);
+      itemId = `LOG-${wPart}-${dPart}-${tPart || Date.now()}`;
+    }
+
+    let parsedSharedWith = [];
+    const rawSw = item.shared_with || item.sharedWith;
+    if (Array.isArray(rawSw)) {
+      parsedSharedWith = rawSw.map(s => typeof s === 'object' ? (s.name || s.authorName || '') : String(s).trim()).filter(Boolean);
+    } else if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        if (Array.isArray(p)) {
+          parsedSharedWith = p.map(s => typeof s === 'object' ? (s.name || s.authorName || '') : String(s).trim()).filter(Boolean);
+        } else {
+          parsedSharedWith = rawSw.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      } catch (e) {
+        parsedSharedWith = rawSw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    const isSharedVal = item.is_shared !== undefined
+      ? Boolean(item.is_shared)
+      : (item.isShared !== undefined ? Boolean(item.isShared) : false);
+
+    const details = String(item.tasks_done || item.details || item.content || '').trim();
+    const siteName = String(item.site_name || item.siteName || '').trim();
+    const name = String(item.name || item.writer_name || item.authorName || '작성자').trim();
+    const team = String(item.team || item.writer_team || item.authorTeam || item.department || '').trim();
+    const rank = String(item.rank || item.writer_rank || item.authorRank || '').trim();
+    const role = String(item.role || item.authorRole || '일반').trim();
+    const division = String(item.division || item.authorDivision || '').trim();
+    const dueDate = item.due_date ? String(item.due_date).slice(0, 10) : (item.dueDate ? String(item.dueDate).slice(0, 10) : '');
+    const subCategory = String(item.sub_category || item.subCategory || '').trim();
+
+    return {
+      id: itemId,
+      log_id: itemId,
+      category: item.category || '사내 업무',
+      subCategory: subCategory,
+      sub_category: subCategory,
+      dueDate: dueDate,
+      due_date: dueDate,
+      title: title,
+      details: details,
+      tasks_done: details,
+      tasksDone: details,
+      siteName: siteName,
+      site_name: siteName,
+      date: cleanDate,
+      log_date: cleanDate,
+      name: name,
+      authorName: name,
+      authorUsername: authorUsername,
+      writerId: authorUsername,
+      writer_id: authorUsername,
+      username: authorUsername,
+      division: division,
+      team: team,
+      authorTeam: team,
+      rank: rank,
+      authorRank: rank,
+      role: role,
+      isShared: isSharedVal,
+      is_shared: isSharedVal ? 1 : 0,
+      sharedWith: parsedSharedWith,
+      shared_with: parsedSharedWith,
+      sharedAt: item.shared_at || item.sharedAt || '',
+      shared_at: item.shared_at || item.sharedAt || '',
+      createdAt: item.created_at || item.createdAt || '',
+      created_at: item.created_at || item.createdAt || ''
+    };
+  }
+
+  _deduplicateWorkLogs(logs) {
+    if (!Array.isArray(logs)) return [];
+    const map = new Map();
+    for (const l of logs) {
+      const normalized = this._normalizeWorkLog(l);
+      if (!normalized) continue;
+      // Key priority: (writer_id + date + title) composite key, or log_id / id
+      const wKey = String(normalized.writer_id || normalized.authorUsername || normalized.name || '').trim().toLowerCase();
+      const dKey = String(normalized.date || normalized.log_date || '').trim();
+      const tKey = String(normalized.title || '').trim().toLowerCase();
+      const key = (wKey && dKey && tKey) ? `WORK::${wKey}::${dKey}::${tKey}` : String(normalized.id || normalized.log_id);
+      map.set(key, normalized);
+    }
+    return Array.from(map.values());
+  }
+
+  _normalizeChecklist(item) {
+    if (!item) return null;
+    let itemId = String(item.id || item.log_id || '').trim();
+
+    const vName = String(item.visitorName || item.visitor_name || item.name || '').trim();
+    const vPhone = String(item.visitorPhone || item.visitor_phone || item.phone || '').trim();
+    const sDate = String(item.signature_date || item.signatureDate || item.date || item.signedAt || '').trim();
+
+    if (!itemId) {
+      const pPart = vPhone.replace(/\D/g, '') || vName || 'PLEDGE';
+      const dPart = sDate.replace(/\D/g, '') || Date.now();
+      itemId = `PASS-${pPart}-${dPart}`;
+    }
+    const vTeam = String(item.team || item.visitorTeam || item.department || '').trim();
+    const vRank = String(item.rank || item.visitorRank || '').trim();
+    const vDivision = String(item.division || '').trim();
+    const vRole = String(item.role || '일반').trim();
+    const sName = String(item.site_name || item.siteName || item.site || '').trim();
+    const sDate = String(item.signature_date || item.signatureDate || item.date || item.signedAt || '').trim();
+
+    const mdmVerified = Boolean(item.mdm_verified !== undefined ? item.mdm_verified : item.mdmVerified);
+    let docChecklist = item.docChecklist;
+    if (!docChecklist || typeof docChecklist !== 'object') {
+      docChecklist = {
+        gateApproved: Boolean(item.gate_approved),
+        docSecVerified: Boolean(item.doc_sec_verified),
+        preCheckVerified: Boolean(item.pre_check_verified)
+      };
+    }
+
+    return {
+      ...item,
+      id: itemId,
+      log_id: itemId,
+      visitorName: vName,
+      visitor_name: vName,
+      name: vName,
+      visitorPhone: vPhone,
+      visitor_phone: vPhone,
+      phone: vPhone,
+      team: vTeam,
+      visitorTeam: vTeam,
+      department: vTeam,
+      rank: vRank,
+      visitorRank: vRank,
+      division: vDivision,
+      role: vRole,
+      siteName: sName,
+      site_name: sName,
+      site: sName,
+      signatureDate: sDate,
+      signature_date: sDate,
+      date: sDate ? sDate.slice(0, 10) : '',
+      mdmVerified: mdmVerified,
+      mdm_verified: mdmVerified ? 1 : 0,
+      docChecklist: docChecklist,
+      pledgeTerms: item.pledge_terms || item.pledgeTerms || '',
+      pledge_terms: item.pledge_terms || item.pledgeTerms || '',
+      status: item.status || '승인완료',
+      companions: Array.isArray(item.companions) ? item.companions : []
+    };
+  }
+
   async getRegisteredUsers(forceRemote = false) {
     // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
     if (!forceRemote) {
@@ -2055,6 +2259,7 @@ class SecurityDatabase {
       localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
     } catch (e) {}
 
+    this.notifyDataChanged(true);
     return usersList;
   }
 
@@ -2288,10 +2493,7 @@ class SecurityDatabase {
         if (raw) {
           const list = JSON.parse(raw);
           if (Array.isArray(list) && list.length > 0) {
-            const pureLogs = list.filter(item => {
-              const id = String(item.id || item.log_id || '').trim();
-              return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
-            });
+            const pureLogs = this._deduplicateWorkLogs(list);
             this._revalidateWorkLogsInBackground().catch(() => {});
             return pureLogs;
           }
@@ -2301,10 +2503,7 @@ class SecurityDatabase {
       try {
         const dbLogs = await this.getAll('work_logs');
         if (Array.isArray(dbLogs) && dbLogs.length > 0) {
-          const pureLogs = dbLogs.filter(item => {
-            const id = String(item.id || item.log_id || '').trim();
-            return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
-          });
+          const pureLogs = this._deduplicateWorkLogs(dbLogs);
           this._revalidateWorkLogsInBackground().catch(() => {});
           return pureLogs;
         }
@@ -2318,7 +2517,10 @@ class SecurityDatabase {
     const now = Date.now();
     if (this._lastWorkLogsRevalidate && (now - this._lastWorkLogsRevalidate < 30000)) return;
     this._lastWorkLogsRevalidate = now;
-    await this._fetchWorkLogsRemote();
+    const remoteLogs = await this._fetchWorkLogsRemote();
+    if (Array.isArray(remoteLogs)) {
+      this.notifyDataChanged(true);
+    }
   }
 
   async _fetchWorkLogsRemote() {
@@ -2327,110 +2529,25 @@ class SecurityDatabase {
       if (res && res.ok) {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-        const pureServerLogs = serverLogs.filter(item => {
-          const id = String(item.id || item.log_id || '').trim();
-          return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
-        });
-        if (pureServerLogs.length > 0) {
-          const mapped = pureServerLogs.map(item => {
-            let cleanDate = '';
-            if (item.log_date) {
-              cleanDate = String(item.log_date).trim().slice(0, 10);
-            } else if (item.date) {
-              cleanDate = String(item.date).trim().slice(0, 10);
-            }
-            if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
-              cleanDate = new Date().toLocaleDateString('sv-SE');
-            }
-
-            const itemId = item.log_id || item.id;
-
-            let parsedSharedWith = [];
-            if (item.shared_with || item.sharedWith) {
-              const rawSw = item.shared_with || item.sharedWith;
-              if (Array.isArray(rawSw)) parsedSharedWith = rawSw;
-              else if (typeof rawSw === 'string') {
-                try { parsedSharedWith = JSON.parse(rawSw); } catch (e) { parsedSharedWith = []; }
-              }
-            }
-
-            const isSharedVal = item.is_shared !== undefined
-              ? Boolean(item.is_shared)
-              : (item.isShared !== undefined ? Boolean(item.isShared) : false);
-
-            const sharedAtVal = item.shared_at || item.sharedAt || '';
-
-            return {
-              id: itemId,
-              log_id: itemId,
-              category: item.category || '사내 업무',
-              subCategory: item.sub_category || item.subCategory || '',
-              sub_category: item.sub_category || item.subCategory || '',
-              dueDate: item.due_date || item.dueDate || '',
-              due_date: item.due_date || item.dueDate || '',
-              title: item.title || '',
-              details: item.tasks_done || item.details || '',
-              tasks_done: item.tasks_done || item.details || '',
-              tasksDone: item.tasks_done || item.details || '',
-              siteName: item.site_name || item.siteName || '',
-              site_name: item.site_name || item.siteName || '',
-              date: cleanDate,
-              log_date: cleanDate,
-              name: item.name || item.writer_name || item.authorName || '작성자',
-              authorName: item.name || item.writer_name || item.authorName || '작성자',
-              authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || '',
-              writerId: item.writer_id || item.writerId || item.authorUsername || item.username || '',
-              writer_id: item.writer_id || item.writerId || item.authorUsername || item.username || '',
-              username: item.writer_id || item.writerId || item.authorUsername || item.username || '',
-              division: item.division || '',
-              team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-              authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-              rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-              authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-              role: item.role || '일반',
-              isShared: isSharedVal,
-              is_shared: isSharedVal ? 1 : 0,
-              sharedWith: parsedSharedWith,
-              shared_with: parsedSharedWith,
-              sharedAt: sharedAtVal,
-              shared_at: sharedAtVal,
-              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || ''),
-              created_at: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
-            };
-          });
-
-          localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
-          try {
-            await this.replaceCollection('work_logs', mapped);
-          } catch (e) {}
-          return mapped;
-        }
+        const mapped = this._deduplicateWorkLogs(serverLogs);
+        localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
+        try {
+          await this.replaceCollection('work_logs', mapped);
+        } catch (e) {}
+        this.notifyDataChanged(true);
+        return mapped;
       }
     } catch (e) {}
 
     try {
       const raw = localStorage.getItem('with_security_work_logs');
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return this._deduplicateWorkLogs(parsed);
+      }
     } catch (e) {}
 
-    return [
-      {
-        id: 'LOG-20260811-001',
-        category: '사내 업무',
-        title: '통합 보안 관제 시스템 모듈 점검 및 UI 개선',
-        details: '1. 출입 보안 서약 모듈 사업부/소속팀/직급 동적 제안 드롭다운 적용\n2. 출입 사업장 등록 관리 3개 필드(분류, 회사명, 사업장 위치) 규격화\n3. 2단계 카메라 비활성화 차단 정밀 검수 로직 보완 완료',
-        date: '2026-08-11',
-        authorName: '이원배',
-        authorTeam: '운영1팀',
-        authorRank: '대리',
-        division: '영업/운영사업부',
-        role: '일반',
-        isShared: false,
-        sharedWith: [],
-        sharedAt: '',
-        createdAt: '2026-08-11 08:30'
-      }
-    ];
+    return [];
   }
 
   async saveWorkLog(logItem) {
@@ -2488,7 +2605,20 @@ class SecurityDatabase {
       }
     })();
 
-    const existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
+    let existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
+    if (existingIndex < 0) {
+      const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
+      const pDate = String(preparedLog.date || preparedLog.log_date || '').trim();
+      const pTitle = String(preparedLog.title || '').trim().toLowerCase();
+      if (pWriter && pDate && pTitle) {
+        existingIndex = currentLocal.findIndex(l => {
+          const lWriter = String(l.authorUsername || l.writerId || l.writer_id || l.name || '').trim().toLowerCase();
+          const lDate = String(l.date || l.log_date || '').trim();
+          const lTitle = String(l.title || '').trim().toLowerCase();
+          return lWriter === pWriter && lDate === pDate && lTitle === pTitle;
+        });
+      }
+    }
     let updated;
     if (existingIndex >= 0) {
       updated = [...currentLocal];
@@ -3145,13 +3275,26 @@ class SecurityDatabase {
     let workLogsCount = 0;
     let secLogsCount = 0;
 
+    // 1. users
     if (syncData.users && Array.isArray(syncData.users)) {
       const rawNormalized = syncData.users.map(u => {
         let trainings = u.trainings;
         if (typeof trainings === 'string' && (trainings.startsWith('[') || trainings.startsWith('{'))) {
           try { trainings = JSON.parse(trainings); } catch (e) {}
         }
-        return { ...u, trainings: Array.isArray(trainings) ? trainings : [] };
+        return {
+          ...u,
+          id: u.id || u.username,
+          username: String(u.username || '').trim(),
+          name: String(u.name || '').trim(),
+          role: u.role || '일반',
+          division: u.division || '',
+          team: u.team || '',
+          rank: u.rank || '',
+          phone: u.phone || '',
+          email: u.email || '',
+          trainings: Array.isArray(trainings) ? trainings : []
+        };
       });
       const normalizedUsers = this._deduplicateUsers(rawNormalized);
       usersCount = normalizedUsers.length;
@@ -3160,24 +3303,40 @@ class SecurityDatabase {
       await this.replaceCollection('users', normalizedUsers);
     }
 
+    // 2. sites
     if (syncData.sites && Array.isArray(syncData.sites)) {
-      sitesCount = syncData.sites.length;
-      localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
-      localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
-      await this.replaceCollection('sites', syncData.sites);
-    }
-
-    if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
-      const pureWorkLogs = syncData.work_logs.filter(item => {
-        const id = String(item.id || item.log_id || '').trim();
-        return !id.startsWith('PASS-') && !item.visitorName && !item.visitor_name && !item.pledge_terms;
+      const siteMap = new Map();
+      syncData.sites.forEach(s => {
+        if (!s) return;
+        const name = String(s.name || s.site_name || '').trim();
+        const address = String(s.address || '').trim();
+        const key = name && address ? `${name}::${address}` : (s.id || name);
+        if (!siteMap.has(key)) {
+          siteMap.set(key, {
+            id: s.id || `site-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+            type: s.type || '보안앱O',
+            name: name,
+            address: address,
+            site_name: s.site_name || name
+          });
+        }
       });
-      workLogsCount = pureWorkLogs.length;
-      localStorage.setItem('with_security_work_logs', JSON.stringify(pureWorkLogs));
-      await this.replaceCollection('work_logs', pureWorkLogs);
+      const dedupedSites = Array.from(siteMap.values());
+      sitesCount = dedupedSites.length;
+      localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(dedupedSites));
+      localStorage.setItem('with_security_sites_backup', JSON.stringify(dedupedSites));
+      await this.replaceCollection('sites', dedupedSites);
     }
 
-    // work_logs에 잘못 저장되어 있던 보안 서약(PASS-) 데이터가 있다면 security_logs/checklists에 안전하게 병합
+    // 3. work_logs
+    if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
+      const dedupedWorkLogs = this._deduplicateWorkLogs(syncData.work_logs);
+      workLogsCount = dedupedWorkLogs.length;
+      localStorage.setItem('with_security_work_logs', JSON.stringify(dedupedWorkLogs));
+      await this.replaceCollection('work_logs', dedupedWorkLogs);
+    }
+
+    // 4. security_logs / checklists
     const misplacedPledges = (syncData.work_logs && Array.isArray(syncData.work_logs))
       ? syncData.work_logs.filter(item => {
           const id = String(item.id || item.log_id || '').trim();
@@ -3185,38 +3344,52 @@ class SecurityDatabase {
         })
       : [];
 
-    const rawChecklists = (syncData.checklists || syncData.security_logs || []).concat(misplacedPledges);
-    if (rawChecklists && Array.isArray(rawChecklists) && rawChecklists.length > 0) {
-      secLogsCount = rawChecklists.length;
-      const consolidated = this._consolidateChecklists(rawChecklists);
+    let incomingSecLogs = [];
+    if (Array.isArray(syncData.security_logs) && syncData.security_logs.length > 0) {
+      incomingSecLogs = syncData.security_logs;
+    } else if (Array.isArray(syncData.checklists) && syncData.checklists.length > 0) {
+      incomingSecLogs = syncData.checklists;
+    }
+    const combinedPledges = incomingSecLogs.concat(misplacedPledges);
+    if (combinedPledges.length > 0 || Array.isArray(syncData.security_logs) || Array.isArray(syncData.checklists)) {
+      const normalizedPledges = combinedPledges.map(item => this._normalizeChecklist(item)).filter(Boolean);
+      const consolidated = this._consolidateChecklists(normalizedPledges);
+      secLogsCount = consolidated.length;
       localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
       await this.replaceCollection('checklists', consolidated);
     }
 
+    // 5. tbms
     if (syncData.tbms && Array.isArray(syncData.tbms)) {
       localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
       await this.replaceCollection('tbms', syncData.tbms);
     }
 
+    // 6. weekly_reports
     if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
       localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
       await this.replaceCollection('weekly_reports', syncData.weekly_reports);
     }
 
+    // 7. edu_logs
     if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
       await this.replaceCollection('edu_logs', syncData.edu_logs);
     }
 
+    // 8. vault
     if (syncData.vault && Array.isArray(syncData.vault)) {
       await this.replaceCollection('vault', syncData.vault);
     }
 
+    // 9. incidents
     if (syncData.incidents && Array.isArray(syncData.incidents)) {
       await this.replaceCollection('incidents', syncData.incidents);
     }
+
     recentResponseCache.clear();
-    this.notifyDataChanged();
+    this.notifyDataChanged(true);
+
     const total = usersCount + sitesCount + workLogsCount + secLogsCount;
     return {
       success: true,
@@ -3381,32 +3554,30 @@ class SecurityDatabase {
    * 통합 서버 및 구글 스프레드시트 전체 동기화 실행기
    */
   async syncAllWithServer(serverUrl = null) {
-    const sheetUrl = getGoogleSheetsUrl();
+    const sheetUrl = (serverUrl && serverUrl.includes('script.google.com'))
+      ? serverUrl
+      : getGoogleSheetsUrl();
+
+    // 1. 구글 스프레드시트 URL이 등록되어 있는 경우 최우선으로 즉시 구글 시트 전체 동기화 실행
+    if (sheetUrl && sheetUrl.includes('script.google.com')) {
+      return await this.syncFromGoogleSheets(sheetUrl);
+    }
+
     const hostedUrl = getHostedServerUrl();
     const targetUrl = (serverUrl || hostedUrl || DEFAULT_PUBLIC_URL).replace(/\/+$/, '');
-
-    // 1. 구글 스프레드시트 URL이 명시적으로 전달되었거나 타겟인 경우
-    if (targetUrl.includes('script.google.com')) {
-      return this.syncFromGoogleSheets(targetUrl);
-    }
 
     // 2. Node.js 백엔드 REST API 서버 엔드포인트인 경우
     if (isApiEndpoint(targetUrl)) {
       try {
-        const res = await safeFetchApi('/api/sync/all', { timeout: 15000 });
+        const res = await safeFetchApi('/api/sync/all', { timeout: 10000 });
         if (res && res.ok) {
           const data = await res.json();
           const syncData = data.data || data;
           return await this._applySyncPayload(syncData, false);
         }
       } catch (e) {
-        console.warn('API sync failed, checking Google Sheets fallback:', e);
+        console.warn('API sync failed:', e);
       }
-    }
-
-    // 3. 정적 호스팅(GitHub Pages) 또는 백엔드 연결 불가 시 구글 스프레드시트 클라우드 DB로 동기화 진행
-    if (sheetUrl && sheetUrl.includes('script.google.com')) {
-      return this.syncFromGoogleSheets(sheetUrl);
     }
 
     return { success: true, mode: 'static_host', url: targetUrl };

@@ -377,15 +377,70 @@ function doPost(e) {
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(item);
       const headers = ensureHeaders(sheet, targetHeaders);
       const keyColIdx = headers.indexOf(keyField);
+      const idColIdx = headers.indexOf('id');
+      const logIdColIdx = headers.indexOf('log_id');
+      const siteAddrColIdx = (sheetName === 'sites') ? headers.indexOf('address') : -1;
 
       // 이미 동일한 키(ID / username / log_id 등)가 시트에 존재하면 새 행을 만들지 않고 기존 행을 덮어씀 (중복 생성 원천 차단)
-      if (keyValue && keyColIdx !== -1 && sheet.getLastRow() > 1) {
+      if (sheet.getLastRow() > 1) {
         const rows = sheet.getDataRange().getValues();
         for (let i = 1; i < rows.length; i++) {
-          const currentVal = String(rows[i][keyColIdx] || '').trim();
-          const isMatch = (sheetName === 'users')
-            ? currentVal.toLowerCase() === keyValue.toLowerCase()
-            : currentVal === keyValue;
+          let isMatch = false;
+
+          if (sheetName === 'users' && keyColIdx !== -1) {
+            const currentVal = String(rows[i][keyColIdx] || '').trim();
+            isMatch = currentVal.toLowerCase() === keyValue.toLowerCase();
+          } else if (sheetName === 'sites') {
+            const rowName = String(rows[i][keyColIdx !== -1 ? keyColIdx : 0] || '').trim();
+            const rowAddr = siteAddrColIdx !== -1 ? String(rows[i][siteAddrColIdx] || '').trim() : '';
+            const itemName = String(item.name || item.site_name || '').trim();
+            const itemAddr = String(item.address || '').trim();
+            isMatch = (rowName === itemName && (!itemAddr || !rowAddr || rowAddr === itemAddr)) ||
+                      (keyValue && String(rows[i][idColIdx] || '').trim() === keyValue);
+          } else if (sheetName === 'work_logs') {
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
+            const targetId = String(item.id || item.log_id || keyValue).trim();
+            const idMatched = Boolean(targetId && (rowId === targetId || rowLogId === targetId));
+
+            const writerIdx = headers.indexOf('writer_id');
+            const dateIdx = headers.indexOf('log_date');
+            const titleIdx = headers.indexOf('title');
+            const rowWriter = writerIdx !== -1 ? String(rows[i][writerIdx] || '').trim().toLowerCase() : '';
+            const rowDate = dateIdx !== -1 ? String(rows[i][dateIdx] || '').trim() : '';
+            const rowTitle = titleIdx !== -1 ? String(rows[i][titleIdx] || '').trim().toLowerCase() : '';
+
+            const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
+            const itemDate = String(item.log_date || item.date || '').trim();
+            const itemTitle = String(item.title || '').trim().toLowerCase();
+
+            const compositeMatched = Boolean(itemWriter && itemDate && itemTitle &&
+              rowWriter === itemWriter && rowDate === itemDate && rowTitle === itemTitle);
+
+            isMatch = idMatched || compositeMatched;
+          } else if (sheetName === 'security_logs') {
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
+            const targetId = String(item.id || item.log_id || keyValue).trim();
+            const idMatched = Boolean(targetId && (rowId === targetId || rowLogId === targetId));
+
+            const phoneIdx = headers.indexOf('visitor_phone');
+            const dateIdx = headers.indexOf('signature_date');
+            const rowPhone = phoneIdx !== -1 ? String(rows[i][phoneIdx] || '').replace(/\D/g, '') : '';
+            const rowDate = dateIdx !== -1 ? String(rows[i][dateIdx] || '').trim() : '';
+
+            const itemPhone = String(item.visitor_phone || item.visitorPhone || item.phone || '').replace(/\D/g, '');
+            const itemDate = String(item.signature_date || item.signatureDate || item.date || '').trim();
+
+            const visitorMatched = Boolean(itemPhone && itemDate && rowPhone === itemPhone && rowDate === itemDate);
+
+            isMatch = idMatched || visitorMatched;
+          } else {
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
+            const targetId = String(item.id || item.log_id || keyValue).trim();
+            isMatch = Boolean(targetId && (rowId === targetId || rowLogId === targetId));
+          }
 
           if (isMatch) {
             const rowNum = i + 1;
@@ -735,6 +790,18 @@ function readSheetData(sheetName) {
     
     headers.forEach((h, colIdx) => {
       let val = row[colIdx];
+      // Date 객체 변환 (한국 표준시 KST 기준 yyyy-MM-dd / yyyy-MM-dd HH:mm 포맷)
+      if (val instanceof Date) {
+        const timezone = Session.getScriptTimeZone() || 'Asia/Seoul';
+        const hours = val.getHours();
+        const minutes = val.getMinutes();
+        const seconds = val.getSeconds();
+        if (hours === 0 && minutes === 0 && seconds === 0) {
+          val = Utilities.formatDate(val, timezone, 'yyyy-MM-dd');
+        } else {
+          val = Utilities.formatDate(val, timezone, 'yyyy-MM-dd HH:mm:ss');
+        }
+      }
       // JSON 객체/배열 형태 자동 역직렬화
       if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
         try { val = JSON.parse(val); } catch (e) {}
@@ -822,6 +889,27 @@ function readSheetData(sheetName) {
         const namePart = String(obj.name || obj.site_name || '').trim();
         const addrPart = String(obj.address || '').trim();
         key = namePart && addrPart ? (namePart + '::' + addrPart) : String(obj.id || '');
+      } else if (sheetName === 'work_logs') {
+        let idVal = String(obj.log_id || obj.id || '').trim();
+        const writerVal = String(obj.writer_id || obj.authorUsername || obj.name || '').trim().toLowerCase();
+        const dateVal = String(obj.log_date || obj.date || '').trim();
+        const titleVal = String(obj.title || '').trim().toLowerCase();
+        if (!idVal) {
+          idVal = `LOG-${writerVal || 'ROW'}-${dateVal.replace(/\D/g, '') || i}`;
+          obj.id = idVal;
+          obj.log_id = idVal;
+        }
+        key = (writerVal && dateVal && titleVal) ? `WORK::${writerVal}::${dateVal}::${titleVal}` : idVal;
+      } else if (sheetName === 'security_logs') {
+        let idVal = String(obj.log_id || obj.id || '').trim();
+        const visitorVal = String(obj.visitor_phone || obj.visitorPhone || obj.phone || '').replace(/\D/g, '');
+        const dateVal = String(obj.signature_date || obj.signatureDate || obj.date || '').trim();
+        if (!idVal) {
+          idVal = `PASS-${visitorVal || 'VISITOR'}-${dateVal.replace(/\D/g, '') || i}`;
+          obj.id = idVal;
+          obj.log_id = idVal;
+        }
+        key = (visitorVal && dateVal) ? `SEC::${visitorVal}::${dateVal}` : idVal;
       } else {
         key = String(obj.log_id || obj.id || '').trim();
       }
@@ -912,7 +1000,27 @@ function cleanupDuplicates() {
           rowsToDelete.push(r + 1);
           continue;
         }
-        key = logId || id;
+
+        const writerIdx = headers.indexOf('writer_id');
+        const dateIdx = headers.indexOf('log_date');
+        const titleIdx = headers.indexOf('title');
+        const writerVal = writerIdx !== -1 ? String(row[writerIdx] || '').trim().toLowerCase() : '';
+        const dateVal = dateIdx !== -1 ? String(row[dateIdx] || '').trim() : '';
+        const titleVal = titleIdx !== -1 ? String(row[titleIdx] || '').trim().toLowerCase() : '';
+
+        key = (writerVal && dateVal && titleVal) ? `WORK::${writerVal}::${dateVal}::${titleVal}` : (logId || id);
+      } else if (sheetName === 'security_logs') {
+        const phoneIdx = headers.indexOf('visitor_phone');
+        const dateIdx = headers.indexOf('signature_date');
+        const phone = phoneIdx !== -1 ? String(row[phoneIdx] || '').replace(/\D/g, '') : '';
+        const date = dateIdx !== -1 ? String(row[dateIdx] || '').trim() : '';
+
+        const idIdx = headers.indexOf('id');
+        const logIdIdx = headers.indexOf('log_id');
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+        const logId = logIdIdx !== -1 ? String(row[logIdIdx] || '').trim() : '';
+
+        key = (phone && date) ? `SEC::${phone}::${date}` : (logId || id);
       } else {
         const idIdx = headers.indexOf('id');
         const logIdIdx = headers.indexOf('log_id');
