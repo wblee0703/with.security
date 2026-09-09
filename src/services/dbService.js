@@ -159,7 +159,10 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   else if (endpoint.includes('/vault')) sheetName = 'vault';
   else if (endpoint.includes('/incidents')) sheetName = 'incidents';
 
-  if (endpoint.includes('/status') || endpoint.includes('/ping')) {
+  if (endpoint.includes('/login')) {
+    // Google Sheets is a database, not an authentication endpoint. Never convert login into create!
+    return { targetUrl: `${baseUrl}?action=ping`, fetchOptions: { method: 'GET' } };
+  } else if (endpoint.includes('/status') || endpoint.includes('/ping')) {
     targetUrl = `${baseUrl}?action=ping`;
     fetchOptions.method = 'GET';
     delete fetchOptions.body;
@@ -1260,26 +1263,31 @@ class SecurityDatabase {
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
 
-    // 1. Try secure remote backend login API first
-    try {
-      const res = await safeFetchApi('/api/security-users/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: uName, password: pass })
-      });
-      if (res && res.ok) {
-        const json = await res.json().catch(() => null);
-        if (json && json.success && json.user) {
-          this.recordLocalLoginAttempt(uName, true);
-          if (json.token) {
-            localStorage.setItem('with_security_auth_token', json.token);
+    // 1. Try secure remote backend login API first (Only for Node.js REST API server, NEVER for Google Sheets!)
+    const apiServerUrl = getApiServerUrl();
+    const isGoogleSheetTarget = Boolean(apiServerUrl && apiServerUrl.includes('script.google.com'));
+
+    if (!isGoogleSheetTarget && isApiEndpoint(apiServerUrl)) {
+      try {
+        const res = await safeFetchApi('/api/security-users/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: uName, password: pass })
+        });
+        if (res && res.ok) {
+          const json = await res.json().catch(() => null);
+          if (json && json.success && json.user) {
+            this.recordLocalLoginAttempt(uName, true);
+            if (json.token) {
+              localStorage.setItem('with_security_auth_token', json.token);
+            }
+            await this.saveUserProfile(json.user, false);
+            return { success: true, user: json.user, token: json.token };
           }
-          await this.saveUserProfile(json.user, false);
-          return { success: true, user: json.user, token: json.token };
         }
+      } catch (e) {
+        console.warn('Backend login API attempt failed, falling back to local storage:', e);
       }
-    } catch (e) {
-      console.warn('Backend login API attempt failed, falling back to local storage:', e);
     }
 
     // 2. Local fallback verification (for offline / pre-hosting / mobile app / local-first DB)
