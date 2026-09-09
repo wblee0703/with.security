@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter, Sparkles } from 'lucide-react';
 import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL } from '../../services/dbService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
@@ -152,6 +152,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [isTestingHosted, setIsTestingHosted] = useState(false);
   const [isTestingSheets, setIsTestingSheets] = useState(false);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [isCleaningSheets, setIsCleaningSheets] = useState(false);
   const [isUploadingToSheet, setIsUploadingToSheet] = useState(false);
 
   const [hostedConnectionStatus, setHostedConnectionStatus] = useState(null);
@@ -445,17 +446,58 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
   };
 
-  // 3. Direct Full Sync from Google Sheets (Withsharing_DB -> App)
+  // 3. Direct Full Sync from Google Sheets (Authoritative SSOT: Withsharing_DB -> App, Purge Non-Spreadsheet Local Data)
   const handleSyncGoogleSheets = async () => {
     const url = sheetsUrlInput.trim() || dbService.getGoogleSheetsUrl();
     if (!url || !url.includes('script.google.com')) {
       if (onTriggerToast) onTriggerToast('구글 스프레드시트 웹 앱 URL을 먼저 입력해 주세요.', 'warning');
       return;
     }
+
+    if (!window.confirm('구글 스프레드시트에 저장된 데이터를 기준으로 앱/브라우저 화면을 100% 동기화합니다.\n\n⚠️ 주의: 이전에 다른 핸드폰이나 컴퓨터에서 등록되었으나 현재 스프레드시트에 없는 로컬 임시 데이터는 영구 삭제됩니다.\n\n진행하시겠습니까?')) {
+      return;
+    }
+
     setIsSyncingSheets(true);
     setSheetsConnectionStatus(null);
-    const res = await dbService.syncFromGoogleSheets(url);
+    const res = await dbService.purgeAndSyncFromGoogleSheets(url);
     setIsSyncingSheets(false);
+    if (res.success) {
+      setSheetsConnectionStatus({
+        type: 'success',
+        message: res.message
+      });
+      if (onTriggerToast) onTriggerToast(res.message, 'success');
+      const active = await dbService.getUserProfile();
+      if (active) setCurrentUser(active);
+      if (typeof loadUserMgmtList === 'function') {
+        await loadUserMgmtList();
+      }
+    } else {
+      setSheetsConnectionStatus({
+        type: 'error',
+        message: res.message
+      });
+      if (onTriggerToast) onTriggerToast(res.message, 'warning');
+    }
+  };
+
+  // 3-1. Google Sheets Duplicate Cleanup
+  const handleCleanupGoogleSheetsDuplicates = async () => {
+    const url = sheetsUrlInput.trim() || dbService.getGoogleSheetsUrl();
+    if (!url || !url.includes('script.google.com')) {
+      if (onTriggerToast) onTriggerToast('구글 스프레드시트 웹 앱 URL을 먼저 입력해 주세요.', 'warning');
+      return;
+    }
+
+    if (!window.confirm('구글 스프레드시트의 모든 시트(업무일지, 서약서, 계정, 사업장 등)를 검사하여 중복 생성된 행들을 자동 정리하시겠습니까?\n\n(가장 최신 1건만 보존되고 이전 중복 행은 안전하게 삭제됩니다)')) {
+      return;
+    }
+
+    setIsCleaningSheets(true);
+    setSheetsConnectionStatus(null);
+    const res = await dbService.cleanupGoogleSheetsDuplicates(url);
+    setIsCleaningSheets(false);
     if (res.success) {
       setSheetsConnectionStatus({
         type: 'success',
@@ -2851,7 +2893,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               <button
                 type="button"
                 onClick={handleSyncGoogleSheets}
-                disabled={isSyncingSheets || isTestingSheets}
+                disabled={isSyncingSheets || isTestingSheets || isCleaningSheets}
                 style={{
                   padding: '8px 14px',
                   borderRadius: '8px',
@@ -2860,21 +2902,46 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   color: '#ffffff',
                   fontSize: '12px',
                   fontWeight: '800',
-                  cursor: 'pointer',
+                  cursor: (isSyncingSheets || isTestingSheets || isCleaningSheets) ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   boxShadow: '0 2px 6px rgba(16, 185, 129, 0.2)'
                 }}
+                title="스프레드시트에 있는 데이터만 남기고, 스프레드시트에 없는 로컬 임시 데이터는 영구 삭제합니다."
               >
                 <Download size={13} className={isSyncingSheets ? 'spin-anim' : ''} />
-                {isSyncingSheets ? '구글 시트 데이터 불러오는 중...' : '📥 구글 시트 전체 동기화 (Withsharing_DB → 앱)'}
+                {isSyncingSheets ? '스프레드시트 데이터 완전 동기화 중...' : '📥 스프레드시트 기준 완전 동기화 (시트 외 로컬데이터 삭제)'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCleanupGoogleSheetsDuplicates}
+                disabled={isCleaningSheets || isSyncingSheets || isTestingSheets}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: '#6366f1',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: '800',
+                  cursor: (isCleaningSheets || isSyncingSheets || isTestingSheets) ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 6px rgba(99, 102, 241, 0.25)'
+                }}
+                title="스프레드시트 내에 중복 생성된 행들을 자동 검사하여 최신 1건만 남기고 이전 중복 행을 삭제합니다."
+              >
+                <Sparkles size={13} className={isCleaningSheets ? 'spin-anim' : ''} />
+                {isCleaningSheets ? '스프레드시트 중복 행 정리 중...' : '✨ 스프레드시트 중복 데이터 자동 정리 (중복 행 삭제)'}
               </button>
 
               <button
                 type="button"
                 onClick={handleUploadLocalToGoogleSheet}
-                disabled={isUploadingToSheet || isSyncingSheets}
+                disabled={isUploadingToSheet || isSyncingSheets || isCleaningSheets}
                 style={{
                   padding: '8px 14px',
                   borderRadius: '8px',
@@ -2883,7 +2950,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   color: '#334155',
                   fontSize: '12px',
                   fontWeight: '700',
-                  cursor: (isUploadingToSheet || isSyncingSheets) ? 'not-allowed' : 'pointer',
+                  cursor: (isUploadingToSheet || isSyncingSheets || isCleaningSheets) ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px'

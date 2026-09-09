@@ -17,7 +17,6 @@ import { syncCalendarWidget, checkWidgetLaunchIntent } from './services/appLaunc
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [isExitModalOpen, setIsExitModalOpen] = useState(false);
-  const [isAppExited, setIsAppExited] = useState(false);
 
   // Helper to determine initial default tab based on platform/device mode
   const getDefaultTab = () => {
@@ -784,68 +783,7 @@ export default function App() {
       <ExitConfirmModal
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
-        onExitConfirmed={() => setIsAppExited(true)}
       />
-
-      {/* Graceful Exited Screen for Web Browsers where window.close() is blocked by browser policy */}
-      {isAppExited && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 999999,
-          background: '#0f172a',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
-          textAlign: 'center',
-          color: '#ffffff',
-          animation: 'fadeIn 0.2s ease-out'
-        }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'rgba(239, 68, 68, 0.15)',
-            border: '2px solid #ef4444',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ef4444',
-            marginBottom: '16px'
-          }}>
-            <LogOut size={32} />
-          </div>
-          <h2 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 8px 0', letterSpacing: '-0.3px' }}>
-            with.security가 종료되었습니다
-          </h2>
-          <p style={{ fontSize: '13.5px', color: '#94a3b8', margin: '0 0 24px 0', lineHeight: '1.6', wordBreak: 'keep-all' }}>
-            브라우저 탭을 닫으시거나 홈 화면으로 이동해주세요.
-          </p>
-          <button
-            type="button"
-            onClick={() => {
-              window.__allowAppExit = false;
-              setIsAppExited(false);
-              window.location.reload();
-            }}
-            style={{
-              padding: '12px 24px',
-              borderRadius: '10px',
-              background: '#0284c7',
-              color: '#ffffff',
-              fontSize: '14px',
-              fontWeight: '700',
-              border: 'none',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)'
-            }}
-          >
-            앱 다시 시작하기
-          </button>
-        </div>
-      )}
     </div>
   );
 }

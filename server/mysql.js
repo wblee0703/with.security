@@ -32,7 +32,8 @@ const pool = mysql.createPool({
   enableKeepAlive: true, // 유휴(Idle) 시 연결 유실 방지 Keep-Alive 활성화
   keepAliveInitialDelay: 10000,
   dateStrings: true, // DATE, DATETIME 시차 변환 없는 원본 문자열 유지
-  charset: 'utf8mb4'
+  charset: 'utf8mb4',
+  connectTimeout: 1500 // 연결 실패 시 1.5초 이내 즉각 타임아웃 처리하여 지연 방지
 });
 
 export let isMySqlConnected = false;

@@ -30,12 +30,14 @@ class ModalBackHandler {
       window.addEventListener('click', seedHistory, { passive: true });
       window.addEventListener('touchstart', seedHistory, { passive: true });
 
-      // Beforeunload protection: prevent accidental tab closing/refresh
+      // Beforeunload protection: only warn if actual unsaved changes exist
       window.addEventListener('beforeunload', (e) => {
         if (window.__allowAppExit) return;
-        e.preventDefault();
-        e.returnValue = '';
-        return '';
+        if (window.__WITH_SECURITY_UNSAVED_CHANGES__) {
+          e.preventDefault();
+          e.returnValue = '';
+          return '';
+        }
       });
     }
 

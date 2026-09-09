@@ -170,6 +170,17 @@ function initDatabase() {
   return { success: true, message: 'Withsharing_DB 초기화가 성공적으로 완료되었습니다.' };
 }
 
+/**
+ * 구글 스프레드시트 상단 메뉴 자동 등록
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('🛡️ Withsharing DB 관리')
+    .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
+    .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
+    .addToUi();
+}
+
 // -------------------------------------------------------------
 // REST API 엔드포인트 핸들러 (GET / POST)
 // -------------------------------------------------------------
@@ -200,7 +211,13 @@ function doGet(e) {
       return jsonResponse(result);
     }
     
-    // 3. 전체 데이터베이스 일괄 동기화 (sync/all)
+    // 3. 중복 데이터 일괄 정리 트리거
+    if (action === 'cleanup') {
+      const result = cleanupDuplicates();
+      return jsonResponse(result);
+    }
+
+    // 4. 전체 데이터베이스 일괄 동기화 (sync/all)
     if (action === 'getAll') {
       const allData = {};
       for (const key of Object.keys(SCHEMAS)) {
@@ -213,7 +230,7 @@ function doGet(e) {
       });
     }
     
-    // 4. 개별 시트 데이터 조회
+    // 5. 개별 시트 데이터 조회
     const data = readSheetData(sheetName);
     return jsonResponse({
       success: true,
@@ -248,9 +265,44 @@ function doPost(e) {
       sheet = ss.getSheetByName(sheetName);
     }
     
-    // [1] 데이터 추가 (Create)
+    // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
+    if (action === 'cleanup') {
+      const result = cleanupDuplicates();
+      return jsonResponse(result);
+    }
+
+    // [1] 데이터 추가 (Create / Upsert - 중복 생성 방지)
     if (action === 'create') {
       const item = payload.data || {};
+      const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'name' : 'id');
+      const keyValue = String(item[keyField] || item.id || item.log_id || '').trim();
+
+      const headers = ensureHeaders(sheet, Object.keys(item));
+      const keyColIdx = headers.indexOf(keyField);
+
+      // 이미 동일한 키(ID / username 등)가 시트에 존재하면 새 행을 만들지 않고 기존 행을 덮어씀 (중복 생성 원천 차단)
+      if (keyValue && keyColIdx !== -1 && sheet.getLastRow() > 1) {
+        const rows = sheet.getDataRange().getValues();
+        for (let i = 1; i < rows.length; i++) {
+          const currentVal = String(rows[i][keyColIdx] || '').trim();
+          const isMatch = (sheetName === 'users')
+            ? currentVal.toLowerCase() === keyValue.toLowerCase()
+            : currentVal === keyValue;
+
+          if (isMatch) {
+            const rowNum = i + 1;
+            for (const [k, val] of Object.entries(item)) {
+              const colIdx = headers.indexOf(k);
+              if (colIdx !== -1) {
+                const cellVal = (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
+                sheet.getRange(rowNum, colIdx + 1).setValue(cellVal);
+              }
+            }
+            return jsonResponse({ success: true, message: 'Row updated in-place (deduplicated upsert)', data: item });
+          }
+        }
+      }
+
       if (!item.id && sheetName !== 'users') {
         item.id = 'gen_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
       }
@@ -258,7 +310,6 @@ function doPost(e) {
         item.createdAt = new Date().toISOString();
       }
       
-      const headers = ensureHeaders(sheet, Object.keys(item));
       appendObjectRow(sheet, headers, item);
       return jsonResponse({ success: true, message: 'Row created', data: item });
     }
@@ -429,6 +480,7 @@ function readSheetData(sheetName) {
   const rows = sheet.getDataRange().getValues();
   const headers = rows[0];
   const list = [];
+  const keyMap = new Map();
   
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
@@ -445,9 +497,108 @@ function readSheetData(sheetName) {
       if (val !== '' && val !== null && val !== undefined) hasData = true;
     });
     
-    if (hasData) list.push(obj);
+    if (hasData) {
+      // 키별 중복 방지: 시트에 기존에 누적된 중복 행이 있더라도 가장 최신(아래쪽) 행 데이터만 반환
+      let key = '';
+      if (sheetName === 'users') {
+        key = String(obj.username || obj.id || '').trim().toLowerCase();
+      } else if (sheetName === 'sites') {
+        const namePart = String(obj.name || obj.site_name || obj.siteName || '').trim();
+        const addrPart = String(obj.address || '').trim();
+        key = namePart && addrPart ? (namePart + '::' + addrPart) : String(obj.id || '');
+      } else {
+        key = String(obj.id || obj.log_id || '').trim();
+      }
+
+      if (key) {
+        keyMap.set(key, obj);
+      } else {
+        list.push(obj);
+      }
+    }
+  }
+
+  if (keyMap.size > 0) {
+    return Array.from(keyMap.values()).concat(list);
   }
   return list;
+}
+
+/**
+ * 🧹 스프레드시트 내 중복 데이터 전 시트 자동 정리 함수
+ * (중복 행 발견 시 가장 최근/마지막 행만 보존하고 이전 중복 행들을 실제 시트에서 일괄 삭제)
+ */
+function cleanupDuplicates() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const results = {};
+  let grandTotalDeleted = 0;
+
+  for (const sheetName of Object.keys(SCHEMAS)) {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() <= 2) {
+      results[sheetName] = 0;
+      continue;
+    }
+
+    const rows = sheet.getDataRange().getValues();
+    const headers = rows[0];
+    const seen = new Set();
+    const rowsToDelete = [];
+
+    // 역순(아래에서 위로) 탐색하여 가장 마지막(최신) 행을 보존하고 이전 중복 행 삭제 대상 등록
+    for (let r = rows.length - 1; r >= 1; r--) {
+      const row = rows[r];
+      let key = '';
+
+      if (sheetName === 'users') {
+        const uIdx = headers.indexOf('username');
+        const idIdx = headers.indexOf('id');
+        const username = uIdx !== -1 ? String(row[uIdx] || '').trim().toLowerCase() : '';
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+        key = username || id;
+      } else if (sheetName === 'sites') {
+        const nameIdx = headers.indexOf('name');
+        const addrIdx = headers.indexOf('address');
+        const name = nameIdx !== -1 ? String(row[nameIdx] || '').trim() : '';
+        const addr = addrIdx !== -1 ? String(row[addrIdx] || '').trim() : '';
+        key = name && addr ? (name + '::' + addr) : (headers.indexOf('id') !== -1 ? String(row[headers.indexOf('id')] || '').trim() : '');
+      } else {
+        const idIdx = headers.indexOf('id');
+        const logIdIdx = headers.indexOf('log_id');
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+        const logId = logIdIdx !== -1 ? String(row[logIdIdx] || '').trim() : '';
+        key = id || logId;
+      }
+
+      if (!key) continue;
+
+      if (seen.has(key)) {
+        rowsToDelete.push(r + 1); // 1-indexed row number
+      } else {
+        seen.add(key);
+      }
+    }
+
+    // 아래에서 위로 행을 삭제하여 행 번호 뒤틀림 방지
+    let deletedCount = 0;
+    rowsToDelete.forEach(rowNum => {
+      try {
+        sheet.deleteRow(rowNum);
+        deletedCount++;
+      } catch (e) {}
+    });
+
+    results[sheetName] = deletedCount;
+    grandTotalDeleted += deletedCount;
+  }
+
+  Logger.log('🧹 중복 데이터 정리 완료: 총 ' + grandTotalDeleted + '개 중복 행 삭제');
+  return {
+    success: true,
+    message: `스프레드시트 중복 데이터 정리 완료: 총 ${grandTotalDeleted}개의 중복 행이 안전하게 삭제되었습니다.`,
+    totalDeleted: grandTotalDeleted,
+    details: results
+  };
 }
 
 function appendObjectRow(sheet, headers, obj) {

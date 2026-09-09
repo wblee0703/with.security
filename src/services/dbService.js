@@ -83,7 +83,7 @@ export function notifyDataChanged(immediate = false) {
   notifyDebounceTimer = setTimeout(() => {
     window.dispatchEvent(new CustomEvent('with_security_data_changed'));
     notifyDebounceTimer = null;
-  }, 120);
+  }, 250);
 }
 
 // Check if target URL supports dynamic Node/Express REST API endpoints
@@ -95,7 +95,21 @@ export function isApiEndpoint(url) {
 
 // Get REST API Base URL helper (prioritizes Google Sheets for Cloud DB, retains MySQL for Local Dev)
 export function getApiServerUrl() {
-  // 1. If running locally on PC browser (Local Dev Mode -> MySQL Node Server 100% 유지)
+  const sheetUrl = getGoogleSheetsUrl();
+  const dbTarget = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_db_target') : null;
+  const hostedUrl = getHostedServerUrl();
+
+  // 1. 사용자가 명시적으로 로컬 MySQL 서버를 타겟으로 지정한 경우만 로컬 proxy 사용
+  if (dbTarget === 'mysql' || (hostedUrl && hostedUrl.includes('localhost:4000'))) {
+    return '';
+  }
+
+  // 2. 구글 스프레드시트 클라우드 DB 연동 (모바일 앱 APK, 모바일 웹, PC 브라우저, GitHub Pages 통합 단일 진실 공급원)
+  if (sheetUrl && sheetUrl.includes('script.google.com')) {
+    return sheetUrl;
+  }
+
+  // 3. PC 브라우저 로컬 개발 모드 기본 fallback (시트 URL이 없을 때)
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
     if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
@@ -103,14 +117,7 @@ export function getApiServerUrl() {
     }
   }
 
-  // 2. 구글 스프레드시트 클라우드 DB 연동 (모바일 앱 APK, 모바일 웹, GitHub Pages 호스팅 환경)
-  const sheetUrl = getGoogleSheetsUrl();
-  if (sheetUrl && sheetUrl.includes('script.google.com')) {
-    return sheetUrl;
-  }
-
-  // 3. 백엔드 Node.js/MySQL 서버가 명시적으로 설정된 경우 (가비아 호스팅 등)
-  const hostedUrl = getHostedServerUrl();
+  // 4. 백엔드 Node.js/MySQL 서버가 명시적으로 설정된 경우 (가비아 호스팅 등)
   if (hostedUrl && isApiEndpoint(hostedUrl)) {
     if (typeof window !== 'undefined' && window.location.protocol === 'https:' && hostedUrl.startsWith('http://')) {
       return null;
@@ -529,12 +536,90 @@ class SecurityDatabase {
     }
   }
 
+  // Generic Clear ObjectStore
+  async clearStore(storeName) {
+    try {
+      const db = await this.initDB(storeName);
+      if (!db || !db.objectStoreNames.contains(storeName)) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          const request = store.clear();
+          request.onsuccess = () => resolve(true);
+          request.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Atomic collection replacement (Purges old/orphaned records, sets exact authoritative items)
+  async replaceCollection(storeName, items) {
+    if (!Array.isArray(items)) return false;
+    try {
+      const db = await this.initDB(storeName);
+      if (!db || !db.objectStoreNames.contains(storeName)) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(storeName, 'readwrite');
+          const store = tx.objectStore(storeName);
+          store.clear();
+          for (const it of items) {
+            if (it) store.put(it);
+          }
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    } catch (e) {
+      return false;
+    }
+  }
+
   // --- Specific Domain Helpers ---
 
-  async getChecklists() {
-    let list = [];
+  async getChecklists(forceRemote = false) {
+    // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
+    if (!forceRemote) {
+      try {
+        const backup = localStorage.getItem('with_security_checklists_backup') || localStorage.getItem('with_security_checklists_cache');
+        if (backup) {
+          const parsed = JSON.parse(backup);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this._revalidateChecklistsInBackground().catch(() => {});
+            return parsed;
+          }
+        }
+      } catch (err) {}
 
-    // 1. Try fetching from remote MySQL Server API if connected
+      try {
+        const dbPledges = await this.getAll('checklists');
+        if (Array.isArray(dbPledges) && dbPledges.length > 0) {
+          const consolidated = this._consolidateChecklists(dbPledges);
+          this._revalidateChecklistsInBackground().catch(() => {});
+          return consolidated;
+        }
+      } catch (e) {}
+    }
+
+    return await this._fetchChecklistsRemote();
+  }
+
+  async _revalidateChecklistsInBackground() {
+    const now = Date.now();
+    if (this._lastChecklistsRevalidate && (now - this._lastChecklistsRevalidate < 30000)) return;
+    this._lastChecklistsRevalidate = now;
+    await this._fetchChecklistsRemote();
+  }
+
+  async _fetchChecklistsRemote() {
     try {
       const res = await safeFetchApi('/api/security-logs');
       if (res && res.ok) {
@@ -543,49 +628,21 @@ class SecurityDatabase {
         if (Array.isArray(remoteData)) {
           const consolidated = this._consolidateChecklists(remoteData);
           localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
-          try {
-            for (const p of consolidated) await this.putItem('checklists', p);
-          } catch (e) {}
+          localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
+          await this.replaceCollection('checklists', consolidated);
           return consolidated;
         }
       }
     } catch (e) {}
 
-    // 2. Offline / Standalone Fallback: Combine IndexedDB and LocalStorage cache (Robust 2-tier local fallback)
     try {
-      const backup = localStorage.getItem('with_security_checklists_backup');
+      const backup = localStorage.getItem('with_security_checklists_backup') || localStorage.getItem('with_security_checklists_cache');
       if (backup) {
         const parsed = JSON.parse(backup);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          list = parsed;
-        }
+        if (Array.isArray(parsed)) return parsed;
       }
     } catch (err) {}
-
-    try {
-      const dbPledges = await this.getAll('checklists');
-      if (Array.isArray(dbPledges) && dbPledges.length > 0) {
-        if (list.length === 0) {
-          list = dbPledges;
-        } else {
-          // Merge unique items by id / log_id
-          const map = new Map();
-          list.forEach(item => {
-            const key = String(item.id || item.log_id);
-            if (key) map.set(key, item);
-          });
-          dbPledges.forEach(item => {
-            const key = String(item.id || item.log_id);
-            if (key && !map.has(key)) map.set(key, item);
-          });
-          list = Array.from(map.values());
-        }
-      }
-    } catch (e) {}
-
-    const consolidated = this._consolidateChecklists(list);
-    localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
-    return consolidated;
+    return [];
   }
 
   // Helper: Consolidate child companion records into parent pledges and remove duplicate standalone entries
@@ -910,7 +967,40 @@ class SecurityDatabase {
     return this.putItem('incidents', incident);
   }
 
-  async getSites() {
+  async getSites(forceRemote = false) {
+    // 1. Instant Local Cache Return (0.1ms)
+    if (!forceRemote) {
+      try {
+        const backup = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
+        if (backup) {
+          const list = JSON.parse(backup);
+          if (Array.isArray(list) && list.length > 0) {
+            this._revalidateSitesInBackground().catch(() => {});
+            return list;
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const dbSites = await this.getAll('sites');
+        if (Array.isArray(dbSites) && dbSites.length > 0) {
+          this._revalidateSitesInBackground().catch(() => {});
+          return dbSites;
+        }
+      } catch (e) {}
+    }
+
+    return await this._fetchSitesRemote();
+  }
+
+  async _revalidateSitesInBackground() {
+    const now = Date.now();
+    if (this._lastSitesRevalidate && (now - this._lastSitesRevalidate < 30000)) return;
+    this._lastSitesRevalidate = now;
+    await this._fetchSitesRemote();
+  }
+
+  async _fetchSitesRemote() {
     try {
       const res = await safeFetchApi('/api/security-sites');
       if (res && res.ok) {
@@ -918,25 +1008,15 @@ class SecurityDatabase {
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
           localStorage.setItem('with_security_sites_backup', JSON.stringify(remoteData));
-          try {
-            const db = await this.initDB('sites');
-            const tx = db.transaction('sites', 'readwrite');
-            const store = tx.objectStore('sites');
-            store.clear();
-            for (const s of remoteData) store.put(s);
-          } catch (e) {}
+          localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(remoteData));
+          await this.replaceCollection('sites', remoteData);
           return remoteData;
         }
       }
     } catch (e) {}
 
     try {
-      const dbSites = await this.getAll('sites');
-      if (dbSites && dbSites.length > 0) return dbSites;
-    } catch (e) {}
-
-    try {
-      const backup = localStorage.getItem('with_security_sites_backup');
+      const backup = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
       if (backup) return JSON.parse(backup);
     } catch (e) {}
 
@@ -1669,7 +1749,76 @@ class SecurityDatabase {
     }
   }
 
-  async getRegisteredUsers() {
+  async getRegisteredUsers(forceRemote = false) {
+    // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
+    if (!forceRemote) {
+      try {
+        const lsRaw = localStorage.getItem('with_security_users_db') || localStorage.getItem('with_security_users_cloud_cache');
+        if (lsRaw) {
+          const list = JSON.parse(lsRaw);
+          if (Array.isArray(list) && list.length > 0) {
+            this._revalidateUsersInBackground().catch(() => {});
+            return await this._ensureAdminInList(list);
+          }
+        }
+      } catch (e) {}
+
+      try {
+        const dbUsers = await this.getAll('users');
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          this._revalidateUsersInBackground().catch(() => {});
+          return await this._ensureAdminInList(dbUsers);
+        }
+      } catch (e) {}
+    }
+
+    return await this._fetchUsersRemote();
+  }
+
+  async _revalidateUsersInBackground() {
+    const now = Date.now();
+    if (this._lastUsersRevalidate && (now - this._lastUsersRevalidate < 30000)) return;
+    this._lastUsersRevalidate = now;
+    await this._fetchUsersRemote();
+  }
+
+  async _ensureAdminInList(usersList) {
+    const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
+    if (!cachedDefaultAdminHash) {
+      cachedDefaultAdminHash = await hashPassword(defaultAdminPass);
+    }
+    const defaultAdminHash = cachedDefaultAdminHash;
+
+    const list = [...usersList];
+    const adminIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
+    if (adminIdx === -1) {
+      list.unshift({
+        username: 'admin',
+        password: defaultAdminPass,
+        passwordHash: defaultAdminHash,
+        name: '이원배',
+        role: '개발자',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'ALL',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr',
+        educationDate: '',
+        educationExpiryDate: '',
+        educationName: '',
+        trainings: []
+      });
+    } else {
+      if (!list[adminIdx].passwordHash) {
+        list[adminIdx].password = defaultAdminPass;
+        list[adminIdx].passwordHash = defaultAdminHash;
+      }
+    }
+    return list;
+  }
+
+  async _fetchUsersRemote() {
     let usersList = [];
 
     // 0. Gather deleted users blacklist to avoid resurrection
@@ -1761,16 +1910,9 @@ class SecurityDatabase {
               };
             });
 
-          // Also include pure-local accounts created while offline (excluding deleted)
-          for (const [uname, localU] of localUsersMap.entries()) {
-            if (!deletedUsernames.has(uname) && !usersList.some(u => String(u.username || '').trim().toLowerCase() === uname)) {
-              usersList.push(localU);
-            }
-          }
-
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
-            Promise.all(usersList.map(u => this.putItem('users', u))).catch(() => {});
+            await this.replaceCollection('users', usersList);
           } catch (e) {}
         }
       }
@@ -2050,99 +2192,106 @@ class SecurityDatabase {
   // -------------------------------------------------------------
   // Work Log Persistence Methods (MySQL work_log Table Direct Sync)
   // -------------------------------------------------------------
-  async getWorkLogs() {
-    try {
-      const localOverrides = (() => {
-        try {
-          const raw = localStorage.getItem('with_security_work_logs');
-          return raw ? JSON.parse(raw) : [];
-        } catch (e) {
-          return [];
+  async getWorkLogs(forceRemote = false) {
+    // 1. Instant Local Cache Return (0.1ms) - eliminates UI freezing/lag
+    if (!forceRemote) {
+      try {
+        const raw = localStorage.getItem('with_security_work_logs');
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            this._revalidateWorkLogsInBackground().catch(() => {});
+            return list;
+          }
         }
-      })();
-      const localMap = new Map(localOverrides.map(l => [(l.id || l.log_id), l]));
+      } catch (e) {}
 
-      let serverLogs = [];
+      try {
+        const dbLogs = await this.getAll('work_logs');
+        if (Array.isArray(dbLogs) && dbLogs.length > 0) {
+          this._revalidateWorkLogsInBackground().catch(() => {});
+          return dbLogs;
+        }
+      } catch (e) {}
+    }
+
+    return await this._fetchWorkLogsRemote();
+  }
+
+  async _revalidateWorkLogsInBackground() {
+    const now = Date.now();
+    if (this._lastWorkLogsRevalidate && (now - this._lastWorkLogsRevalidate < 30000)) return;
+    this._lastWorkLogsRevalidate = now;
+    await this._fetchWorkLogsRemote();
+  }
+
+  async _fetchWorkLogsRemote() {
+    try {
       const res = await safeFetchApi('/api/work-logs');
       if (res && res.ok) {
-        try {
-          const json = await res.json();
-          serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
-        } catch (e) {}
-      }
-      if (serverLogs.length > 0) {
-        const mapped = serverLogs.map(item => {
-          let cleanDate = '';
-          if (item.log_date) {
-            cleanDate = String(item.log_date).trim().slice(0, 10);
-          } else if (item.date) {
-            cleanDate = String(item.date).trim().slice(0, 10);
-          }
-          if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
-            cleanDate = new Date().toLocaleDateString('sv-SE');
-          }
-
-          const itemId = item.log_id || item.id;
-          const localItem = localMap.get(itemId);
-
-          let parsedSharedWith = [];
-          if (item.shared_with || item.sharedWith) {
-            const rawSw = item.shared_with || item.sharedWith;
-            if (Array.isArray(rawSw)) parsedSharedWith = rawSw;
-            else if (typeof rawSw === 'string') {
-              try { parsedSharedWith = JSON.parse(rawSw); } catch (e) { parsedSharedWith = []; }
+        const json = await res.json();
+        const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
+        if (serverLogs.length > 0) {
+          const mapped = serverLogs.map(item => {
+            let cleanDate = '';
+            if (item.log_date) {
+              cleanDate = String(item.log_date).trim().slice(0, 10);
+            } else if (item.date) {
+              cleanDate = String(item.date).trim().slice(0, 10);
             }
-          } else if (localItem?.sharedWith) {
-            parsedSharedWith = localItem.sharedWith;
-          }
-
-          const isSharedVal = item.is_shared !== undefined
-            ? Boolean(item.is_shared)
-            : (item.isShared !== undefined ? Boolean(item.isShared) : (localItem?.isShared ?? false));
-
-          const sharedAtVal = item.shared_at || item.sharedAt || localItem?.sharedAt || '';
-
-          return {
-            id: itemId,
-            log_id: itemId,
-            category: item.category || '사내 업무',
-            title: item.title || '',
-            details: item.tasks_done || item.details || '',
-            siteName: item.site_name || item.siteName || '',
-            site_name: item.site_name || item.siteName || '',
-            date: cleanDate,
-            name: item.name || item.writer_name || item.authorName || '작성자',
-            authorName: item.name || item.writer_name || item.authorName || '작성자',
-            authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || localItem?.authorUsername || '',
-            writerId: item.writer_id || item.writerId || item.authorUsername || item.username || localItem?.authorUsername || '',
-            division: item.division || localItem?.division || '',
-            team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-            authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
-            rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-            authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
-            role: item.role || '일반',
-            isShared: isSharedVal,
-            sharedWith: parsedSharedWith,
-            sharedAt: sharedAtVal,
-            createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || localItem?.createdAt || '')
-          };
-        });
-
-        // 호스팅/구글 시트 연동 환경에서는 기기(핸드폰)의 로컬 임시 데이터 병합을 건너뛰고 구글 시트 데이터만 표출
-        const activeApiUrl = getApiServerUrl();
-        const isGoogleSheetActive = Boolean(activeApiUrl && activeApiUrl.includes('script.google.com'));
-        if (!isGoogleSheetActive) {
-          const serverIds = new Set(mapped.map(m => m.id));
-          localOverrides.forEach(lo => {
-            const lId = lo.id || lo.log_id;
-            if (lId && !serverIds.has(lId)) {
-              mapped.push(lo);
+            if (!cleanDate || !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate)) {
+              cleanDate = new Date().toLocaleDateString('sv-SE');
             }
+
+            const itemId = item.log_id || item.id;
+
+            let parsedSharedWith = [];
+            if (item.shared_with || item.sharedWith) {
+              const rawSw = item.shared_with || item.sharedWith;
+              if (Array.isArray(rawSw)) parsedSharedWith = rawSw;
+              else if (typeof rawSw === 'string') {
+                try { parsedSharedWith = JSON.parse(rawSw); } catch (e) { parsedSharedWith = []; }
+              }
+            }
+
+            const isSharedVal = item.is_shared !== undefined
+              ? Boolean(item.is_shared)
+              : (item.isShared !== undefined ? Boolean(item.isShared) : false);
+
+            const sharedAtVal = item.shared_at || item.sharedAt || '';
+
+            return {
+              id: itemId,
+              log_id: itemId,
+              category: item.category || '사내 업무',
+              title: item.title || '',
+              details: item.tasks_done || item.details || '',
+              siteName: item.site_name || item.siteName || '',
+              site_name: item.site_name || item.siteName || '',
+              date: cleanDate,
+              name: item.name || item.writer_name || item.authorName || '작성자',
+              authorName: item.name || item.writer_name || item.authorName || '작성자',
+              authorUsername: item.writer_id || item.writerId || item.authorUsername || item.username || '',
+              writerId: item.writer_id || item.writerId || item.authorUsername || item.username || '',
+              division: item.division || '',
+              team: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+              authorTeam: item.team || item.writer_team || item.writerTeam || item.authorTeam || item.department || '보안관제팀',
+              rank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+              authorRank: item.rank || item.writer_rank || item.writerRank || item.authorRank || '대리',
+              role: item.role || '일반',
+              isShared: isSharedVal,
+              sharedWith: parsedSharedWith,
+              sharedAt: sharedAtVal,
+              createdAt: item.created_at ? String(item.created_at).replace('T', ' ').slice(0, 16) : (item.createdAt || '')
+            };
           });
-        }
 
-        localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
-        return mapped;
+          localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
+          try {
+            await this.replaceCollection('work_logs', mapped);
+          } catch (e) {}
+          return mapped;
+        }
       }
     } catch (e) {}
 
@@ -2446,7 +2595,69 @@ class SecurityDatabase {
   // ========================================================
   // Education & Training Logs Service (edu_log / edu_logs)
   // ========================================================
-  async getEduLogs(filter = {}) {
+  async getEduLogs(filter = {}, forceRemote = false) {
+    let localLogs = [];
+    try {
+      const raw = localStorage.getItem('with_security_edu_logs');
+      if (raw) localLogs = JSON.parse(raw);
+    } catch (e) {}
+    if (!localLogs || localLogs.length === 0) {
+      try {
+        localLogs = await this.getAll('edu_logs');
+      } catch (e) {}
+    }
+
+    if (!forceRemote && Array.isArray(localLogs) && localLogs.length > 0) {
+      this._revalidateEduLogsInBackground(filter).catch(() => {});
+      return this._filterEduLogs(localLogs, filter);
+    }
+
+    return await this._fetchEduLogsRemote(filter);
+  }
+
+  async _revalidateEduLogsInBackground(filter = {}) {
+    const now = Date.now();
+    if (this._lastEduLogsRevalidate && (now - this._lastEduLogsRevalidate < 30000)) return;
+    this._lastEduLogsRevalidate = now;
+    await this._fetchEduLogsRemote(filter);
+  }
+
+  _filterEduLogs(logs, filter = {}) {
+    const dedupMap = new Map();
+    (logs || []).forEach(item => {
+      if ((item.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
+      if (String(item.id || item.eduId || '').startsWith('EDU-INIT-')) return;
+      if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
+
+      const uKey = String(item.userId || item.name || '').trim().toLowerCase();
+      const tKey = String(item.title || '').trim().toLowerCase();
+      const cKey = String(item.completionDate || item.completion_date || '').trim();
+      const key = `${uKey}__${tKey}__${cKey}`;
+      if (!dedupMap.has(key)) {
+        dedupMap.set(key, item);
+      }
+    });
+    const uniqueLogs = Array.from(dedupMap.values());
+
+    return uniqueLogs.filter(item => {
+      if (filter.userId || filter.username || filter.name) {
+        const uTarget = String(filter.userId || filter.username || '').trim().toLowerCase();
+        const nTarget = String(filter.name || '').trim().toLowerCase();
+        const itemUser = String(item.userId || '').trim().toLowerCase();
+        const itemName = String(item.name || '').trim().toLowerCase();
+
+        const matchUser = uTarget && (itemUser === uTarget || itemName === uTarget);
+        const matchName = nTarget && (itemName === nTarget || itemUser === nTarget);
+        if (!matchUser && !matchName) return false;
+      }
+      if (filter.category && filter.category !== '전체') {
+        if (item.category !== filter.category) return false;
+      }
+      return true;
+    }).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+  }
+
+  async _fetchEduLogsRemote(filter = {}) {
     let localLogs = [];
     try {
       localLogs = await this.getAll('edu_logs');
@@ -2455,7 +2666,6 @@ class SecurityDatabase {
       localLogs = raw ? JSON.parse(raw) : [];
     }
 
-    // Attempt REST API fetch if online
     try {
       const qs = new URLSearchParams();
       if (filter.userId || filter.username) qs.set('userId', filter.userId || filter.username);
@@ -2496,11 +2706,6 @@ class SecurityDatabase {
       }
     } catch (e) {}
 
-    // Deduplicate in-memory by user + title + completionDate and filter out dummy defaults
-    const dedupMap = new Map();
-    (localLogs || []).forEach(item => {
-      if ((item.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
-      if (String(item.id || item.eduId || '').startsWith('EDU-INIT-')) return;
       if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
 
       const uKey = String(item.userId || item.name || '').trim().toLowerCase();
@@ -2846,26 +3051,20 @@ class SecurityDatabase {
       });
       localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(normalizedUsers));
       localStorage.setItem('with_security_users_db', JSON.stringify(normalizedUsers));
-      try {
-        for (const u of normalizedUsers) await this.putItem('users', u);
-      } catch (e) {}
+      await this.replaceCollection('users', normalizedUsers);
     }
 
     if (syncData.sites && Array.isArray(syncData.sites)) {
       sitesCount = syncData.sites.length;
       localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
       localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
-      try {
-        for (const s of syncData.sites) await this.putItem('sites', s);
-      } catch (e) {}
+      await this.replaceCollection('sites', syncData.sites);
     }
 
     if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
       workLogsCount = syncData.work_logs.length;
       localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
-      try {
-        for (const w of syncData.work_logs) await this.putItem('work_logs', w);
-      } catch (e) {}
+      await this.replaceCollection('work_logs', syncData.work_logs);
     }
 
     const checklists = syncData.checklists || syncData.security_logs;
@@ -2874,41 +3073,29 @@ class SecurityDatabase {
       const consolidated = this._consolidateChecklists(checklists);
       localStorage.setItem('with_security_checklists_cache', JSON.stringify(consolidated));
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
-      try {
-        for (const c of consolidated) await this.putItem('checklists', c);
-      } catch (e) {}
+      await this.replaceCollection('checklists', consolidated);
     }
 
     if (syncData.tbms && Array.isArray(syncData.tbms)) {
       localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
-      try {
-        for (const t of syncData.tbms) await this.putItem('tbms', t);
-      } catch (e) {}
+      await this.replaceCollection('tbms', syncData.tbms);
     }
 
     if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
       localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
-      try {
-        for (const wr of syncData.weekly_reports) await this.putItem('weekly_reports', wr);
-      } catch (e) {}
+      await this.replaceCollection('weekly_reports', syncData.weekly_reports);
     }
 
     if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
-      try {
-        for (const e of syncData.edu_logs) await this.putItem('edu_logs', e);
-      } catch (e) {}
+      await this.replaceCollection('edu_logs', syncData.edu_logs);
     }
 
     if (syncData.vault && Array.isArray(syncData.vault)) {
-      try {
-        for (const v of syncData.vault) await this.putItem('vault', v);
-      } catch (e) {}
+      await this.replaceCollection('vault', syncData.vault);
     }
 
     if (syncData.incidents && Array.isArray(syncData.incidents)) {
-      try {
-        for (const inc of syncData.incidents) await this.putItem('incidents', inc);
-      } catch (e) {}
+      await this.replaceCollection('incidents', syncData.incidents);
     }
     recentResponseCache.clear();
     this.notifyDataChanged();
@@ -2972,6 +3159,103 @@ class SecurityDatabase {
       }
     } catch (err) {
       return { success: false, message: `구글 스프레드시트 통신 실패: ${err.message}` };
+    }
+  }
+
+  /**
+   * 스프레드시트 기준 완전 동기화 (스프레드시트에 없는 기존 기기 내 로컬 데이터 영구 삭제)
+   */
+  async purgeAndSyncFromGoogleSheets(url = null) {
+    const sheetUrl = (url || getGoogleSheetsUrl() || DEFAULT_GOOGLE_SHEETS_URL).trim().replace(/\/+$/, '');
+    if (!sheetUrl || !sheetUrl.includes('script.google.com')) {
+      return { success: false, message: '유효한 구글 스프레드시트 웹 앱 URL이 설정되지 않았습니다.' };
+    }
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 25000);
+      const queryUrl = `${sheetUrl}${sheetUrl.includes('?') ? '&' : '?'}action=getAll`;
+      const res = await fetch(queryUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+
+      if (!res.ok) {
+        return { success: false, message: `구글 스프레드시트 서버 응답 실패 [HTTP ${res.status}]` };
+      }
+
+      const rawText = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(rawText);
+      } catch (e) {
+        return {
+          success: false,
+          message: '구글 스프레드시트 응답 파싱 실패 (권한 설정이 "모든 사용자(Anyone)"인지 확인해 주세요).'
+        };
+      }
+
+      if (!json || !json.success || !json.data) {
+        return { success: false, message: `구글 스프레드시트 데이터 오류: ${json?.error || '데이터 없음'}` };
+      }
+
+      // _applySyncPayload는 replaceCollection을 호출하여 시트에 없는 로컬 데이터를 완전 삭제함
+      const syncResult = await this._applySyncPayload(json.data, true);
+      
+      return {
+        success: true,
+        message: `구글 스프레드시트 기준 완전 동기화 완료!\n(시트에 없는 기존 로컬 데이터가 모두 삭제되고, 최신 스프레드시트 데이터로 100% 교체되었습니다)`,
+        counts: syncResult.counts,
+        data: json.data
+      };
+    } catch (err) {
+      return { success: false, message: `동기화 통신 오류: ${err.message}` };
+    }
+  }
+
+  /**
+   * 구글 스프레드시트 내 중복 데이터 전 시트 자동 정리 실행
+   */
+  async cleanupGoogleSheetsDuplicates(url = null) {
+    const sheetUrl = (url || getGoogleSheetsUrl() || DEFAULT_GOOGLE_SHEETS_URL).trim().replace(/\/+$/, '');
+    if (!sheetUrl || !sheetUrl.includes('script.google.com')) {
+      return { success: false, message: '유효한 구글 스프레드시트 웹 앱 URL이 설정되지 않았습니다.' };
+    }
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 25000);
+      const res = await fetch(sheetUrl, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'cleanup' }),
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          recentResponseCache.clear();
+          // 중복 정리 후 최신 시트 데이터로 로컬 즉시 동기화
+          await this.syncFromGoogleSheets(sheetUrl);
+          return {
+            success: true,
+            message: json.message || `스프레드시트 중복 행 ${json.totalDeleted || 0}건 정리 완료`,
+            totalDeleted: json.totalDeleted || 0,
+            details: json.details
+          };
+        } else {
+          return { success: false, message: json.error || '중복 정리 처리 오류' };
+        }
+      } else {
+        return { success: false, message: `스프레드시트 서버 응답 실패 [HTTP ${res.status}]` };
+      }
+    } catch (err) {
+      return { success: false, message: `중복 정리 통신 실패: ${err.message}` };
     }
   }
 
