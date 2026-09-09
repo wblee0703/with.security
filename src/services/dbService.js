@@ -3,6 +3,8 @@ import { Capacitor } from '@capacitor/core';
 
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
+// 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (호스팅 사이트 및 모바일 기본 DB)
+export const DEFAULT_GOOGLE_SHEETS_URL = '';
 
 export function getServerUrl() {
   const url = localStorage.getItem('with_security_server_url');
@@ -10,6 +12,7 @@ export function getServerUrl() {
   if (import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL.replace(/\/+$/, '');
   }
+  if (DEFAULT_GOOGLE_SHEETS_URL) return DEFAULT_GOOGLE_SHEETS_URL;
   return DEFAULT_PUBLIC_URL;
 }
 
@@ -66,24 +69,28 @@ export function getApiServerUrl() {
     }
   }
 
-  // 3. In native mobile app (Capacitor)
+  // 3. If running locally on PC browser (Local Dev Mode -> MySQL Node Server 100% 유지)
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname.toLowerCase();
+    if (!host.includes('github.io') && !host.includes('github.com')) {
+      return ''; // Use relative '/api' via local Vite dev server proxy -> http://localhost:4000 (MySQL)
+    }
+  }
+
+  // 4. In native mobile app (Capacitor)
   if (Capacitor.isNativePlatform()) {
-    const sUrl = localStorage.getItem('with_security_server_url');
+    const sUrl = localStorage.getItem('with_security_server_url') || DEFAULT_GOOGLE_SHEETS_URL;
     if (sUrl && isApiEndpoint(sUrl)) {
       return sUrl.replace(/\/+$/, '');
     }
     return null;
   }
 
-  // 4. If running locally on PC browser or on a custom Gabia hosting domain
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname.toLowerCase();
-    if (!host.includes('github.io') && !host.includes('github.com')) {
-      return ''; // Use relative '/api' via local Vite dev server proxy or Gabia Node server
-    }
+  // 5. On Hosted Site (GitHub Pages / Mobile Web) -> Default to Google Sheets Web App!
+  if (DEFAULT_GOOGLE_SHEETS_URL && isApiEndpoint(DEFAULT_GOOGLE_SHEETS_URL)) {
+    return DEFAULT_GOOGLE_SHEETS_URL.replace(/\/+$/, '');
   }
 
-  // 5. On HTTPS GitHub Pages without an HTTPS API server, return null to prevent Mixed Content error
   return null;
 }
 
@@ -490,7 +497,7 @@ class SecurityDatabase {
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
-        if (Array.isArray(remoteData) && remoteData.length > 0) {
+        if (Array.isArray(remoteData)) {
           const consolidated = this._consolidateChecklists(remoteData);
           localStorage.setItem('with_security_checklists_backup', JSON.stringify(consolidated));
           try {
@@ -2242,14 +2249,18 @@ class SecurityDatabase {
           };
         });
 
-        // If local had new unsynced items, prepend them
-        const serverIds = new Set(mapped.map(m => m.id));
-        localOverrides.forEach(lo => {
-          const lId = lo.id || lo.log_id;
-          if (lId && !serverIds.has(lId)) {
-            mapped.push(lo);
-          }
-        });
+        // 호스팅/구글 시트 연동 환경에서는 기기(핸드폰)의 로컬 임시 데이터 병합을 건너뛰고 구글 시트 데이터만 표출
+        const activeApiUrl = getApiServerUrl();
+        const isGoogleSheetActive = Boolean(activeApiUrl && activeApiUrl.includes('script.google.com'));
+        if (!isGoogleSheetActive) {
+          const serverIds = new Set(mapped.map(m => m.id));
+          localOverrides.forEach(lo => {
+            const lId = lo.id || lo.log_id;
+            if (lId && !serverIds.has(lId)) {
+              mapped.push(lo);
+            }
+          });
+        }
 
         localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
         return mapped;
