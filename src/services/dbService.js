@@ -147,7 +147,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   const method = (options.method || 'GET').toUpperCase();
   let targetUrl = baseUrl;
   let fetchOptions = { ...options };
-  
+
   let bodyData = null;
   if (options.body) {
     try {
@@ -296,7 +296,7 @@ async function safeFetchApi(endpoint, options = {}) {
       const controller = new AbortController();
       const timeoutMs = isGoogleSheet ? 20000 : (finalOptions.timeout || 4000);
       const tid = setTimeout(() => controller.abort(), timeoutMs);
-      
+
       // ⭐ CRITICAL: 구글 스프레드시트 Web App은 OPTIONS preflight를 지원하지 않습니다!
       // 따라서 커스텀 헤더(Authorization, Bypass-Tunnel-Reminder 등)를 절대 붙이지 않아야 100% 정상 통신됩니다.
       let headers = {};
@@ -409,7 +409,7 @@ class SecurityDatabase {
               this.db = null;
               this.initPromise = null;
             }
-          } catch (e) {}
+          } catch (e) { }
         };
 
         request.onupgradeneeded = (event) => {
@@ -481,7 +481,7 @@ class SecurityDatabase {
                 this.db.close();
                 this.db = null;
                 this.initPromise = null;
-              } catch (e) {}
+              } catch (e) { }
             };
             resolve(this.db);
           }
@@ -631,20 +631,20 @@ class SecurityDatabase {
         if (backup) {
           const parsed = JSON.parse(backup);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this._revalidateChecklistsInBackground().catch(() => {});
+            this._revalidateChecklistsInBackground().catch(() => { });
             return parsed;
           }
         }
-      } catch (err) {}
+      } catch (err) { }
 
       try {
         const dbPledges = await this.getAll('checklists');
         if (Array.isArray(dbPledges) && dbPledges.length > 0) {
           const consolidated = this._consolidateChecklists(dbPledges);
-          this._revalidateChecklistsInBackground().catch(() => {});
+          this._revalidateChecklistsInBackground().catch(() => { });
           return consolidated;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return await this._fetchChecklistsRemote();
@@ -673,7 +673,7 @@ class SecurityDatabase {
           return consolidated;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const backup = localStorage.getItem('with_security_checklists_backup') || localStorage.getItem('with_security_checklists_cache');
@@ -681,7 +681,7 @@ class SecurityDatabase {
         const parsed = JSON.parse(backup);
         if (Array.isArray(parsed)) return parsed;
       }
-    } catch (err) {}
+    } catch (err) { }
     return [];
   }
 
@@ -866,13 +866,13 @@ class SecurityDatabase {
 
     try {
       await this.deleteItem('checklists', id);
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const existing = await this.getChecklists();
       const filtered = existing.filter(item => String(item.id) !== String(id) && String(item.log_id) !== String(id));
       localStorage.setItem('with_security_checklists_backup', JSON.stringify(filtered));
-    } catch (err) {}
+    } catch (err) { }
 
     notifyDataChanged();
     return id;
@@ -907,7 +907,7 @@ class SecurityDatabase {
             return remote;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.getAll('vault');
   }
@@ -921,7 +921,7 @@ class SecurityDatabase {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(item)
         });
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.putItem('vault', item);
   }
@@ -931,7 +931,7 @@ class SecurityDatabase {
     if (serverUrl && isApiEndpoint(serverUrl)) {
       try {
         await fetch(`${serverUrl}/api/vault/${id}`, { method: 'DELETE' });
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.deleteItem('vault', id);
   }
@@ -953,7 +953,7 @@ class SecurityDatabase {
             return remote;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.getAll('otp');
   }
@@ -967,7 +967,7 @@ class SecurityDatabase {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(acc)
         });
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.putItem('otp', acc);
   }
@@ -977,7 +977,7 @@ class SecurityDatabase {
     if (serverUrl && isApiEndpoint(serverUrl)) {
       try {
         await fetch(`${serverUrl}/api/otp/${id}`, { method: 'DELETE' });
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.deleteItem('otp', id);
   }
@@ -999,7 +999,7 @@ class SecurityDatabase {
             return remote;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.getAll('incidents');
   }
@@ -1013,7 +1013,7 @@ class SecurityDatabase {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(incident)
         });
-      } catch (e) {}
+      } catch (e) { }
     }
     return this.putItem('incidents', incident);
   }
@@ -1049,19 +1049,19 @@ class SecurityDatabase {
         if (backup) {
           const list = JSON.parse(backup);
           if (Array.isArray(list) && list.length > 0) {
-            this._revalidateSitesInBackground().catch(() => {});
+            this._revalidateSitesInBackground().catch(() => { });
             return this._sortSites(list);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const dbSites = await this.getAll('sites');
         if (Array.isArray(dbSites) && dbSites.length > 0) {
-          this._revalidateSitesInBackground().catch(() => {});
+          this._revalidateSitesInBackground().catch(() => { });
           return this._sortSites(dbSites);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return await this._fetchSitesRemote();
@@ -1089,12 +1089,12 @@ class SecurityDatabase {
           return sorted;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const backup = localStorage.getItem('with_security_sites_backup') || localStorage.getItem('with_security_sites_cloud_cache');
       if (backup) return this._sortSites(JSON.parse(backup));
-    } catch (e) {}
+    } catch (e) { }
 
     return [];
   }
@@ -1104,7 +1104,7 @@ class SecurityDatabase {
     try {
       const allSites = await this.getSites();
       previousSite = allSites.find(s => String(s.id) === String(site.id));
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       await safeFetchApi('/api/security-sites', {
@@ -1112,11 +1112,11 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(site)
       });
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       await this.putItem('sites', site);
-    } catch (e) {}
+    } catch (e) { }
 
     // 사업장 정보(사업장명, 위치, 보안앱 사용여부 등) 변경 시 기존 업무일지 및 서약서 데이터 일괄 동기화
     if (previousSite) {
@@ -1171,7 +1171,7 @@ class SecurityDatabase {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(logItem)
               });
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -1210,14 +1210,14 @@ class SecurityDatabase {
         for (const clItem of updatedCls) {
           const clSite = (clItem.site_name || clItem.site || clItem.siteName || '').trim();
           if (clSite === newSite.name) {
-            try { await this.putItem('checklists', clItem); } catch (e) {}
+            try { await this.putItem('checklists', clItem); } catch (e) { }
             try {
               await safeFetchApi('/api/security-logs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(clItem)
               });
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -1229,11 +1229,11 @@ class SecurityDatabase {
   async deleteSite(id) {
     try {
       await safeFetchApi(`/api/security-sites/${id}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       await this.deleteItem('sites', id);
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return id;
@@ -1453,7 +1453,7 @@ class SecurityDatabase {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // Load user's isolated trainings list from localStorage if exists
     try {
@@ -1472,7 +1472,7 @@ class SecurityDatabase {
 
       // Filter out dummy/legacy placeholders if any
       user.trainings = user.trainings.filter(t => !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-'));
-    } catch (e) {}
+    } catch (e) { }
 
     return user;
   }
@@ -1494,7 +1494,7 @@ class SecurityDatabase {
           localStorage.setItem('with_security_deleted_users', JSON.stringify(delList));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 1. Save to IndexedDB
     try {
@@ -1516,7 +1516,7 @@ class SecurityDatabase {
         currentUsers.push(safeUser);
       }
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Send to Server if available
     try {
@@ -1525,7 +1525,7 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(safeUser)
       });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return safeUser;
@@ -1557,7 +1557,7 @@ class SecurityDatabase {
         currentUsers.push(safeUser);
       }
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Send to Server if available (PUT for update)
     try {
@@ -1566,7 +1566,7 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(safeUser)
       });
-    } catch (e) {}
+    } catch (e) { }
 
     // 4. Only update with_security_active_user IF targetUser is the currently logged-in user
     try {
@@ -1578,7 +1578,7 @@ class SecurityDatabase {
           localStorage.setItem('with_security_active_user', JSON.stringify(updatedActive));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return safeUser;
@@ -1597,7 +1597,7 @@ class SecurityDatabase {
     if (Array.isArray(safeUser.trainings)) {
       try {
         localStorage.setItem(`with_security_user_trainings_${uid}`, JSON.stringify(safeUser.trainings));
-      } catch (e) {}
+      } catch (e) { }
     }
 
     localStorage.setItem('with_security_active_user', JSON.stringify(safeUser));
@@ -1622,7 +1622,7 @@ class SecurityDatabase {
       }
       currentUsers = this._deduplicateUsers(currentUsers);
       localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
-    } catch (e) {}
+    } catch (e) { }
 
     if (syncRemote && safeUser.username) {
       try {
@@ -1631,15 +1631,15 @@ class SecurityDatabase {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(safeUser)
         });
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 사용자 정보(이름, 직급, 소속팀, 사업부 등) 실제 변경 시에만 비동기로 일괄 동기화 (동일 계정의 정보 수정 시에만 실행, 로그인 및 계정 전환 시 충돌 방지)
     if (previousUser && previousUser.username && safeUser.username &&
-        String(previousUser.username).trim().toLowerCase() === String(safeUser.username).trim().toLowerCase() &&
-        (previousUser.name !== safeUser.name || previousUser.rank !== safeUser.rank || previousUser.team !== safeUser.team || previousUser.division !== safeUser.division)) {
+      String(previousUser.username).trim().toLowerCase() === String(safeUser.username).trim().toLowerCase() &&
+      (previousUser.name !== safeUser.name || previousUser.rank !== safeUser.rank || previousUser.team !== safeUser.team || previousUser.division !== safeUser.division)) {
       setTimeout(() => {
-        this.cascadeUpdateUserData(safeUser, previousUser).catch(() => {});
+        this.cascadeUpdateUserData(safeUser, previousUser).catch(() => { });
       }, 50);
     }
 
@@ -1737,7 +1737,7 @@ class SecurityDatabase {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(logItem)
               });
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -1784,14 +1784,14 @@ class SecurityDatabase {
         for (const clItem of updatedCls) {
           const clId = (clItem.username || clItem.userId || clItem.writerId || '').trim().toLowerCase();
           if ((targetUsername && clId && clId === targetUsername) || (!clId && clItem.visitorName === newUser.name)) {
-            try { await this.putItem('checklists', clItem); } catch (e) {}
+            try { await this.putItem('checklists', clItem); } catch (e) { }
             try {
               await safeFetchApi('/api/security-logs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(clItem)
               });
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -1812,7 +1812,7 @@ class SecurityDatabase {
           deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const userMap = new Map();
     for (const u of usersList) {
@@ -1990,7 +1990,6 @@ class SecurityDatabase {
     const vDivision = String(item.division || '').trim();
     const vRole = String(item.role || '일반').trim();
     const sName = String(item.site_name || item.siteName || item.site || '').trim();
-    const sDate = String(item.signature_date || item.signatureDate || item.date || item.signedAt || '').trim();
 
     const mdmVerified = Boolean(item.mdm_verified !== undefined ? item.mdm_verified : item.mdmVerified);
     let docChecklist = item.docChecklist;
@@ -2043,7 +2042,7 @@ class SecurityDatabase {
         if (lsRaw) {
           const list = JSON.parse(lsRaw);
           if (Array.isArray(list) && list.length > 0) {
-            this._revalidateUsersInBackground().catch(() => {});
+            this._revalidateUsersInBackground().catch(() => { });
             const deduped = this._deduplicateUsers(list);
             if (deduped.length !== list.length) {
               localStorage.setItem('with_security_users_db', JSON.stringify(deduped));
@@ -2051,16 +2050,16 @@ class SecurityDatabase {
             return await this._ensureAdminInList(deduped);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const dbUsers = await this.getAll('users');
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
-          this._revalidateUsersInBackground().catch(() => {});
+          this._revalidateUsersInBackground().catch(() => { });
           const deduped = this._deduplicateUsers(dbUsers);
           return await this._ensureAdminInList(deduped);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return await this._fetchUsersRemote();
@@ -2122,7 +2121,7 @@ class SecurityDatabase {
           deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 1. Gather all existing local users first to preserve local password & passwordHash
     const localUsersMap = new Map();
@@ -2138,7 +2137,7 @@ class SecurityDatabase {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const lsRaw = localStorage.getItem('with_security_users_db');
@@ -2159,7 +2158,7 @@ class SecurityDatabase {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Try fetching from server if online
     try {
@@ -2181,7 +2180,7 @@ class SecurityDatabase {
                 parsedTrainings = existingLocal.trainings;
               }
               if (Array.isArray(parsedTrainings)) {
-                parsedTrainings = parsedTrainings.filter(t => 
+                parsedTrainings = parsedTrainings.filter(t =>
                   !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
                   !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
                   t.title !== '사내 정기 정보보안 및 안전 교육'
@@ -2205,10 +2204,10 @@ class SecurityDatabase {
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
             await this.replaceCollection('users', usersList);
-          } catch (e) {}
+          } catch (e) { }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!usersList || usersList.length === 0) {
       usersList = Array.from(localUsersMap.values()).filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
@@ -2243,13 +2242,13 @@ class SecurityDatabase {
       usersList.unshift(defaultAdmin);
       try {
         await this.putItem('users', defaultAdmin);
-      } catch (e) {}
+      } catch (e) { }
     } else {
       // Ensure admin has valid password hashes
       if (!usersList[adminIdx].passwordHash) {
         usersList[adminIdx].password = defaultAdminPass;
         usersList[adminIdx].passwordHash = defaultAdminHash;
-        try { await this.putItem('users', usersList[adminIdx]); } catch (e) {}
+        try { await this.putItem('users', usersList[adminIdx]); } catch (e) { }
       }
     }
 
@@ -2257,7 +2256,7 @@ class SecurityDatabase {
     usersList = this._deduplicateUsers(usersList);
     try {
       localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
-    } catch (e) {}
+    } catch (e) { }
 
     this.notifyDataChanged(true);
     return usersList;
@@ -2286,7 +2285,7 @@ class SecurityDatabase {
         delList.push(unameLower);
         localStorage.setItem('with_security_deleted_users', JSON.stringify(delList));
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Remove from localStorage users DB
     try {
@@ -2298,24 +2297,24 @@ class SecurityDatabase {
           localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Remove user-specific storage keys
     try {
       localStorage.removeItem(`with_security_user_trainings_${uname}`);
       localStorage.removeItem(`with_security_user_trainings_${unameLower}`);
-    } catch (e) {}
+    } catch (e) { }
 
     // 4. Remote Server DELETE API
     try {
       await safeFetchApi(`/api/security-users/${encodeURIComponent(uname)}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     // 5. Delete from IndexedDB
     try {
       await this.deleteItem('users', uname);
       await this.deleteItem('users', unameLower);
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return true;
@@ -2494,20 +2493,20 @@ class SecurityDatabase {
           const list = JSON.parse(raw);
           if (Array.isArray(list) && list.length > 0) {
             const pureLogs = this._deduplicateWorkLogs(list);
-            this._revalidateWorkLogsInBackground().catch(() => {});
+            this._revalidateWorkLogsInBackground().catch(() => { });
             return pureLogs;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const dbLogs = await this.getAll('work_logs');
         if (Array.isArray(dbLogs) && dbLogs.length > 0) {
           const pureLogs = this._deduplicateWorkLogs(dbLogs);
-          this._revalidateWorkLogsInBackground().catch(() => {});
+          this._revalidateWorkLogsInBackground().catch(() => { });
           return pureLogs;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     return await this._fetchWorkLogsRemote();
@@ -2533,11 +2532,11 @@ class SecurityDatabase {
         localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
         try {
           await this.replaceCollection('work_logs', mapped);
-        } catch (e) {}
+        } catch (e) { }
         this.notifyDataChanged(true);
         return mapped;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       const raw = localStorage.getItem('with_security_work_logs');
@@ -2545,7 +2544,7 @@ class SecurityDatabase {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return this._deduplicateWorkLogs(parsed);
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return [];
   }
@@ -2665,7 +2664,7 @@ class SecurityDatabase {
           created_at: preparedLog.createdAt || new Date().toISOString()
         })
       });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return updated;
@@ -2674,7 +2673,7 @@ class SecurityDatabase {
   async deleteWorkLog(id) {
     try {
       await safeFetchApi(`/api/work-logs/${id}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     const logs = await this.getWorkLogs();
     const updated = logs.filter(l => l.id !== id);
@@ -2746,7 +2745,7 @@ class SecurityDatabase {
           return mapped;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return localOverrides;
   }
@@ -2755,7 +2754,7 @@ class SecurityDatabase {
     if (!report) return null;
     const current = await this.getWeeklyReports();
     const targetId = report.id || report.reportId || `weekly-rep-${report.authorUsername || report.authorName || 'user'}-${report.weeklyMonday || Date.now()}`;
-    
+
     // ⭐ sharedWith를 '이름 직급 (소속)' 형태로만 정제 (예: '홍길동 대리 (운영1팀)')
     let cleanSharedWith = [];
     if (Array.isArray(report.sharedWith)) {
@@ -2837,7 +2836,7 @@ class SecurityDatabase {
           sharedAt: normalized.sharedAt
         })
       });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return updated;
@@ -2846,7 +2845,7 @@ class SecurityDatabase {
   async deleteWeeklyReport(reportId) {
     try {
       await safeFetchApi(`/api/weekly-reports/${reportId}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     const reports = await this.getWeeklyReports();
     const updated = reports.filter(r => (r.id !== reportId && r.reportId !== reportId));
@@ -2863,15 +2862,15 @@ class SecurityDatabase {
     try {
       const raw = localStorage.getItem('with_security_edu_logs');
       if (raw) localLogs = JSON.parse(raw);
-    } catch (e) {}
+    } catch (e) { }
     if (!localLogs || localLogs.length === 0) {
       try {
         localLogs = await this.getAll('edu_logs');
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if (!forceRemote && Array.isArray(localLogs) && localLogs.length > 0) {
-      this._revalidateEduLogsInBackground(filter).catch(() => {});
+      this._revalidateEduLogsInBackground(filter).catch(() => { });
       return this._filterEduLogs(localLogs, filter);
     }
 
@@ -2966,12 +2965,12 @@ class SecurityDatabase {
               expiryDate: item.expiry_date || item.expiryDate || '',
               memo: item.memo || ''
             };
-            await this.putItem('edu_logs', normalized).catch(() => {});
+            await this.putItem('edu_logs', normalized).catch(() => { });
           }
           localLogs = await this.getAll('edu_logs');
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     return this._filterEduLogs(localLogs, filter);
   }
@@ -3019,7 +3018,7 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(normalized)
       });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return normalized;
@@ -3044,7 +3043,7 @@ class SecurityDatabase {
           }
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. LocalStorage with_security_edu_logs
     try {
@@ -3060,7 +3059,7 @@ class SecurityDatabase {
         return true;
       });
       localStorage.setItem('with_security_edu_logs', JSON.stringify(updated));
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. User's isolated trainings storage
     if (meta.userId || meta.username) {
@@ -3079,7 +3078,7 @@ class SecurityDatabase {
             return true;
           });
           localStorage.setItem(`with_security_user_trainings_${uid}`, JSON.stringify(filtered));
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -3093,7 +3092,7 @@ class SecurityDatabase {
       const queryStr = qs.toString() ? `?${qs.toString()}` : '';
 
       await safeFetchApi(`/api/edu-logs/${encodeURIComponent(eduId)}${queryStr}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return true;
@@ -3116,11 +3115,11 @@ class SecurityDatabase {
           localStorage.setItem('with_security_tbms_backup', JSON.stringify(remoteData));
           try {
             for (const item of remoteData) await this.putItem('tbms', item);
-          } catch (e) {}
+          } catch (e) { }
           list = remoteData;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Offline / Local fallback: LocalStorage + IndexedDB
     if (list.length === 0) {
@@ -3132,7 +3131,7 @@ class SecurityDatabase {
             list = parsed;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const dbItems = await this.getAll('tbms');
@@ -3148,7 +3147,7 @@ class SecurityDatabase {
             list = Array.from(map.values());
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Sort by createdAt / date descending
@@ -3184,7 +3183,7 @@ class SecurityDatabase {
     // 1. Put into IndexedDB
     try {
       await this.putItem('tbms', fullTbm);
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Put into LocalStorage cache
     try {
@@ -3198,7 +3197,7 @@ class SecurityDatabase {
         list.unshift(fullTbm);
       }
       localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Remote API sync
     try {
@@ -3207,7 +3206,7 @@ class SecurityDatabase {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fullTbm)
       });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return fullTbm;
@@ -3233,7 +3232,7 @@ class SecurityDatabase {
     // 1. Delete from IndexedDB
     try {
       await this.deleteItem('tbms', id);
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Delete from LocalStorage
     try {
@@ -3245,12 +3244,12 @@ class SecurityDatabase {
           localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 3. Remote API delete
     try {
       await safeFetchApi(`/api/tbms/${encodeURIComponent(id)}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch (e) { }
 
     notifyDataChanged();
     return true;
@@ -3280,7 +3279,7 @@ class SecurityDatabase {
       const rawNormalized = syncData.users.map(u => {
         let trainings = u.trainings;
         if (typeof trainings === 'string' && (trainings.startsWith('[') || trainings.startsWith('{'))) {
-          try { trainings = JSON.parse(trainings); } catch (e) {}
+          try { trainings = JSON.parse(trainings); } catch (e) { }
         }
         return {
           ...u,
@@ -3339,9 +3338,9 @@ class SecurityDatabase {
     // 4. security_logs / checklists
     const misplacedPledges = (syncData.work_logs && Array.isArray(syncData.work_logs))
       ? syncData.work_logs.filter(item => {
-          const id = String(item.id || item.log_id || '').trim();
-          return id.startsWith('PASS-') || item.visitorName || item.visitor_name || item.pledge_terms;
-        })
+        const id = String(item.id || item.log_id || '').trim();
+        return id.startsWith('PASS-') || item.visitorName || item.visitor_name || item.pledge_terms;
+      })
       : [];
 
     let incomingSecLogs = [];
@@ -3494,7 +3493,7 @@ class SecurityDatabase {
 
       // _applySyncPayload는 replaceCollection을 호출하여 시트에 없는 로컬 데이터를 완전 삭제함
       const syncResult = await this._applySyncPayload(json.data, true);
-      
+
       return {
         success: true,
         message: `구글 스프레드시트 기준 완전 동기화 완료!\n(시트에 없는 기존 로컬 데이터가 모두 삭제되고, 최신 스프레드시트 데이터로 100% 교체되었습니다)`,
