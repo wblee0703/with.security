@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, FileCode, Download, Upload, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { dbMigrationService } from '../../services/dbMigrationService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
@@ -148,6 +148,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [serverUrlInput, setServerUrlInput] = useState('');
   const [activeServerUrl, setActiveServerUrl] = useState('');
   const [isTestingServer, setIsTestingServer] = useState(false);
+  const [isUploadingToSheet, setIsUploadingToSheet] = useState(false);
   const [serverConnectionStatus, setServerConnectionStatus] = useState(null);
   const [isServerLocked, setIsServerLocked] = useState(() => {
     return localStorage.getItem('with_security_server_locked') === 'true';
@@ -416,6 +417,41 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     });
     if (onTriggerToast) {
       onTriggerToast(res.message, res.success ? 'success' : 'warning');
+    }
+  };
+
+  // Local Computer Data -> Google Spreadsheet Bulk Upload
+  const handleUploadLocalToGoogleSheet = async () => {
+    const url = serverUrlInput.trim() || dbService.getServerUrl();
+    if (!url || !url.includes('script.google.com')) {
+      if (onTriggerToast) onTriggerToast('구글 스프레드시트(Apps Script) 웹 앱 URL을 먼저 입력해 주세요.', 'warning');
+      return;
+    }
+
+    if (!window.confirm('현재 내 컴퓨터에 저장된 모든 업무일지, 서약서, 사용자, 사업장 데이터를 구글 스프레드시트(Withsharing_DB)로 일괄 업로드하시겠습니까?')) {
+      return;
+    }
+
+    try {
+      setIsUploadingToSheet(true);
+      const res = await dbService.uploadAllLocalDataToGoogleSheet(url);
+      if (res.success) {
+        if (onTriggerToast) onTriggerToast(res.message, 'success');
+        setServerConnectionStatus({
+          type: 'success',
+          message: res.message
+        });
+      } else {
+        if (onTriggerToast) onTriggerToast(res.message, 'warning');
+        setServerConnectionStatus({
+          type: 'error',
+          message: res.message
+        });
+      }
+    } catch (err) {
+      if (onTriggerToast) onTriggerToast(`업로드 실패: ${err.message}`, 'warning');
+    } finally {
+      setIsUploadingToSheet(false);
     }
   };
 
@@ -2639,16 +2675,23 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
           {/* URL Input */}
           <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a', display: 'block', marginBottom: '6px' }}>
-              백엔드 DB API 서버 주소 (Base API URL)
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: '700', color: '#0f172a' }}>
+                백엔드 DB API 서버 주소 (Base API URL)
+              </label>
+              {serverUrlInput.includes('script.google.com') && (
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#047857', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #86efac' }}>
+                  📊 구글 시트(Withsharing_DB) 모드
+                </span>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ position: 'relative', flex: 1 }}>
                 <Server size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#1e3a8a' }} />
                 <input
                   type="text"
                   disabled={isServerLocked}
-                  placeholder="예: https://wblee0703.github.io/with.security"
+                  placeholder="예: https://script.google.com/macros/s/.../exec 또는 https://wblee0703.github.io/with.security"
                   value={serverUrlInput}
                   onChange={(e) => setServerUrlInput(e.target.value)}
                   style={{
@@ -2656,7 +2699,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     padding: '10px 14px 10px 38px',
                     borderRadius: '12px',
                     background: isServerLocked ? '#f1f5f9' : '#ffffff',
-                    border: isServerLocked ? '1.5px solid #cbd5e1' : '1.5px solid #1e3a8a',
+                    border: isServerLocked ? '1.5px solid #cbd5e1' : (serverUrlInput.includes('script.google.com') ? '1.5px solid #059669' : '1.5px solid #1e3a8a'),
                     color: '#0f172a',
                     fontSize: '13px',
                     fontWeight: '700',
@@ -2688,6 +2731,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   📡 사내 Wi-Fi 테스트 (192.168.0.108:4000)
                 </button>
               </div>
+
+              {/* Google Spreadsheet Withsharing_DB Guide Card */}
+              <div style={{ fontSize: '11px', color: '#065f46', background: '#f0fdf4', padding: '10px 12px', borderRadius: '8px', border: '1px solid #bbf7d0', lineHeight: '1.6' }}>
+                📊 <strong>구글 스프레드시트 (Withsharing_DB) 연동 안내:</strong><br />
+                1. 생성하신 <strong>Withsharing_DB</strong> 스프레드시트의 <strong>[확장 프로그램] &gt; [Apps Script]</strong>를 엽니다.<br />
+                2. 프로젝트의 <strong><code>google_apps_script.js</code></strong> 파일 전체 코드를 복사해 붙여넣습니다.<br />
+                3. 상단 함수에서 <strong><code>initDatabase</code></strong> 선택 후 [실행]을 누르면 1초 만에 모든 시트 탭과 헤더가 자동 생성됩니다.<br />
+                4. <strong>[배포] &gt; [새 배포] &gt; [웹 앱]</strong> (액세스 권한: <em>모든 사용자</em>)으로 배포 후, 발급된 URL을 위 입력창에 붙여넣고 <strong>[초기 설정 완료 및 영구 고정(잠금)]</strong>을 누르면 구글 시트 클라우드 DB가 즉시 작동합니다!
+              </div>
+
               <div style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.5' }}>
                 💡 <strong>가비아 호스팅 DB 연동 안내:</strong> 가비아 서버에 MySQL이 설치되어 있지 않아도, 백엔드 서버가 파일 기반 데이터베이스(<code>server/security_database.json</code>)로 자동 전환되어 앱(APK)과 가비아 호스팅 서버 간의 데이터가 100% 동일하게 실시간 공유·동기화됩니다.
               </div>
@@ -2736,6 +2789,30 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             >
               <RefreshCw size={14} className={isTestingServer ? 'spin-anim' : ''} />
               연결 상태 확인
+            </button>
+
+            {/* 1-Click Upload Local Computer Data to Google Sheet */}
+            <button
+              type="button"
+              onClick={handleUploadLocalToGoogleSheet}
+              disabled={isUploadingToSheet || isTestingServer}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '12px',
+                background: '#ecfdf5',
+                border: '1.5px solid #059669',
+                color: '#047857',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: (isUploadingToSheet || isTestingServer) ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 8px rgba(5, 150, 105, 0.15)'
+              }}
+            >
+              <Upload size={14} className={isUploadingToSheet ? 'spin-anim' : ''} />
+              {isUploadingToSheet ? '구글 시트로 올리는 중...' : '📤 내 컴퓨터 데이터 → 구글 시트 일괄 올리기'}
             </button>
 
             {!isServerLocked ? (

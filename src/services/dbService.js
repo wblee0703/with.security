@@ -92,11 +92,107 @@ export function getApiServerUrl() {
 const inFlightRequests = new Map();
 const recentResponseCache = new Map();
 
+// Google Apps Script (Withsharing_DB) Request Adapter
+function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
+  const method = (options.method || 'GET').toUpperCase();
+  let targetUrl = baseUrl;
+  let fetchOptions = { ...options };
+  
+  let bodyData = null;
+  if (options.body) {
+    try {
+      bodyData = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+    } catch (e) {
+      bodyData = options.body;
+    }
+  }
+
+  // Determine target sheet
+  let sheetName = 'work_logs';
+  if (endpoint.includes('/users') || endpoint.includes('/security-users')) sheetName = 'users';
+  else if (endpoint.includes('/sites') || endpoint.includes('/security-sites')) sheetName = 'sites';
+  else if (endpoint.includes('/work-logs')) sheetName = 'work_logs';
+  else if (endpoint.includes('/security-logs') || endpoint.includes('/checklists') || endpoint.includes('/pledges')) sheetName = 'security_logs';
+  else if (endpoint.includes('/edu-logs')) sheetName = 'edu_logs';
+  else if (endpoint.includes('/weekly-reports')) sheetName = 'weekly_reports';
+  else if (endpoint.includes('/tbms')) sheetName = 'tbms';
+  else if (endpoint.includes('/vault')) sheetName = 'vault';
+  else if (endpoint.includes('/incidents')) sheetName = 'incidents';
+
+  if (endpoint.includes('/status') || endpoint.includes('/ping')) {
+    targetUrl = `${baseUrl}?action=ping`;
+    fetchOptions.method = 'GET';
+    delete fetchOptions.body;
+  } else if (endpoint.includes('/sync/all')) {
+    targetUrl = `${baseUrl}?action=getAll`;
+    fetchOptions.method = 'GET';
+    delete fetchOptions.body;
+  } else if (method === 'GET') {
+    targetUrl = `${baseUrl}?sheet=${sheetName}`;
+    delete fetchOptions.body;
+  } else if (method === 'POST') {
+    fetchOptions.method = 'POST';
+    fetchOptions.redirect = 'follow';
+    fetchOptions.headers = {
+      ...(fetchOptions.headers || {}),
+      'Content-Type': 'text/plain;charset=utf-8'
+    };
+    fetchOptions.body = JSON.stringify({
+      action: 'create',
+      sheet: sheetName,
+      data: bodyData
+    });
+  } else if (method === 'PUT') {
+    const parts = endpoint.split('/');
+    const id = parts[parts.length - 1];
+    fetchOptions.method = 'POST';
+    fetchOptions.redirect = 'follow';
+    fetchOptions.headers = {
+      ...(fetchOptions.headers || {}),
+      'Content-Type': 'text/plain;charset=utf-8'
+    };
+    fetchOptions.body = JSON.stringify({
+      action: 'update',
+      sheet: sheetName,
+      id: id,
+      data: bodyData
+    });
+  } else if (method === 'DELETE') {
+    const parts = endpoint.split('/');
+    const id = decodeURIComponent(parts[parts.length - 1]);
+    const keyField = (sheetName === 'users') ? 'username' : 'id';
+    fetchOptions.method = 'POST';
+    fetchOptions.redirect = 'follow';
+    fetchOptions.headers = {
+      ...(fetchOptions.headers || {}),
+      'Content-Type': 'text/plain;charset=utf-8'
+    };
+    fetchOptions.body = JSON.stringify({
+      action: 'delete',
+      sheet: sheetName,
+      key: keyField,
+      id: id
+    });
+  }
+
+  fetchOptions.timeout = Math.max(fetchOptions.timeout || 0, 12000);
+  return { targetUrl, fetchOptions };
+}
+
 async function safeFetchApi(endpoint, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const baseUrl = getApiServerUrl();
   if (baseUrl === null) return null;
-  const fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
+
+  const isGoogleSheet = Boolean(baseUrl && baseUrl.includes('script.google.com'));
+  let fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
+  let finalOptions = { ...options };
+
+  if (isGoogleSheet) {
+    const adapted = adaptGoogleScriptRequest(baseUrl, endpoint, options);
+    fullUrl = adapted.targetUrl;
+    finalOptions = adapted.fetchOptions;
+  }
 
   // Invalidate cache on mutations
   if (method !== 'GET') {
@@ -120,15 +216,16 @@ async function safeFetchApi(endpoint, options = {}) {
   const fetchPromise = (async () => {
     try {
       const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), options.timeout || 3500);
+      const timeoutMs = isGoogleSheet ? 12000 : (finalOptions.timeout || 3500);
+      const tid = setTimeout(() => controller.abort(), timeoutMs);
       const authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_auth_token') : null;
       const headers = {
         'Bypass-Tunnel-Reminder': 'true',
         ...(authToken ? { 'Authorization': `Bearer ${authToken}`, 'X-Auth-Token': authToken } : {}),
-        ...(options.headers || {})
+        ...(finalOptions.headers || {})
       };
       const res = await fetch(fullUrl, {
-        ...options,
+        ...finalOptions,
         headers,
         signal: controller.signal
       }).catch(() => null);
@@ -1957,6 +2054,73 @@ class SecurityDatabase {
     }
     target = target.replace(/\/+$/, '');
 
+    // [1. 구글 스프레드시트 편집기 URL 또는 문서 주소 오입력 감지]
+    if (target.includes('docs.google.com') || target.includes('/spreadsheets/')) {
+      return {
+        success: false,
+        message: '⚠️ 구글 시트 "문서 주소(docs.google.com)"를 입력하셨습니다. 시트 주소가 아니라, Apps Script 창 우측 상단 [배포] > [새 배포] > [웹 앱]에서 발급된 "https://script.google.com/macros/s/.../exec" URL을 복사하여 입력해 주세요!'
+      };
+    }
+
+    if (target.includes('script.google.com') && target.includes('/edit')) {
+      return {
+        success: false,
+        message: '⚠️ Apps Script "코드 편집창(/edit)" 주소를 입력하셨습니다. 코드 편집기 주소가 아니라, 우측 상단 [배포] > [새 배포] > [웹 앱]을 생성했을 때 나오는 ".../exec" 로 끝나는 웹 앱 URL을 복사해 주세요!'
+      };
+    }
+
+    // [2. 구글 스프레드시트 Withsharing_DB 웹 앱 연동 테스트]
+    if (target.includes('script.google.com')) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const pingUrl = `${target}${target.includes('?') ? '&' : '?'}action=ping`;
+        const res = await fetch(pingUrl, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const rawText = await res.text();
+          let json = null;
+          try {
+            json = JSON.parse(rawText);
+          } catch (e) {
+            return {
+              success: false,
+              message: '⚠️ 구글 스프레드시트 접근 권한 오류: Apps Script 웹 앱 배포 시 [액세스 권한]이 "모든 사용자(Anyone)"로 설정되지 않았습니다. Apps Script 우측 상단 [배포] > [배포 관리]에서 연필 아이콘을 누르고 [액세스 권한: 모든 사용자]로 변경 후 다시 시도해 주세요.'
+            };
+          }
+
+          if (json && json.success) {
+            const counts = json.counts || {};
+            const countStr = json.counts
+              ? `(서약서: ${counts.security_logs || 0}건, 사업장: ${counts.sites || 0}건, 계정: ${counts.users || 0}건, 업무일지: ${counts.work_logs || 0}건)`
+              : '';
+            return {
+              success: true,
+              message: `구글 스프레드시트(Withsharing_DB) 실시간 클라우드 DB 연동 성공! ${countStr}`,
+              counts
+            };
+          } else {
+            return {
+              success: false,
+              message: `구글 스프레드시트 오류: ${json?.error || '알 수 없는 응답'}`
+            };
+          }
+        } else {
+          return { success: false, message: `구글 스프레드시트 웹 앱 응답 오류 [상태코드: ${res.status}]` };
+        }
+      } catch (err) {
+        return {
+          success: false,
+          message: `구글 스프레드시트 통신 실패 (${err.message}). 배포 시 '액세스 권한: 모든 사용자(Anyone)'로 배포되었는지 확인해 주세요.`
+        };
+      }
+    }
+
     if (!isApiEndpoint(target)) {
       const checklists = await this.getChecklists();
       const sites = await this.getSites();
@@ -2777,14 +2941,115 @@ class SecurityDatabase {
       if (!isApiEndpoint(targetUrl)) {
         return { success: true, mode: 'static_host', url: targetUrl };
       }
-      const res = await safeFetchApi('/api/sync/all', { timeout: 3500 });
+      const isSheet = targetUrl.includes('script.google.com');
+      const res = await safeFetchApi('/api/sync/all', { timeout: 12000 });
       if (res && res.ok) {
         const data = await res.json();
-        return { success: true, mode: 'api', data };
+        const syncData = data.data || data;
+        
+        if (syncData.users && Array.isArray(syncData.users)) {
+          localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(syncData.users));
+          localStorage.setItem('with_security_users_db', JSON.stringify(syncData.users));
+          try {
+            for (const u of syncData.users) await this.putItem('users', u);
+          } catch (e) {}
+        }
+        if (syncData.sites && Array.isArray(syncData.sites)) {
+          localStorage.setItem('with_security_sites_cloud_cache', JSON.stringify(syncData.sites));
+          localStorage.setItem('with_security_sites_backup', JSON.stringify(syncData.sites));
+          try {
+            for (const s of syncData.sites) await this.putItem('sites', s);
+          } catch (e) {}
+        }
+        if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
+          localStorage.setItem('with_security_work_logs', JSON.stringify(syncData.work_logs));
+        }
+        if (syncData.security_logs && Array.isArray(syncData.security_logs)) {
+          localStorage.setItem('with_security_checklists_cache', JSON.stringify(syncData.security_logs));
+        }
+        this.notifyDataChanged();
+        return { 
+          success: true, 
+          mode: isSheet ? 'google_sheet' : 'api', 
+          message: isSheet ? '구글 스프레드시트(Withsharing_DB) 전체 데이터 실시간 동기화 완료' : '원격 API 서버 데이터 실시간 동기화 완료', 
+          data 
+        };
       }
       return { success: true, mode: 'offline_fallback' };
     } catch (e) {
       return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * 내 컴퓨터(로컬)의 모든 데이터(업무일지, 서약서, 계정 등)를 구글 스프레드시트로 일괄 업로드
+   */
+  async uploadAllLocalDataToGoogleSheet(targetUrl = null) {
+    const rawUrl = (targetUrl || this.getServerUrl() || '').trim();
+    if (!rawUrl.includes('script.google.com')) {
+      return { success: false, message: '구글 스프레드시트 웹 앱 URL이 올바르게 설정되지 않았습니다.' };
+    }
+
+    try {
+      const users = await this.getRegisteredUsers();
+      const sites = await this.getSites();
+      const workLogs = await this.getWorkLogs();
+      const checklists = await this.getChecklists();
+      const eduLogs = await this.getAll('edu_logs').catch(() => []);
+      const weeklyReports = await this.getAll('weekly_reports').catch(() => []);
+      const tbms = await this.getTbms().catch(() => []);
+      const vault = await this.getAll('vault').catch(() => []);
+      const incidents = await this.getAll('incidents').catch(() => []);
+
+      const payload = {
+        action: 'upload_all',
+        data: {
+          users: users || [],
+          sites: sites || [],
+          work_logs: workLogs || [],
+          security_logs: checklists || [],
+          edu_logs: eduLogs || [],
+          weekly_reports: weeklyReports || [],
+          tbms: tbms || [],
+          vault: vault || [],
+          incidents: incidents || []
+        }
+      };
+
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 25000); // 25초 넉넉하게 대기
+
+      const res = await fetch(rawUrl, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(tid);
+
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          return {
+            success: true,
+            message: `구글 시트로 일괄 업로드 완료! (업무일지 ${workLogs.length}건, 서약서 ${checklists.length}건, 계정 ${users.length}건, 사업장 ${sites.length}건)`,
+            results: json.results,
+            counts: {
+              workLogs: workLogs.length,
+              checklists: checklists.length,
+              users: users.length,
+              sites: sites.length
+            }
+          };
+        } else {
+          return { success: false, message: `구글 시트 처리 오류: ${json.error || '알 수 없는 오류'}` };
+        }
+      } else {
+        return { success: false, message: `구글 시트 응답 실패 [HTTP ${res.status}]` };
+      }
+    } catch (err) {
+      return { success: false, message: `업로드 실패: ${err.message}` };
     }
   }
 }
