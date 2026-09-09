@@ -3,12 +3,13 @@
   "appName": "with.security",
   "webDir": "dist",
   "server": {
-    "url": "https://wblee0703.github.io/with.security",
     "cleartext": true,
     "androidScheme": "https",
     "allowNavigation": [
       "wblee0703.github.io",
-      "*.github.io"
+      "*.github.io",
+      "script.google.com",
+      "*.google.com"
     ]
   }
 }

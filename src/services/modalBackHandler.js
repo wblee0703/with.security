@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react';
+
 // Global Modal Back-Button Stack Handler
 // Supports Android Native Hardware/Gesture Back, iOS Swipe/Back, Browser Navigation Back & Desktop ESC key
 
@@ -185,8 +187,6 @@ class ModalBackHandler {
 }
 
 export const modalBackHandler = new ModalBackHandler();
-
-import { useEffect, useRef } from 'react';
 
 /**
  * Custom React Hook to connect any Modal's open/close state with Android/Browser Back Button

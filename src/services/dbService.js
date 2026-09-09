@@ -7,13 +7,23 @@ let cachedDefaultAdminHash = null;
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
 // 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (기본 클라우드 DB)
-export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec';
+export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwud1BdjfcfAF2XeDIz6DZQQqakYAMRkueYtWBqsviwacCklw6USFfKs-kDJdeGQjxF/exec';
+
+// 이전 기본 URL 목록 (새 기본 URL로 자동 전환용)
+const LEGACY_DEFAULT_GOOGLE_SHEETS_URLS = [
+  'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec'
+];
 
 // 1. 구글 스프레드시트 클라우드 DB 전용 URL 관리
 export function getGoogleSheetsUrl() {
   const custom = localStorage.getItem('with_security_google_sheets_url');
   if (custom && custom.includes('script.google.com') && !custom.includes('macros/echo') && !custom.includes('googleusercontent.com')) {
-    return custom.trim().replace(/\/+$/, '');
+    const trimmed = custom.trim().replace(/\/+$/, '');
+    if (LEGACY_DEFAULT_GOOGLE_SHEETS_URLS.some(oldUrl => trimmed.startsWith(oldUrl.replace(/\/+$/, '')))) {
+      localStorage.setItem('with_security_google_sheets_url', DEFAULT_GOOGLE_SHEETS_URL);
+      return DEFAULT_GOOGLE_SHEETS_URL;
+    }
+    return trimmed;
   }
   return DEFAULT_GOOGLE_SHEETS_URL;
 }
