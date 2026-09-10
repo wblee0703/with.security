@@ -2967,11 +2967,12 @@ class SecurityDatabase {
       return false;
     });
 
+    const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
+    const origDate = normalizeKstDate(logItem._originalDate || logItem.originalDate || logItem.prevDate);
+    const pTitle = String(preparedLog.title || '').trim().toLowerCase();
+
     if (existingIndex < 0) {
-      const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
-      const origDate = normalizeKstDate(logItem._originalDate || logItem.originalDate || logItem.prevDate);
       const searchDates = [origDate, cleanDate].filter(Boolean);
-      const pTitle = String(preparedLog.title || '').trim().toLowerCase();
       if (pWriter && pTitle) {
         existingIndex = currentLocal.findIndex(l => {
           const lWriter = String(l.authorUsername || l.writerId || l.writer_id || l.name || '').trim().toLowerCase();
@@ -3584,6 +3585,17 @@ class SecurityDatabase {
     }
     if (!Array.isArray(tbm.absentees)) tbm.absentees = [];
 
+    // Parse additionalTbms safely (미참석자 추가 TBM 이수 목록)
+    if (typeof tbm.additionalTbms === 'string') {
+      try { tbm.additionalTbms = JSON.parse(tbm.additionalTbms); } catch (e) { tbm.additionalTbms = []; }
+    }
+    if (typeof tbm.additional_tbms === 'string') {
+      try { tbm.additionalTbms = JSON.parse(tbm.additional_tbms); } catch (e) { tbm.additionalTbms = tbm.additionalTbms || []; }
+    } else if (tbm.additional_tbms && Array.isArray(tbm.additional_tbms)) {
+      tbm.additionalTbms = tbm.additional_tbms;
+    }
+    if (!Array.isArray(tbm.additionalTbms)) tbm.additionalTbms = [];
+
     // Parse preCheck safely
     if (typeof tbm.preCheck === 'string') {
       try { tbm.preCheck = JSON.parse(tbm.preCheck); } catch (e) { tbm.preCheck = {}; }
@@ -3812,6 +3824,72 @@ class SecurityDatabase {
     const updated = {
       ...existing,
       ...patch,
+      updatedAt: new Date().toISOString()
+    };
+
+    return await this.saveTbm(updated);
+  }
+
+  async addAdditionalTbm(tbmId, additionalData) {
+    if (!tbmId || !additionalData) return null;
+    const existing = await this.getTbmById(tbmId);
+    if (!existing) return null;
+
+    const list = Array.isArray(existing.additionalTbms) ? [...existing.additionalTbms] : [];
+    const newEntry = {
+      id: additionalData.id || `add_tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      name: (additionalData.name || '').trim(),
+      rank: (additionalData.rank || '사원').trim(),
+      team: (additionalData.team || '').trim(),
+      division: (additionalData.division || '').trim(),
+      phone: (additionalData.phone || '').trim(),
+      conductedAt: additionalData.conductedAt || new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }),
+      date: additionalData.date || normalizeKstDate(new Date()) || '',
+      safetyChecked: additionalData.safetyChecked !== false,
+      notes: (additionalData.notes || '').trim(),
+      registeredBy: additionalData.registeredBy || ''
+    };
+
+    const existIdx = list.findIndex(item => item.name === newEntry.name);
+    if (existIdx >= 0) {
+      list[existIdx] = newEntry;
+    } else {
+      list.push(newEntry);
+    }
+
+    // Update absentee status flag if this person was recorded as absentee
+    let updatedAbsentees = Array.isArray(existing.absentees) ? [...existing.absentees] : [];
+    updatedAbsentees = updatedAbsentees.map(abs => {
+      const absName = typeof abs === 'string' ? abs : abs?.name;
+      if (absName === newEntry.name) {
+        if (typeof abs === 'string') {
+          return { name: abs, reason: '추가TBM완료', additionalCompleted: true, completedAt: newEntry.conductedAt };
+        }
+        return { ...abs, additionalCompleted: true, completedAt: newEntry.conductedAt };
+      }
+      return abs;
+    });
+
+    let updatedPostAbsentees = Array.isArray(existing.postCheck?.absentees) ? [...existing.postCheck.absentees] : [];
+    updatedPostAbsentees = updatedPostAbsentees.map(abs => {
+      const absName = typeof abs === 'string' ? abs : abs?.name;
+      if (absName === newEntry.name) {
+        if (typeof abs === 'string') {
+          return { name: abs, reason: '추가TBM완료', additionalCompleted: true, completedAt: newEntry.conductedAt };
+        }
+        return { ...abs, additionalCompleted: true, completedAt: newEntry.conductedAt };
+      }
+      return abs;
+    });
+
+    const updated = {
+      ...existing,
+      absentees: updatedAbsentees,
+      postCheck: {
+        ...(existing.postCheck || {}),
+        absentees: updatedPostAbsentees
+      },
+      additionalTbms: list,
       updatedAt: new Date().toISOString()
     };
 
