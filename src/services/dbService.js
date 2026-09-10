@@ -132,6 +132,10 @@ export function normalizeKstDate(val) {
   return (str.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(str)) ? str.slice(0, 10) : str;
 }
 
+if (typeof window !== 'undefined') {
+  window.normalizeKstDate = normalizeKstDate;
+}
+
 // Check if target URL supports dynamic Node/Express REST API endpoints
 export function isApiEndpoint(url) {
   if (!url || !url.trim()) return false;
@@ -4095,6 +4099,10 @@ class SecurityDatabase {
     } catch (err) {
       return { success: false, message: `업로드 실패: ${err.message}` };
     }
+  }
+
+  normalizeKstDate(val) {
+    return normalizeKstDate(val);
   }
 }
 
