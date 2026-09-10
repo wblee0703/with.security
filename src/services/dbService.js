@@ -2777,6 +2777,66 @@ class SecurityDatabase {
     }
   }
 
+  _mergeRemoteWithLocalWorkLogs(remoteLogs, currentLocal, deletedSet) {
+    if (!Array.isArray(remoteLogs)) remoteLogs = [];
+    if (!Array.isArray(currentLocal)) currentLocal = [];
+    const now = Date.now();
+    const mergedMap = new Map();
+
+    // Collect recently edited local items and their original dates
+    const recentLocalMoves = [];
+    for (const loc of currentLocal) {
+      if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
+      if (this._isWorkLogRecentlyEdited(loc, now)) {
+        const origDate = normalizeKstDate(loc._originalDate || loc.originalDate);
+        const curDate = normalizeKstDate(loc.date || loc.log_date);
+        const writer = String(loc.authorUsername || loc.writerId || loc.writer_id || loc.name || '').trim().toLowerCase();
+        const title = String(loc.title || '').trim().toLowerCase();
+        if (origDate && origDate !== curDate) {
+          recentLocalMoves.push({ writer, origDate, title, curDate });
+        }
+      }
+    }
+
+    // 1. Populate with remote logs, discarding stale pre-move ghosts
+    for (const r of remoteLogs) {
+      if (!r || this._isWorkLogDeleted(r, deletedSet)) continue;
+      const rId = String(r.id || r.log_id || '').trim();
+      const rDate = normalizeKstDate(r.date || r.log_date);
+      const rWriter = String(r.authorUsername || r.writerId || r.writer_id || r.name || '').trim().toLowerCase();
+      const rTitle = String(r.title || '').trim().toLowerCase();
+
+      // Check if this remote item is a stale pre-move ghost of an item recently moved to a new date
+      const isStaleGhost = recentLocalMoves.some(m =>
+        m.origDate === rDate && m.writer === rWriter && m.title === rTitle
+      );
+      if (isStaleGhost) continue;
+
+      if (rId) mergedMap.set(rId, r);
+    }
+
+    // 2. Authoritative local overlay: protect recent local saves from being reverted by stale remote data
+    for (const loc of currentLocal) {
+      if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
+      const locId = String(loc.id || loc.log_id || '').trim();
+      if (!locId) continue;
+
+      const isRecentlyEdited = this._isWorkLogRecentlyEdited(loc, now);
+
+      if (mergedMap.has(locId)) {
+        if (isRecentlyEdited) {
+          // Local version is newer / recently edited -> keep local version
+          mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
+        }
+      } else {
+        // Local item not yet reflected on remote (e.g. pending Google Sheets append)
+        mergedMap.set(locId, loc);
+      }
+    }
+
+    return this._deduplicateWorkLogs(Array.from(mergedMap.values()));
+  }
+
   async _fetchWorkLogsRemote() {
     const deletedSet = this._getDeletedWorkLogsSet();
     try {
@@ -2785,7 +2845,6 @@ class SecurityDatabase {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
         const filteredServerLogs = serverLogs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
-        const remoteMapped = this._deduplicateWorkLogs(filteredServerLogs);
 
         // Read current local cache to merge and protect recent local additions & edits
         const currentLocal = (() => {
@@ -2797,35 +2856,7 @@ class SecurityDatabase {
           }
         })();
 
-        const now = Date.now();
-        const mergedMap = new Map();
-
-        // 1. Populate with remote logs
-        for (const r of remoteMapped) {
-          const rId = String(r.id || r.log_id || '').trim();
-          if (rId) mergedMap.set(rId, r);
-        }
-
-        // 2. Authoritative local overlay: protect recent local saves from being reverted by stale remote data
-        for (const loc of currentLocal) {
-          if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
-          const locId = String(loc.id || loc.log_id || '').trim();
-          if (!locId) continue;
-
-          const isRecentlyEdited = this._isWorkLogRecentlyEdited(loc, now);
-
-          if (mergedMap.has(locId)) {
-            if (isRecentlyEdited) {
-              // Local version is newer / recently edited -> keep local version
-              mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
-            }
-          } else {
-            // Local item not yet reflected on remote (e.g. pending Google Sheets append)
-            mergedMap.set(locId, loc);
-          }
-        }
-
-        const mapped = this._deduplicateWorkLogs(Array.from(mergedMap.values()));
+        const mapped = this._mergeRemoteWithLocalWorkLogs(filteredServerLogs, currentLocal, deletedSet);
         localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
         try {
           await this.replaceCollection('work_logs', mapped);
@@ -2957,6 +2988,19 @@ class SecurityDatabase {
       updated[existingIndex] = { ...updated[existingIndex], ...preparedLog };
     } else {
       updated = [preparedLog, ...currentLocal];
+    }
+    if (origDate && origDate !== cleanDate) {
+      // Purge any residual duplicate of this task sitting on the original date
+      updated = updated.filter((item, idx) => {
+        if (idx === existingIndex) return true;
+        const iWriter = String(item.authorUsername || item.writerId || item.writer_id || item.name || '').trim().toLowerCase();
+        const iDate = normalizeKstDate(item.date || item.log_date);
+        const iTitle = String(item.title || '').trim().toLowerCase();
+        if (iWriter === pWriter && iTitle === pTitle && iDate === origDate) {
+          return false;
+        }
+        return true;
+      });
     }
     const pureUpdated = this._deduplicateWorkLogs(updated);
     localStorage.setItem('with_security_work_logs', JSON.stringify(pureUpdated));
@@ -3878,8 +3922,15 @@ class SecurityDatabase {
     // 3. work_logs
     if (syncData.work_logs && Array.isArray(syncData.work_logs)) {
       const deletedSet = this._getDeletedWorkLogsSet();
-      const filtered = syncData.work_logs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
-      const dedupedWorkLogs = this._deduplicateWorkLogs(filtered);
+      const currentLocal = (() => {
+        try {
+          const raw = localStorage.getItem('with_security_work_logs');
+          return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+          return [];
+        }
+      })();
+      const dedupedWorkLogs = this._mergeRemoteWithLocalWorkLogs(syncData.work_logs, currentLocal, deletedSet);
       workLogsCount = dedupedWorkLogs.length;
       localStorage.setItem('with_security_work_logs', JSON.stringify(dedupedWorkLogs));
       await this.replaceCollection('work_logs', dedupedWorkLogs);

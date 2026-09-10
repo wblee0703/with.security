@@ -493,6 +493,19 @@ function doPost(e) {
               return currentRow[colIdx] !== undefined ? currentRow[colIdx] : '';
             });
             sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
+
+            // 일자 변경(드래그 이동) 시 기존 일자(origDate)에 남아있는 중복 행이 있다면 완전 삭제하여 과거 일자로 부활하는 현상 차단
+            if (sheetName === 'work_logs' && origDate && origDate !== itemDate) {
+              for (let j = rows.length - 1; j > i; j--) {
+                const jRowDate = dateIdx !== -1 ? formatKstDate(rows[j][dateIdx], true) : '';
+                const jRowWriter = writerIdx !== -1 ? String(rows[j][writerIdx] || '').trim().toLowerCase() : '';
+                const jRowTitle = titleIdx !== -1 ? String(rows[j][titleIdx] || '').trim().toLowerCase() : '';
+                if (jRowWriter === itemWriter && jRowTitle === itemTitle && (jRowDate === origDate || jRowDate === itemDate)) {
+                  try { sheet.deleteRow(j + 1); } catch (e) {}
+                }
+              }
+            }
+
             return jsonResponse({ success: true, message: 'Row updated in-place (deduplicated upsert)', data: item });
           }
         }
