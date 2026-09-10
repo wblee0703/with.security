@@ -9,7 +9,10 @@
       "wblee0703.github.io",
       "*.github.io",
       "script.google.com",
-      "*.google.com"
+      "*.google.com",
+      "script.googleusercontent.com",
+      "*.googleusercontent.com",
+      "*.googleapis.com"
     ]
   }
 }

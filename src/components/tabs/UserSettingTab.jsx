@@ -676,10 +676,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
         setLoginAlertModal({
           isOpen: true,
-          title: isBlocked ? '🔒 로그인 5회 실패 (접근 차단)' : '⚠️ 비밀번호 불일치',
+          title: isBlocked ? '🔒 로그인 5회 실패 (접근 차단)' : (loginResult?.notFound ? '⚠️ 미등록 계정' : '⚠️ 비밀번호 불일치'),
           message: loginResult?.message || (isBlocked
             ? '로그인 5회 실패로 보안 차단되었습니다. 5분 후에 다시 시도해 주세요.'
-            : '비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'),
+            : (loginResult?.notFound
+              ? '등록되지 않은 계정입니다. 아이디를 확인하시거나 회원가입을 진행해 주세요.'
+              : '비밀번호가 일치하지 않습니다. 다시 확인해 주세요.')),
           failCount: fCount,
           remainingAttempts: rAttempts,
           isBlocked,

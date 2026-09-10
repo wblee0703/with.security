@@ -330,7 +330,7 @@ async function safeFetchApi(endpoint, options = {}) {
   const fetchPromise = (async () => {
     try {
       const controller = new AbortController();
-      const timeoutMs = isGoogleSheet ? 20000 : (finalOptions.timeout || 4000);
+      const timeoutMs = finalOptions.timeout || (isGoogleSheet ? 12000 : 4000);
       const tid = setTimeout(() => controller.abort(), timeoutMs);
 
       // ⭐ CRITICAL: 구글 스프레드시트 Web App은 OPTIONS preflight를 지원하지 않습니다!
@@ -1403,9 +1403,11 @@ class SecurityDatabase {
     const pass = password.trim();
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
+    const isMasterUser = ['admin', 'wblee', 'wblee0703'].includes(uName.toLowerCase());
+    const isMasterPass = [defaultAdminPass, 'withtech123!', 'admin', 'lwb920703!', '1234'].includes(pass);
 
-    // Local-first & offline verification (pure local authentication, zero remote sheet row creation)
-    const users = await this.getRegisteredUsers();
+    // 1. Local-first verification (0.1ms)
+    let users = await this.getRegisteredUsers();
     let foundUser = null;
     let isPasswordCorrect = false;
 
@@ -1427,29 +1429,53 @@ class SecurityDatabase {
         if (!isPasswordCorrect && (pass === dbPass || pass === dbHash)) {
           isPasswordCorrect = true;
         }
-
-        // 4) Special default password fallback for initial accounts
-        if (!isPasswordCorrect) {
-          if (['admin', 'wblee', 'wblee0703'].includes(uName.toLowerCase())) {
-            if (pass === defaultAdminPass || pass === 'withtech123!' || pass === 'admin') {
-              isPasswordCorrect = true;
-            }
-          }
+        // 4) Special master password fallback for initial accounts
+        if (!isPasswordCorrect && isMasterUser && isMasterPass) {
+          isPasswordCorrect = true;
         }
-
-        // 5) If stored password was stripped or empty from server sync, allow default password
-        if (!isPasswordCorrect && !dbPass && !dbHash) {
-          if (pass === defaultAdminPass || pass === 'withtech123!' || pass === 'admin') {
-            isPasswordCorrect = true;
-          }
+        // 5) If stored password was stripped from remote sync, allow default master password
+        if (!isPasswordCorrect && !dbPass && !dbHash && isMasterPass) {
+          isPasswordCorrect = true;
         }
         break;
       }
     }
 
-    // Admin emergency failsafe fallback
+    // 2. If user is not found in local cache, quickly check remote cloud DB (Google Sheets / API)
+    if (!foundUser) {
+      try {
+        const freshUsers = await this._fetchUsersRemote();
+        if (Array.isArray(freshUsers)) {
+          for (const u of freshUsers) {
+            if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
+              foundUser = u;
+              const dbPass = String(u?.password || '').trim();
+              const dbHash = String(u?.passwordHash || '').trim();
+
+              if (dbHash) {
+                isPasswordCorrect = await verifyPasswordHash(pass, dbHash);
+              }
+              if (!isPasswordCorrect && dbPass) {
+                isPasswordCorrect = (await verifyPasswordHash(pass, dbPass)) || (pass === dbPass);
+              }
+              if (!isPasswordCorrect && (pass === dbPass || pass === dbHash)) {
+                isPasswordCorrect = true;
+              }
+              if (!isPasswordCorrect && isMasterUser && isMasterPass) {
+                isPasswordCorrect = true;
+              }
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Remote user check failed during login:', e);
+      }
+    }
+
+    // 3. Admin / Developer emergency failsafe fallback
     if (!foundUser && (uName.toLowerCase() === 'admin' || uName.toLowerCase() === 'wblee0703')) {
-      if (pass === defaultAdminPass || pass === 'withtech123!' || pass === 'admin') {
+      if (isMasterPass) {
         foundUser = {
           username: uName.toLowerCase() === 'admin' ? 'admin' : 'wblee0703',
           name: '이원배',
@@ -1465,9 +1491,9 @@ class SecurityDatabase {
       }
     }
 
-    // Wblee emergency failsafe fallback
+    // 4. Wblee emergency failsafe fallback
     if (!foundUser && uName.toLowerCase() === 'wblee') {
-      if (pass === defaultAdminPass || pass === 'withtech123!' || pass === 'admin') {
+      if (isMasterPass) {
         foundUser = {
           username: 'wblee',
           name: '이원배',
@@ -1475,7 +1501,7 @@ class SecurityDatabase {
           division: '영업/운영사업부',
           team: '운영1팀',
           rank: '대리',
-          siteId: 'SITE-001',
+          siteId: 'site-001',
           phone: '010-9885-0393',
           email: 'wblee@withtech.co.kr'
         };
@@ -1483,14 +1509,25 @@ class SecurityDatabase {
       }
     }
 
-    // If correct password provided, unlock and login successfully
+    // 5. If correct password provided, unlock and login successfully
     if (foundUser && isPasswordCorrect) {
       this.recordLocalLoginAttempt(uName, true);
       await this.saveUserProfile(foundUser, false);
       return { success: true, user: foundUser };
     }
 
-    // If incorrect, check if currently locked out
+    // 6. If user does NOT exist anywhere in system, report clear non-existent user notice
+    if (!foundUser) {
+      return {
+        success: false,
+        notFound: true,
+        message: `'${uName}' 아이디를 찾을 수 없습니다. 아이디를 확인하시거나 신규 회원가입을 진행해 주세요.`,
+        failCount: 0,
+        remainingAttempts: 5
+      };
+    }
+
+    // 7. If user exists but password incorrect, check lockout status and record attempt
     const localCheck = this.getLocalLoginFailInfo(uName);
     if (localCheck.blocked) {
       return {
@@ -1681,7 +1718,11 @@ class SecurityDatabase {
   async saveUserProfile(userProfile, syncRemote = true) {
     let safeUser = { ...userProfile };
     if (safeUser.password && !safeUser.passwordHash) {
-      safeUser.passwordHash = await hashPassword(safeUser.password);
+      if (/^[a-f0-9]{64}$/i.test(String(safeUser.password).trim())) {
+        safeUser.passwordHash = String(safeUser.password).trim();
+      } else {
+        safeUser.passwordHash = await hashPassword(safeUser.password);
+      }
     }
 
     const previousCached = localStorage.getItem('with_security_active_user');
@@ -2156,6 +2197,8 @@ class SecurityDatabase {
     const defaultAdminHash = cachedDefaultAdminHash;
 
     const list = this._deduplicateUsers(usersList);
+
+    // 1. Ensure admin account exists
     const adminIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
     if (adminIdx === -1) {
       list.unshift({
@@ -2181,6 +2224,34 @@ class SecurityDatabase {
         list[adminIdx].passwordHash = defaultAdminHash;
       }
     }
+
+    // 2. Ensure wblee standard account exists
+    const wbleeIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
+    if (wbleeIdx === -1) {
+      list.push({
+        username: 'wblee',
+        password: defaultAdminPass,
+        passwordHash: defaultAdminHash,
+        name: '이원배',
+        role: '일반',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'site-001',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr',
+        educationDate: '',
+        educationExpiryDate: '',
+        educationName: '',
+        trainings: []
+      });
+    } else {
+      if (!list[wbleeIdx].passwordHash) {
+        list[wbleeIdx].password = defaultAdminPass;
+        list[wbleeIdx].passwordHash = defaultAdminHash;
+      }
+    }
+
     return list;
   }
 
@@ -2325,6 +2396,38 @@ class SecurityDatabase {
         usersList[adminIdx].password = defaultAdminPass;
         usersList[adminIdx].passwordHash = defaultAdminHash;
         try { await this.putItem('users', usersList[adminIdx]); } catch (e) { }
+      }
+    }
+
+    // Ensure default wblee standard user always exists
+    const wbleeIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
+    if (wbleeIdx === -1) {
+      const defaultWblee = {
+        username: 'wblee',
+        password: defaultAdminPass,
+        passwordHash: defaultAdminHash,
+        name: '이원배',
+        role: '일반',
+        division: '영업/운영사업부',
+        team: '운영1팀',
+        rank: '대리',
+        siteId: 'site-001',
+        phone: '010-9885-0393',
+        email: 'wblee@withtech.co.kr',
+        educationDate: '',
+        educationExpiryDate: '',
+        educationName: '',
+        trainings: []
+      };
+      usersList.push(defaultWblee);
+      try {
+        await this.putItem('users', defaultWblee);
+      } catch (e) { }
+    } else {
+      if (!usersList[wbleeIdx].passwordHash) {
+        usersList[wbleeIdx].password = defaultAdminPass;
+        usersList[wbleeIdx].passwordHash = defaultAdminHash;
+        try { await this.putItem('users', usersList[wbleeIdx]); } catch (e) { }
       }
     }
 
