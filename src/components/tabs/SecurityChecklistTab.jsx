@@ -106,6 +106,8 @@ export default function SecurityChecklistTab({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const isModalOpenRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const lastSubmitTimestampRef = useRef(0);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -745,6 +747,8 @@ export default function SecurityChecklistTab({
   const handleCloseModal = () => {
     resetAppVerificationState();
     setIsModalOpen(false);
+    isSubmittingRef.current = false;
+    setIsSubmitting(false);
   };
 
   // Helper: Sample video frame brightness to determine if real camera imagery is received
@@ -1218,9 +1222,17 @@ export default function SecurityChecklistTab({
 
       if (!isPrimary && !isAlreadyCompanion) {
         const compLogId = `PASS-${new Date().getFullYear()}-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const parentSite = targetPledgeForCompanion.site || targetPledgeForCompanion.site_name || targetPledgeForCompanion.siteName || '';
+        const parentPassId = targetPledgeForCompanion.id || targetPledgeForCompanion.log_id;
         updatedCompanions.push({
           id: compLogId,
           log_id: compLogId,
+          parent_log_id: parentPassId,
+          parentLogId: parentPassId,
+          parentPledgeId: parentPassId,
+          site: parentSite,
+          site_name: parentSite,
+          siteName: parentSite,
           visitorName: uName,
           name: uName,
           username: u.username || '',
@@ -1314,30 +1326,43 @@ export default function SecurityChecklistTab({
 
     resetAppVerificationState();
 
-    const userTeam = activeUser.team || activeUser.department || companion.team || '보안관제팀';
-    const rawTargetSite = targetItem.site || targetItem.site_name || targetItem.siteName || '';
+    const userTeam = activeUser.team || activeUser.department || companion?.team || targetItem?.team || '보안관제팀';
+    
+    // 사업장 정보 유실 방지: targetItem, companion, 부모 레코드 전방위 탐색
+    let rawTargetSite = targetItem?.site || targetItem?.site_name || targetItem?.siteName || companion?.site || companion?.site_name || companion?.siteName || '';
+    const parentId = targetItem?.parent_log_id || targetItem?.parentLogId || targetItem?.parentPledgeId || companion?.parent_log_id || companion?.parentLogId || companion?.parentPledgeId;
+    if (!rawTargetSite && parentId) {
+      const parentPledge = checklistList.find(c => String(c.id) === String(parentId) || String(c.log_id) === String(parentId));
+      if (parentPledge) {
+        rawTargetSite = parentPledge.site || parentPledge.site_name || parentPledge.siteName || '';
+      }
+    }
+
     const targetSiteObj = findSiteByDisplayNameOrName(rawTargetSite, sites);
     const targetSite = targetSiteObj
       ? (targetSiteObj.address ? `${targetSiteObj.name} (${targetSiteObj.address})` : targetSiteObj.name)
       : rawTargetSite;
-    const inheritedPurpose = targetItem.purpose || targetItem.purposeType || '작업';
-    const inheritedPurposeType = targetItem.purposeType || targetItem.purpose || '작업';
-    const inheritedCustomPurpose = targetItem.customPurpose || (targetItem.purposeType === '기타' ? targetItem.purpose : '') || '';
-    const targetDate = selectedDate || (targetItem.visitDate ? targetItem.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
+    const inheritedPurpose = targetItem?.purpose || targetItem?.purposeType || '작업';
+    const inheritedPurposeType = targetItem?.purposeType || targetItem?.purpose || '작업';
+    const inheritedCustomPurpose = targetItem?.customPurpose || (targetItem?.purposeType === '기타' ? targetItem?.purpose : '') || '';
+    const targetDate = selectedDate || (targetItem?.visitDate ? targetItem.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
+
+    const resolvedParentId = targetItem?.id || targetItem?.log_id || companion?.parent_log_id || companion?.parentLogId || companion?.parentPledgeId;
+    const resolvedCompId = companion?.id || companion?.log_id;
 
     setFormData({
       site: targetSite,
-      visitorName: companion.visitorName || activeUser.name || '',
-      phone: activeUser.phone || companion.phone || '010-0000-0000',
+      visitorName: companion?.visitorName || activeUser.name || '',
+      phone: activeUser.phone || companion?.phone || '010-0000-0000',
       team: userTeam,
       department: userTeam,
-      rank: activeUser.rank || companion.rank || '대리',
+      rank: activeUser.rank || companion?.rank || '대리',
       company: userTeam,
-      hostName: targetItem.hostName || '사업장 보안관제센터',
+      hostName: targetItem?.hostName || '사업장 보안관제센터',
       purposeType: inheritedPurposeType,
       customPurpose: inheritedCustomPurpose,
       purpose: inheritedPurpose,
-      visitDate: targetItem.visitDate || `${targetDate} ~ ${targetDate}`,
+      visitDate: targetItem?.visitDate || `${targetDate} ~ ${targetDate}`,
       mdmVerified: false,
       docChecklist: {
         gateApproved: false,
@@ -1347,20 +1372,21 @@ export default function SecurityChecklistTab({
       materials: [],
       agreedToTerms: false,
       isCompanionMode: true,
-      parentPledgeId: targetItem.id,
-      companionId: companion.id,
+      parentPledgeId: resolvedParentId,
+      companionId: resolvedCompId,
       isEditMode: false,
       editingPledgeId: null
     });
 
-    setActiveStep(2);
+    // 사업장 정보가 확실히 있으면 바로 2단계로 진행, 사업장이 비어있으면 1단계에서 확인/선택할 수 있게 배려
+    setActiveStep(targetSite ? 2 : 1);
     setIsModalOpen(true);
     const targetApp = getTargetSecurityAppInfo(targetSite);
     if (onTriggerToast) {
       if (targetApp.isChecklistMode) {
-        onTriggerToast(`[${targetSite}] 동행인 '${companion.visitorName}'님의 보안 서약이 시작되었습니다. 2단계 수동 보안 체크리스트부터 진행해 주세요.`, 'info');
+        onTriggerToast(`[${targetSite || '사업장'}] 동행인 '${companion?.visitorName || activeUser.name}'님의 보안 서약이 시작되었습니다. 2단계 수동 보안 체크리스트부터 진행해 주세요.`, 'info');
       } else {
-        onTriggerToast(`[${targetSite}] 동행인 '${companion.visitorName}'님의 보안 서약이 시작되었습니다. 2단계 모바일 보안 앱 검수부터 진행해 주세요.`, 'info');
+        onTriggerToast(`[${targetSite || '사업장'}] 동행인 '${companion?.visitorName || activeUser.name}'님의 보안 서약이 시작되었습니다. 2단계 모바일 보안 앱 검수부터 진행해 주세요.`, 'info');
       }
     }
   };
@@ -1608,7 +1634,16 @@ export default function SecurityChecklistTab({
   // Submit Form
   const handleSubmitForm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmittingRef.current || isSubmitting) {
+      console.warn('Duplicate submit blocked by isSubmitting lock');
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastSubmitTimestampRef.current < 2500) {
+      console.warn('Duplicate submit blocked by debounce');
+      return;
+    }
 
     const activeUser = await dbService.getUserProfile();
     const targetApp = getTargetSecurityAppInfo(formData.site);
@@ -1627,6 +1662,8 @@ export default function SecurityChecklistTab({
       return;
     }
 
+    isSubmittingRef.current = true;
+    lastSubmitTimestampRef.current = now;
     setIsSubmitting(true);
     try {
       const targetDate = selectedDate || (formData.visitDate ? formData.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
@@ -1709,8 +1746,25 @@ export default function SecurityChecklistTab({
 
     const wasCompanion = formData.isCompanionMode;
     // If Companion Registration/Pledge Mode: Append or Update companion info directly on target pledge!
-    if (wasCompanion && formData.parentPledgeId) {
-      const targetPledge = checklistList.find(item => item.id === formData.parentPledgeId);
+    if (wasCompanion) {
+      let targetPledge = checklistList.find(item => 
+        (formData.parentPledgeId && (String(item.id) === String(formData.parentPledgeId) || String(item.log_id) === String(formData.parentPledgeId))) ||
+        (formData.companionId && item.companions && item.companions.some(c => String(c.id) === String(formData.companionId) || String(c.log_id) === String(formData.companionId)))
+      );
+
+      // If not found in current memory list, search DB directly
+      if (!targetPledge) {
+        try {
+          const allDbPledges = await dbService.getChecklists();
+          targetPledge = (allDbPledges || []).find(item => 
+            (formData.parentPledgeId && (String(item.id) === String(formData.parentPledgeId) || String(item.log_id) === String(formData.parentPledgeId))) ||
+            (formData.companionId && item.companions && item.companions.some(c => String(c.id) === String(formData.companionId) || String(c.log_id) === String(formData.companionId)))
+          );
+        } catch (dbErr) {
+          console.error('Failed to lookup parent pledge in DB:', dbErr);
+        }
+      }
+
       if (targetPledge) {
         const inputVisitorName = formData.visitorName.trim();
         const inputPhone = (formData.phone || '').trim();
@@ -1720,7 +1774,7 @@ export default function SecurityChecklistTab({
         let updatedCompanions = [...(targetPledge.companions || [])];
 
         const existingIndex = updatedCompanions.findIndex(c =>
-          (compId && c.id === compId) ||
+          (compId && (String(c.id) === String(compId) || String(c.log_id) === String(compId))) ||
           isSamePerson(c, {
             visitorName: inputVisitorName,
             name: inputVisitorName,
@@ -1734,12 +1788,17 @@ export default function SecurityChecklistTab({
           })
         );
 
+        const resolvedSite = targetPledge.site || targetPledge.site_name || targetPledge.siteName || formData.site || '';
+
         if (existingIndex >= 0) {
           // Update existing companion record to "완료"
           updatedCompanions[existingIndex] = {
             ...updatedCompanions[existingIndex],
             status: '완료',
             mdmVerified: true,
+            site: resolvedSite,
+            site_name: resolvedSite,
+            siteName: resolvedSite,
             phone: inputPhone || updatedCompanions[existingIndex].phone,
             username: inputUsername || updatedCompanions[existingIndex].username,
             division: currentUser?.division || updatedCompanions[existingIndex].division || '사업부 미지정',
@@ -1751,6 +1810,13 @@ export default function SecurityChecklistTab({
           // Add new companion with "완료"
           const newCompanion = {
             id: compId || `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+            log_id: compId || `COMP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+            parent_log_id: targetPledge.id || targetPledge.log_id,
+            parentLogId: targetPledge.id || targetPledge.log_id,
+            parentPledgeId: targetPledge.id || targetPledge.log_id,
+            site: resolvedSite,
+            site_name: resolvedSite,
+            siteName: resolvedSite,
             visitorName: inputVisitorName,
             name: inputVisitorName,
             username: inputUsername,
@@ -1783,6 +1849,7 @@ export default function SecurityChecklistTab({
               log_id: targetComp.id,
               parent_log_id: targetPledge.id || targetPledge.log_id,
               parentLogId: targetPledge.id || targetPledge.log_id,
+              parentPledgeId: targetPledge.id || targetPledge.log_id,
               name: inputVisitorName,
               user_name: inputVisitorName,
               visitorName: inputVisitorName,
@@ -1790,8 +1857,10 @@ export default function SecurityChecklistTab({
               username: inputUsername,
               division: currentUser?.division || '',
               role: currentUser?.role || '일반',
-              site: targetPledge.site || targetPledge.site_name || '',
-              purpose: targetPledge.purpose || '',
+              site: resolvedSite,
+              site_name: resolvedSite,
+              siteName: resolvedSite,
+              purpose: targetPledge.purpose || targetPledge.purposeType || finalPurpose,
               phone: inputPhone,
               visitor_phone: inputPhone,
               visitorPhone: inputPhone,
@@ -1806,14 +1875,16 @@ export default function SecurityChecklistTab({
               signature_date: targetTimeStr,
               signatureDate: targetTimeStr,
               signedAt: targetTimeStr,
-              status: '승인완료'
+              status: '완료',
+              pledgedAt: targetTimeStr,
+              createdAt: targetComp.createdAt || targetTimeStr
             });
           }
         } catch (err) {
           console.error('Failed to update pass in DB:', err);
         }
 
-        setChecklistList(prev => prev.map(item => item.id === updatedPledge.id ? updatedPledge : item).filter(item => !item.parent_log_id && !item.parentLogId && !item.parentPledgeId));
+        setChecklistList(prev => prev.map(item => (String(item.id) === String(updatedPledge.id) || String(item.log_id) === String(updatedPledge.id)) ? updatedPledge : item).filter(item => !item.parent_log_id && !item.parentLogId && !item.parentPledgeId));
         handleCloseModal();
         setActiveStep(1);
 
@@ -1841,11 +1912,18 @@ export default function SecurityChecklistTab({
           materials: [],
           agreedToTerms: false,
           isCompanionMode: false,
-          parentPledgeId: null
+          parentPledgeId: null,
+          companionId: null
         });
 
         if (onTriggerToast) {
           onTriggerToast(`[${updatedPledge.site}] '${inputVisitorName}' 동행 서약 정보가 [${targetDate}] 일자로 반영되었습니다.`, 'success');
+        }
+        return;
+      } else {
+        console.error('Target parent pledge not found for companion mode:', formData.parentPledgeId, formData.companionId);
+        if (onTriggerToast) {
+          onTriggerToast('연계된 대표 서약 정보를 찾을 수 없습니다. 목록을 새로고침 후 다시 시도해 주세요.', 'error');
         }
         return;
       }
@@ -2013,6 +2091,7 @@ export default function SecurityChecklistTab({
       console.error('Failed to complete security pledge submit:', err);
       if (onTriggerToast) onTriggerToast('보안서약 등록 중 오류가 발생했습니다.', 'error');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -2645,8 +2724,58 @@ export default function SecurityChecklistTab({
             border: '1.5px solid #cbd5e1',
             boxShadow: '0 20px 40px -10px rgba(15, 23, 42, 0.25)',
             display: 'flex',
-            flexDirection: 'column'
+            flexDirection: 'column',
+            position: 'relative'
           }}>
+            {/* 서약 등록 중 전체 화면 블로킹 로딩 오버레이 (중복 클릭 원천 차단) */}
+            {isSubmitting && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: 'rgba(15, 23, 42, 0.78)',
+                backdropFilter: 'blur(6px)',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '16px',
+                padding: '24px',
+                color: '#ffffff',
+                textAlign: 'center'
+              }}>
+                <div style={{
+                  width: '54px',
+                  height: '54px',
+                  borderRadius: '50%',
+                  border: '4px solid rgba(255, 255, 255, 0.25)',
+                  borderTop: '4px solid #38bdf8',
+                  animation: 'spin 0.8s linear infinite'
+                }} />
+                <div style={{
+                  fontSize: '18px',
+                  fontWeight: '800',
+                  color: '#ffffff',
+                  letterSpacing: '-0.3px',
+                  lineHeight: '1.4'
+                }}>
+                  ⏳ 보안 서약서를 안전하게 등록 중입니다...
+                </div>
+                <div style={{
+                  fontSize: '13.5px',
+                  fontWeight: '600',
+                  color: '#93c5fd',
+                  lineHeight: '1.4'
+                }}>
+                  중복 등록 방지를 위해 처리 중입니다.<br />
+                  잠시만 기다려 주세요.
+                </div>
+              </div>
+            )}
+
             {/* Modal Header */}
             <div style={{
               padding: '14px 18px',
@@ -2846,7 +2975,7 @@ export default function SecurityChecklistTab({
                       <label style={{ fontSize: '12px', color: isSiteInvalid ? '#e11d48' : '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                         출입 대상 사업장 * {isSiteInvalid && <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>[사업장을 선택해 주세요]</span>}
                       </label>
-                      {formData.isCompanionMode ? (
+                      {formData.isCompanionMode && formData.site ? (
                         <input
                           type="text"
                           disabled
@@ -4039,7 +4168,6 @@ export default function SecurityChecklistTab({
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      onClick={handleSubmitForm}
                       className="glass-button-primary"
                       style={{
                         padding: '12px',
@@ -4047,17 +4175,25 @@ export default function SecurityChecklistTab({
                         flex: 2,
                         cursor: isSubmitting ? 'not-allowed' : 'pointer',
                         opacity: isSubmitting ? 0.7 : 1,
+                        pointerEvents: isSubmitting ? 'none' : 'auto',
                         display: 'flex',
                         justifyContent: 'center',
                         alignItems: 'center',
                         gap: '6px',
-                        fontWeight: '800'
+                        fontWeight: '800',
+                        transition: 'all 0.2s ease'
                       }}
                     >
                       {isSubmitting ? (
-                        <>⏳ 서약서 제출 중...</>
+                        <>
+                          <RefreshCw size={18} className="animate-spin" />
+                          <span>서약서 등록 중...</span>
+                        </>
                       ) : (
-                        <><ShieldCheck size={18} /> 보안 서약 & 결재 승인 제출</>
+                        <>
+                          <ShieldCheck size={18} />
+                          <span>보안 서약 & 결재 승인 제출</span>
+                        </>
                       )}
                     </button>
                   </div>
