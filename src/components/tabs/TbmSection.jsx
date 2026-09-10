@@ -143,6 +143,10 @@ export default function TbmSection({
   const [activeStep, setActiveStep] = useState(1);
   const [editingTbmId, setEditingTbmId] = useState(null);
 
+  // Loading & Double-Click Guard States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Modal Back Navigation Hook
   useModalBack(isRegisterModalOpen, () => setIsRegisterModalOpen(false), 'tbm-register-modal');
   useModalBack(isDetailModalOpen, () => setIsDetailModalOpen(false), 'tbm-detail-modal');
@@ -526,7 +530,8 @@ export default function TbmSection({
 
   // Filtered TBM List for Selected Date
   const filteredTbms = tbmList.filter(item => {
-    const matchesDate = item.date === selectedDate;
+    const itemDate = normalizeKstDate(item.date || item.log_date || '') || (item.date || '').slice(0, 10).replace(/\//g, '-');
+    const matchesDate = itemDate === selectedDate;
     if (!matchesDate) return false;
     if (!searchTerm.trim()) return true;
     const query = searchTerm.toLowerCase();
@@ -535,7 +540,8 @@ export default function TbmSection({
       (item.site && item.site.toLowerCase().includes(query)) ||
       (item.leaderDivision && item.leaderDivision.toLowerCase().includes(query)) ||
       (item.leaderTeam && item.leaderTeam.toLowerCase().includes(query)) ||
-      (item.leaderName && item.leaderName.toLowerCase().includes(query))
+      (item.leaderName && item.leaderName.toLowerCase().includes(query)) ||
+      ((item.attendees || []).some(a => a.name && a.name.toLowerCase().includes(query)))
     );
   });
 
@@ -796,6 +802,8 @@ export default function TbmSection({
 
   // Submit TBM Form (Only Pre-Check Done vs Both Pre & Post Done)
   const handleSubmitTbm = async (forcePreOnly = false) => {
+    if (isSubmitting) return;
+
     if (!formData.site?.trim()) {
       if (onTriggerToast) onTriggerToast('사업장을 선택해주세요.', 'warning');
       setActiveStep(1);
@@ -843,6 +851,7 @@ export default function TbmSection({
       }
     };
 
+    setIsSubmitting(true);
     try {
       await dbService.saveTbm(tbmPayload);
       setIsRegisterModalOpen(false);
@@ -895,11 +904,14 @@ export default function TbmSection({
     } catch (err) {
       console.error('Failed to save TBM:', err);
       if (onTriggerToast) onTriggerToast('TBM 저장에 실패했습니다.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   // Delete TBM Confirmation
   const handleDeleteConfirm = async () => {
+    if (isDeleting) return;
     if (!targetDeleteTbm) return;
     if (!deletePassword.trim()) {
       if (onTriggerToast) onTriggerToast('비밀번호를 입력해주세요.', 'warning');
@@ -922,6 +934,7 @@ export default function TbmSection({
       return;
     }
 
+    setIsDeleting(true);
     try {
       await dbService.deleteTbm(targetDeleteTbm.id);
       setIsDeleteModalOpen(false);
@@ -932,6 +945,8 @@ export default function TbmSection({
     } catch (err) {
       console.error('Failed to delete TBM:', err);
       if (onTriggerToast) onTriggerToast('삭제 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1119,16 +1134,41 @@ export default function TbmSection({
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {filteredTbms.map((tbm) => {
-            const isAllDone = tbm.status === 'ALL_COMPLETED';
+            const isAllDone = tbm.status === 'ALL_COMPLETED' || tbm.status === 'COMPLETED' || Boolean(tbm.postCheck?.isCompleted);
+
+            const leaderVal = tbm.leaderName || tbm.leader || '';
+            const leaderRankVal = tbm.leaderRank || '';
+            const attendeesList = Array.isArray(tbm.attendees) ? tbm.attendees : [];
+            const otherAtts = attendeesList.filter(a => {
+              const name = typeof a === 'string' ? a : a?.name;
+              return name && name !== leaderVal;
+            });
+            const totalAttendees = otherAtts.length + (leaderVal ? 1 : 0);
+
+            // Pre-TBM stats
+            const preCheckCount = (tbm.preCheck?.selectedItems && tbm.preCheck.selectedItems.length)
+              || PRE_WORK_CHECKLIST_ITEMS.filter(item => Boolean(tbm.preCheck?.[item.key])).length;
+            const prePhotoCount = (tbm.preCheck?.photos && tbm.preCheck.photos.length) || 0;
+
+            // Post-TBM stats
+            const postOutcome = tbm.postCheck?.workOutcome || '계획 이행 완료';
+            const postPhotoCount = (tbm.postCheck?.photos && tbm.postCheck.photos.length) || 0;
+            const isOutcomeWarning = postOutcome.includes('미비') || postOutcome.includes('특이사항');
+
+            // Absentees
+            const rawAbs = Array.isArray(tbm.absentees) && tbm.absentees.length > 0
+              ? tbm.absentees
+              : (Array.isArray(tbm.postCheck?.absentees) ? tbm.postCheck.absentees : []);
+
             return (
               <div
                 key={tbm.id}
                 className="glass-panel"
                 style={{
                   padding: '14px 16px',
-                  borderRadius: '6px',
+                  borderRadius: '8px',
                   border: isAllDone ? '1.5px solid #7dd3fc' : '1.5px solid #fed7aa',
-                  background: isAllDone ? '#f0f9ff' : '#fffbeb',
+                  background: isAllDone ? '#f8fafc' : '#fffbeb',
                   display: 'flex',
                   flexDirection: 'column',
                   gap: '10px',
@@ -1140,11 +1180,11 @@ export default function TbmSection({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Building2 size={16} color="#0284c7" />
-                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+                    <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
                       {tbm.site || '사업장 미지정'}
                     </span>
                     {tbm.workArea && (
-                      <span style={{ fontSize: '11px', color: '#64748b', background: '#ffffff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+                      <span style={{ fontSize: '11px', color: '#475569', background: '#ffffff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
                         {tbm.workArea}
                       </span>
                     )}
@@ -1183,13 +1223,21 @@ export default function TbmSection({
                   )}
                 </div>
 
-                {/* Division & Team Title + Work Category Badge */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{tbm.leaderDivision || '사업부'} · {tbm.leaderTeam || '부서'}</span>
+                {/* Work Title & Category Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    {tbm.workTitle && (
+                      <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.3' }}>
+                        {tbm.workTitle}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>
+                      {tbm.leaderDivision || '사업부'} · {tbm.leaderTeam || '부서'}
+                    </span>
                   </div>
                   {tbm.workCategory && (
                     <span style={{
+                      flexShrink: 0,
                       fontSize: '11px',
                       fontWeight: '800',
                       padding: '2px 7px',
@@ -1203,35 +1251,161 @@ export default function TbmSection({
                   )}
                 </div>
 
-                {/* Leader & Attendees Info */}
+                {/* Work Content Snippet if available */}
+                {tbm.workContent && (
+                  <div style={{
+                    fontSize: '11.5px',
+                    color: '#334155',
+                    background: '#ffffff',
+                    padding: '6px 8px',
+                    borderRadius: '5px',
+                    border: '1px solid #e2e8f0',
+                    lineHeight: '1.4'
+                  }}>
+                    <strong style={{ color: '#0369a1' }}>작업 내용:</strong> {tbm.workContent}
+                  </div>
+                )}
+
+                {/* Leader & Attendees Info Box */}
                 <div style={{
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
+                  flexDirection: 'column',
+                  gap: '6px',
                   background: '#ffffff',
-                  padding: '6px 10px',
+                  padding: '8px 10px',
                   borderRadius: '6px',
                   border: '1px solid #e2e8f0',
-                  fontSize: '11.5px',
-                  color: '#475569'
+                  fontSize: '11.5px'
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <UserCheck size={14} color="#0284c7" />
-                    <span>책임자: <strong style={{ color: '#0f172a' }}>{tbm.leaderName || tbm.leader || '미지정'} {tbm.leaderRank || ''}</strong></span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <UserCheck size={14} color="#0284c7" />
+                      <span>책임자: <strong style={{ color: '#0f172a' }}>{leaderVal || '미지정'} {leaderRankVal}</strong></span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Users size={14} color="#64748b" />
+                      <span>참석인원: <strong style={{ color: '#0284c7' }}>{totalAttendees}명</strong></span>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Users size={14} color="#64748b" />
-                    <span>참석인원: <strong style={{ color: '#0f172a' }}>{(() => {
-                      const leaderVal = tbm.leaderName || tbm.leader || '';
-                      const attendeesList = Array.isArray(tbm.attendees) ? tbm.attendees : [];
-                      const otherAtts = attendeesList.filter(a => a.name !== leaderVal);
-                      const total = otherAtts.length + (leaderVal ? 1 : 0);
-                      return `${total}명`;
-                    })()}</strong></span>
+
+                  {/* Attendee Name Chips */}
+                  {attendeesList.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                      <span style={{ color: '#64748b', fontWeight: '600', fontSize: '11px' }}>참석:</span>
+                      {attendeesList.slice(0, 6).map((att, idx) => {
+                        const attName = typeof att === 'string' ? att : att.name;
+                        const isHost = attName === leaderVal;
+                        return (
+                          <span key={idx} style={{
+                            background: isHost ? '#e0f2fe' : '#f1f5f9',
+                            color: isHost ? '#0369a1' : '#475569',
+                            fontWeight: isHost ? '800' : '500',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            border: isHost ? '1px solid #bae6fd' : '1px solid #e2e8f0'
+                          }}>
+                            {attName}{isHost ? ' (주관)' : ''}
+                          </span>
+                        );
+                      })}
+                      {attendeesList.length > 6 && (
+                        <span style={{ fontSize: '10.5px', color: '#64748b', padding: '1px 4px' }}>
+                          외 {attendeesList.length - 6}명
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Absentee Warning if any */}
+                  {rawAbs.length > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '4px',
+                      background: '#fff1f2',
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #fecdd3',
+                      fontSize: '11px',
+                      color: '#9f1239'
+                    }}>
+                      <strong>🏃 미참석 ({rawAbs.length}명):</strong>
+                      {rawAbs.map((abs, idx) => (
+                        <span key={idx} style={{ fontWeight: '600' }}>
+                          {typeof abs === 'string' ? abs : `${abs.name}(${abs.reason || '사유미기재'})`}{idx < rawAbs.length - 1 ? ',' : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pre & Post TBM Status Summary Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '6px',
+                  fontSize: '11px'
+                }}>
+                  {/* Pre-TBM Summary Pill */}
+                  <div style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '6px',
+                    padding: '6px 8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '3px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: '800', color: '#0369a1' }}>🛡️ 업무 전 TBM</span>
+                      <span style={{ color: '#64748b', fontSize: '10.5px' }}>{tbm.preCheck?.conductedAt || ''}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                      <span style={{ color: '#16a34a', fontWeight: '600' }}>
+                        안전점검 {preCheckCount > 0 ? `${preCheckCount}항목` : '완료'}
+                      </span>
+                      {prePhotoCount > 0 && (
+                        <span style={{ color: '#0284c7', background: '#e0f2fe', padding: '0px 4px', borderRadius: '3px', fontSize: '10px' }}>
+                          📷 {prePhotoCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748b' }}>
-                    <Clock size={12} />
-                    <span>{tbm.preCheck?.conductedAt || ''}</span>
+
+                  {/* Post-TBM Summary Pill */}
+                  <div style={{
+                    background: isAllDone ? '#f0fdf4' : '#fffbeb',
+                    border: isAllDone ? '1px solid #bbf7d0' : '1px solid #fde68a',
+                    borderRadius: '6px',
+                    padding: '6px 8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '3px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontWeight: '800', color: isAllDone ? '#15803d' : '#b45309' }}>🏁 업무 후 TBM</span>
+                      <span style={{ color: '#64748b', fontSize: '10.5px' }}>{isAllDone ? (tbm.postCheck?.conductedAt || '') : '대기'}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                      {isAllDone ? (
+                        <>
+                          <span style={{ color: isOutcomeWarning ? '#b91c1c' : '#15803d', fontWeight: '700' }}>
+                            {postOutcome}
+                          </span>
+                          {postPhotoCount > 0 && (
+                            <span style={{ color: '#0284c7', background: '#e0f2fe', padding: '0px 4px', borderRadius: '3px', fontSize: '10px' }}>
+                              📷 {postPhotoCount}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ color: '#c2410c', fontWeight: '600' }}>
+                          작업 종료 후 진행
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1247,7 +1421,7 @@ export default function TbmSection({
                       gap: '4px',
                       fontSize: '11.5px',
                       background: '#ffffff',
-                      padding: '8px 10px',
+                      padding: '7px 10px',
                       borderRadius: '6px',
                       border: '1px solid #e2e8f0'
                     }}>
@@ -2675,6 +2849,7 @@ export default function TbmSection({
                     </button>
                     <button
                       type="button"
+                      disabled={isSubmitting}
                       onClick={() => handleSubmitTbm(true)}
                       style={{
                         flex: 1.2,
@@ -2685,14 +2860,15 @@ export default function TbmSection({
                         border: '1.5px solid #bae6fd',
                         fontSize: '12.5px',
                         fontWeight: '800',
-                        cursor: 'pointer',
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: isSubmitting ? 0.7 : 1,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '4px'
                       }}
                     >
-                      <CheckCircle2 size={16} /> 업무전만 저장
+                      {isSubmitting ? '⏳ 저장 중...' : <><CheckCircle2 size={16} /> 업무전만 저장</>}
                     </button>
                     <button
                       type="button"
@@ -3363,6 +3539,7 @@ export default function TbmSection({
                     </button>
                     <button
                       type="button"
+                      disabled={isSubmitting}
                       onClick={() => handleSubmitTbm(false)}
                       className="glass-button-primary"
                       style={{
@@ -3372,7 +3549,8 @@ export default function TbmSection({
                         background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                         fontWeight: '800',
                         fontSize: '13px',
-                        cursor: 'pointer',
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: isSubmitting ? 0.7 : 1,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -3380,7 +3558,11 @@ export default function TbmSection({
                         boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
                       }}
                     >
-                      <CheckCircle2 size={18} /> TBM 일지 저장 및 등록 완료
+                      {isSubmitting ? (
+                        <>⏳ TBM 저장 중...</>
+                      ) : (
+                        <><CheckCircle2 size={18} /> TBM 일지 저장 및 등록 완료</>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -3954,6 +4136,7 @@ export default function TbmSection({
               </button>
               <button
                 type="button"
+                disabled={isDeleting}
                 onClick={handleDeleteConfirm}
                 style={{
                   flex: 1,
@@ -3964,10 +4147,15 @@ export default function TbmSection({
                   border: 'none',
                   fontSize: '12px',
                   fontWeight: '700',
-                  cursor: 'pointer'
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                  opacity: isDeleting ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px'
                 }}
               >
-                삭제 확인
+                {isDeleting ? '⏳ 삭제 중...' : '삭제 확인'}
               </button>
             </div>
           </div>

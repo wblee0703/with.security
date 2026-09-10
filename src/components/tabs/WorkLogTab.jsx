@@ -414,69 +414,21 @@ export default function WorkLogTab({ onTriggerToast }) {
   };
 
   const handleCopySinglePastLog = async (pastLog) => {
-    const now = new Date();
-    const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    if (!pastLog || isCopying) return;
+    setIsCopying(true);
+    try {
+      const now = new Date();
+      const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const authorName = currentUser?.name || pastLog.authorName || '작성자';
-    const authorTeam = currentUser?.team || currentUser?.department || pastLog.authorTeam || '운영팀';
-    const authorRank = currentUser?.rank || pastLog.authorRank || '대리';
-    const authorUsername = currentUser?.username || pastLog.authorUsername || '';
-    const authorDivision = currentUser?.division || pastLog.authorDivision || '';
-    const authorRole = currentUser?.role || pastLog.authorRole || '일반';
+      const authorName = currentUser?.name || pastLog.authorName || '작성자';
+      const authorTeam = currentUser?.team || currentUser?.department || pastLog.authorTeam || '운영팀';
+      const authorRank = currentUser?.rank || pastLog.authorRank || '대리';
+      const authorUsername = currentUser?.username || pastLog.authorUsername || '';
+      const authorDivision = currentUser?.division || pastLog.authorDivision || '';
+      const authorRole = currentUser?.role || pastLog.authorRole || '일반';
 
-    const newLogItem = {
-      id: `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-      category: pastLog.category || '사내 업무',
-      date: selectedDate,
-      title: pastLog.title,
-      details: pastLog.details || '',
-      siteName: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
-      site_name: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
-      authorName,
-      authorTeam,
-      authorRank,
-      authorUsername,
-      authorDivision,
-      authorRole,
-      division: authorDivision,
-      role: authorRole,
-      createdAt: timeStr
-    };
-
-    const updated = await dbService.saveWorkLog(newLogItem);
-    setWorkLogs(updated);
-    setIsPastWorkModalOpen(false);
-    setViewAllDates(false);
-
-    if (onTriggerToast) {
-      onTriggerToast(`'${pastLog.title}' 업무가 [${selectedDate}] 일자로 복사 등록되었습니다.`, 'success');
-    }
-  };
-
-  const handleCopySelectedPastLogs = async () => {
-    if (selectedPastLogIds.length === 0) {
-      if (onTriggerToast) onTriggerToast('복사할 업무를 1건 이상 선택해 주세요.', 'warning');
-      return;
-    }
-
-    const selectedLogs = workLogs.filter(l => selectedPastLogIds.includes(l.id));
-    if (selectedLogs.length === 0) return;
-
-    const now = new Date();
-    const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    const authorName = currentUser?.name || '작성자';
-    const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
-    const authorRank = currentUser?.rank || '대리';
-    const authorUsername = currentUser?.username || '';
-    const authorDivision = currentUser?.division || '';
-    const authorRole = currentUser?.role || '일반';
-
-    let updated = workLogs;
-    for (let i = 0; i < selectedLogs.length; i++) {
-      const pastLog = selectedLogs[i];
       const newLogItem = {
-        id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
+        id: `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
         category: pastLog.category || '사내 업무',
         date: selectedDate,
         title: pastLog.title,
@@ -493,16 +445,82 @@ export default function WorkLogTab({ onTriggerToast }) {
         role: authorRole,
         createdAt: timeStr
       };
-      updated = await dbService.saveWorkLog(newLogItem);
+
+      const updated = await dbService.saveWorkLog(newLogItem);
+      setWorkLogs(updated);
+      setIsPastWorkModalOpen(false);
+      setViewAllDates(false);
+
+      if (onTriggerToast) {
+        onTriggerToast(`'${pastLog.title}' 업무가 [${selectedDate}] 일자로 복사 등록되었습니다.`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to copy single past log:', err);
+      if (onTriggerToast) onTriggerToast('업무 복사 등록 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  const handleCopySelectedPastLogs = async () => {
+    if (isCopying) return;
+    if (selectedPastLogIds.length === 0) {
+      if (onTriggerToast) onTriggerToast('복사할 업무를 1건 이상 선택해 주세요.', 'warning');
+      return;
     }
 
-    setWorkLogs(updated);
-    setIsPastWorkModalOpen(false);
-    setSelectedPastLogIds([]);
-    setViewAllDates(false);
+    const selectedLogs = workLogs.filter(l => selectedPastLogIds.includes(l.id));
+    if (selectedLogs.length === 0) return;
 
-    if (onTriggerToast) {
-      onTriggerToast(`총 ${selectedLogs.length}건의 업무가 [${selectedDate}] 일자로 복사 등록되었습니다.`, 'success');
+    setIsCopying(true);
+    try {
+      const now = new Date();
+      const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      const authorName = currentUser?.name || '작성자';
+      const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
+      const authorRank = currentUser?.rank || '대리';
+      const authorUsername = currentUser?.username || '';
+      const authorDivision = currentUser?.division || '';
+      const authorRole = currentUser?.role || '일반';
+
+      let updated = workLogs;
+      for (let i = 0; i < selectedLogs.length; i++) {
+        const pastLog = selectedLogs[i];
+        const newLogItem = {
+          id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
+          category: pastLog.category || '사내 업무',
+          date: selectedDate,
+          title: pastLog.title,
+          details: pastLog.details || '',
+          siteName: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
+          site_name: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
+          authorName,
+          authorTeam,
+          authorRank,
+          authorUsername,
+          authorDivision,
+          authorRole,
+          division: authorDivision,
+          role: authorRole,
+          createdAt: timeStr
+        };
+        updated = await dbService.saveWorkLog(newLogItem);
+      }
+
+      setWorkLogs(updated);
+      setIsPastWorkModalOpen(false);
+      setSelectedPastLogIds([]);
+      setViewAllDates(false);
+
+      if (onTriggerToast) {
+        onTriggerToast(`총 ${selectedLogs.length}건의 업무가 [${selectedDate}] 일자로 복사 등록되었습니다.`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to copy selected past logs:', err);
+      if (onTriggerToast) onTriggerToast('업무 복사 등록 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsCopying(false);
     }
   };
 
@@ -510,6 +528,11 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTargetLog, setDeleteTargetLog] = useState(null);
   useModalBack(isDeleteModalOpen, () => setIsDeleteModalOpen(false), 'worklog-delete-modal');
+
+  // Loading & Double-Click Guard States
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isCopying, setIsCopying] = useState(false);
 
   // Today local ISO date (YYYY-MM-DD)
   const getTodayIsoDate = () => {
@@ -700,98 +723,108 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleSubmitForm = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!form.title.trim()) {
       if (onTriggerToast) onTriggerToast('업무명을 입력해 주세요.', 'warning');
       return;
     }
 
-    const now = new Date();
-    const timeStr = `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    setIsSubmitting(true);
+    try {
+      const now = new Date();
+      const timeStr = `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    const authorName = currentUser?.name || '작성자';
-    const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
-    const authorRank = currentUser?.rank || '대리';
-    const authorUsername = currentUser?.username || '';
-    const authorDivision = currentUser?.division || '';
-    const authorRole = currentUser?.role || '일반';
+      const authorName = currentUser?.name || '작성자';
+      const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
+      const authorRank = currentUser?.rank || '대리';
+      const authorUsername = currentUser?.username || '';
+      const authorDivision = currentUser?.division || '';
+      const authorRole = currentUser?.role || '일반';
 
-    const isInternal = form.category !== '출장 업무';
-    const curSubCat = isInternal ? (form.subCategory || '일반업무') : (form.subCategory || '작업');
-    const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
+      const isInternal = form.category !== '출장 업무';
+      const curSubCat = isInternal ? (form.subCategory || '일반업무') : (form.subCategory || '작업');
+      const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
 
-    const newLogItem = {
-      id: editingLogId || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
-      category: form.category,
-      subCategory: curSubCat,
-      sub_category: curSubCat,
-      dueDate: curDueDate,
-      due_date: curDueDate,
-      date: form.date,
-      title: form.title.trim(),
-      details: form.details.trim(),
-      siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
-      authorName,
-      authorTeam,
-      authorRank,
-      authorUsername,
-      authorDivision,
-      authorRole,
-      division: authorDivision,
-      role: authorRole,
-      createdAt: editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-    };
+      const newLogItem = {
+        id: editingLogId || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+        category: form.category,
+        subCategory: curSubCat,
+        sub_category: curSubCat,
+        dueDate: curDueDate,
+        due_date: curDueDate,
+        date: form.date,
+        title: form.title.trim(),
+        details: form.details.trim(),
+        siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
+        authorName,
+        authorTeam,
+        authorRank,
+        authorUsername,
+        authorDivision,
+        authorRole,
+        division: authorDivision,
+        role: authorRole,
+        createdAt: editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      };
 
-    let updatedLogs = await dbService.saveWorkLog(newLogItem);
+      let updatedLogs = await dbService.saveWorkLog(newLogItem);
 
-    // Save extra task items if added in multi-task mode
-    if (!editingLogId && extraTasks.length > 0) {
-      for (let i = 0; i < extraTasks.length; i++) {
-        const ext = extraTasks[i];
-        if (ext.title && ext.title.trim()) {
-          const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : (ext.subCategory || curSubCat || '작업');
-          const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
-          const extraLogItem = {
-            id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
-            category: form.category,
-            subCategory: extSubCat,
-            sub_category: extSubCat,
-            dueDate: extDueDate,
-            due_date: extDueDate,
-            date: form.date,
-            title: ext.title.trim(),
-            details: (ext.details || '').trim(),
-            siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
-            authorName,
-            authorTeam,
-            authorRank,
-            authorUsername,
-            authorDivision,
-            authorRole,
-            division: authorDivision,
-            role: authorRole,
-            createdAt: `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
-          };
-          updatedLogs = await dbService.saveWorkLog(extraLogItem);
+      // Save extra task items if added in multi-task mode
+      if (!editingLogId && extraTasks.length > 0) {
+        for (let i = 0; i < extraTasks.length; i++) {
+          const ext = extraTasks[i];
+          if (ext.title && ext.title.trim()) {
+            const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : (ext.subCategory || curSubCat || '작업');
+            const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
+            const extraLogItem = {
+              id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
+              category: form.category,
+              subCategory: extSubCat,
+              sub_category: extSubCat,
+              dueDate: extDueDate,
+              due_date: extDueDate,
+              date: form.date,
+              title: ext.title.trim(),
+              details: (ext.details || '').trim(),
+              siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
+              authorName,
+              authorTeam,
+              authorRank,
+              authorUsername,
+              authorDivision,
+              authorRole,
+              division: authorDivision,
+              role: authorRole,
+              createdAt: `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+            };
+            updatedLogs = await dbService.saveWorkLog(extraLogItem);
+          }
         }
       }
-    }
 
-    setWorkLogs(updatedLogs);
-    setIsModalOpen(false);
-    setExtraTasks([]);
+      setWorkLogs(updatedLogs);
+      setIsModalOpen(false);
+      setExtraTasks([]);
 
-    // Automatically switch selectedDate to the saved log's date
-    setSelectedDate(form.date);
-    setViewAllDates(false);
+      // Automatically switch selectedDate to the saved log's date
+      setSelectedDate(form.date);
+      setViewAllDates(false);
 
-    if (onTriggerToast) {
-      const validExtras = extraTasks.filter(t => t.title && t.title.trim()).length;
-      const msg = editingLogId
-        ? `'${newLogItem.title}' 업무 일지가 수정되었습니다.`
-        : (validExtras > 0
-          ? `총 ${1 + validExtras}건의 업무 일지가 등록되었습니다.`
-          : `'${newLogItem.title}' 업무 일지가 등록되었습니다.`);
-      onTriggerToast(msg, 'success');
+      if (onTriggerToast) {
+        const validExtras = extraTasks.filter(t => t.title && t.title.trim()).length;
+        const msg = editingLogId
+          ? `'${newLogItem.title}' 업무 일지가 수정되었습니다.`
+          : (validExtras > 0
+            ? `총 ${1 + validExtras}건의 업무 일지가 등록되었습니다.`
+            : `'${newLogItem.title}' 업무 일지가 등록되었습니다.`);
+        onTriggerToast(msg, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to submit work log:', err);
+      if (onTriggerToast) onTriggerToast('업무 일지 저장 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -821,14 +854,17 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Confirm Deletion directly without password
   const handleConfirmDelete = async () => {
-    if (deleteTargetLog) {
+    if (isDeleting) return;
+    if (!deleteTargetLog) {
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
       const targetTitle = deleteTargetLog.title || '업무';
       const targetId = deleteTargetLog.id || deleteTargetLog.log_id || deleteTargetLog.logId;
       const targetObj = { ...deleteTargetLog };
-
-      // Close modal immediately and clear target log
-      setIsDeleteModalOpen(false);
-      setDeleteTargetLog(null);
 
       // Optimistic UI update: 즉시 로컬 뷰에서 타겟 업무 제거
       setWorkLogs(prev => prev.filter(l => {
@@ -837,14 +873,21 @@ export default function WorkLogTab({ onTriggerToast }) {
         return lId !== tId && String(l.id) !== tId && String(l.log_id) !== tId;
       }));
 
+      // Close modal and clear target log
+      setIsDeleteModalOpen(false);
+      setDeleteTargetLog(null);
+
       const updatedLogs = await dbService.deleteWorkLog(targetObj);
       setWorkLogs(updatedLogs);
 
       if (onTriggerToast) {
         onTriggerToast(`'${targetTitle}' 업무 일지가 삭제되었습니다.`, 'info');
       }
-    } else {
-      setIsDeleteModalOpen(false);
+    } catch (err) {
+      console.error('Failed to delete work log:', err);
+      if (onTriggerToast) onTriggerToast('업무 일지 삭제 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -2617,6 +2660,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="glass-button-primary"
                   style={{
                     flex: 1.5,
@@ -2624,10 +2668,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                     borderRadius: '4px',
                     fontSize: '13px',
                     fontWeight: '800',
-                    cursor: 'pointer'
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                    opacity: isSubmitting ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
                   }}
                 >
-                  {editingLogId ? '수정 완료' : '저장'}
+                  {isSubmitting ? '⏳ 저장 중...' : (editingLogId ? '수정 완료' : '저장')}
                 </button>
               </div>
             </form>
@@ -3024,6 +3073,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               </button>
               <button
                 type="button"
+                disabled={isDeleting}
                 onClick={handleConfirmDelete}
                 style={{
                   flex: 1.2,
@@ -3035,10 +3085,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                   color: '#ffffff',
                   border: 'none',
                   boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
-                  cursor: 'pointer'
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                  opacity: isDeleting ? 0.7 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
                 }}
               >
-                삭제하기
+                {isDeleting ? '⏳ 삭제 중...' : '삭제하기'}
               </button>
             </div>
           </div>

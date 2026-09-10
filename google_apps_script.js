@@ -447,6 +447,27 @@ function doPost(e) {
             const visitorMatched = Boolean(itemPhone && itemDate && rowPhone === itemPhone && rowDate === itemDate);
 
             isMatch = idMatched || visitorMatched;
+          } else if (sheetName === 'tbms') {
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const targetId = String(item.id || keyValue).trim();
+            const idMatched = Boolean(targetId && rowId && rowId === targetId);
+
+            const dateIdx = headers.indexOf('date');
+            const siteIdx = headers.indexOf('site');
+            const leaderIdx = headers.indexOf('leader_name');
+
+            const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
+            const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
+            const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
+
+            const itemDate = formatKstDate(item.date || '', true);
+            const itemSite = String(item.site || '').trim().toLowerCase();
+            const itemLeader = String(item.leader_name || '').trim().toLowerCase();
+
+            const compositeMatched = Boolean(itemDate && itemSite && itemLeader &&
+              rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader);
+
+            isMatch = idMatched || compositeMatched;
           } else {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
             const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
@@ -456,13 +477,15 @@ function doPost(e) {
 
           if (isMatch) {
             const rowNum = i + 1;
-            for (const [k, val] of Object.entries(item)) {
-              const colIdx = headers.indexOf(k);
-              if (colIdx !== -1) {
-                const cellVal = (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
-                sheet.getRange(rowNum, colIdx + 1).setValue(cellVal);
+            const currentRow = rows[i];
+            const updatedRow = headers.map((h, colIdx) => {
+              if (item[h] !== undefined) {
+                const val = item[h];
+                return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
               }
-            }
+              return currentRow[colIdx] !== undefined ? currentRow[colIdx] : '';
+            });
+            sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
             return jsonResponse({ success: true, message: 'Row updated in-place (deduplicated upsert)', data: item });
           }
         }
@@ -495,13 +518,15 @@ function doPost(e) {
 
         if (isMatch) {
           const rowNum = i + 1;
+          const updatedRow = [...rows[i]];
           for (const [k, val] of Object.entries(patch)) {
             const colIdx = headers.indexOf(k);
             if (colIdx !== -1) {
               const cellVal = (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
-              sheet.getRange(rowNum, colIdx + 1).setValue(cellVal);
+              updatedRow[colIdx] = cellVal;
             }
           }
+          sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
           return jsonResponse({ success: true, message: 'Row updated', id: id });
         }
       }
@@ -788,13 +813,50 @@ function normalizeObjectForSheet(sheetName, rawObj) {
 
   // 7. TBM (tbms)
   if (sheetName === 'tbms') {
-    const idVal = obj.id || obj.tbm_id || `TBM-${Date.now()}`;
+    const idVal = obj.id || obj.tbm_id || obj.tbmId || `TBM-${Date.now()}`;
     const rawDate = obj.date || obj.log_date || '';
     const dVal = rawDate ? formatKstDate(rawDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
     const atts = obj.attendees || [];
     const abs = obj.absentees || [];
-    const preChk = obj.preCheck || obj.pre_check || {};
-    const postChk = obj.postCheck || obj.post_check || {};
+
+    // Sanitize pre_check and post_check photos (strip large dataUrl to guarantee under 50k char cell limit)
+    let preChk = obj.preCheck || obj.pre_check || {};
+    if (typeof preChk === 'string') {
+      try { preChk = JSON.parse(preChk); } catch (e) { preChk = {}; }
+    }
+    if (preChk && typeof preChk === 'object') {
+      preChk = { ...preChk };
+      if (Array.isArray(preChk.photos)) {
+        preChk.photos = preChk.photos.map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || ''
+        }));
+      }
+    }
+
+    let postChk = obj.postCheck || obj.post_check || {};
+    if (typeof postChk === 'string') {
+      try { postChk = JSON.parse(postChk); } catch (e) { postChk = {}; }
+    }
+    if (postChk && typeof postChk === 'object') {
+      postChk = { ...postChk };
+      if (Array.isArray(postChk.photos)) {
+        postChk.photos = postChk.photos.map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || ''
+        }));
+      }
+    }
+
+    let preCheckStr = JSON.stringify(preChk);
+    if (preCheckStr.length > 45000) preCheckStr = preCheckStr.substring(0, 45000);
+
+    let postCheckStr = JSON.stringify(postChk);
+    if (postCheckStr.length > 45000) postCheckStr = postCheckStr.substring(0, 45000);
 
     return {
       id: idVal,
@@ -813,8 +875,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
       work_content: obj.workContent || obj.work_content || obj.content || '',
       tools_used: obj.toolsUsed || obj.tools_used || '',
-      pre_check: (typeof preChk === 'object' && preChk !== null) ? JSON.stringify(preChk) : String(preChk || ''),
-      post_check: (typeof postChk === 'object' && postChk !== null) ? JSON.stringify(postChk) : String(postChk || ''),
+      pre_check: preCheckStr,
+      post_check: postCheckStr,
       status: obj.status || (postChk && postChk.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED'),
       created_at: obj.createdAt || obj.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
       updated_at: obj.updatedAt || obj.updated_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
@@ -971,21 +1033,36 @@ function readSheetData(sheetName) {
         if (!obj.expiryDate && obj.expiry_date) obj.expiryDate = obj.expiry_date;
         if (!obj.notes && obj.memo) obj.notes = obj.memo;
       } else if (sheetName === 'tbms') {
+        if (!obj.id && obj.tbm_id) obj.id = obj.tbm_id;
+        if (!obj.id && obj.tbmId) obj.id = obj.tbmId;
+        if (!obj.date && obj.log_date) obj.date = obj.log_date;
+        if (!obj.date && obj.logDate) obj.date = obj.logDate;
         if (!obj.site && obj.siteName) obj.site = obj.siteName;
+        if (!obj.site && obj.site_name) obj.site = obj.site_name;
         if (!obj.siteName && obj.site) obj.siteName = obj.site;
         if (!obj.siteAddress && obj.site_address) obj.siteAddress = obj.site_address;
+        if (!obj.siteAddress && obj.address) obj.siteAddress = obj.address;
         if (!obj.workTitle && obj.work_title) obj.workTitle = obj.work_title;
+        if (!obj.workTitle && obj.title) obj.workTitle = obj.title;
         if (!obj.workArea && obj.work_area) obj.workArea = obj.work_area;
         if (!obj.workCategory && obj.work_category) obj.workCategory = obj.work_category;
         if (!obj.leaderDivision && obj.leader_division) obj.leaderDivision = obj.leader_division;
+        if (!obj.leaderDivision && obj.division) obj.leaderDivision = obj.division;
         if (!obj.leaderTeam && obj.leader_team) obj.leaderTeam = obj.leader_team;
+        if (!obj.leaderTeam && obj.team) obj.leaderTeam = obj.team;
         if (!obj.leaderName && (obj.leader_name || obj.leader)) obj.leaderName = obj.leader_name || obj.leader;
         if (!obj.leaderRank && obj.leader_rank) obj.leaderRank = obj.leader_rank;
+        if (!obj.leaderRank && obj.rank) obj.leaderRank = obj.rank;
         if (!obj.leaderPhone && obj.leader_phone) obj.leaderPhone = obj.leader_phone;
+        if (!obj.leaderPhone && obj.phone) obj.leaderPhone = obj.phone;
         if (!obj.workContent && (obj.work_content || obj.content)) obj.workContent = obj.work_content || obj.content;
         if (!obj.toolsUsed && obj.tools_used) obj.toolsUsed = obj.tools_used;
         if (!obj.preCheck && obj.pre_check) obj.preCheck = obj.pre_check;
+        if (!obj.pre_check && obj.preCheck) obj.pre_check = obj.preCheck;
         if (!obj.postCheck && obj.post_check) obj.postCheck = obj.post_check;
+        if (!obj.post_check && obj.postCheck) obj.post_check = obj.postCheck;
+        if (!obj.status && obj.postCheck && obj.postCheck.isCompleted) obj.status = 'ALL_COMPLETED';
+        if (!obj.status) obj.status = 'PRE_COMPLETED';
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       }
@@ -1019,6 +1096,12 @@ function readSheetData(sheetName) {
           obj.log_id = idVal;
         }
         key = (visitorVal && dateVal) ? `SEC::${visitorVal}::${dateVal}` : idVal;
+      } else if (sheetName === 'tbms') {
+        const idVal = String(obj.id || obj.tbm_id || obj.tbmId || '').trim();
+        const dateVal = String(obj.date || obj.log_date || '').trim();
+        const siteVal = String(obj.site || obj.siteName || '').trim();
+        const leaderVal = String(obj.leaderName || obj.leader || '').trim();
+        key = idVal || (dateVal && siteVal ? `TBM::${dateVal}::${siteVal}::${leaderVal}` : '');
       } else {
         key = String(obj.log_id || obj.id || '').trim();
       }
@@ -1185,12 +1268,19 @@ function appendObjectRow(sheet, headers, rawObj) {
 function ensureHeaders(sheet, keys) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(keys);
+    formatHeaderRow(sheet, keys.length);
     return keys;
   }
-  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getValues()[0];
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
   const missing = keys.filter(k => !headers.includes(k));
   if (missing.length > 0) {
     const startCol = headers.length + 1;
+    const requiredCols = startCol + missing.length - 1;
+    const maxCols = sheet.getMaxColumns();
+    if (requiredCols > maxCols) {
+      try { sheet.insertColumnsAfter(maxCols, requiredCols - maxCols); } catch (e) { }
+    }
     sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
     headers.push(...missing);
   }

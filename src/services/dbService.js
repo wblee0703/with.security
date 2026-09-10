@@ -3410,13 +3410,48 @@ class SecurityDatabase {
       if (res && res.ok) {
         const json = await res.json();
         const remoteData = json.data || json;
-        if (Array.isArray(remoteData) && remoteData.length > 0) {
+        if (Array.isArray(remoteData)) {
           const normalized = remoteData.map(item => this._normalizeTbm(item)).filter(Boolean);
-          localStorage.setItem('with_security_tbms_backup', JSON.stringify(normalized));
+
+          // Merge with local items to prevent newly created local records from being erased
+          const mergedMap = new Map();
+          normalized.forEach(item => mergedMap.set(String(item.id), item));
           try {
-            for (const item of normalized) await this.putItem('tbms', item);
+            const currentRaw = localStorage.getItem('with_security_tbms_backup');
+            if (currentRaw) {
+              const currentList = JSON.parse(currentRaw);
+              if (Array.isArray(currentList)) {
+                currentList.forEach(loc => {
+                  if (loc && loc.id) {
+                    const idStr = String(loc.id);
+                    if (!mergedMap.has(idStr)) {
+                      mergedMap.set(idStr, this._normalizeTbm(loc));
+                    }
+                  }
+                });
+              }
+            }
           } catch (e) { }
-          list = normalized;
+
+          // Restore photo dataUrls from IndexedDB if remote doesn't have them
+          const mergedList = Array.from(mergedMap.values());
+          for (const item of mergedList) {
+            try {
+              const localDbItem = await this.getItem('tbms', item.id);
+              if (localDbItem) {
+                if ((!item.preCheck?.photos?.[0]?.dataUrl) && localDbItem.preCheck?.photos?.[0]?.dataUrl) {
+                  item.preCheck.photos = localDbItem.preCheck.photos;
+                }
+                if ((!item.postCheck?.photos?.[0]?.dataUrl) && localDbItem.postCheck?.photos?.[0]?.dataUrl) {
+                  item.postCheck.photos = localDbItem.postCheck.photos;
+                }
+              }
+              await this.putItem('tbms', item);
+            } catch (e) { }
+          }
+
+          localStorage.setItem('with_security_tbms_backup', JSON.stringify(mergedList));
+          list = mergedList;
           this.notifyDataChanged(true);
         }
       }
@@ -3476,16 +3511,39 @@ class SecurityDatabase {
       localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
     } catch (e) { }
 
-    // 2. Put into IndexedDB immediately
+    // 2. Put into IndexedDB immediately with full photos
     try {
       await this.putItem('tbms', fullTbm);
     } catch (e) { }
+
+    // Strip large photo dataUrls before sending to Google Sheets (prevents 50k cell limit overflow)
+    const remotePayload = {
+      ...fullTbm,
+      preCheck: {
+        ...fullTbm.preCheck,
+        photos: (fullTbm.preCheck?.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || ''
+        }))
+      },
+      postCheck: {
+        ...fullTbm.postCheck,
+        photos: (fullTbm.postCheck?.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || ''
+        }))
+      }
+    };
 
     // 3. Non-blocking background sync with server (never stalls the UI!)
     safeFetchApi('/api/tbms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(fullTbm)
+      body: JSON.stringify(remotePayload)
     }).catch(err => console.warn('Background TBM sync warning:', err));
 
     notifyDataChanged();

@@ -102,6 +102,16 @@ export default function SecurityChecklistTab({
   // Admin Managed Entrance Sites State
   const [sites, setSites] = useState([]);
 
+  // Modal & Loading States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const isModalOpenRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    isModalOpenRef.current = isModalOpen;
+  }, [isModalOpen]);
+
   // Login Modal & Active Check State
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [inlineAuthMode, setInlineAuthMode] = useState('login'); // 'login' | 'signup'
@@ -162,15 +172,19 @@ export default function SecurityChecklistTab({
         setSites(mappedSites);
         setCurrentUser(activeUser);
         const userTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
-        setFormData(prev => ({
-          ...prev,
-          site: '',
-          visitorName: activeUser ? activeUser.name : prev.visitorName,
-          phone: activeUser ? activeUser.phone : prev.phone,
-          team: userTeam || prev.team,
-          department: userTeam || prev.department,
-          rank: activeUser ? activeUser.rank : prev.rank
-        }));
+
+        // [중요: 사업장 선택 초기화 방지] 모달이 열려있거나 이미 사업장이 선택된 경우 덮어쓰지 않음
+        if (!isModalOpenRef.current) {
+          setFormData(prev => ({
+            ...prev,
+            site: prev.site || '',
+            visitorName: prev.visitorName || (activeUser ? activeUser.name : ''),
+            phone: prev.phone || (activeUser ? activeUser.phone : ''),
+            team: prev.team || userTeam,
+            department: prev.department || userTeam,
+            rank: prev.rank || (activeUser ? activeUser.rank : '')
+          }));
+        }
       } catch (err) {
         console.error('Failed to load sites & user:', err);
       }
@@ -380,46 +394,56 @@ export default function SecurityChecklistTab({
   // Confirm Deletion after Password Verification
   const handleConfirmDeleteWithPassword = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isDeleting) return;
+
     if (!deletePassword) {
       if (onTriggerToast) onTriggerToast('비밀번호를 입력해 주세요.', 'warning');
       return;
     }
 
-    const hashedInput = await hashPassword(deletePassword);
-    let isValid = false;
+    setIsDeleting(true);
+    try {
+      const hashedInput = await hashPassword(deletePassword);
+      let isValid = false;
 
-    if (deletePassword === 'withtech123!') {
-      isValid = true;
-    } else if (currentUser?.passwordHash && hashedInput === currentUser.passwordHash) {
-      isValid = true;
-    } else {
-      const allUsers = await dbService.getRegisteredUsers();
-      const matchedUser = allUsers.find(u =>
-        (currentUser?.username && u.username === currentUser.username) ||
-        (deleteTargetInfo?.username && u.username === deleteTargetInfo.username) ||
-        (deleteTargetInfo?.authorName && u.name === deleteTargetInfo.authorName)
-      );
-      if (matchedUser && (matchedUser.passwordHash === hashedInput || matchedUser.password === deletePassword)) {
+      if (deletePassword === 'withtech123!') {
         isValid = true;
+      } else if (currentUser?.passwordHash && hashedInput === currentUser.passwordHash) {
+        isValid = true;
+      } else {
+        const allUsers = await dbService.getRegisteredUsers();
+        const matchedUser = allUsers.find(u =>
+          (currentUser?.username && u.username === currentUser.username) ||
+          (deleteTargetInfo?.username && u.username === deleteTargetInfo.username) ||
+          (deleteTargetInfo?.authorName && u.name === deleteTargetInfo.authorName)
+        );
+        if (matchedUser && (matchedUser.passwordHash === hashedInput || matchedUser.password === deletePassword)) {
+          isValid = true;
+        }
       }
+
+      if (!isValid) {
+        if (onTriggerToast) onTriggerToast('❌ 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.', 'error');
+        return;
+      }
+
+      if (!deleteTargetInfo) return;
+
+      if (deleteTargetInfo.type === 'pledge') {
+        await handleDeletePledge(deleteTargetInfo.pledgeId, deleteTargetInfo.siteName);
+      } else if (deleteTargetInfo.type === 'companion') {
+        await performDeleteCompanion(deleteTargetInfo.pledgeId, deleteTargetInfo.companionId, deleteTargetInfo.title);
+      }
+
+      setIsDeleteModalOpen(false);
+      setDeleteTargetInfo(null);
+      setDeletePassword('');
+    } catch (err) {
+      console.error('Failed to delete pledge:', err);
+      if (onTriggerToast) onTriggerToast('서약서 삭제 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsDeleting(false);
     }
-
-    if (!isValid) {
-      if (onTriggerToast) onTriggerToast('❌ 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.', 'error');
-      return;
-    }
-
-    if (!deleteTargetInfo) return;
-
-    if (deleteTargetInfo.type === 'pledge') {
-      await handleDeletePledge(deleteTargetInfo.pledgeId, deleteTargetInfo.siteName);
-    } else if (deleteTargetInfo.type === 'companion') {
-      await performDeleteCompanion(deleteTargetInfo.pledgeId, deleteTargetInfo.companionId, deleteTargetInfo.title);
-    }
-
-    setIsDeleteModalOpen(false);
-    setDeleteTargetInfo(null);
-    setDeletePassword('');
   };
 
   // Helper: Find site accurately by Display Name or Site Name + Address (Rule #6 compliant)
@@ -1073,7 +1097,6 @@ export default function SecurityChecklistTab({
   };
 
   // Modal States
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(1);
 
   // Back button hook for main pledge modal
@@ -1570,6 +1593,7 @@ export default function SecurityChecklistTab({
   // Submit Form
   const handleSubmitForm = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
 
     const activeUser = await dbService.getUserProfile();
     const targetApp = getTargetSecurityAppInfo(formData.site);
@@ -1588,35 +1612,37 @@ export default function SecurityChecklistTab({
       return;
     }
 
-    const targetDate = selectedDate || (formData.visitDate ? formData.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
-    const targetDateParts = targetDate.split('-');
-    let targetTimeStr;
-    if (targetDateParts.length === 3) {
-      const now = new Date();
-      const targetDateObj = new Date(parseInt(targetDateParts[0], 10), parseInt(targetDateParts[1], 10) - 1, parseInt(targetDateParts[2], 10), now.getHours(), now.getMinutes(), now.getSeconds());
-      targetTimeStr = targetDateObj.toLocaleString('ko-KR', { hour12: false });
-    } else {
-      targetTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
-    }
-
-    // 중복 서약 방지 검증: 해당 대상 일자에 동일 사업장에 이미 서약이 완료된 경우 방지
-    if (!formData.isEditMode && !formData.isCompanionMode && formData.site) {
-      const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
-
-      const targetName = formData.visitorName || currentUser?.name || '';
-      const targetPhone = formData.phone || currentUser?.phone || '';
-      const targetUsername = activeUser?.username || currentUser?.username || '';
-      const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-      const targetRank = formData.rank || currentUser?.rank || '';
-
-      if (selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank, targetDate)) {
-        if (onTriggerToast) {
-          onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 [${targetDate}] 일자로 이미 서약이 완료되었습니다. 동일 일자에 중복 서명은 제한됩니다.`, 'warning');
-        }
-        setActiveStep(1);
-        return;
+    setIsSubmitting(true);
+    try {
+      const targetDate = selectedDate || (formData.visitDate ? formData.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
+      const targetDateParts = targetDate.split('-');
+      let targetTimeStr;
+      if (targetDateParts.length === 3) {
+        const now = new Date();
+        const targetDateObj = new Date(parseInt(targetDateParts[0], 10), parseInt(targetDateParts[1], 10) - 1, parseInt(targetDateParts[2], 10), now.getHours(), now.getMinutes(), now.getSeconds());
+        targetTimeStr = targetDateObj.toLocaleString('ko-KR', { hour12: false });
+      } else {
+        targetTimeStr = new Date().toLocaleString('ko-KR', { hour12: false });
       }
-    }
+
+      // 중복 서약 방지 검증: 해당 대상 일자에 동일 사업장에 이미 서약이 완료된 경우 방지
+      if (!formData.isEditMode && !formData.isCompanionMode && formData.site) {
+        const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
+
+        const targetName = formData.visitorName || currentUser?.name || '';
+        const targetPhone = formData.phone || currentUser?.phone || '';
+        const targetUsername = activeUser?.username || currentUser?.username || '';
+        const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+        const targetRank = formData.rank || currentUser?.rank || '';
+
+        if (selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank, targetDate)) {
+          if (onTriggerToast) {
+            onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 [${targetDate}] 일자로 이미 서약이 완료되었습니다. 동일 일자에 중복 서명은 제한됩니다.`, 'warning');
+          }
+          setActiveStep(1);
+          return;
+        }
+      }
 
     // 2) Step 2 Validation: Security App & Camera Lock Verification
     if (targetApp.isChecklistMode) {
@@ -1967,6 +1993,12 @@ export default function SecurityChecklistTab({
 
     if (onTriggerToast) {
       onTriggerToast(`[${newPass.site}] [${targetDate}] 보안서약 및 출입 승인증이 정상 등록되었습니다.`, 'success');
+    }
+    } catch (err) {
+      console.error('Failed to complete security pledge submit:', err);
+      if (onTriggerToast) onTriggerToast('보안서약 등록 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -3978,11 +4010,27 @@ export default function SecurityChecklistTab({
                     </button>
                     <button
                       type="submit"
+                      disabled={isSubmitting}
                       onClick={handleSubmitForm}
                       className="glass-button-primary"
-                      style={{ padding: '12px', borderRadius: '12px', flex: 2, cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', fontWeight: '800' }}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '12px',
+                        flex: 2,
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: isSubmitting ? 0.7 : 1,
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontWeight: '800'
+                      }}
                     >
-                      <ShieldCheck size={18} /> 보안 서약 & 결재 승인 제출
+                      {isSubmitting ? (
+                        <>⏳ 서약서 제출 중...</>
+                      ) : (
+                        <><ShieldCheck size={18} /> 보안 서약 & 결재 승인 제출</>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -4873,6 +4921,7 @@ export default function SecurityChecklistTab({
                 </button>
                 <button
                   type="submit"
+                  disabled={isDeleting}
                   style={{
                     flex: 1.5,
                     padding: '12px',
@@ -4883,10 +4932,15 @@ export default function SecurityChecklistTab({
                     color: '#ef4444',
                     border: '1px solid rgba(239, 68, 68, 0.5)',
                     boxShadow: '0 4px 14px rgba(239, 68, 68, 0.3)',
-                    cursor: 'pointer'
+                    cursor: isDeleting ? 'not-allowed' : 'pointer',
+                    opacity: isDeleting ? 0.7 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
                   }}
                 >
-                  비밀번호 확인 및 삭제
+                  {isDeleting ? '⏳ 삭제 처리 중...' : '비밀번호 확인 및 삭제'}
                 </button>
               </div>
             </form>
