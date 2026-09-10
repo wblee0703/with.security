@@ -914,35 +914,87 @@ export default function WorkLogTab({ onTriggerToast }) {
   };
 
   // Handle Drag & Drop Schedule Move from Calendar
-  const handleMoveLogDate = async (logId, newDate) => {
-    if (!logId || !newDate) return;
-    const targetLog = workLogs.find(l => l.id === logId);
+  const handleMoveLogDate = async (logId, newDate, fallbackLog = null) => {
+    const cleanTargetDate = normalizeKstDate(newDate) || newDate;
+    if (!cleanTargetDate) return;
+
+    // 1. Flexible ID matching (supporting string vs number, id vs log_id)
+    const logIdStr = String(logId || fallbackLog?.id || fallbackLog?.log_id || '').trim();
+    let targetLog = workLogs.find(l => {
+      const lId = String(l.id || '').trim();
+      const lLogId = String(l.log_id || l.logId || '').trim();
+      return (logIdStr && (lId === logIdStr || lLogId === logIdStr));
+    }) || fallbackLog;
+
     if (!targetLog) return;
-    if (targetLog.date === newDate) return;
+
+    const curLogDate = normalizeKstDate(targetLog.date || targetLog.log_date);
+    if (curLogDate === cleanTargetDate) return;
 
     if (!canModifyLog(targetLog)) {
       if (onTriggerToast) onTriggerToast('❌ 본인이 작성한 업무 일지만 이동할 수 있습니다.', 'error');
       return;
     }
 
-    const timePart = targetLog.createdAt && targetLog.createdAt.includes(' ')
-      ? targetLog.createdAt.split(' ')[1]
-      : '09:00:00';
+    // Determine all logs to move (if it's a grouped business trip or single log)
+    const logsToMove = (fallbackLog && Array.isArray(fallbackLog._allTripLogs) && fallbackLog._allTripLogs.length > 0)
+      ? fallbackLog._allTripLogs
+      : [targetLog];
 
-    const updatedLog = {
-      ...targetLog,
-      date: newDate,
-      createdAt: `${newDate} ${timePart}`
-    };
+    const targetIdSet = new Set(logsToMove.map(l => String(l.id || l.log_id || '').trim()).filter(Boolean));
 
-    const updatedLogs = await dbService.saveWorkLog(updatedLog);
-    setWorkLogs(updatedLogs);
-    setSelectedDate(newDate);
+    // 2. Optimistic local UI update immediately so user feels instant feedback with zero flicker/reversion
+    const nowIso = new Date().toISOString();
+    setWorkLogs(prev => prev.map(l => {
+      const lId = String(l.id || '').trim();
+      const lLogId = String(l.log_id || l.logId || '').trim();
+      if (targetIdSet.has(lId) || targetIdSet.has(lLogId) || l === targetLog) {
+        const timePart = l.createdAt && l.createdAt.includes(' ')
+          ? l.createdAt.split(' ')[1]
+          : '09:00:00';
+        return {
+          ...l,
+          date: cleanTargetDate,
+          log_date: cleanTargetDate,
+          createdAt: `${cleanTargetDate} ${timePart}`,
+          updatedAt: nowIso
+        };
+      }
+      return l;
+    }));
+    setSelectedDate(cleanTargetDate);
     setViewAllDates(false);
-    window.dispatchEvent(new Event('with_security_data_changed'));
 
-    if (onTriggerToast) {
-      onTriggerToast(`'${updatedLog.title}' 업무가 [${newDate}] 일자로 이동되었습니다.`, 'success');
+    // 3. Persist to storage & DB
+    try {
+      let savedLogs = null;
+      for (const item of logsToMove) {
+        const timePart = item.createdAt && item.createdAt.includes(' ')
+          ? item.createdAt.split(' ')[1]
+          : '09:00:00';
+        const updatedLog = {
+          ...item,
+          _originalDate: item.date || item.log_date,
+          date: cleanTargetDate,
+          log_date: cleanTargetDate,
+          createdAt: `${cleanTargetDate} ${timePart}`,
+          updatedAt: nowIso
+        };
+        savedLogs = await dbService.saveWorkLog(updatedLog);
+      }
+
+      if (savedLogs && Array.isArray(savedLogs)) {
+        setWorkLogs(savedLogs);
+      }
+
+      if (onTriggerToast) {
+        const title = targetLog.title || (fallbackLog && fallbackLog.siteName ? `${fallbackLog.siteName} 출장` : '업무');
+        onTriggerToast(`'${title}' 업무가 [${cleanTargetDate}] 일자로 이동되었습니다.`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to move work log date:', err);
+      if (onTriggerToast) onTriggerToast('일정 이동 저장 중 오류가 발생했습니다.', 'error');
+      loadData();
     }
   };
 

@@ -12,6 +12,7 @@ import {
   Move
 } from 'lucide-react';
 import { getHolidayName } from '../../data/holidays.js';
+import { normalizeKstDate } from '../../services/dbService';
 
 export default function WorkLogCalendar({
   workLogs = [],
@@ -140,13 +141,13 @@ export default function WorkLogCalendar({
 
   // Map work logs by date for O(1) cell lookup (including dueDate markers)
   const logsByDate = workLogs.reduce((acc, log) => {
-    const d = log.date;
+    const d = normalizeKstDate(log.date || log.log_date) || log.date;
     if (d) {
       if (!acc[d]) acc[d] = [];
       acc[d].push(log);
     }
     // Register dueDate marker on calendar if dueDate exists
-    const dueDate = log.dueDate || log.due_date;
+    const dueDate = normalizeKstDate(log.dueDate || log.due_date);
     if (dueDate) {
       if (!acc[dueDate]) acc[dueDate] = [];
       if (dueDate !== d) {
@@ -173,7 +174,8 @@ export default function WorkLogCalendar({
     e.stopPropagation();
     setDraggedLog(log);
     try {
-      e.dataTransfer.setData('text/plain', log.id);
+      const idVal = String(log.id || log.log_id || '');
+      e.dataTransfer.setData('text/plain', idVal);
       e.dataTransfer.effectAllowed = 'move';
     } catch (err) { }
   };
@@ -207,8 +209,10 @@ export default function WorkLogCalendar({
     e.preventDefault();
     e.stopPropagation();
     if (draggedLog && cellDateStr && onMoveLogDate) {
-      if (!draggedLog.isDueMarker && draggedLog.date !== cellDateStr) {
-        onMoveLogDate(draggedLog.id, cellDateStr);
+      const curDate = normalizeKstDate(draggedLog.date || draggedLog.log_date);
+      const targetDate = normalizeKstDate(cellDateStr) || cellDateStr;
+      if (!draggedLog.isDueMarker && curDate !== targetDate) {
+        onMoveLogDate(draggedLog.id || draggedLog.log_id, targetDate, draggedLog);
       }
     }
     setDraggedLog(null);
@@ -290,8 +294,10 @@ export default function WorkLogCalendar({
     }
     // 실제 손가락이 다른 날짜 셀로 이동한 경우에만 일정 이동 실행 (단순 탭 및 스크롤 보호)
     if (touchState && touchState.overDate && onMoveLogDate && touchState.hasActuallyMoved) {
-      if (touchState.log && !touchState.log.isDueMarker && touchState.log.date !== touchState.overDate) {
-        onMoveLogDate(touchState.log.id, touchState.overDate);
+      const curDate = normalizeKstDate(touchState.log?.date || touchState.log?.log_date);
+      const targetDate = normalizeKstDate(touchState.overDate) || touchState.overDate;
+      if (touchState.log && !touchState.log.isDueMarker && curDate !== targetDate) {
+        onMoveLogDate(touchState.log.id || touchState.log.log_id, targetDate, touchState.log);
       }
     }
     setTouchState(null);
@@ -863,13 +869,17 @@ export default function WorkLogCalendar({
                       ? `[출장 업무 - ${item.subCategory}] ${item.siteName} (${item.count}건 등록)\n${item.logs.map((l, i) => `${i + 1}. ${l.title}${l.details ? ` (${l.details})` : ''}`).join('\n')}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`
                       : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`;
 
+                    const dragPayload = item.isTripGroup
+                      ? { ...log, _allTripLogs: item.logs }
+                      : log;
+
                     return (
                       <div
                         key={item.key}
                         draggable={canEditThis}
-                        onDragStart={(e) => handleDragStart(e, log)}
+                        onDragStart={(e) => handleDragStart(e, dragPayload)}
                         onDragEnd={handleDragEnd}
-                        onTouchStart={canEditThis ? (e) => handleTouchStart(e, log) : undefined}
+                        onTouchStart={canEditThis ? (e) => handleTouchStart(e, dragPayload) : undefined}
                         title={tooltipText}
                         style={{
                           padding: '2px 5px',

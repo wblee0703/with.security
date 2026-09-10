@@ -1992,7 +1992,7 @@ class SecurityDatabase {
     }
 
     // Clean Date to YYYY-MM-DD
-    const rawDate = item.log_date || item.date || item.created_at || item.createdAt;
+    const rawDate = item.date || item.log_date || item.created_at || item.createdAt;
     const cleanDate = normalizeKstDate(rawDate) || new Date().toLocaleDateString('sv-SE');
 
     const title = String(item.title || item.workTitle || '일일 업무').trim();
@@ -2938,14 +2938,15 @@ class SecurityDatabase {
 
     if (existingIndex < 0) {
       const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
-      const pDate = cleanDate;
+      const origDate = normalizeKstDate(logItem._originalDate || logItem.originalDate || logItem.prevDate);
+      const searchDates = [origDate, cleanDate].filter(Boolean);
       const pTitle = String(preparedLog.title || '').trim().toLowerCase();
-      if (pWriter && pDate && pTitle) {
+      if (pWriter && pTitle) {
         existingIndex = currentLocal.findIndex(l => {
           const lWriter = String(l.authorUsername || l.writerId || l.writer_id || l.name || '').trim().toLowerCase();
           const lDate = normalizeKstDate(l.date || l.log_date);
           const lTitle = String(l.title || '').trim().toLowerCase();
-          return lWriter === pWriter && lDate === pDate && lTitle === pTitle;
+          return lWriter === pWriter && lTitle === pTitle && searchDates.includes(lDate);
         });
       }
     }
@@ -2957,9 +2958,10 @@ class SecurityDatabase {
     } else {
       updated = [preparedLog, ...currentLocal];
     }
-    localStorage.setItem('with_security_work_logs', JSON.stringify(updated));
+    const pureUpdated = this._deduplicateWorkLogs(updated);
+    localStorage.setItem('with_security_work_logs', JSON.stringify(pureUpdated));
     try {
-      await this.replaceCollection('work_logs', updated);
+      await this.replaceCollection('work_logs', pureUpdated);
     } catch (e) { }
 
     // Track recently edited items to protect against premature overwrite by stale server syncs
@@ -2979,6 +2981,7 @@ class SecurityDatabase {
         id: targetId,
         log_id: targetId,
         logId: targetId,
+        original_date: logItem._originalDate || logItem.originalDate || '',
         name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
         writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
         writerId: preparedLog.authorUsername || preparedLog.writerId || '',
@@ -3016,7 +3019,7 @@ class SecurityDatabase {
     }).catch(err => console.warn('Background work log save sync warning:', err));
 
     notifyDataChanged();
-    return updated;
+    return pureUpdated;
   }
 
   async deleteWorkLog(target) {

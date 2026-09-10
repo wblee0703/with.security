@@ -428,10 +428,13 @@ function doPost(e) {
 
             const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
             const itemDate = formatKstDate(item.log_date || item.date || '', true);
+            const origDate = formatKstDate(rawData.original_date || rawData._originalDate || rawData.originalDate || '', true);
             const itemTitle = String(item.title || '').trim().toLowerCase();
 
-            const compositeMatched = Boolean(itemWriter && itemDate && itemTitle &&
-              rowWriter === itemWriter && rowDate === itemDate && rowTitle === itemTitle);
+            const compositeMatched = Boolean(
+              itemWriter && itemTitle && rowWriter === itemWriter && rowTitle === itemTitle &&
+              (rowDate === itemDate || (origDate && rowDate === origDate))
+            );
 
             isMatch = idMatched || compositeMatched;
           } else if (sheetName === 'security_logs') {
