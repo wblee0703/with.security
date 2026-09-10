@@ -2083,11 +2083,18 @@ class SecurityDatabase {
     for (const l of logs) {
       const normalized = this._normalizeWorkLog(l);
       if (!normalized) continue;
-      // Key priority: (writer_id + date + title) composite key, or log_id / id
+      const rawId = String(normalized.id || normalized.log_id || '').trim();
       const wKey = String(normalized.writer_id || normalized.authorUsername || normalized.name || '').trim().toLowerCase();
       const dKey = String(normalized.date || normalized.log_date || '').trim();
       const tKey = String(normalized.title || '').trim().toLowerCase();
-      const key = (wKey && dKey && tKey) ? `WORK::${wKey}::${dKey}::${tKey}` : String(normalized.id || normalized.log_id);
+      const descKey = String(normalized.details || normalized.tasks_done || '').trim().toLowerCase();
+      
+      // If item has a distinct non-trivial ID, use that ID to preserve distinct tasks
+      let key = rawId;
+      if (!key || /^\d+$/.test(key)) {
+        // Only collapse if identical author, date, title, AND details match
+        key = (wKey && dKey && tKey) ? `WORK::${wKey}::${dKey}::${tKey}::${descKey}` : (rawId || `WORK::${Math.random()}`);
+      }
       map.set(key, normalized);
     }
     return Array.from(map.values());
@@ -2742,6 +2749,24 @@ class SecurityDatabase {
     return await this._fetchWorkLogsRemote();
   }
 
+  _isWorkLogRecentlyEdited(log, now = Date.now()) {
+    if (!log) return false;
+    const logId = String(log.id || log.log_id || '').trim();
+    if (this._recentLocalWorkLogEdits && this._recentLocalWorkLogEdits.has(logId)) {
+      const editTime = this._recentLocalWorkLogEdits.get(logId);
+      if (now - editTime < 120000) return true; // protected within 2 minutes
+    }
+    if (log.updatedAt) {
+      const t = new Date(log.updatedAt).getTime();
+      if (!isNaN(t) && now - t < 120000) return true;
+    }
+    if (log.createdAt && !String(log.id || '').match(/^\d+$/)) {
+      const t = new Date(log.createdAt).getTime();
+      if (!isNaN(t) && now - t < 120000) return true;
+    }
+    return false;
+  }
+
   async _revalidateWorkLogsInBackground() {
     const now = Date.now();
     if (this._lastWorkLogsRevalidate && (now - this._lastWorkLogsRevalidate < 30000)) return;
@@ -2760,7 +2785,47 @@ class SecurityDatabase {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
         const filteredServerLogs = serverLogs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
-        const mapped = this._deduplicateWorkLogs(filteredServerLogs);
+        const remoteMapped = this._deduplicateWorkLogs(filteredServerLogs);
+
+        // Read current local cache to merge and protect recent local additions & edits
+        const currentLocal = (() => {
+          try {
+            const raw = localStorage.getItem('with_security_work_logs');
+            return raw ? JSON.parse(raw) : [];
+          } catch (e) {
+            return [];
+          }
+        })();
+
+        const now = Date.now();
+        const mergedMap = new Map();
+
+        // 1. Populate with remote logs
+        for (const r of remoteMapped) {
+          const rId = String(r.id || r.log_id || '').trim();
+          if (rId) mergedMap.set(rId, r);
+        }
+
+        // 2. Authoritative local overlay: protect recent local saves from being reverted by stale remote data
+        for (const loc of currentLocal) {
+          if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
+          const locId = String(loc.id || loc.log_id || '').trim();
+          if (!locId) continue;
+
+          const isRecentlyEdited = this._isWorkLogRecentlyEdited(loc, now);
+
+          if (mergedMap.has(locId)) {
+            if (isRecentlyEdited) {
+              // Local version is newer / recently edited -> keep local version
+              mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
+            }
+          } else {
+            // Local item not yet reflected on remote (e.g. pending Google Sheets append)
+            mergedMap.set(locId, loc);
+          }
+        }
+
+        const mapped = this._deduplicateWorkLogs(Array.from(mergedMap.values()));
         localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
         try {
           await this.replaceCollection('work_logs', mapped);
@@ -2832,7 +2897,8 @@ class SecurityDatabase {
       log_date: cleanDate,
       dueDate: cleanDueDate,
       due_date: cleanDueDate,
-      sharedWith: cleanSharedWith
+      sharedWith: cleanSharedWith,
+      updatedAt: logItem.updatedAt || new Date().toISOString()
     };
 
     // 사용자가 명시적으로 재등록/저장하는 경우 삭제 블랙리스트에서 자동 해제
@@ -2859,7 +2925,17 @@ class SecurityDatabase {
       }
     })();
 
-    let existingIndex = currentLocal.findIndex(l => (l.id || l.log_id) === targetId);
+    const targetIdStr = String(targetId).trim();
+    const targetLogIdStr = String(preparedLog.log_id || preparedLog.logId || targetIdStr).trim();
+
+    let existingIndex = currentLocal.findIndex(l => {
+      const lId = String(l.id || '').trim();
+      const lLogId = String(l.log_id || l.logId || '').trim();
+      if (targetIdStr && (lId === targetIdStr || lLogId === targetIdStr)) return true;
+      if (targetLogIdStr && (lId === targetLogIdStr || lLogId === targetLogIdStr)) return true;
+      return false;
+    });
+
     if (existingIndex < 0) {
       const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
       const pDate = cleanDate;
@@ -2873,6 +2949,7 @@ class SecurityDatabase {
         });
       }
     }
+
     let updated;
     if (existingIndex >= 0) {
       updated = [...currentLocal];
@@ -2884,6 +2961,15 @@ class SecurityDatabase {
     try {
       await this.replaceCollection('work_logs', updated);
     } catch (e) { }
+
+    // Track recently edited items to protect against premature overwrite by stale server syncs
+    if (!this._recentLocalWorkLogEdits) this._recentLocalWorkLogEdits = new Map();
+    this._recentLocalWorkLogEdits.set(targetIdStr, Date.now());
+    if (targetLogIdStr) this._recentLocalWorkLogEdits.set(targetLogIdStr, Date.now());
+
+    // Invalidate request cache and delay remote background revalidation by 8s
+    recentResponseCache.clear();
+    this._lastWorkLogsRevalidate = Date.now() + 8000;
 
     // 2. Safe async sync with server (non-blocking, eliminates UI freeze/lag)
     safeFetchApi('/api/work-logs', {
@@ -2920,6 +3006,13 @@ class SecurityDatabase {
         sharedAt: preparedLog.sharedAt || '',
         created_at: preparedLog.createdAt || new Date().toISOString()
       })
+    }).then(() => {
+      setTimeout(() => {
+        if (this._recentLocalWorkLogEdits) {
+          this._recentLocalWorkLogEdits.delete(targetIdStr);
+          if (targetLogIdStr) this._recentLocalWorkLogEdits.delete(targetLogIdStr);
+        }
+      }, 15000);
     }).catch(err => console.warn('Background work log save sync warning:', err));
 
     notifyDataChanged();
@@ -2978,6 +3071,13 @@ class SecurityDatabase {
     // 5. Invalidate request caches & prevent background revalidation collision
     recentResponseCache.clear();
     this._lastWorkLogsRevalidate = Date.now() + 5000; // block revalidation for 5s while server processes
+    if (this._recentLocalWorkLogEdits) {
+      this._recentLocalWorkLogEdits.delete(targetId);
+      if (matchedLog) {
+        if (matchedLog.id) this._recentLocalWorkLogEdits.delete(String(matchedLog.id).trim());
+        if (matchedLog.log_id) this._recentLocalWorkLogEdits.delete(String(matchedLog.log_id).trim());
+      }
+    }
 
     // 6. Safe remote API delete (non-blocking, eliminates UI freeze/lag)
     safeFetchApi(`/api/work-logs/${encodeURIComponent(targetId)}`, { method: 'DELETE' })

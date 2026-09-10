@@ -412,8 +412,12 @@ function doPost(e) {
           } else if (sheetName === 'work_logs') {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
             const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
-            const targetId = String(item.id || item.log_id || keyValue).trim();
-            const idMatched = Boolean(targetId && (rowId === targetId || rowLogId === targetId));
+            const targetId = String(item.id || '').trim();
+            const targetLogId = String(item.log_id || '').trim();
+            const idMatched = Boolean(
+              (targetId && (rowId === targetId || rowLogId === targetId)) ||
+              (targetLogId && (rowId === targetLogId || rowLogId === targetLogId))
+            );
 
             const writerIdx = headers.indexOf('writer_id');
             const dateIdx = headers.indexOf('log_date');

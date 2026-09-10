@@ -26,7 +26,7 @@ import {
   Users,
   UserCheck
 } from 'lucide-react';
-import { dbService } from '../../services/dbService';
+import { dbService, normalizeKstDate } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { isSamePerson } from '../../services/userMatcher';
@@ -153,10 +153,10 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleStartInlineEdit = (item) => {
     setInlineAddingCardKey(null);
-    setInlineEditingId(item.id);
+    setInlineEditingId(item.id || item.log_id || item.logId);
     setInlineForm({
       title: item.title || '',
-      details: item.details || '',
+      details: item.details || item.tasksDone || item.tasks_done || '',
       subCategory: item.subCategory || item.sub_category || '일반업무',
       dueDate: item.dueDate || item.due_date || ''
     });
@@ -177,10 +177,13 @@ export default function WorkLogTab({ onTriggerToast }) {
       ...item,
       title: inlineForm.title.trim(),
       details: inlineForm.details.trim(),
+      tasks_done: inlineForm.details.trim(),
+      tasksDone: inlineForm.details.trim(),
       subCategory: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
       sub_category: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
       dueDate: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
-      due_date: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : ''
+      due_date: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
+      updatedAt: new Date().toISOString()
     };
 
     const updatedLogs = await dbService.saveWorkLog(updatedLogItem);
@@ -707,14 +710,15 @@ export default function WorkLogTab({ onTriggerToast }) {
   };
 
   const handleOpenEditModal = (logItem) => {
-    setEditingLogId(logItem.id);
+    const editId = logItem.id || logItem.log_id || logItem.logId;
+    setEditingLogId(editId);
     setForm({
       category: logItem.category || '사내 업무',
       subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
       dueDate: logItem.dueDate || logItem.due_date || '',
-      date: logItem.date || getTodayIsoDate(),
+      date: normalizeKstDate(logItem.date || logItem.log_date) || getTodayIsoDate(),
       title: logItem.title || '',
-      details: logItem.details || '',
+      details: logItem.details || logItem.tasksDone || logItem.tasks_done || '',
       siteName: logItem.siteName || logItem.site_name || ''
     });
     setExtraTasks([]);
@@ -746,8 +750,19 @@ export default function WorkLogTab({ onTriggerToast }) {
       const curSubCat = isInternal ? (form.subCategory || '일반업무') : (form.subCategory || '작업');
       const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
 
+      const existingLog = editingLogId
+        ? workLogs.find(l => {
+            const lId = String(l.id || '').trim();
+            const lLogId = String(l.log_id || l.logId || '').trim();
+            const eId = String(editingLogId).trim();
+            return lId === eId || lLogId === eId;
+          })
+        : null;
+
       const newLogItem = {
-        id: editingLogId || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+        ...(existingLog || {}),
+        id: editingLogId || (existingLog ? (existingLog.id || existingLog.log_id) : `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`),
+        log_id: (existingLog ? (existingLog.log_id || existingLog.id) : undefined) || (editingLogId ? String(editingLogId) : undefined),
         category: form.category,
         subCategory: curSubCat,
         sub_category: curSubCat,
@@ -756,16 +771,19 @@ export default function WorkLogTab({ onTriggerToast }) {
         date: form.date,
         title: form.title.trim(),
         details: form.details.trim(),
+        tasks_done: form.details.trim(),
+        tasksDone: form.details.trim(),
         siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
-        authorName,
-        authorTeam,
-        authorRank,
-        authorUsername,
-        authorDivision,
-        authorRole,
-        division: authorDivision,
-        role: authorRole,
-        createdAt: editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+        authorName: existingLog?.authorName || authorName,
+        authorTeam: existingLog?.authorTeam || authorTeam,
+        authorRank: existingLog?.authorRank || authorRank,
+        authorUsername: existingLog?.authorUsername || authorUsername,
+        authorDivision: existingLog?.authorDivision || authorDivision,
+        authorRole: existingLog?.authorRole || authorRole,
+        division: existingLog?.division || authorDivision,
+        role: existingLog?.role || authorRole,
+        createdAt: existingLog?.createdAt || (editingLogId ? timeStr : `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`),
+        updatedAt: new Date().toISOString()
       };
 
       let updatedLogs = await dbService.saveWorkLog(newLogItem);
@@ -787,6 +805,8 @@ export default function WorkLogTab({ onTriggerToast }) {
               date: form.date,
               title: ext.title.trim(),
               details: (ext.details || '').trim(),
+              tasks_done: (ext.details || '').trim(),
+              tasksDone: (ext.details || '').trim(),
               siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
               authorName,
               authorTeam,
@@ -796,7 +816,8 @@ export default function WorkLogTab({ onTriggerToast }) {
               authorRole,
               division: authorDivision,
               role: authorRole,
-              createdAt: `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+              createdAt: `${form.date} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+              updatedAt: new Date().toISOString()
             };
             updatedLogs = await dbService.saveWorkLog(extraLogItem);
           }
@@ -805,6 +826,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
       setWorkLogs(updatedLogs);
       setIsModalOpen(false);
+      setEditingLogId(null);
       setExtraTasks([]);
 
       // Automatically switch selectedDate to the saved log's date
@@ -943,8 +965,9 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = workLogs.filter(log => {
     const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
-    const logDate = log.date || log.log_date;
-    const matchesDate = viewAllDates || logDate === selectedDate;
+    const logDate = normalizeKstDate(log.date || log.log_date) || (log.date || log.log_date);
+    const selDate = normalizeKstDate(selectedDate) || selectedDate;
+    const matchesDate = viewAllDates || logDate === selDate;
     const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
     const matchesQuery = !searchQuery.trim() ||
       log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -957,7 +980,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Group logs by Date (descending)
   const groupedByDate = filteredLogs.reduce((acc, log) => {
-    const d = log.date || log.log_date || '기타 날짜';
+    const d = normalizeKstDate(log.date || log.log_date) || log.date || log.log_date || '기타 날짜';
     if (!acc[d]) acc[d] = [];
     acc[d].push(log);
     return acc;
