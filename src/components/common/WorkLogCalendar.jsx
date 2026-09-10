@@ -140,7 +140,8 @@ export default function WorkLogCalendar({
   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
   // Map work logs by date for O(1) cell lookup (including dueDate markers)
-  const logsByDate = workLogs.reduce((acc, log) => {
+  const logsByDate = (Array.isArray(workLogs) ? workLogs : []).reduce((acc, log) => {
+    if (!log) return acc;
     const d = normalizeKstDate(log.date || log.log_date) || log.date;
     if (d) {
       if (!acc[d]) acc[d] = [];

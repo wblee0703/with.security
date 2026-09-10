@@ -107,11 +107,13 @@ export default function TbmSection({
   const [allUsers, setAllUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Photo Upload & Preview Refs and State (Pre & Post)
+  // Photo Upload & Preview Refs and State (Pre & Post & Additional)
   const cameraInputRef = React.useRef(null);
   const galleryInputRef = React.useRef(null);
   const postCameraInputRef = React.useRef(null);
   const postGalleryInputRef = React.useRef(null);
+  const additionalCameraInputRef = React.useRef(null);
+  const additionalGalleryInputRef = React.useRef(null);
   const [previewModalPhoto, setPreviewModalPhoto] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -157,6 +159,7 @@ export default function TbmSection({
     conductedTime: getCurrentTimeStr(),
     safetyChecked: true,
     ppeChecked: true,
+    photos: [],
     notes: ''
   });
 
@@ -212,7 +215,8 @@ export default function TbmSection({
       conductedAt: getCurrentTimeStr(),
       isCompleted: false
     },
-    includePostCheckNow: false
+    includePostCheckNow: false,
+    tbmType: 'pre' // 'pre' (업무 전 TBM) | 'post' (업무 후 TBM)
   };
 
   const [formData, setFormData] = useState(initialFormData);
@@ -508,6 +512,55 @@ export default function TbmSection({
     }
   };
 
+  const handleAdditionalPhotoFilesSelected = async (files) => {
+    if (!files || files.length === 0) return;
+    const currentPhotos = additionalFormData.photos || [];
+    if (currentPhotos.length >= 5) {
+      if (onTriggerToast) onTriggerToast('추가 TBM 현장 사진은 최대 5장까지 등록할 수 있습니다.', 'warning');
+      return;
+    }
+
+    const availableSlots = 5 - currentPhotos.length;
+    const fileList = Array.from(files).slice(0, availableSlots);
+    const newPhotos = [];
+
+    for (const file of fileList) {
+      try {
+        const photoObj = await validateAndProcessPhoto(file);
+        newPhotos.push(photoObj);
+      } catch (err) {
+        if (onTriggerToast) onTriggerToast(err.message, 'error');
+      }
+    }
+
+    if (newPhotos.length > 0) {
+      setAdditionalFormData(prev => ({
+        ...prev,
+        photos: [...(prev.photos || []), ...newPhotos]
+      }));
+      if (onTriggerToast) onTriggerToast(`추가 TBM 현장 사진 ${newPhotos.length}장이 안전하게 등록되었습니다.`, 'success');
+    }
+  };
+
+  const handleRemoveAdditionalPhoto = (photoId) => {
+    setAdditionalFormData(prev => ({
+      ...prev,
+      photos: (prev.photos || []).filter(p => p.id !== photoId)
+    }));
+  };
+
+  const handleTriggerAdditionalCamera = () => {
+    if (additionalCameraInputRef && additionalCameraInputRef.current) {
+      additionalCameraInputRef.current.click();
+    }
+  };
+
+  const handleTriggerAdditionalGallery = () => {
+    if (additionalGalleryInputRef && additionalGalleryInputRef.current) {
+      additionalGalleryInputRef.current.click();
+    }
+  };
+
   // Load Initial Data
   const loadData = async () => {
     try {
@@ -651,7 +704,8 @@ export default function TbmSection({
         conductedAt: getCurrentTimeStr(),
         isCompleted: false
       },
-      includePostCheckNow: false
+      includePostCheckNow: false,
+      tbmType: 'pre'
     }));
     setIsRegisterModalOpen(true);
   };
@@ -766,7 +820,8 @@ export default function TbmSection({
       toolsUsed: safeTbm.toolsUsed || safeTbm.tools_used || '',
       preCheck: safePre,
       postCheck: safePost,
-      includePostCheckNow: true
+      includePostCheckNow: true,
+      tbmType: (safeTbm.status === 'ALL_COMPLETED' || safeTbm.status === 'COMPLETED' || Boolean(safeTbm.postCheck?.isCompleted)) ? 'post' : (safeTbm.tbmType || 'pre')
     };
   };
 
@@ -774,8 +829,12 @@ export default function TbmSection({
   const handleOpenPostWorkTbm = (tbm) => {
     const normalized = normalizeTbmForForm(tbm);
     setEditingTbmId(tbm.id);
-    setActiveStep(3); // Start directly at Post-Work step
-    setFormData(normalized);
+    setActiveStep(2); // Start directly at Step 2 (TBM) with 'post' chosen
+    setFormData({
+      ...normalized,
+      tbmType: 'post',
+      includePostCheckNow: true
+    });
     setIsRegisterModalOpen(true);
   };
 
@@ -847,6 +906,7 @@ export default function TbmSection({
       safetyChecked: true,
       ppeChecked: true,
       emergencyChecked: true,
+      photos: [],
       notes: ''
     });
 
@@ -880,6 +940,8 @@ export default function TbmSection({
         date: additionalFormData.conductedDate,
         safetyChecked: true,
         notes: (additionalFormData.notes || '').trim(),
+        photos: additionalFormData.photos || [],
+        photo: additionalFormData.photos?.[0]?.dataUrl || '',
         registeredBy: currentUser?.name || '시스템'
       };
 
@@ -969,16 +1031,14 @@ export default function TbmSection({
       return;
     }
 
-    const isPostDone = forcePreOnly
-      ? false
-      : (activeStep === 3 || formData.includePostCheckNow || formData.postCheck?.isCompleted);
-
-    const finalStatus = isPostDone ? 'ALL_COMPLETED' : 'PRE_COMPLETED';
+    const isPost = (formData.tbmType || 'pre') === 'post';
+    const finalStatus = isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED';
     const autoWorkTitle = formData.workTitle?.trim() || `${formData.leaderDivision} ${formData.leaderTeam} TBM`;
 
     const tbmPayload = {
       ...formData,
       id: editingTbmId || undefined,
+      tbmType: formData.tbmType || 'pre',
       workTitle: autoWorkTitle,
       status: finalStatus,
       preCheck: {
@@ -991,7 +1051,7 @@ export default function TbmSection({
         ...formData.postCheck,
         selectedItems: currentPostSelectedKeys,
         conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
-        isCompleted: isPostDone
+        isCompleted: isPost
       }
     };
 
@@ -1012,6 +1072,7 @@ export default function TbmSection({
       setFormData(prev => ({
         ...prev,
         id: undefined,
+        tbmType: 'pre',
         absentees: [], // reset absentees to initial empty state
         attendees: teamMembers.map(u => ({
           name: u.name,
@@ -1038,9 +1099,9 @@ export default function TbmSection({
 
       if (onTriggerToast) {
         onTriggerToast(
-          isPostDone
-            ? `[${formData.site}] 업무 전·후 TBM이 정상 저장되었습니다.`
-            : `[${formData.site}] 업무 전 TBM이 등록되었습니다. (업무 후 사후점검 가능)`,
+          isPost
+            ? `[${formData.site}] 업무 후 TBM이 정상 저장되었습니다.`
+            : `[${formData.site}] 업무 전 TBM이 등록되었습니다.`,
           'success'
         );
       }
@@ -1881,8 +1942,13 @@ export default function TbmSection({
             }}>
               {(() => {
                 const isStep1Done = Boolean(formData.site?.trim() && formData.leaderDivision?.trim() && formData.leaderTeam?.trim() && formData.leaderName?.trim());
-                const isStep2Done = currentSelectedKeys.length > 0;
-                const isStep3Done = currentPostSelectedKeys.length > 0 || Boolean(formData.postCheck?.isCompleted);
+                const isStep2Done = (formData.tbmType || 'pre') === 'post'
+                  ? (currentPostSelectedKeys.length > 0 || Boolean((formData.postCheck?.handoverNotes || '').trim()))
+                  : (currentSelectedKeys.length > 0 || Boolean((formData.preCheck?.notes || '').trim()));
+                const activePhotos = (formData.tbmType || 'pre') === 'post'
+                  ? (formData.postCheck?.photos || [])
+                  : (formData.preCheck?.photos || []);
+                const isStep3Done = activePhotos.length > 0;
 
                 const getStepCompletion = (st) => {
                   if (st === 1) return isStep1Done;
@@ -1893,8 +1959,8 @@ export default function TbmSection({
 
                 return [
                   { step: 1, title: '기본정보' },
-                  { step: 2, title: '업무 전 TBM' },
-                  { step: 3, title: '업무 후 TBM' }
+                  { step: 2, title: 'TBM' },
+                  { step: 3, title: '현장사진 등록' }
                 ].map(s => {
                   const isActive = activeStep === s.step;
                   const isDone = getStepCompletion(s.step);
@@ -2468,1318 +2534,1210 @@ export default function TbmSection({
                         boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
                       }}
                     >
-                      다음 단계 (업무 전 TBM) <ChevronRight size={16} />
+                      다음 단계 (TBM 작성) <ChevronRight size={16} />
                     </button>
-                    {(editingTbmId || formData.includePostCheckNow || formData.postCheck?.isCompleted) && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!formData.site?.trim()) {
-                            if (onTriggerToast) onTriggerToast('사업장을 선택해주세요.', 'warning');
-                            return;
-                          }
-                          if (!formData.leaderDivision?.trim()) {
-                            if (onTriggerToast) onTriggerToast('사업부를 선택해주세요.', 'warning');
-                            return;
-                          }
-                          if (!formData.leaderTeam?.trim()) {
-                            if (onTriggerToast) onTriggerToast('부서를 선택해주세요.', 'warning');
-                            return;
-                          }
-                          if (!formData.leaderName?.trim()) {
-                            if (onTriggerToast) onTriggerToast('TBM 주관자를 선택해주세요.', 'warning');
-                            return;
-                          }
-                          setActiveStep(3);
-                        }}
-                        style={{
-                          flex: 1,
-                          padding: '12px',
-                          borderRadius: '12px',
-                          background: '#f0fdf4',
-                          border: '1.5px solid #86efac',
-                          color: '#16a34a',
-                          fontWeight: '800',
-                          fontSize: '13px',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        🏁 업무 후 TBM으로 바로 이동
-                      </button>
-                    )}
                   </div>
                 </div>
               )}
 
-              {/* ---------------- STEP 2: Pre-Work TBM Check ---------------- */}
+              {/* ---------------- STEP 2: TBM (구분: 업무 전 TBM vs 업무 후 TBM) ---------------- */}
               {activeStep === 2 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    🛡️ Step 2. 업무 전 TBM (작업 전 안전 및 보안 점검)
-                  </div>
+                  {/* TBM Type Selector Header */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      🛡️ Step 2. TBM 내용 작성
+                    </div>
 
-                  {/* 1. Work Status / Category Dropdown */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      금일 작업 현황 *
-                    </label>
-                    <select
-                      value={formData.workCategory}
-                      onChange={(e) => setFormData({ ...formData, workCategory: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        color: formData.workCategory === '허가작업' ? '#dc2626' : formData.workCategory === '신고작업' ? '#d97706' : formData.workCategory === '작업 없음' ? '#64748b' : '#0284c7',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="허가작업">🔥 허가작업 (화기/고소/밀폐 등 위험 작업)</option>
-                      <option value="신고작업">📝 신고작업 (사전 신고 및 승인 작업)</option>
-                      <option value="일반작업">🛠️ 일반작업 (표준 유지보수 및 점검)</option>
-                      <option value="작업 없음">☕ 작업 없음 (내부 업무)</option>
-                    </select>
-                  </div>
-
-                  {/* 2. Absentee Selection (Vacation / Half-day / Education) */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span>미참여 인원 (휴가 / 반차 / 출장 / 교육 등)</span>
-                      {(formData.absentees || []).length > 0 && (
-                        <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
-                          {(formData.absentees || []).length}명 등록됨
-                        </span>
-                      )}
-                    </label>
-
-                    <div style={{
-                      background: '#f8fafc',
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #cbd5e1'
-                    }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
-                        <select
-                          value={selectedAbsenteeName}
-                          onChange={(e) => setSelectedAbsenteeName(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: '#ffffff',
-                            border: '1.5px solid #cbd5e1',
-                            fontSize: '12px',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="">-- 미참여 인원 선택 --</option>
-                          {filteredLeadersPool.map((u, idx) => (
-                            <option key={u.id || `${u.name}-${idx}`} value={u.name}>
-                              {u.name} ({u.rank || '사원'})
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={absenteeReason}
-                          onChange={(e) => setAbsenteeReason(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: '#ffffff',
-                            border: '1.5px solid #cbd5e1',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="휴가">🏖️ 휴가</option>
-                          <option value="오전반차">🌅 오전반차</option>
-                          <option value="출장">🚗 출장</option>
-                          <option value="교육">📚 교육</option>
-                          <option value="기타">기타 사유</option>
-                        </select>
-
+                    {/* Distinct Toggle Tabs: 업무 전 TBM vs 업무 후 TBM */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '800', display: 'block', marginBottom: '6px' }}>
+                        TBM 구분 선택 *
+                      </label>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: '1fr 1fr',
+                        gap: '8px',
+                        background: '#f1f5f9',
+                        padding: '4px',
+                        borderRadius: '12px'
+                      }}>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (!selectedAbsenteeName) {
-                              if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
-                              return;
-                            }
-                            const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedAbsenteeName?.trim());
-                            const exists = (formData.absentees || []).some(a => a.name?.trim() === selectedAbsenteeName?.trim());
-                            if (exists) {
-                              if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
-                              return;
-                            }
-                            setFormData(prev => ({
-                              ...prev,
-                              // Automatically exclude from attendees in Step 1
-                              attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedAbsenteeName?.trim()),
-                              absentees: [
-                                ...(prev.absentees || []),
-                                {
-                                  name: selectedAbsenteeName,
-                                  rank: targetUser?.rank || '사원',
-                                  reason: absenteeReason
-                                }
-                              ]
-                            }));
-                            setSelectedAbsenteeName('');
-                          }}
+                          onClick={() => setFormData(prev => ({ ...prev, tbmType: 'pre' }))}
                           style={{
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            background: '#0284c7',
-                            color: '#ffffff',
+                            padding: '10px 8px',
+                            borderRadius: '9px',
                             border: 'none',
-                            fontSize: '12px',
-                            fontWeight: '700',
+                            background: (formData.tbmType || 'pre') === 'pre' ? '#0284c7' : 'transparent',
+                            color: (formData.tbmType || 'pre') === 'pre' ? '#ffffff' : '#64748b',
+                            fontSize: '13px',
+                            fontWeight: '800',
                             cursor: 'pointer',
-                            whiteSpace: 'nowrap'
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            boxShadow: (formData.tbmType || 'pre') === 'pre' ? '0 2px 6px rgba(2, 132, 199, 0.25)' : 'none',
+                            transition: 'all 0.2s ease'
                           }}
                         >
-                          + 추가
+                          <ShieldCheck size={16} /> 업무 전 TBM
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(prev => ({ ...prev, tbmType: 'post', includePostCheckNow: true }))}
+                          style={{
+                            padding: '10px 8px',
+                            borderRadius: '9px',
+                            border: 'none',
+                            background: (formData.tbmType || 'pre') === 'post' ? '#16a34a' : 'transparent',
+                            color: (formData.tbmType || 'pre') === 'post' ? '#ffffff' : '#64748b',
+                            fontSize: '13px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px',
+                            boxShadow: (formData.tbmType || 'pre') === 'post' ? '0 2px 6px rgba(22, 163, 74, 0.25)' : 'none',
+                            transition: 'all 0.2s ease'
+                          }}
+                        >
+                          <CheckCircle2 size={16} /> 업무 후 TBM
                         </button>
                       </div>
-
-                      {/* Absentee Tag Badges */}
-                      {(formData.absentees || []).length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                          {(formData.absentees || []).map((abs, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                background: '#fff1f2',
-                                color: '#e11d48',
-                                border: '1px solid #fecdd3',
-                                padding: '4px 8px',
-                                borderRadius: '6px',
-                                fontSize: '11.5px',
-                                fontWeight: '700',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const removed = (formData.absentees || [])[idx];
-                                  const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    absentees: (prev.absentees || []).filter((_, i) => i !== idx),
-                                    // Restore back to attendees if not already present
-                                    attendees: (() => {
-                                      const attName = targetUser?.name || removed?.name;
-                                      if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
-                                        return [
-                                          ...(prev.attendees || []),
-                                          {
-                                            name: attName,
-                                            rank: targetUser?.rank || removed?.rank || '사원',
-                                            team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
-                                            division: targetUser?.division || prev.leaderDivision || '',
-                                            phone: targetUser?.phone || ''
-                                          }
-                                        ];
-                                      }
-                                      return prev.attendees || [];
-                                    })()
-                                  }));
-                                }}
-                                style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
 
-                  {/* 3. Pre-Work Checklist Multi-Select Dropdown & Selected Items List */}
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span>재해 예방 활동 *</span>
-                    </label>
-
-                    {/* Custom Multi-Select Dropdown Trigger Bar */}
-                    <div
-                      onClick={() => setIsChecklistDropdownOpen(prev => !prev)}
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: isChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: currentSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        boxShadow: isChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
-                        transition: 'all 0.2s ease',
-                        marginBottom: '10px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <ShieldCheck size={16} color={currentSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
-                        <span>
-                          {currentSelectedKeys.length === 0
-                            ? '안전 점검 항목 선택'
-                            : `${currentSelectedKeys.length}개 점검 항목 선택됨`}
-                        </span>
+                  {/* ================= CASE A: 업무 전 TBM FORM ================= */}
+                  {(formData.tbmType || 'pre') === 'pre' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {/* 1. Work Status / Category Dropdown */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          금일 작업 현황 *
+                        </label>
+                        <select
+                          value={formData.workCategory}
+                          onChange={(e) => setFormData({ ...formData, workCategory: e.target.value })}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            color: formData.workCategory === '허가작업' ? '#dc2626' : formData.workCategory === '신고작업' ? '#d97706' : formData.workCategory === '작업 없음' ? '#64748b' : '#0284c7',
+                            outline: 'none'
+                          }}
+                        >
+                          <option value="허가작업">🔥 허가작업 (화기/고소/밀폐 등 위험 작업)</option>
+                          <option value="신고작업">📝 신고작업 (사전 신고 및 승인 작업)</option>
+                          <option value="일반작업">🛠️ 일반작업 (표준 유지보수 및 점검)</option>
+                          <option value="작업 없음">☕ 작업 없음 (내부 업무)</option>
+                        </select>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
-                          {isChecklistDropdownOpen ? '닫기' : '선택'}
-                        </span>
-                        {isChecklistDropdownOpen ? (
-                          <ChevronUp size={16} color="#0284c7" />
+
+                      {/* 2. Absentee Selection */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span>미참여 인원 (휴가 / 반차 / 출장 / 교육 등)</span>
+                          {(formData.absentees || []).length > 0 && (
+                            <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
+                              {(formData.absentees || []).length}명 등록됨
+                            </span>
+                          )}
+                        </label>
+
+                        <div style={{
+                          background: '#f8fafc',
+                          padding: '12px 14px',
+                          borderRadius: '12px',
+                          border: '1.5px solid #cbd5e1'
+                        }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                            <select
+                              value={selectedAbsenteeName}
+                              onChange={(e) => setSelectedAbsenteeName(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '12px',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="">-- 미참여 인원 선택 --</option>
+                              {filteredLeadersPool.map((u, idx) => (
+                                <option key={u.id || `${u.name}-${idx}`} value={u.name}>
+                                  {u.name} ({u.rank || '사원'})
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={absenteeReason}
+                              onChange={(e) => setAbsenteeReason(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="휴가">🏖️ 휴가</option>
+                              <option value="오전반차">🌅 오전반차</option>
+                              <option value="오후반차">🌇 오후반차</option>
+                              <option value="출장">🚗 출장</option>
+                              <option value="교육">📚 교육</option>
+                              <option value="기타">기타 사유</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedAbsenteeName) {
+                                  if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
+                                  return;
+                                }
+                                const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedAbsenteeName?.trim());
+                                const curAbsList = formData.absentees || [];
+                                const exists = curAbsList.some(a => a.name?.trim() === selectedAbsenteeName?.trim());
+                                if (exists) {
+                                  if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
+                                  return;
+                                }
+                                setFormData(prev => ({
+                                  ...prev,
+                                  attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedAbsenteeName?.trim()),
+                                  absentees: [
+                                    ...(prev.absentees || []),
+                                    {
+                                      name: selectedAbsenteeName,
+                                      rank: targetUser?.rank || '사원',
+                                      reason: absenteeReason
+                                    }
+                                  ]
+                                }));
+                                setSelectedAbsenteeName('');
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                background: '#0284c7',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              + 추가
+                            </button>
+                          </div>
+
+                          {/* Absentee Tag Badges */}
+                          {(formData.absentees || []).length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                              {(formData.absentees || []).map((abs, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    background: '#fff1f2',
+                                    color: '#e11d48',
+                                    border: '1px solid #fecdd3',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '700',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const removed = (formData.absentees || [])[idx];
+                                      const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        attendees: (() => {
+                                          const attName = targetUser?.name || removed?.name;
+                                          if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
+                                            return [
+                                              ...(prev.attendees || []),
+                                              {
+                                                name: attName,
+                                                rank: targetUser?.rank || removed?.rank || '사원',
+                                                team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
+                                                division: targetUser?.division || prev.leaderDivision || '',
+                                                phone: targetUser?.phone || ''
+                                              }
+                                            ];
+                                          }
+                                          return prev.attendees || [];
+                                        })(),
+                                        absentees: (prev.absentees || []).filter((_, i) => i !== idx)
+                                      }));
+                                    }}
+                                    style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. Pre-Work Checklist Dropdown & Badges */}
+                      <div style={{ position: 'relative' }}>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span>안전 점검 항목 선택 *</span>
+                        </label>
+
+                        {/* Custom Multi-Select Dropdown Trigger Bar */}
+                        <div
+                          onClick={() => setIsChecklistDropdownOpen(prev => !prev)}
+                          style={{
+                            width: '100%',
+                            padding: '11px 14px',
+                            borderRadius: '12px',
+                            background: '#ffffff',
+                            border: isChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: currentSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            boxShadow: isChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                            transition: 'all 0.2s ease',
+                            marginBottom: '10px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ShieldCheck size={16} color={currentSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
+                            <span>
+                              {currentSelectedKeys.length === 0
+                                ? '안전 점검 항목 선택'
+                                : `${currentSelectedKeys.length}개 점검 항목 선택됨`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                              {isChecklistDropdownOpen ? '닫기' : '선택'}
+                            </span>
+                            {isChecklistDropdownOpen ? (
+                              <ChevronUp size={16} color="#0284c7" />
+                            ) : (
+                              <ChevronDown size={16} color="#64748b" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Dropdown Suggestion Popup (Multiple Checkbox Selector) */}
+                        {isChecklistDropdownOpen && (
+                          <div className="thin-scrollbar" style={{
+                            position: 'absolute',
+                            top: '72px',
+                            left: 0,
+                            right: 0,
+                            zIndex: 50,
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '10px',
+                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                            padding: '8px',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                            gap: '6px',
+                            maxHeight: '300px',
+                            overflowY: 'auto'
+                          }}>
+                            {PRE_WORK_CHECKLIST_ITEMS.map(item => {
+                              const isChecked = currentSelectedKeys.includes(item.key);
+                              return (
+                                <div
+                                  key={item.key}
+                                  onClick={() => toggleCheckItem(item.key)}
+                                  style={{
+                                    padding: '7px 8px',
+                                    borderRadius: '6px',
+                                    background: isChecked ? '#f0fdf4' : '#ffffff',
+                                    border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    userSelect: 'none',
+                                    minWidth: 0
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => { }}
+                                    style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
+                                  />
+                                  <div style={{
+                                    flex: 1,
+                                    fontSize: '11px',
+                                    fontWeight: isChecked ? '700' : '600',
+                                    color: isChecked ? '#15803d' : '#334155',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }} title={item.label}>
+                                    {item.label}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Selected Checklist Items Output */}
+                        {currentSelectedKeys.length > 0 ? (
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                            gap: '6px'
+                          }}>
+                            {currentSelectedKeys.map(key => {
+                              const item = PRE_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
+                              if (!item) return null;
+                              return (
+                                <div
+                                  key={item.key}
+                                  style={{
+                                    padding: '7px 6px',
+                                    borderRadius: '6px',
+                                    background: '#f0fdf4',
+                                    border: '1.5px solid #86efac',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textAlign: 'center',
+                                    minWidth: 0,
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                  }}
+                                >
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: '#15803d',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }} title={item.label}>
+                                    {item.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         ) : (
-                          <ChevronDown size={16} color="#64748b" />
+                          <div style={{
+                            padding: '16px',
+                            borderRadius: '12px',
+                            background: '#f8fafc',
+                            border: '1.5px dashed #cbd5e1',
+                            textAlign: 'center',
+                            color: '#64748b',
+                            fontSize: '12.5px'
+                          }}>
+                            <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
+                          </div>
                         )}
                       </div>
-                    </div>
 
-                    {/* Dropdown Suggestion Popup (Multiple Checkbox Selector) */}
-                    {isChecklistDropdownOpen && (
-                      <div className="thin-scrollbar" style={{
-                        position: 'absolute',
-                        top: '72px',
-                        left: 0,
-                        right: 0,
-                        zIndex: 50,
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        borderRadius: '10px',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-                        padding: '8px',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        gap: '6px',
-                        maxHeight: '300px',
-                        overflowY: 'auto'
-                      }}>
-
-                        {PRE_WORK_CHECKLIST_ITEMS.map(item => {
-                          const isChecked = currentSelectedKeys.includes(item.key);
-                          return (
-                            <div
-                              key={item.key}
-                              onClick={() => toggleCheckItem(item.key)}
-                              style={{
-                                padding: '7px 8px',
-                                borderRadius: '6px',
-                                background: isChecked ? '#f0fdf4' : '#ffffff',
-                                border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                userSelect: 'none',
-                                minWidth: 0
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => { }} // handled by parent div onClick
-                                style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
-                              />
-                              <div style={{
-                                flex: 1,
-                                fontSize: '11px',
-                                fontWeight: isChecked ? '700' : '600',
-                                color: isChecked ? '#15803d' : '#334155',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }} title={item.label}>
-                                {item.label}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Selected Checklist Items Output (3 Columns, Clean Badges) */}
-                    {currentSelectedKeys.length > 0 ? (
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                        gap: '6px'
-                      }}>
-                        {currentSelectedKeys.map(key => {
-                          const item = PRE_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
-                          if (!item) return null;
-                          return (
-                            <div
-                              key={item.key}
-                              style={{
-                                padding: '7px 6px',
-                                borderRadius: '6px',
-                                background: '#f0fdf4',
-                                border: '1.5px solid #86efac',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                textAlign: 'center',
-                                minWidth: 0,
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                              }}
-                            >
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#15803d',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }} title={item.label}>
-                                {item.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div style={{
-                        padding: '16px',
-                        borderRadius: '12px',
-                        background: '#f8fafc',
-                        border: '1.5px dashed #cbd5e1',
-                        textAlign: 'center',
-                        color: '#64748b',
-                        fontSize: '12.5px'
-                      }}>
-                        <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4. Guidance Notes & Time */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        전달 사항 및 지도내역
-                      </label>
-                      <textarea
-                        rows={5}
-                        placeholder="작업 전 안전수칙 준수, 위험요소 사전 통제, 작업자 지도 및 전달 사항을 입력하세요."
-                        value={formData.preCheck.notes}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          preCheck: { ...prev.preCheck, notes: e.target.value }
-                        }))}
-                        style={{
-                          width: '100%',
-                          minHeight: '110px',
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12.5px',
-                          lineHeight: '1.5',
-                          outline: 'none',
-                          resize: 'none'
-                        }}
-                      />
-                    </div>
-                    {/* 4. Photo Registration Section (Replaced TBM Time) */}
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <Camera size={14} color="#0284c7" />
-                          <span>TBM 현장 사진 등록</span>
-                        </span>
-                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '800' }}>
-                          {(formData.preCheck?.photos || []).length} / 5장
-                        </span>
-                      </label>
-
-                      {/* Hidden File Inputs for Camera & Upload (Positioned offscreen so mobile webviews reliably trigger camera) */}
-                      <input
-                        ref={cameraInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) => {
-                          handlePhotoFilesSelected(e.target.files);
-                          e.target.value = '';
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: '-9999px',
-                          left: '-9999px',
-                          opacity: 0,
-                          width: '1px',
-                          height: '1px',
-                          pointerEvents: 'none'
-                        }}
-                        tabIndex={-1}
-                        aria-hidden="true"
-                      />
-
-                      <input
-                        ref={galleryInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          handlePhotoFilesSelected(e.target.files);
-                          e.target.value = '';
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: '-9999px',
-                          left: '-9999px',
-                          opacity: 0,
-                          width: '1px',
-                          height: '1px',
-                          pointerEvents: 'none'
-                        }}
-                        tabIndex={-1}
-                        aria-hidden="true"
-                      />
-
-                      {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerCamera('pre')}
+                      {/* 4. Guidance Notes */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          전달 사항 및 지도내역
+                        </label>
+                        <textarea
+                          rows={4}
+                          placeholder="작업 전 안전수칙 준수, 위험요소 사전 통제, 작업자 지도 및 전달 사항을 입력하세요."
+                          value={formData.preCheck.notes}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            preCheck: { ...prev.preCheck, notes: e.target.value }
+                          }))}
                           style={{
-                            padding: '9px 12px',
-                            borderRadius: '8px',
-                            background: '#f0f9ff',
-                            border: '1.5px dashed #0284c7',
-                            color: '#0369a1',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Camera size={15} /> 카메라 촬영
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerGallery('pre')}
-                          style={{
-                            padding: '9px 12px',
-                            borderRadius: '8px',
+                            width: '100%',
+                            minHeight: '100px',
+                            padding: '10px 12px',
+                            borderRadius: '12px',
                             background: '#ffffff',
                             border: '1.5px solid #cbd5e1',
-                            color: '#334155',
-                            fontSize: '12px',
+                            fontSize: '12.5px',
+                            lineHeight: '1.5',
+                            outline: 'none',
+                            resize: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ================= CASE B: 업무 후 TBM FORM ================= */}
+                  {(formData.tbmType || 'pre') === 'post' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {/* 1. Post-Work Outcome Dropdown */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          금일 작업 결과 현황 *
+                        </label>
+                        <select
+                          value={formData.postCheck?.workOutcome || '계획 이행 완료'}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            includePostCheckNow: true,
+                            postCheck: { ...(prev.postCheck || {}), workOutcome: e.target.value }
+                          }))}
+                          style={{
+                            width: '100%',
+                            padding: '10px 14px',
+                            borderRadius: '12px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '13px',
                             fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease'
+                            color: formData.postCheck?.workOutcome === '작업 미비 및 특이사항 발생' ? '#dc2626' : '#16a34a',
+                            outline: 'none'
                           }}
                         >
-                          <ImageIcon size={15} color="#64748b" /> 사진 업로드 (캡처/앨범)
-                        </button>
+                          <option value="계획 이행 완료">✅ 계획 이행 완료 (정상 완료)</option>
+                          <option value="작업 미비 및 특이사항 발생">⚠️ 작업 미비 및 특이사항 발생</option>
+                        </select>
                       </div>
 
-                      {/* Photo Thumbnail Grid */}
-                      {(formData.preCheck?.photos || []).length > 0 && (
+                      {/* 2. Post-Work Absentee Selection */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span>인원 변동 및 특이사항 (시작회의 기준)</span>
+                          {(formData.postCheck?.absentees || []).length > 0 && (
+                            <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
+                              {(formData.postCheck?.absentees || []).length}명 등록됨
+                            </span>
+                          )}
+                        </label>
+
                         <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
-                          gap: '8px',
-                          padding: '10px',
                           background: '#f8fafc',
-                          borderRadius: '10px',
-                          border: '1px solid #e2e8f0'
+                          padding: '12px 14px',
+                          borderRadius: '12px',
+                          border: '1.5px solid #cbd5e1'
                         }}>
-                          {(formData.preCheck?.photos || []).map((photo) => (
-                            <div
-                              key={photo.id}
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                            <select
+                              value={selectedPostAbsenteeName}
+                              onChange={(e) => setSelectedPostAbsenteeName(e.target.value)}
                               style={{
-                                position: 'relative',
                                 width: '100%',
-                                paddingBottom: '100%',
+                                padding: '8px 10px',
                                 borderRadius: '8px',
-                                overflow: 'hidden',
+                                background: '#ffffff',
                                 border: '1.5px solid #cbd5e1',
-                                background: '#000000',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                fontSize: '12px',
+                                outline: 'none'
                               }}
                             >
-                              <img
-                                src={photo.dataUrl}
-                                alt="TBM 현장 사진"
-                                onClick={() => setPreviewModalPhoto(photo.dataUrl)}
-                                title="클릭하여 사진 확대"
+                              <option value="">-- 미참여 인원 선택 --</option>
+                              {filteredLeadersPool.map((u, idx) => (
+                                <option key={u.id || `${u.name}-${idx}`} value={u.name}>
+                                  {u.name} ({u.rank || '사원'})
+                                </option>
+                              ))}
+                            </select>
+
+                            <select
+                              value={postAbsenteeReason}
+                              onChange={(e) => setPostAbsenteeReason(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: '8px',
+                                background: '#ffffff',
+                                border: '1.5px solid #cbd5e1',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="오후반차">🌇 오후반차</option>
+                              <option value="휴가">🏖️ 휴가</option>
+                              <option value="출장">🚗 출장</option>
+                              <option value="교육">📚 교육</option>
+                              <option value="기타">기타 사유</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedPostAbsenteeName) {
+                                  if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
+                                  return;
+                                }
+                                const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedPostAbsenteeName?.trim());
+                                const curAbsList = formData.postCheck?.absentees || [];
+                                const exists = curAbsList.some(a => a.name?.trim() === selectedPostAbsenteeName?.trim());
+                                if (exists) {
+                                  if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
+                                  return;
+                                }
+                                setFormData(prev => ({
+                                  ...prev,
+                                  includePostCheckNow: true,
+                                  attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedPostAbsenteeName?.trim()),
+                                  postCheck: {
+                                    ...(prev.postCheck || {}),
+                                    absentees: [
+                                      ...(prev.postCheck?.absentees || []),
+                                      {
+                                        name: selectedPostAbsenteeName,
+                                        rank: targetUser?.rank || '사원',
+                                        reason: postAbsenteeReason
+                                      }
+                                    ]
+                                  }
+                                }));
+                                setSelectedPostAbsenteeName('');
+                              }}
+                              style={{
+                                padding: '8px 12px',
+                                borderRadius: '8px',
+                                background: '#0284c7',
+                                color: '#ffffff',
+                                border: 'none',
+                                fontSize: '12px',
+                                fontWeight: '700',
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              + 추가
+                            </button>
+                          </div>
+
+                          {/* Post-Absentee Tag Badges */}
+                          {(formData.postCheck?.absentees || []).length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
+                              {(formData.postCheck?.absentees || []).map((abs, idx) => (
+                                <span
+                                  key={idx}
+                                  style={{
+                                    background: '#fff1f2',
+                                    color: '#e11d48',
+                                    border: '1px solid #fecdd3',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '700',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const removed = (formData.postCheck?.absentees || [])[idx];
+                                      const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        attendees: (() => {
+                                          const attName = targetUser?.name || removed?.name;
+                                          if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
+                                            return [
+                                              ...(prev.attendees || []),
+                                              {
+                                                name: attName,
+                                                rank: targetUser?.rank || removed?.rank || '사원',
+                                                team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
+                                                division: targetUser?.division || prev.leaderDivision || '',
+                                                phone: targetUser?.phone || ''
+                                              }
+                                            ];
+                                          }
+                                          return prev.attendees || [];
+                                        })(),
+                                        postCheck: {
+                                          ...(prev.postCheck || {}),
+                                          absentees: (prev.postCheck?.absentees || []).filter((_, i) => i !== idx)
+                                        }
+                                      }));
+                                    }}
+                                    style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 3. Post-Work Checklist Dropdown & Badges */}
+                      <div style={{ position: 'relative' }}>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span>재해 예방 활동 *</span>
+                        </label>
+
+                        {/* Custom Multi-Select Dropdown Trigger Bar */}
+                        <div
+                          onClick={() => setIsPostChecklistDropdownOpen(prev => !prev)}
+                          style={{
+                            width: '100%',
+                            padding: '11px 14px',
+                            borderRadius: '12px',
+                            background: '#ffffff',
+                            border: isPostChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
+                            fontSize: '13px',
+                            fontWeight: '600',
+                            color: currentPostSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            boxShadow: isPostChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                            transition: 'all 0.2s ease',
+                            marginBottom: '10px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <ShieldCheck size={16} color={currentPostSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
+                            <span>
+                              {currentPostSelectedKeys.length === 0
+                                ? '안전 점검 항목 선택'
+                                : `${currentPostSelectedKeys.length}개 점검 항목 선택됨`}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
+                              {isPostChecklistDropdownOpen ? '닫기' : '선택'}
+                            </span>
+                            {isPostChecklistDropdownOpen ? (
+                              <ChevronUp size={16} color="#0284c7" />
+                            ) : (
+                              <ChevronDown size={16} color="#64748b" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Dropdown Suggestion Popup (Multiple Checkbox Selector) */}
+                        {isPostChecklistDropdownOpen && (
+                          <div className="thin-scrollbar" style={{
+                            position: 'absolute',
+                            top: '72px',
+                            left: 0,
+                            right: 0,
+                            zIndex: 50,
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '10px',
+                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
+                            padding: '8px',
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                            gap: '6px',
+                            maxHeight: '300px',
+                            overflowY: 'auto'
+                          }}>
+                            {POST_WORK_CHECKLIST_ITEMS.map(item => {
+                              const isChecked = currentPostSelectedKeys.includes(item.key);
+                              return (
+                                <div
+                                  key={item.key}
+                                  onClick={() => togglePostCheckItem(item.key)}
+                                  style={{
+                                    padding: '7px 8px',
+                                    borderRadius: '6px',
+                                    background: isChecked ? '#f0fdf4' : '#ffffff',
+                                    border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    userSelect: 'none',
+                                    minWidth: 0
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => { }}
+                                    style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
+                                  />
+                                  <div style={{
+                                    flex: 1,
+                                    fontSize: '11px',
+                                    fontWeight: isChecked ? '700' : '600',
+                                    color: isChecked ? '#15803d' : '#334155',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }} title={item.label}>
+                                    {item.label}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Selected Checklist Items Output */}
+                        {currentPostSelectedKeys.length > 0 ? (
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                            gap: '6px'
+                          }}>
+                            {currentPostSelectedKeys.map(key => {
+                              const item = POST_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
+                              if (!item) return null;
+                              return (
+                                <div
+                                  key={item.key}
+                                  style={{
+                                    padding: '7px 6px',
+                                    borderRadius: '6px',
+                                    background: '#f0fdf4',
+                                    border: '1.5px solid #86efac',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textAlign: 'center',
+                                    minWidth: 0,
+                                    boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                  }}
+                                >
+                                  <span style={{
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: '#15803d',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }} title={item.label}>
+                                    {item.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div style={{
+                            padding: '16px',
+                            borderRadius: '12px',
+                            background: '#f8fafc',
+                            border: '1.5px dashed #cbd5e1',
+                            textAlign: 'center',
+                            color: '#64748b',
+                            fontSize: '12.5px'
+                          }}>
+                            <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 4. 4대 사후 안전·보안 점검 체크박스 */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          4대 사후 안전·보안 점검
+                        </label>
+                        <div style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                          gap: '6px',
+                          background: '#f8fafc',
+                          padding: '10px',
+                          borderRadius: '10px',
+                          border: '1.5px solid #cbd5e1'
+                        }}>
+                          {[
+                            { key: 'cleanupCheck', label: '🧹 현장 정리정돈' },
+                            { key: 'toolRecoveryCheck', label: '🔧 공구·자재 회수' },
+                            { key: 'securityMediaCheck', label: '🔒 보안매체·문서 점검' },
+                            { key: 'powerSafetyCheck', label: '⚡ 잔류 전원·화기 확인' }
+                          ].map(item => {
+                            const isChecked = Boolean(formData.postCheck?.[item.key]);
+                            return (
+                              <div
+                                key={item.key}
+                                onClick={() => setFormData(prev => ({
+                                  ...prev,
+                                  includePostCheckNow: true,
+                                  postCheck: { ...(prev.postCheck || {}), [item.key]: !isChecked }
+                                }))}
                                 style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  cursor: 'pointer'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleRemovePhoto(photo.id)}
-                                title="사진 삭제"
-                                style={{
-                                  position: 'absolute',
-                                  top: '3px',
-                                  right: '3px',
-                                  width: '20px',
-                                  height: '20px',
-                                  borderRadius: '50%',
-                                  background: 'rgba(225, 29, 72, 0.9)',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  cursor: 'pointer',
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  background: isChecked ? '#f0fdf4' : '#ffffff',
+                                  border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '12px',
-                                  fontWeight: '900',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                  gap: '6px',
+                                  cursor: 'pointer',
+                                  userSelect: 'none'
                                 }}
                               >
-                                ×
-                              </button>
-                            </div>
-                          ))}
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => { }}
+                                  style={{ width: '14px', height: '14px', accentColor: '#16a34a', pointerEvents: 'none' }}
+                                />
+                                <span style={{ fontSize: '11.5px', fontWeight: isChecked ? '700' : '600', color: isChecked ? '#15803d' : '#334155' }}>
+                                  {item.label}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
+
+                      {/* 5. Post-Check Handover Notes */}
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          전달사항 및 계획대비 변경 또는 특이사항
+                        </label>
+                        <textarea
+                          rows={4}
+                          placeholder="작업 종료 후 전달사항, 계획대비 변경사항 또는 특이사항을 상세히 입력하세요."
+                          value={formData.postCheck.handoverNotes}
+                          onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            includePostCheckNow: true,
+                            postCheck: { ...prev.postCheck, handoverNotes: e.target.value }
+                          }))}
+                          style={{
+                            width: '100%',
+                            minHeight: '100px',
+                            padding: '10px 12px',
+                            borderRadius: '12px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            fontSize: '12.5px',
+                            lineHeight: '1.5',
+                            outline: 'none',
+                            resize: 'none'
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Step 2 Action Buttons */}
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
                       type="button"
                       onClick={() => setActiveStep(1)}
                       className="glass-button"
-                      style={{ flex: 1, padding: '12px 8px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12.5px' }}
+                      style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12.5px' }}
                     >
-                      기본정보 수정 (Step 1) ✏️
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() => handleSubmitTbm(true)}
-                      style={{
-                        flex: 1.2,
-                        padding: '12px',
-                        borderRadius: '12px',
-                        background: '#e0f2fe',
-                        color: '#0369a1',
-                        border: '1.5px solid #bae6fd',
-                        fontSize: '12.5px',
-                        fontWeight: '800',
-                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                        opacity: isSubmitting ? 0.7 : 1,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '4px'
-                      }}
-                    >
-                      {isSubmitting ? '⏳ 저장 중...' : <><CheckCircle2 size={16} /> 업무전만 저장</>}
+                      ← 이전 단계 (기본정보)
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveStep(3)}
                       className="glass-button-primary"
                       style={{
-                        flex: 1.2,
+                        flex: 2,
                         padding: '12px',
                         borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                        background: (formData.tbmType || 'pre') === 'post'
+                          ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
+                          : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                         fontWeight: '800',
-                        fontSize: '12.5px',
+                        fontSize: '13px',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '4px',
-                        boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
+                        gap: '6px',
+                        boxShadow: (formData.tbmType || 'pre') === 'post'
+                          ? '0 4px 14px rgba(22, 163, 74, 0.25)'
+                          : '0 4px 14px rgba(2, 132, 199, 0.25)'
                       }}
                     >
-                      업무 후 TBM <ChevronRight size={16} />
+                      다음 단계 (현장사진 등록) <ChevronRight size={16} />
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* ---------------- STEP 3: Post-Work TBM Check ---------------- */}
+              {/* ---------------- STEP 3: 현장사진 등록 ---------------- */}
               {activeStep === 3 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    🏁 Step 3. 업무 후 TBM (작업 종료 및 정리·퇴실 점검)
-                  </div>
-
-                  {/* Quick Shortcut to Review / Edit Step 1 & Step 2 Basic Info */}
+                  {/* Step 3 Header Banner */}
                   <div style={{
+                    padding: '12px 14px',
+                    borderRadius: '12px',
+                    background: (formData.tbmType || 'pre') === 'post' ? '#f0fdf4' : '#f0f9ff',
+                    border: (formData.tbmType || 'pre') === 'post' ? '1.5px solid #86efac' : '1.5px solid #7dd3fc',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    background: '#f0fdf4',
-                    border: '1.5px solid #86efac',
-                    marginBottom: '2px',
-                    gap: '8px'
+                    justifyContent: 'space-between'
                   }}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontSize: '12px', fontWeight: '800', color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        📍 {formData.site || '사업장 미지정'} | 주관자: {formData.leaderName || '미지정'} ({(() => {
-                          const lName = formData.leaderName || '';
-                          const atts = formData.attendees || [];
-                          const others = atts.filter(a => a.name !== lName);
-                          const total = others.length + (lName ? 1 : 0);
-                          return `${total}명 참여`;
-                        })()})
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
-                        일자: {formData.date} | 업무전 기본정보 수정이 필요하신가요?
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Camera size={18} color={(formData.tbmType || 'pre') === 'post' ? '#16a34a' : '#0284c7'} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '800', color: (formData.tbmType || 'pre') === 'post' ? '#15803d' : '#0369a1' }}>
+                          📷 Step 3. 현장사진 등록 ({(formData.tbmType || 'pre') === 'post' ? '업무 후 TBM' : '업무 전 TBM'})
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#64748b' }}>
+                          {(formData.tbmType || 'pre') === 'post'
+                            ? '작업 완료 후 현장 정리 및 점검 사진을 등록하세요.'
+                            : '작업 시작 전 안전 조치 및 작업 현장 사진을 등록하세요.'}
+                        </div>
                       </div>
                     </div>
+                    <span style={{
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      padding: '3px 8px',
+                      borderRadius: '10px',
+                      background: '#ffffff',
+                      color: (formData.tbmType || 'pre') === 'post' ? '#16a34a' : '#0284c7',
+                      border: '1px solid currentColor'
+                    }}>
+                      {((formData.tbmType || 'pre') === 'post' ? (formData.postCheck?.photos || []) : (formData.preCheck?.photos || [])).length} / 5장
+                    </span>
+                  </div>
+
+                  {/* Hidden File Inputs for Pre and Post */}
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      handlePhotoFilesSelected(e.target.files);
+                      e.target.value = '';
+                    }}
+                    style={{ position: 'absolute', top: '-9999px', left: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      handlePhotoFilesSelected(e.target.files);
+                      e.target.value = '';
+                    }}
+                    style={{ position: 'absolute', top: '-9999px', left: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+
+                  <input
+                    ref={postCameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={(e) => {
+                      handlePostPhotoFilesSelected(e.target.files);
+                      e.target.value = '';
+                    }}
+                    style={{ position: 'absolute', top: '-9999px', left: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+                  <input
+                    ref={postGalleryInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      handlePostPhotoFilesSelected(e.target.files);
+                      e.target.value = '';
+                    }}
+                    style={{ position: 'absolute', top: '-9999px', left: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                    tabIndex={-1}
+                    aria-hidden="true"
+                  />
+
+                  {/* Action Buttons: Camera Shoot & Gallery Upload */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     <button
                       type="button"
-                      onClick={() => setActiveStep(1)}
+                      onClick={() => handleTriggerCamera((formData.tbmType || 'pre') === 'post' ? 'post' : 'pre')}
                       style={{
-                        padding: '6px 12px',
-                        borderRadius: '8px',
-                        background: '#ffffff',
-                        border: '1.5px solid #16a34a',
-                        fontSize: '11.5px',
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: (formData.tbmType || 'pre') === 'post' ? '#f0fdf4' : '#f0f9ff',
+                        border: (formData.tbmType || 'pre') === 'post' ? '1.5px dashed #16a34a' : '1.5px dashed #0284c7',
+                        color: (formData.tbmType || 'pre') === 'post' ? '#15803d' : '#0369a1',
+                        fontSize: '12.5px',
                         fontWeight: '700',
-                        color: '#16a34a',
                         cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s ease'
                       }}
                     >
-                      기본정보 수정 ✏️
+                      <Camera size={16} /> 카메라 촬영
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerGallery((formData.tbmType || 'pre') === 'post' ? 'post' : 'pre')}
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        background: '#ffffff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#334155',
+                        fontSize: '12.5px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <ImageIcon size={16} color="#64748b" /> 사진 업로드 (앨범/캡처)
                     </button>
                   </div>
 
-                  {/* 1. Post-Work Outcome Dropdown */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      금일 작업 결과 현황 *
-                    </label>
-                    <select
-                      value={formData.postCheck?.workOutcome || '계획 이행 완료'}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        includePostCheckNow: true,
-                        postCheck: { ...(prev.postCheck || {}), workOutcome: e.target.value }
-                      }))}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        color: formData.postCheck?.workOutcome === '작업 미비 및 특이사항 발생' ? '#dc2626' : '#16a34a',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="계획 이행 완료">✅ 계획 이행 완료 (정상 완료)</option>
-                      <option value="작업 미비 및 특이사항 발생">⚠️ 작업 미비 및 특이사항 발생</option>
-                    </select>
-                  </div>
+                  {/* Photo Thumbnails Grid */}
+                  {(() => {
+                    const isPost = (formData.tbmType || 'pre') === 'post';
+                    const photos = isPost ? (formData.postCheck?.photos || []) : (formData.preCheck?.photos || []);
 
-                  {/* 2. Post-Work Absentee Selection (Early Leave / Going Out / Vacation) */}
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <span>인원 변동 및 특이사항 (시작회의 기준) </span>
-                      {(formData.postCheck?.absentees || []).length > 0 && (
-                        <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>
-                          {(formData.postCheck?.absentees || []).length}명 등록됨
-                        </span>
-                      )}
-                    </label>
-
-                    <div style={{
-                      background: '#f8fafc',
-                      padding: '12px 14px',
-                      borderRadius: '12px',
-                      border: '1.5px solid #cbd5e1'
-                    }}>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto', gap: '6px', alignItems: 'center' }}>
-                        <select
-                          value={selectedPostAbsenteeName}
-                          onChange={(e) => setSelectedPostAbsenteeName(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: '#ffffff',
-                            border: '1.5px solid #cbd5e1',
-                            fontSize: '12px',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="">-- 미참여 인원 선택 --</option>
-                          {filteredLeadersPool.map((u, idx) => (
-                            <option key={u.id || `${u.name}-${idx}`} value={u.name}>
-                              {u.name} ({u.rank || '사원'})
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={postAbsenteeReason}
-                          onChange={(e) => setPostAbsenteeReason(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: '#ffffff',
-                            border: '1.5px solid #cbd5e1',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="오후반차">🌇 오후반차</option>
-                          <option value="휴가">🏖️ 휴가</option>
-                          <option value="출장">🚗 출장</option>
-                          <option value="교육">📚 교육</option>
-                          <option value="기타">기타 사유</option>
-                        </select>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!selectedPostAbsenteeName) {
-                              if (onTriggerToast) onTriggerToast('미참여 인원을 선택해주세요.', 'warning');
-                              return;
-                            }
-                            const targetUser = filteredLeadersPool.find(u => u.name?.trim() === selectedPostAbsenteeName?.trim());
-                            const curAbsList = formData.postCheck?.absentees || [];
-                            const exists = curAbsList.some(a => a.name?.trim() === selectedPostAbsenteeName?.trim());
-                            if (exists) {
-                              if (onTriggerToast) onTriggerToast('이미 미참여 목록에 등록된 인원입니다.', 'info');
-                              return;
-                            }
-                            setFormData(prev => ({
-                              ...prev,
-                              includePostCheckNow: true,
-                              // Automatically exclude from attendees
-                              attendees: (prev.attendees || []).filter(a => a.name?.trim() !== selectedPostAbsenteeName?.trim()),
-                              postCheck: {
-                                ...(prev.postCheck || {}),
-                                absentees: [
-                                  ...(prev.postCheck?.absentees || []),
-                                  {
-                                    name: selectedPostAbsenteeName,
-                                    rank: targetUser?.rank || '사원',
-                                    reason: postAbsenteeReason
-                                  }
-                                ]
-                              }
-                            }));
-                            setSelectedPostAbsenteeName('');
-                          }}
-                          style={{
-                            padding: '8px 12px',
-                            borderRadius: '8px',
-                            background: '#0284c7',
-                            color: '#ffffff',
-                            border: 'none',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          + 추가
-                        </button>
-                      </div>
-
-                      {/* Post-Absentee Tag Badges */}
-                      {(formData.postCheck?.absentees || []).length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1' }}>
-                          {(formData.postCheck?.absentees || []).map((abs, idx) => (
-                            <span
-                              key={idx}
-                              style={{
-                                background: '#fff1f2',
-                                color: '#e11d48',
-                                border: '1px solid #fecdd3',
-                                padding: '4px 8px',
-                                borderRadius: '6px',
-                                fontSize: '11.5px',
-                                fontWeight: '700',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                            >
-                              <span>{abs.name} ({abs.rank}) - <strong>{abs.reason}</strong></span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const removed = (formData.postCheck?.absentees || [])[idx];
-                                  const targetUser = allUsers.find(u => u.name?.trim() === removed?.name?.trim() && (!formData.leaderDivision || u.division === formData.leaderDivision));
-                                  setFormData(prev => ({
-                                    ...prev,
-                                    // Restore back to attendees if not already present
-                                    attendees: (() => {
-                                      const attName = targetUser?.name || removed?.name;
-                                      if (attName && !(prev.attendees || []).some(a => a.name?.trim() === attName.trim())) {
-                                        return [
-                                          ...(prev.attendees || []),
-                                          {
-                                            name: attName,
-                                            rank: targetUser?.rank || removed?.rank || '사원',
-                                            team: targetUser?.team || targetUser?.department || prev.leaderTeam || '',
-                                            division: targetUser?.division || prev.leaderDivision || '',
-                                            phone: targetUser?.phone || ''
-                                          }
-                                        ];
-                                      }
-                                      return prev.attendees || [];
-                                    })(),
-                                    postCheck: {
-                                      ...(prev.postCheck || {}),
-                                      absentees: (prev.postCheck?.absentees || []).filter((_, i) => i !== idx)
-                                    }
-                                  }));
-                                }}
-                                style={{ border: 'none', background: 'transparent', color: '#e11d48', cursor: 'pointer', padding: 0, fontWeight: '800' }}
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
+                    if (photos.length === 0) {
+                      return (
+                        <div style={{
+                          padding: '24px 16px',
+                          borderRadius: '12px',
+                          background: '#f8fafc',
+                          border: '1.5px dashed #cbd5e1',
+                          textAlign: 'center',
+                          color: '#64748b',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}>
+                          <Camera size={24} color="#94a3b8" />
+                          <div style={{ fontSize: '13px', fontWeight: '700', color: '#475569' }}>
+                            등록된 현장 사진이 없습니다.
+                          </div>
+                          <div style={{ fontSize: '11.5px' }}>
+                            상단의 카메라 촬영 또는 앨범 업로드 버튼을 눌러 사진을 등록할 수 있습니다. (선택사항)
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      );
+                    }
 
-                  {/* 3. Post-Work Checklist Multi-Select Dropdown & Selected Items List */}
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span>재해 예방 활동 *</span>
-                    </label>
-
-                    {/* Custom Multi-Select Dropdown Trigger Bar */}
-                    <div
-                      onClick={() => setIsPostChecklistDropdownOpen(prev => !prev)}
-                      style={{
-                        width: '100%',
-                        padding: '11px 14px',
-                        borderRadius: '12px',
-                        background: '#ffffff',
-                        border: isPostChecklistDropdownOpen ? '1.5px solid #0284c7' : '1.5px solid #cbd5e1',
-                        fontSize: '13px',
-                        fontWeight: '600',
-                        color: currentPostSelectedKeys.length > 0 ? '#0f172a' : '#64748b',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        cursor: 'pointer',
-                        userSelect: 'none',
-                        boxShadow: isPostChecklistDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
-                        transition: 'all 0.2s ease',
-                        marginBottom: '10px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <ShieldCheck size={16} color={currentPostSelectedKeys.length > 0 ? '#0284c7' : '#94a3b8'} />
-                        <span>
-                          {currentPostSelectedKeys.length === 0
-                            ? '안전 점검 항목 선택'
-                            : `${currentPostSelectedKeys.length}개 점검 항목 선택됨`}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '700' }}>
-                          {isPostChecklistDropdownOpen ? '닫기' : '선택'}
-                        </span>
-                        {isPostChecklistDropdownOpen ? (
-                          <ChevronUp size={16} color="#0284c7" />
-                        ) : (
-                          <ChevronDown size={16} color="#64748b" />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Dropdown Suggestion Popup (Multiple Checkbox Selector - 2 Columns) */}
-                    {isPostChecklistDropdownOpen && (
-                      <div className="thin-scrollbar" style={{
-                        position: 'absolute',
-                        top: '72px',
-                        left: 0,
-                        right: 0,
-                        zIndex: 50,
-                        background: '#ffffff',
-                        border: '1.5px solid #cbd5e1',
-                        borderRadius: '10px',
-                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-                        padding: '8px',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        gap: '6px',
-                        maxHeight: '300px',
-                        overflowY: 'auto'
-                      }}>
-                        {POST_WORK_CHECKLIST_ITEMS.map(item => {
-                          const isChecked = currentPostSelectedKeys.includes(item.key);
-                          return (
-                            <div
-                              key={item.key}
-                              onClick={() => togglePostCheckItem(item.key)}
-                              style={{
-                                padding: '7px 8px',
-                                borderRadius: '6px',
-                                background: isChecked ? '#f0fdf4' : '#ffffff',
-                                border: isChecked ? '1.5px solid #86efac' : '1px solid #e2e8f0',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease',
-                                userSelect: 'none',
-                                minWidth: 0
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => { }}
-                                style={{ width: '13px', height: '13px', accentColor: '#0284c7', cursor: 'pointer', pointerEvents: 'none', flexShrink: 0 }}
-                              />
-                              <div style={{
-                                flex: 1,
-                                fontSize: '11px',
-                                fontWeight: isChecked ? '700' : '600',
-                                color: isChecked ? '#15803d' : '#334155',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }} title={item.label}>
-                                {item.label}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Selected Checklist Items Output (3 Columns, Clean Badges) */}
-                    {currentPostSelectedKeys.length > 0 ? (
+                    return (
                       <div style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-                        gap: '6px'
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
+                        gap: '8px',
+                        padding: '10px',
+                        background: '#f8fafc',
+                        borderRadius: '10px',
+                        border: '1px solid #e2e8f0'
                       }}>
-                        {currentPostSelectedKeys.map(key => {
-                          const item = POST_WORK_CHECKLIST_ITEMS.find(it => it.key === key);
-                          if (!item) return null;
-                          return (
-                            <div
-                              key={item.key}
+                        {photos.map((photo) => (
+                          <div
+                            key={photo.id}
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              paddingBottom: '100%',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '1.5px solid #cbd5e1',
+                              background: '#000000',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                            }}
+                          >
+                            <img
+                              src={photo.dataUrl}
+                              alt="TBM 현장 사진"
+                              onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                              title="클릭하여 사진 확대"
                               style={{
-                                padding: '7px 6px',
-                                borderRadius: '6px',
-                                background: '#f0fdf4',
-                                border: '1.5px solid #86efac',
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover',
+                                cursor: 'pointer'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => isPost ? handleRemovePostPhoto(photo.id) : handleRemovePhoto(photo.id)}
+                              title="사진 삭제"
+                              style={{
+                                position: 'absolute',
+                                top: '3px',
+                                right: '3px',
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '50%',
+                                background: 'rgba(225, 29, 72, 0.9)',
+                                color: '#ffffff',
+                                border: 'none',
+                                cursor: 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                textAlign: 'center',
-                                minWidth: 0,
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                fontSize: '12px',
+                                fontWeight: '900',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
                               }}
                             >
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#15803d',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }} title={item.label}>
-                                {item.label}
-                              </span>
-                            </div>
-                          );
-                        })}
+                              ×
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      <div style={{
-                        padding: '16px',
-                        borderRadius: '12px',
-                        background: '#f8fafc',
-                        border: '1.5px dashed #cbd5e1',
-                        textAlign: 'center',
-                        color: '#64748b',
-                        fontSize: '12.5px'
-                      }}>
-                        <span>📋 상단 드롭다운에서 실시한 안전 점검 항목을 선택해 주세요.</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 4. Post-Check Handover Notes & Photo Registration */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        전달사항 및 계획대비 변경 또는 특이사항
-                      </label>
-                      <textarea
-                        rows={5}
-                        placeholder="작업 종료 후 전달사항, 계획대비 변경사항 또는 특이사항을 상세히 입력하세요."
-                        value={formData.postCheck.handoverNotes}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          includePostCheckNow: true,
-                          postCheck: { ...prev.postCheck, handoverNotes: e.target.value }
-                        }))}
-                        style={{
-                          width: '100%',
-                          minHeight: '110px',
-                          padding: '10px 12px',
-                          borderRadius: '12px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          fontSize: '12.5px',
-                          lineHeight: '1.5',
-                          outline: 'none',
-                          resize: 'none'
-                        }}
-                      />
-                    </div>
-
-                    {/* 5. Post Photo Registration Section (Replaced TBM End Time) */}
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <Camera size={14} color="#0284c7" />
-                          <span>업무 후 현장 사진 등록</span>
-                        </span>
-                        <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '800' }}>
-                          {(formData.postCheck?.photos || []).length} / 5장
-                        </span>
-                      </label>
-
-                      {/* Hidden File Inputs for Post Camera & Upload (Positioned offscreen so mobile webviews reliably trigger camera) */}
-                      <input
-                        ref={postCameraInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        onChange={(e) => {
-                          handlePostPhotoFilesSelected(e.target.files);
-                          e.target.value = '';
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: '-9999px',
-                          left: '-9999px',
-                          opacity: 0,
-                          width: '1px',
-                          height: '1px',
-                          pointerEvents: 'none'
-                        }}
-                        tabIndex={-1}
-                        aria-hidden="true"
-                      />
-
-                      <input
-                        ref={postGalleryInputRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        onChange={(e) => {
-                          handlePostPhotoFilesSelected(e.target.files);
-                          e.target.value = '';
-                        }}
-                        style={{
-                          position: 'absolute',
-                          top: '-9999px',
-                          left: '-9999px',
-                          opacity: 0,
-                          width: '1px',
-                          height: '1px',
-                          pointerEvents: 'none'
-                        }}
-                        tabIndex={-1}
-                        aria-hidden="true"
-                      />
-
-                      {/* Action Buttons: Camera Shoot & Gallery/Capture Upload */}
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerCamera('post')}
-                          style={{
-                            padding: '9px 12px',
-                            borderRadius: '8px',
-                            background: '#f0f9ff',
-                            border: '1.5px dashed #0284c7',
-                            color: '#0369a1',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <Camera size={15} /> 카메라 촬영
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleTriggerGallery('post')}
-                          style={{
-                            padding: '9px 12px',
-                            borderRadius: '8px',
-                            background: '#ffffff',
-                            border: '1.5px solid #cbd5e1',
-                            color: '#334155',
-                            fontSize: '12px',
-                            fontWeight: '700',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '6px',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <ImageIcon size={15} color="#64748b" /> 사진 업로드 (캡처/앨범)
-                        </button>
-                      </div>
-
-                      {/* Photo Thumbnail Grid */}
-                      {(formData.postCheck?.photos || []).length > 0 && (
-                        <div style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(75px, 1fr))',
-                          gap: '8px',
-                          padding: '10px',
-                          background: '#f8fafc',
-                          borderRadius: '10px',
-                          border: '1px solid #e2e8f0'
-                        }}>
-                          {(formData.postCheck?.photos || []).map((photo) => (
-                            <div
-                              key={photo.id}
-                              style={{
-                                position: 'relative',
-                                width: '100%',
-                                paddingBottom: '100%',
-                                borderRadius: '8px',
-                                overflow: 'hidden',
-                                border: '1.5px solid #cbd5e1',
-                                background: '#000000',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-                              }}
-                            >
-                              <img
-                                src={photo.dataUrl}
-                                alt="업무 후 현장 사진"
-                                onClick={() => setPreviewModalPhoto(photo.dataUrl)}
-                                title="클릭하여 사진 확대"
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  left: 0,
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  cursor: 'pointer'
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleRemovePostPhoto(photo.id)}
-                                title="사진 삭제"
-                                style={{
-                                  position: 'absolute',
-                                  top: '3px',
-                                  right: '3px',
-                                  width: '20px',
-                                  height: '20px',
-                                  borderRadius: '50%',
-                                  background: 'rgba(225, 29, 72, 0.9)',
-                                  color: '#ffffff',
-                                  border: 'none',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '12px',
-                                  fontWeight: '900',
-                                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                                }}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* Step 3 Action Buttons */}
                   <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                     <button
                       type="button"
-                      onClick={() => setActiveStep(1)}
-                      className="glass-button"
-                      style={{ flex: 1, padding: '12px 6px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}
-                    >
-                      기본정보 수정
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setActiveStep(2)}
                       className="glass-button"
-                      style={{ flex: 1, padding: '12px 6px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}
+                      style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12.5px' }}
                     >
-                      이전 단계(업무전)
+                      ← 이전 단계 (TBM)
                     </button>
                     <button
                       type="button"
@@ -3790,7 +3748,9 @@ export default function TbmSection({
                         flex: 2,
                         padding: '12px',
                         borderRadius: '12px',
-                        background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                        background: (formData.tbmType || 'pre') === 'post'
+                          ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
+                          : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
                         fontWeight: '800',
                         fontSize: '13px',
                         cursor: isSubmitting ? 'not-allowed' : 'pointer',
@@ -3799,13 +3759,15 @@ export default function TbmSection({
                         alignItems: 'center',
                         justifyContent: 'center',
                         gap: '6px',
-                        boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
+                        boxShadow: (formData.tbmType || 'pre') === 'post'
+                          ? '0 4px 14px rgba(22, 163, 74, 0.25)'
+                          : '0 4px 14px rgba(2, 132, 199, 0.25)'
                       }}
                     >
                       {isSubmitting ? (
                         <>⏳ TBM 저장 중...</>
                       ) : (
-                        <><CheckCircle2 size={18} /> TBM 일지 저장 및 등록 완료</>
+                        <><CheckCircle2 size={18} /> {(formData.tbmType || 'pre') === 'post' ? '업무 후 TBM' : '업무 전 TBM'} 저장 및 등록 완료</>
                       )}
                     </button>
                   </div>
@@ -4135,6 +4097,36 @@ export default function TbmSection({
                           {add.notes && (
                             <div style={{ color: '#475569', fontSize: '11px', background: '#f8fafc', padding: '3px 6px', borderRadius: '3px' }}>
                               💬 {add.notes}
+                            </div>
+                          )}
+                          {/* Attached Photos for this additional TBM */}
+                          {((Array.isArray(add.photos) && add.photos.length > 0) || add.photo) && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '10.5px', color: '#0369a1', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                <Camera size={12} /> 현장 사진:
+                              </span>
+                              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                {(Array.isArray(add.photos) && add.photos.length > 0 ? add.photos : [{ id: 'p1', dataUrl: add.photo }]).map((p, pIdx) => (
+                                  p.dataUrl ? (
+                                    <img
+                                      key={p.id || pIdx}
+                                      src={p.dataUrl}
+                                      alt="추가 TBM 사진"
+                                      onClick={() => setPreviewModalPhoto(p.dataUrl)}
+                                      title="클릭하여 사진 확대"
+                                      style={{
+                                        width: '38px',
+                                        height: '38px',
+                                        borderRadius: '4px',
+                                        objectFit: 'cover',
+                                        border: '1.5px solid #0284c7',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                      }}
+                                    />
+                                  ) : null
+                                ))}
+                              </div>
                             </div>
                           )}
                           <div style={{ color: '#15803d', fontSize: '10.5px', fontWeight: '600' }}>
@@ -5044,6 +5036,179 @@ export default function TbmSection({
                     resize: 'none'
                   }}
                 />
+              </div>
+
+              {/* 6. Additional TBM Photo Registration */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '12px', color: '#0369a1', fontWeight: '800', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Camera size={14} color="#0284c7" />
+                    <span>추가 TBM 현장 사진 등록 (선택)</span>
+                  </span>
+                  <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '800' }}>
+                    {(additionalFormData.photos || []).length} / 5장
+                  </span>
+                </label>
+
+                {/* Hidden File Inputs for Additional Camera & Gallery */}
+                <input
+                  ref={additionalCameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(e) => {
+                    handleAdditionalPhotoFilesSelected(e.target.files);
+                    e.target.value = '';
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: '-9999px',
+                    left: '-9999px',
+                    opacity: 0,
+                    width: '1px',
+                    height: '1px',
+                    pointerEvents: 'none'
+                  }}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+
+                <input
+                  ref={additionalGalleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    handleAdditionalPhotoFilesSelected(e.target.files);
+                    e.target.value = '';
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: '-9999px',
+                    left: '-9999px',
+                    opacity: 0,
+                    width: '1px',
+                    height: '1px',
+                    pointerEvents: 'none'
+                  }}
+                  tabIndex={-1}
+                  aria-hidden="true"
+                />
+
+                {/* Action Buttons: Camera Shoot & Gallery Upload */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={handleTriggerAdditionalCamera}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: '#f0f9ff',
+                      border: '1.5px dashed #0284c7',
+                      color: '#0369a1',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <Camera size={14} /> 카메라 촬영
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTriggerAdditionalGallery}
+                    style={{
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#334155',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '5px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <ImageIcon size={14} color="#64748b" /> 사진 업로드
+                  </button>
+                </div>
+
+                {/* Photo Thumbnail Grid */}
+                {(additionalFormData.photos || []).length > 0 && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(65px, 1fr))',
+                    gap: '6px',
+                    padding: '8px',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    {(additionalFormData.photos || []).map((photo) => (
+                      <div
+                        key={photo.id}
+                        style={{
+                          position: 'relative',
+                          width: '100%',
+                          paddingBottom: '100%',
+                          borderRadius: '6px',
+                          overflow: 'hidden',
+                          border: '1.5px solid #cbd5e1',
+                          background: '#000000',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                        }}
+                      >
+                        <img
+                          src={photo.dataUrl}
+                          alt="추가 TBM 사진"
+                          onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                          title="클릭하여 사진 확대"
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdditionalPhoto(photo.id)}
+                          title="사진 삭제"
+                          style={{
+                            position: 'absolute',
+                            top: '2px',
+                            right: '2px',
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            background: 'rgba(239, 68, 68, 0.9)',
+                            color: '#ffffff',
+                            border: 'none',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: 0
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
             </div>

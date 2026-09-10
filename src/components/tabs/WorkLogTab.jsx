@@ -246,7 +246,12 @@ export default function WorkLogTab({ onTriggerToast }) {
     };
 
     const updatedLogs = await dbService.saveWorkLog(newLogItem);
-    setWorkLogs(updatedLogs);
+    if (Array.isArray(updatedLogs) && updatedLogs.length > 0) {
+      setWorkLogs(updatedLogs);
+    } else {
+      const freshLogs = await dbService.getWorkLogs();
+      setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+    }
     setInlineAddingCardKey(null);
     setInlineNewForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
@@ -456,7 +461,12 @@ export default function WorkLogTab({ onTriggerToast }) {
       };
 
       const updated = await dbService.saveWorkLog(newLogItem);
-      setWorkLogs(updated);
+      if (Array.isArray(updated) && updated.length > 0) {
+        setWorkLogs(updated);
+      } else {
+        const freshLogs = await dbService.getWorkLogs();
+        setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      }
       setIsPastWorkModalOpen(false);
       setViewAllDates(false);
 
@@ -523,7 +533,12 @@ export default function WorkLogTab({ onTriggerToast }) {
         updated = await dbService.saveWorkLog(newLogItem);
       }
 
-      setWorkLogs(updated);
+      if (Array.isArray(updated) && updated.length > 0) {
+        setWorkLogs(updated);
+      } else {
+        const freshLogs = await dbService.getWorkLogs();
+        setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      }
       setIsPastWorkModalOpen(false);
       setSelectedPastLogIds([]);
       setViewAllDates(false);
@@ -763,7 +778,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
 
       const existingLog = editingLogId
-        ? workLogs.find(l => {
+        ? (Array.isArray(workLogs) ? workLogs : []).find(l => {
+            if (!l) return false;
             const lId = String(l.id || '').trim();
             const lLogId = String(l.log_id || l.logId || '').trim();
             const eId = String(editingLogId).trim();
@@ -804,7 +820,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       if (!editingLogId && extraTasks.length > 0) {
         for (let i = 0; i < extraTasks.length; i++) {
           const ext = extraTasks[i];
-          if (ext.title && ext.title.trim()) {
+          if (ext && ext.title && ext.title.trim()) {
             const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : (ext.subCategory || curSubCat || '작업');
             const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
             const extraLogItem = {
@@ -836,7 +852,12 @@ export default function WorkLogTab({ onTriggerToast }) {
         }
       }
 
-      setWorkLogs(updatedLogs);
+      if (Array.isArray(updatedLogs) && updatedLogs.length > 0) {
+        setWorkLogs(updatedLogs);
+      } else {
+        const freshLogs = await dbService.getWorkLogs();
+        setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      }
       setIsModalOpen(false);
       setEditingLogId(null);
       setExtraTasks([]);
@@ -1027,23 +1048,29 @@ export default function WorkLogTab({ onTriggerToast }) {
   };
 
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
-  const filteredLogs = workLogs.filter(log => {
+  const filteredLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
+    if (!log) return false;
     const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
     const logDate = normalizeKstDate(log.date || log.log_date) || (log.date || log.log_date);
     const selDate = normalizeKstDate(selectedDate) || selectedDate;
     const matchesDate = viewAllDates || logDate === selDate;
     const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
-    const matchesQuery = !searchQuery.trim() ||
-      log.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (log.details && log.details.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (log.authorName && log.authorName.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (log.subCategory && log.subCategory.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (log.sub_category && log.sub_category.toLowerCase().includes(searchQuery.toLowerCase()));
+    const q = (searchQuery || '').trim().toLowerCase();
+    const titleStr = (log.title || '').toLowerCase();
+    const detailsStr = (log.details || log.tasks_done || log.tasksDone || '').toLowerCase();
+    const authorStr = (log.authorName || log.name || '').toLowerCase();
+    const subCatStr = (log.subCategory || log.sub_category || '').toLowerCase();
+    const matchesQuery = !q ||
+      titleStr.includes(q) ||
+      detailsStr.includes(q) ||
+      authorStr.includes(q) ||
+      subCatStr.includes(q);
     return matchesUser && matchesDate && matchesCategory && matchesQuery;
   });
 
   // Group logs by Date (descending)
   const groupedByDate = filteredLogs.reduce((acc, log) => {
+    if (!log) return acc;
     const d = normalizeKstDate(log.date || log.log_date) || log.date || log.log_date || '기타 날짜';
     if (!acc[d]) acc[d] = [];
     acc[d].push(log);
@@ -1053,8 +1080,9 @@ export default function WorkLogTab({ onTriggerToast }) {
   const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
 
   // Filter and sort past logs for the Past Work Copy Modal (본인 작성 업무만 불러오기)
-  const filteredPastLogs = workLogs
+  const filteredPastLogs = (Array.isArray(workLogs) ? workLogs : [])
     .filter(log => {
+      if (!log) return false;
       // 1. Strictly own authored logs
       const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
       if (!matchesUser) return false;

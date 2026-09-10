@@ -62,7 +62,7 @@ const SCHEMAS = {
   tbms: [
     'id', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
-    'attendees', 'absentees', 'work_content', 'tools_used',
+    'attendees', 'absentees', 'additional_tbms', 'tbm_type', 'work_content', 'tools_used',
     'pre_check', 'post_check', 'status', 'created_at', 'updated_at'
   ],
   vault: [
@@ -878,6 +878,31 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     let postCheckStr = JSON.stringify(postChk);
     if (postCheckStr.length > 45000) postCheckStr = postCheckStr.substring(0, 45000);
 
+    let addTbms = obj.additional_tbms || obj.additionalTbms || [];
+    if (typeof addTbms === 'string') {
+      try { addTbms = JSON.parse(addTbms); } catch (e) { addTbms = []; }
+    }
+    if (Array.isArray(addTbms)) {
+      addTbms = addTbms.map(a => {
+        let cleanPhoto = a.photo;
+        if (cleanPhoto && typeof cleanPhoto === 'string' && cleanPhoto.length > 25000) {
+          cleanPhoto = cleanPhoto.slice(0, 25000);
+        }
+        return {
+          ...a,
+          photo: cleanPhoto,
+          photos: (a.photos || []).map(p => ({
+            id: p.id,
+            name: p.name || 'photo.jpg',
+            size: p.size || 0,
+            takenAt: p.takenAt || ''
+          }))
+        };
+      });
+    }
+    let addTbmsStr = JSON.stringify(addTbms);
+    if (addTbmsStr.length > 45000) addTbmsStr = addTbmsStr.substring(0, 45000);
+
     return {
       id: idVal,
       date: dVal,
@@ -893,6 +918,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       leader_phone: obj.leaderPhone || obj.leader_phone || obj.phone || '',
       attendees: (typeof atts === 'object' && atts !== null) ? JSON.stringify(atts) : String(atts || ''),
       absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
+      additional_tbms: addTbmsStr,
+      tbm_type: obj.tbmType || obj.tbm_type || ((postChk && postChk.isCompleted) ? 'post' : 'pre'),
       work_content: obj.workContent || obj.work_content || obj.content || '',
       tools_used: obj.toolsUsed || obj.tools_used || '',
       pre_check: preCheckStr,

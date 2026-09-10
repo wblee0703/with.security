@@ -2081,6 +2081,7 @@ class SecurityDatabase {
     if (!Array.isArray(logs)) return [];
     const map = new Map();
     for (const l of logs) {
+      if (!l || typeof l !== 'object') continue;
       const normalized = this._normalizeWorkLog(l);
       if (!normalized) continue;
       const rawId = String(normalized.id || normalized.log_id || '').trim();
@@ -2950,7 +2951,9 @@ class SecurityDatabase {
     const currentLocal = (() => {
       try {
         const raw = localStorage.getItem('with_security_work_logs');
-        return raw ? JSON.parse(raw) : [];
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object') : [];
       } catch (e) {
         return [];
       }
@@ -2960,6 +2963,7 @@ class SecurityDatabase {
     const targetLogIdStr = String(preparedLog.log_id || preparedLog.logId || targetIdStr).trim();
 
     let existingIndex = currentLocal.findIndex(l => {
+      if (!l) return false;
       const lId = String(l.id || '').trim();
       const lLogId = String(l.log_id || l.logId || '').trim();
       if (targetIdStr && (lId === targetIdStr || lLogId === targetIdStr)) return true;
@@ -2975,6 +2979,7 @@ class SecurityDatabase {
       const searchDates = [origDate, cleanDate].filter(Boolean);
       if (pWriter && pTitle) {
         existingIndex = currentLocal.findIndex(l => {
+          if (!l) return false;
           const lWriter = String(l.authorUsername || l.writerId || l.writer_id || l.name || '').trim().toLowerCase();
           const lDate = normalizeKstDate(l.date || l.log_date);
           const lTitle = String(l.title || '').trim().toLowerCase();
@@ -2993,6 +2998,7 @@ class SecurityDatabase {
     if (origDate && origDate !== cleanDate) {
       // Purge any residual duplicate of this task sitting on the original date
       updated = updated.filter((item, idx) => {
+        if (!item) return false;
         if (idx === existingIndex) return true;
         const iWriter = String(item.authorUsername || item.writerId || item.writer_id || item.name || '').trim().toLowerCase();
         const iDate = normalizeKstDate(item.date || item.log_date);
@@ -3077,7 +3083,9 @@ class SecurityDatabase {
     const currentLocal = (() => {
       try {
         const raw = localStorage.getItem('with_security_work_logs');
-        return raw ? JSON.parse(raw) : [];
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed.filter(l => l && typeof l === 'object') : [];
       } catch (e) {
         return [];
       }
@@ -3086,6 +3094,7 @@ class SecurityDatabase {
     const matchedLog = (typeof target === 'object' && target !== null)
       ? target
       : currentLocal.find(l => {
+        if (!l) return false;
         const lId = String(l.id || l.log_id || l.logId || '').trim();
         return lId === targetId || String(l.id) === targetId || String(l.log_id) === targetId;
       });
@@ -3595,6 +3604,20 @@ class SecurityDatabase {
       tbm.additionalTbms = tbm.additional_tbms;
     }
     if (!Array.isArray(tbm.additionalTbms)) tbm.additionalTbms = [];
+    tbm.additionalTbms = tbm.additionalTbms.map(a => {
+      if (!a || typeof a !== 'object') return null;
+      let photos = Array.isArray(a.photos) ? a.photos : [];
+      let photo = a.photo || (photos[0]?.dataUrl || '');
+      if (photo && photos.length === 0) {
+        photos = [{ id: 'photo_1', dataUrl: photo, name: 'additional_photo.jpg' }];
+      }
+      return {
+        ...a,
+        photos,
+        photo
+      };
+    }).filter(Boolean);
+    tbm.additional_tbms = tbm.additionalTbms;
 
     // Parse preCheck safely
     if (typeof tbm.preCheck === 'string') {
@@ -3627,6 +3650,8 @@ class SecurityDatabase {
     if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
+    tbm.tbmType = tbm.tbmType || tbm.tbm_type || (tbm.postCheck?.isCompleted ? 'post' : 'pre');
+    tbm.tbm_type = tbm.tbmType;
     tbm.status = tbm.status || (tbm.postCheck?.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
@@ -3692,6 +3717,23 @@ class SecurityDatabase {
                     const idStr = String(loc.id);
                     if (!mergedMap.has(idStr)) {
                       mergedMap.set(idStr, this._normalizeTbm(loc));
+                    } else {
+                      const remoteItem = mergedMap.get(idStr);
+                      const locAdd = Array.isArray(loc.additionalTbms) ? loc.additionalTbms : [];
+                      const remAdd = Array.isArray(remoteItem.additionalTbms) ? remoteItem.additionalTbms : [];
+                      if (locAdd.length > 0) {
+                        const comb = new Map();
+                        remAdd.forEach(a => { if (a && (a.name || a.id)) comb.set(a.name || a.id, a); });
+                        locAdd.forEach(a => {
+                          if (a && (a.name || a.id)) {
+                            const k = a.name || a.id;
+                            const ex = comb.get(k);
+                            comb.set(k, { ...(ex || {}), ...a });
+                          }
+                        });
+                        remoteItem.additionalTbms = Array.from(comb.values());
+                        remoteItem.additional_tbms = remoteItem.additionalTbms;
+                      }
                     }
                   }
                 });
@@ -3699,17 +3741,55 @@ class SecurityDatabase {
             }
           } catch (e) { }
 
-          // Restore photo dataUrls from IndexedDB if remote doesn't have them
+          // Restore photo dataUrls and additionalTbms from IndexedDB if remote doesn't have them
           const mergedList = Array.from(mergedMap.values());
           for (const item of mergedList) {
             try {
               const localDbItem = await this.getItem('tbms', item.id);
               if (localDbItem) {
+                // Restore pre/post check photos
                 if ((!item.preCheck?.photos?.[0]?.dataUrl) && localDbItem.preCheck?.photos?.[0]?.dataUrl) {
                   item.preCheck.photos = localDbItem.preCheck.photos;
                 }
                 if ((!item.postCheck?.photos?.[0]?.dataUrl) && localDbItem.postCheck?.photos?.[0]?.dataUrl) {
                   item.postCheck.photos = localDbItem.postCheck.photos;
+                }
+                // Restore & merge additionalTbms from local DB (including full photo dataUrls)
+                const localAdd = Array.isArray(localDbItem.additionalTbms) ? localDbItem.additionalTbms : [];
+                const remoteAdd = Array.isArray(item.additionalTbms) ? item.additionalTbms : [];
+                if (localAdd.length > 0) {
+                  const combined = new Map();
+                  remoteAdd.forEach(a => { if (a && (a.name || a.id)) combined.set(a.name || a.id, a); });
+                  localAdd.forEach(locA => {
+                    if (locA && (locA.name || locA.id)) {
+                      const key = locA.name || locA.id;
+                      const ex = combined.get(key);
+                      if (!ex) {
+                        combined.set(key, locA);
+                      } else {
+                        const hasLocalPhotos = locA.photos && locA.photos.length > 0 && locA.photos[0]?.dataUrl;
+                        combined.set(key, {
+                          ...ex,
+                          ...locA,
+                          photos: hasLocalPhotos ? locA.photos : (ex.photos || locA.photos || []),
+                          photo: locA.photo || ex.photo || ''
+                        });
+                      }
+                    }
+                  });
+                  item.additionalTbms = Array.from(combined.values());
+                  item.additional_tbms = item.additionalTbms;
+                }
+                // Restore absentee completed state
+                if (Array.isArray(localDbItem.absentees) && Array.isArray(item.absentees)) {
+                  item.absentees = item.absentees.map(remAbs => {
+                    const rName = typeof remAbs === 'string' ? remAbs : remAbs?.name;
+                    const locMatch = localDbItem.absentees.find(locAbs => (typeof locAbs === 'string' ? locAbs : locAbs?.name) === rName);
+                    if (locMatch && typeof locMatch === 'object' && locMatch.additionalCompleted) {
+                      return { ...(typeof remAbs === 'object' ? remAbs : { name: remAbs }), ...locMatch };
+                    }
+                    return remAbs;
+                  });
                 }
               }
               await this.putItem('tbms', item);
@@ -3785,6 +3865,26 @@ class SecurityDatabase {
     // Strip large photo dataUrls before sending to Google Sheets (prevents 50k cell limit overflow)
     const remotePayload = {
       ...fullTbm,
+      additionalTbms: (fullTbm.additionalTbms || []).map(a => ({
+        ...a,
+        photos: (a.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          takenAt: p.takenAt || ''
+        })),
+        photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
+      })),
+      additional_tbms: (fullTbm.additionalTbms || []).map(a => ({
+        ...a,
+        photos: (a.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          takenAt: p.takenAt || ''
+        })),
+        photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
+      })),
       preCheck: {
         ...fullTbm.preCheck,
         photos: (fullTbm.preCheck?.photos || []).map(p => ({
@@ -3836,6 +3936,9 @@ class SecurityDatabase {
     if (!existing) return null;
 
     const list = Array.isArray(existing.additionalTbms) ? [...existing.additionalTbms] : [];
+    const photosArr = Array.isArray(additionalData.photos) ? additionalData.photos : (additionalData.photo ? [{ id: `photo_${Date.now()}`, dataUrl: additionalData.photo, name: 'additional_tbm.jpg' }] : []);
+    const photoMain = additionalData.photo || photosArr[0]?.dataUrl || '';
+
     const newEntry = {
       id: additionalData.id || `add_tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: (additionalData.name || '').trim(),
@@ -3847,6 +3950,8 @@ class SecurityDatabase {
       date: additionalData.date || normalizeKstDate(new Date()) || '',
       safetyChecked: additionalData.safetyChecked !== false,
       notes: (additionalData.notes || '').trim(),
+      photos: photosArr,
+      photo: photoMain,
       registeredBy: additionalData.registeredBy || ''
     };
 

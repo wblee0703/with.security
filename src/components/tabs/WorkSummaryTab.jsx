@@ -639,15 +639,16 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const isTomorrow = dailyDate === tomorrowIso;
   const isFuture = dailyDate > todayIso;
 
-  const dailyAllLogs = workLogs.filter(log => (log.date || '').startsWith(dailyDate));
+  const dailyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(dailyDate));
   const dailyOwnLogs = dailyAllLogs.filter(isMyAuthoredLog);
   const dailySharedReceivedLogs = dailyAllLogs.filter(isSharedToMe);
-  const dailyMySharedLogs = dailyOwnLogs.filter(l => l.isShared);
-  const dailyInternalLogs = dailyOwnLogs.filter(l => l.category === '사내 업무');
-  const dailyTripLogs = dailyOwnLogs.filter(l => l.category === '출장 업무');
+  const dailyMySharedLogs = dailyOwnLogs.filter(l => l && l.isShared);
+  const dailyInternalLogs = dailyOwnLogs.filter(l => l && l.category === '사내 업무');
+  const dailyTripLogs = dailyOwnLogs.filter(l => l && l.category === '출장 업무');
 
   // Group daily shared-received logs by author (동일 공유자별 카드 묶음)
   const dailySharedGroupedByAuthor = dailySharedReceivedLogs.reduce((acc, log) => {
+    if (!log) return acc;
     const aName = log.authorName || log.name || '작성자';
     const aRank = log.authorRank || log.rank || '';
     const aTeam = log.authorTeam || log.team || log.department || '';
@@ -676,7 +677,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }, {});
 
   // Tomorrow's logs for quick reference / preview
-  const tomorrowAllLogs = workLogs.filter(log => (log.date || '').startsWith(tomorrowIso));
+  const tomorrowAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(tomorrowIso));
   const tomorrowOwnLogs = tomorrowAllLogs.filter(isMyAuthoredLog);
   const tomorrowInitialGroups = getInitialWorkGroups(tomorrowOwnLogs);
 
@@ -692,7 +693,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const nextDailyIso = getNextDayIso(dailyDate);
-  const nextDayAllLogs = workLogs.filter(log => (log.date || '').startsWith(isToday ? tomorrowIso : nextDailyIso));
+  const nextDayAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(isToday ? tomorrowIso : nextDailyIso));
   const nextDayOwnLogs = nextDayAllLogs.filter(isMyAuthoredLog);
   const nextDayInitialGroups = getInitialWorkGroups(nextDayOwnLogs);
 
@@ -778,20 +779,22 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     return `${mon.getFullYear()}년 ${month}월 ${weekNum}주차`;
   };
 
-  const weeklyAllLogs = workLogs.filter(log => {
+  const weeklyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
+    if (!log) return false;
     const d = log.date || '';
     return d >= weeklyRange.monIso && d <= weeklyRange.sunIso;
   });
   const weeklyOwnLogs = weeklyAllLogs.filter(isMyAuthoredLog);
   const weeklySharedReceivedLogs = weeklyAllLogs.filter(isSharedToMe);
-  const weeklyMySharedLogs = weeklyOwnLogs.filter(l => l.isShared);
-  const weeklyInternalLogs = weeklyOwnLogs.filter(l => l.category === '사내 업무');
-  const weeklyTripLogs = weeklyOwnLogs.filter(l => l.category === '출장 업무');
-  const weeklyActiveDaysCount = Array.from(new Set(weeklyOwnLogs.map(l => l.date))).length;
+  const weeklyMySharedLogs = weeklyOwnLogs.filter(l => l && l.isShared);
+  const weeklyInternalLogs = weeklyOwnLogs.filter(l => l && l.category === '사내 업무');
+  const weeklyTripLogs = weeklyOwnLogs.filter(l => l && l.category === '출장 업무');
+  const weeklyActiveDaysCount = Array.from(new Set(weeklyOwnLogs.map(l => l.date).filter(Boolean))).length;
   const weeklyAuthors = Array.from(new Set(weeklyOwnLogs.map(l => l.authorName || l.name))).filter(Boolean);
 
   // Group weekly shared-received logs by author (동일 공유자별 카드 묶음)
   const weeklySharedGroupedByAuthor = weeklySharedReceivedLogs.reduce((acc, log) => {
+    if (!log) return acc;
     const aName = log.authorName || log.name || '작성자';
     const aRank = log.authorRank || log.rank || '';
     const aTeam = log.authorTeam || log.team || log.department || '';
