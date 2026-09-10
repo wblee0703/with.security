@@ -171,20 +171,6 @@ export default function SecurityChecklistTab({
 
         setSites(mappedSites);
         setCurrentUser(activeUser);
-        const userTeam = activeUser ? (activeUser.team || activeUser.department || '') : '';
-
-        // [중요: 사업장 선택 초기화 방지] 모달이 열려있거나 이미 사업장이 선택된 경우 덮어쓰지 않음
-        if (!isModalOpenRef.current) {
-          setFormData(prev => ({
-            ...prev,
-            site: prev.site || '',
-            visitorName: prev.visitorName || (activeUser ? activeUser.name : ''),
-            phone: prev.phone || (activeUser ? activeUser.phone : ''),
-            team: prev.team || userTeam,
-            department: prev.department || userTeam,
-            rank: prev.rank || (activeUser ? activeUser.rank : '')
-          }));
-        }
       } catch (err) {
         console.error('Failed to load sites & user:', err);
       }
@@ -207,10 +193,23 @@ export default function SecurityChecklistTab({
       return;
     }
     resetAppVerificationState();
-    const userTeam = active ? (active.team || active.department || active.division || '') : '';
+    const activeUser = active;
+    const userTeam = activeUser ? (activeUser.team || activeUser.department || activeUser.division || '') : '';
     const targetDate = selectedDate || getTodayLocalIsoDate();
+
+    // 사용자가 상단에서 특정 사업장을 필터링 중이었던 경우 기본값으로 스마트 연동
+    let defaultSite = '';
+    if (selectedSiteFilter && selectedSiteFilter !== 'ALL') {
+      const matchedFilterSite = findSiteByDisplayNameOrName(selectedSiteFilter, sites);
+      if (matchedFilterSite) {
+        defaultSite = matchedFilterSite.address ? `${matchedFilterSite.name} (${matchedFilterSite.address})` : matchedFilterSite.name;
+      } else {
+        defaultSite = selectedSiteFilter;
+      }
+    }
+
     setFormData({
-      site: '',
+      site: defaultSite,
       visitorName: active.name || '',
       phone: active.phone || '010-0000-0000',
       team: userTeam,
@@ -729,7 +728,7 @@ export default function SecurityChecklistTab({
 
     setFormData(prev => ({
       ...prev,
-      site: newSiteVal,
+      site: (newSiteVal !== undefined && newSiteVal !== null) ? newSiteVal : (prev.site || ''),
       mdmVerified: false,
       cameraLocked: false,
       docChecklist: {
@@ -1316,7 +1315,11 @@ export default function SecurityChecklistTab({
     resetAppVerificationState();
 
     const userTeam = activeUser.team || activeUser.department || companion.team || '보안관제팀';
-    const targetSite = targetItem.site || targetItem.site_name || targetItem.siteName || '';
+    const rawTargetSite = targetItem.site || targetItem.site_name || targetItem.siteName || '';
+    const targetSiteObj = findSiteByDisplayNameOrName(rawTargetSite, sites);
+    const targetSite = targetSiteObj
+      ? (targetSiteObj.address ? `${targetSiteObj.name} (${targetSiteObj.address})` : targetSiteObj.name)
+      : rawTargetSite;
     const inheritedPurpose = targetItem.purpose || targetItem.purposeType || '작업';
     const inheritedPurposeType = targetItem.purposeType || targetItem.purpose || '작업';
     const inheritedCustomPurpose = targetItem.customPurpose || (targetItem.purposeType === '기타' ? targetItem.purpose : '') || '';
@@ -1374,9 +1377,14 @@ export default function SecurityChecklistTab({
     resetAppVerificationState();
 
     const userTeam = activeUser.team || activeUser.department || targetItem.team || '보안관제팀';
+    const rawTargetSite = targetItem.site || targetItem.site_name || targetItem.siteName || '';
+    const targetSiteObj = findSiteByDisplayNameOrName(rawTargetSite, sites);
+    const targetSite = targetSiteObj
+      ? (targetSiteObj.address ? `${targetSiteObj.name} (${targetSiteObj.address})` : targetSiteObj.name)
+      : rawTargetSite;
     const targetDate = selectedDate || (targetItem.visitDate ? targetItem.visitDate.split('~')[0].trim() : getTodayLocalIsoDate());
     setFormData({
-      site: targetItem.site || '',
+      site: targetSite,
       visitorName: activeUser ? activeUser.name : (targetItem.visitorName || ''),
       phone: activeUser ? activeUser.phone : (targetItem.phone || '010-0000-0000'),
       team: userTeam,
@@ -1560,12 +1568,19 @@ export default function SecurityChecklistTab({
       const isDateMatch = itemDate.includes(checkDateIso) || itemVisitDate.includes(checkDateIso) || matchesSelectedDate(item, checkDateIso);
       if (!isDateMatch) return false;
 
-      // 2. 사업장 구분: 사업장명 AND 사업장 위치 조합 확인 (1개라도 다르면 다른 사업장으로 판단)
+      // 2. 사업장 구분: 정확한 사업장 객체 식별 및 사업장명+위치 일치 확인
       const itemSite = String(item.site_name || item.siteName || item.site || '').trim().toLowerCase();
-      let nameMatches = siteNameStr ? itemSite.includes(siteNameStr) : false;
-      let addrMatches = siteAddrStr ? itemSite.includes(siteAddrStr) : true; // 위치 미지정 시 사업장명만 검증
-
-      if (!nameMatches || !addrMatches) return false;
+      const matchedSiteItem = findSiteByDisplayNameOrName(itemSite, sites);
+      let siteMatches = false;
+      if (matchedSiteItem && siteObj) {
+        siteMatches = (matchedSiteItem.id && siteObj.id && matchedSiteItem.id === siteObj.id) ||
+          (matchedSiteItem.name && siteObj.name && matchedSiteItem.name.trim().toLowerCase() === siteNameStr);
+      } else {
+        const nameMatches = siteNameStr ? (itemSite === siteNameStr || itemSite.includes(siteNameStr)) : false;
+        const addrMatches = siteAddrStr ? itemSite.includes(siteAddrStr) : true;
+        siteMatches = nameMatches && addrMatches;
+      }
+      if (!siteMatches) return false;
 
       // 3. 사용자 식별: ID, 소속(team), 직급(rank), 이름(name) 기준 동일인 판단 (1개라도 다르면 다른 사람으로 판단)
       const targetUserObj = {
@@ -2853,84 +2868,97 @@ export default function SecurityChecklistTab({
                             cursor: 'not-allowed'
                           }}
                         />
-                      ) : (
-                        <select
-                          value={formData.site}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const selectedSiteObj = findSiteByDisplayNameOrName(val, sites);
+                      ) : (() => {
+                        const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
+                        const currentSelectValue = selectedSiteObj
+                          ? (selectedSiteObj.address ? `${selectedSiteObj.name} (${selectedSiteObj.address})` : selectedSiteObj.name)
+                          : (formData.site || '');
 
-                            const targetName = formData.visitorName || currentUser?.name || '';
-                            const targetPhone = formData.phone || currentUser?.phone || '';
-                            const targetUsername = currentUser?.username || '';
-                            const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                            const targetRank = formData.rank || currentUser?.rank || '';
+                        return (
+                          <select
+                            value={currentSelectValue}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) return;
+                              const matchedSite = findSiteByDisplayNameOrName(val, sites);
+                              const canonicalSiteVal = matchedSite
+                                ? (matchedSite.address ? `${matchedSite.name} (${matchedSite.address})` : matchedSite.name)
+                                : val;
 
-                            if (!formData.isEditMode && !formData.isCompanionMode && selectedSiteObj && isSiteAlreadyPledgedToday(selectedSiteObj, targetName, targetPhone, targetUsername, targetTeam, targetRank)) {
-                              if (onTriggerToast) {
-                                onTriggerToast(`⛔ [중복 서약 방지] '${selectedSiteObj.name}' 사업장은 오늘 자로 이미 서약이 완료되었습니다. 다른 사업장을 선택해 주세요.`, 'warning');
+                              const targetName = formData.visitorName || currentUser?.name || '';
+                              const targetPhone = formData.phone || currentUser?.phone || '';
+                              const targetUsername = currentUser?.username || '';
+                              const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                              const targetRank = formData.rank || currentUser?.rank || '';
+
+                              const isAlreadyPledged = !formData.isEditMode && !formData.isCompanionMode && matchedSite && isSiteAlreadyPledgedToday(matchedSite, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+
+                              const previousSite = formData.site;
+                              // 사업장 선택 상태를 즉시 저장 (초기화 및 되돌림 방지)
+                              resetAllPostSiteSteps(canonicalSiteVal);
+
+                              if (isAlreadyPledged) {
+                                if (onTriggerToast) {
+                                  onTriggerToast(`ℹ️ [안내] '${matchedSite.name}' 사업장에 오늘 작성된 서약 내역이 있습니다.`, 'info');
+                                }
+                              } else if (previousSite && previousSite !== canonicalSiteVal) {
+                                if (onTriggerToast) {
+                                  onTriggerToast(`🔄 사업장 변경: 보안앱 검수 및 체크리스트(2·3·4단계)가 초기화되었습니다. 다시 검수를 진행해 주세요.`, 'info');
+                                }
                               }
-                              return;
-                            }
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '10px 14px',
+                              borderRadius: '12px',
+                              background: isSiteInvalid ? '#fff1f2' : '#ffffff',
+                              border: isSiteInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
+                              boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
+                              color: currentSelectValue ? (() => {
+                                const selSite = findSiteByDisplayNameOrName(currentSelectValue, sites);
+                                const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
+                                return isSecAppO ? '#16a34a' : '#dc2626';
+                              })() : '#94a3b8',
+                              fontWeight: currentSelectValue ? '700' : 'normal',
+                              fontSize: '13px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <option value="" disabled>-- 출입 사업장을 선택해 주세요 --</option>
+                            {currentSelectValue && !sites.some(s => (s.address ? `${s.name} (${s.address})` : s.name) === currentSelectValue) && (
+                              <option value={currentSelectValue}>[선택됨] {currentSelectValue}</option>
+                            )}
+                            {sites.map((s) => {
+                              const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+                              const targetName = formData.visitorName || currentUser?.name || '';
+                              const targetPhone = formData.phone || currentUser?.phone || '';
+                              const targetUsername = currentUser?.username || '';
+                              const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                              const targetRank = formData.rank || currentUser?.rank || '';
 
-                            const previousSite = formData.site;
-                            resetAllPostSiteSteps(val);
+                              const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+                              const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
+                              const displayType = (s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O';
 
-                            if (previousSite && previousSite !== val) {
-                              if (onTriggerToast) {
-                                onTriggerToast(`🔄 사업장 변경: 보안앱 검수 및 체크리스트(2·3·4단계)가 초기화되었습니다. 다시 검수를 진행해 주세요.`, 'info');
-                              }
-                            }
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '10px 14px',
-                            borderRadius: '12px',
-                            background: isSiteInvalid ? '#fff1f2' : '#ffffff',
-                            border: isSiteInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
-                            boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
-                            color: formData.site ? (() => {
-                              const selSite = findSiteByDisplayNameOrName(formData.site, sites);
-                              const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
-                              return isSecAppO ? '#16a34a' : '#dc2626';
-                            })() : '#94a3b8',
-                            fontWeight: formData.site ? '700' : 'normal',
-                            fontSize: '13px',
-                            outline: 'none',
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease'
-                          }}
-                        >
-                          <option value="" disabled>-- 출입 사업장을 선택해 주세요 --</option>
-                          {sites.map((s) => {
-                            const displayName = s.address ? `${s.name} (${s.address})` : s.name;
-                            const targetName = formData.visitorName || currentUser?.name || '';
-                            const targetPhone = formData.phone || currentUser?.phone || '';
-                            const targetUsername = currentUser?.username || '';
-                            const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                            const targetRank = formData.rank || currentUser?.rank || '';
-
-                            const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
-                            const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
-                            const displayType = (s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O';
-
-                            return (
-                              <option
-                                key={s.id}
-                                value={displayName}
-                                disabled={isPledged}
-                                style={{
-                                  background: isPledged ? '#f1f5f9' : '#ffffff',
-                                  color: isPledged ? '#94a3b8' : (isSecAppO ? '#16a34a' : '#dc2626'),
-                                  fontWeight: isPledged ? '400' : '700'
-                                }}
-                              >
-                                [{displayType}] {displayName}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      )}
+                              return (
+                                <option
+                                  key={s.id}
+                                  value={displayName}
+                                  style={{
+                                    background: isPledged ? '#f8fafc' : '#ffffff',
+                                    color: isPledged ? '#64748b' : (isSecAppO ? '#16a34a' : '#dc2626'),
+                                    fontWeight: isPledged ? '500' : '700'
+                                  }}
+                                >
+                                  {isPledged ? '[서약완료] ' : `[${displayType}] `}{displayName}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        );
+                      })()}
                     </div>
 
                     {/* Visit Purpose Dropdown & Custom Text Input */}
