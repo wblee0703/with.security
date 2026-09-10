@@ -33,7 +33,8 @@ import {
   Award,
   Settings,
   HardHat,
-  RefreshCw
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react';
 
 import TbmSection from './TbmSection';
@@ -943,7 +944,12 @@ export default function SecurityChecklistTab({
       });
 
       if (onTriggerToast) {
-        onTriggerToast('❌ [검수 실패] 카메라가 켜졌습니다. 모바일 보안 앱(MDM/SSM)에서 카메라를 먼저 차단(비활성화)해 주세요.', 'error');
+        const isWebChecklist = !Capacitor.isNativePlatform() || targetApp?.isChecklistMode;
+        if (isWebChecklist) {
+          onTriggerToast('❌ [카메라 검수 실패] 카메라 화면이 정상 작동 중입니다! 보안 스티커를 부착하거나 카메라가 차단된 상태에서 다시 검수를 진행해 주세요.', 'error');
+        } else {
+          onTriggerToast('❌ [검수 실패] 카메라가 켜졌습니다. 모바일 보안 앱(MDM/SSM)에서 카메라를 먼저 차단(비활성화)해 주세요.', 'error');
+        }
       }
       return false;
     } catch (err) {
@@ -3456,69 +3462,216 @@ export default function SecurityChecklistTab({
                         </div>
 
                         {/* 2. 스마트폰 카메라 앱 실행 & 확인 카드 */}
-                        <div style={{
-                          background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#ffffff',
-                          border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
-                          borderRadius: '14px',
-                          padding: '14px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '10px',
-                          transition: 'all 0.25s ease',
-                          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-                        }}>
-                          <div style={{ fontSize: '12.5px', fontWeight: '800', color: cameraSelfChecklist.cameraChecked ? '#059669' : '#1e3a8a', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span>📸 2단계: 스마트폰 기본 카메라 실행 및 차단 확인</span>
-                            {cameraSelfChecklist.cameraChecked && (
-                              <span style={{ fontSize: '11px', color: '#059669', fontWeight: '700' }}>✓ 확인 완료</span>
-                            )}
-                          </div>
+                        {(() => {
+                          const isPassed = cameraSelfChecklist.cameraChecked;
+                          const isFailed = !isPassed && (cameraCheckState.result === 'UNLOCKED' || (step2Attempted && !cameraCheckVerified));
+                          const isTesting = cameraCheckState.isTesting;
 
-                          <div style={{ display: 'flex', width: '100%' }}>
-                            <button
-                              type="button"
-                              disabled={cameraCheckState.isTesting}
-                              onClick={async () => {
-                                const passed = await handleCheckAppExecutionStatus();
-                                if (passed) {
-                                  const updated = { ...cameraSelfChecklist, cameraChecked: true };
-                                  setCameraSelfChecklist(updated);
-                                  const isAll = updated.stickerAttached && updated.noPhotoAgreed && true;
-                                  setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
-                                } else {
-                                  const updated = { ...cameraSelfChecklist, cameraChecked: false };
-                                  setCameraSelfChecklist(updated);
-                                }
-                              }}
-                              style={{
-                                width: '100%',
-                                height: '46px',
-                                padding: '0 12px',
-                                borderRadius: '10px',
-                                fontSize: '12.5px',
+                          return (
+                            <div style={{
+                              background: isPassed
+                                ? 'linear-gradient(180deg, #ecfdf5 0%, #f0fdf4 100%)'
+                                : isFailed
+                                  ? 'linear-gradient(180deg, #fff1f2 0%, #ffe4e6 100%)'
+                                  : '#ffffff',
+                              border: isPassed
+                                ? '1.5px solid #6ee7b7'
+                                : isFailed
+                                  ? '2px solid #f43f5e'
+                                  : '1.5px solid #cbd5e1',
+                              borderRadius: '14px',
+                              padding: '16px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '12px',
+                              transition: 'all 0.25s ease',
+                              boxShadow: isFailed
+                                ? '0 6px 20px rgba(244, 63, 94, 0.15)'
+                                : isPassed
+                                  ? '0 4px 14px rgba(16, 185, 129, 0.12)'
+                                  : '0 1px 3px rgba(0, 0, 0, 0.04)'
+                            }}>
+                              <div style={{
+                                fontSize: '13px',
                                 fontWeight: '800',
-                                background: cameraSelfChecklist.cameraChecked ? '#ecfdf5' : '#1e3a8a',
-                                color: cameraSelfChecklist.cameraChecked ? '#059669' : '#ffffff',
-                                border: cameraSelfChecklist.cameraChecked ? '1.5px solid #a7f3d0' : '1.5px solid #1e3a8a',
-                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-                                cursor: cameraCheckState.isTesting ? 'wait' : 'pointer',
+                                color: isPassed ? '#047857' : isFailed ? '#be123c' : '#1e3a8a',
                                 display: 'flex',
                                 alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: '6px',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              {cameraCheckState.isTesting ? (
-                                <><RefreshCw size={16} className="animate-spin" /> 카메라 실행 및 차단 상태 확인 중...</>
-                              ) : cameraSelfChecklist.cameraChecked ? (
-                                <><CheckCircle2 size={16} color="#059669" /> 카메라 차단 확인됨 (검수 완료)</>
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '6px'
+                              }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  📸 2단계: 스마트폰 기본 카메라 실행 및 차단 확인
+                                </span>
+                                {isPassed ? (
+                                  <span style={{
+                                    fontSize: '11px',
+                                    color: '#065f46',
+                                    fontWeight: '800',
+                                    background: '#d1fae5',
+                                    border: '1px solid #a7f3d0',
+                                    padding: '3px 9px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    ✓ 확인 완료
+                                  </span>
+                                ) : isFailed ? (
+                                  <span style={{
+                                    fontSize: '11px',
+                                    color: '#be123c',
+                                    fontWeight: '800',
+                                    background: '#ffe4e6',
+                                    border: '1.5px solid #fda4af',
+                                    padding: '3px 9px',
+                                    borderRadius: '6px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}>
+                                    <AlertTriangle size={13} color="#e11d48" /> 차단 안 됨 (검수 실패)
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    fontSize: '11px',
+                                    color: '#64748b',
+                                    fontWeight: '700',
+                                    background: '#f1f5f9',
+                                    padding: '3px 8px',
+                                    borderRadius: '6px'
+                                  }}>
+                                    검수 대기
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 상태별 안내 메시지 박스 */}
+                              {isFailed ? (
+                                <div style={{
+                                  background: '#ffffff',
+                                  border: '1.5px solid #fecdd3',
+                                  borderLeft: '5px solid #f43f5e',
+                                  borderRadius: '10px',
+                                  padding: '12px 14px',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '5px',
+                                  boxShadow: '0 2px 8px rgba(244, 63, 94, 0.08)'
+                                }}>
+                                  <div style={{
+                                    fontSize: '12.5px',
+                                    fontWeight: '800',
+                                    color: '#9f1239',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <AlertTriangle size={15} color="#e11d48" />
+                                    <span>카메라 정상 작동 감지 (보안 차단 실패)</span>
+                                  </div>
+                                  <div style={{ fontSize: '11.5px', color: '#881337', lineHeight: '1.5' }}>
+                                    스마트폰 카메라가 켜져서 촬영 가능한 상태입니다. 사업장 보안 규정에 따라 <strong>카메라 렌즈에 보안 스티커를 부착</strong>하거나 카메라 사용이 차단된 상태에서 다시 검수를 진행해 주세요.
+                                  </div>
+                                </div>
+                              ) : isPassed ? (
+                                <div style={{
+                                  background: '#ffffff',
+                                  border: '1.5px solid #bbf7d0',
+                                  borderLeft: '5px solid #10b981',
+                                  borderRadius: '10px',
+                                  padding: '10px 14px',
+                                  fontSize: '11.5px',
+                                  color: '#065f46',
+                                  lineHeight: '1.45',
+                                  boxShadow: '0 2px 6px rgba(16, 185, 129, 0.06)'
+                                }}>
+                                  <strong>✓ 카메라 차단 확인 성공:</strong> 보안 정책에 따라 카메라 사용이 안전하게 제한(차단/블랙아웃)된 상태임이 확인되었습니다.
+                                </div>
                               ) : (
-                                <><Camera size={16} /> 카메라 차단 검수 시작 (카메라 실행 확인)</>
+                                <div style={{
+                                  fontSize: '11.5px',
+                                  color: '#64748b',
+                                  lineHeight: '1.45',
+                                  background: '#f8fafc',
+                                  padding: '9px 12px',
+                                  borderRadius: '8px',
+                                  border: '1px solid #e2e8f0'
+                                }}>
+                                  💡 카메라 실행 시 화면이 <strong>안 켜지거나 차단(스티커 부착/권한 비활성화)</strong>된 경우에만 검수가 통과됩니다.
+                                </div>
                               )}
-                            </button>
-                          </div>
-                        </div>
+
+                              <div style={{ display: 'flex', width: '100%' }}>
+                                <button
+                                  type="button"
+                                  disabled={isTesting}
+                                  onClick={async () => {
+                                    setStep2Attempted(true);
+                                    const passed = await handleCheckAppExecutionStatus();
+                                    if (passed) {
+                                      const updated = { ...cameraSelfChecklist, cameraChecked: true };
+                                      setCameraSelfChecklist(updated);
+                                      const isAll = updated.stickerAttached && updated.noPhotoAgreed && true;
+                                      setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
+                                    } else {
+                                      const updated = { ...cameraSelfChecklist, cameraChecked: false };
+                                      setCameraSelfChecklist(updated);
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    height: '48px',
+                                    padding: '0 14px',
+                                    borderRadius: '10px',
+                                    fontSize: '13px',
+                                    fontWeight: '800',
+                                    background: isTesting
+                                      ? '#e2e8f0'
+                                      : isPassed
+                                        ? '#ecfdf5'
+                                        : isFailed
+                                          ? 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)'
+                                          : '#1e3a8a',
+                                    color: isTesting
+                                      ? '#64748b'
+                                      : isPassed
+                                        ? '#047857'
+                                        : '#ffffff',
+                                    border: isPassed
+                                      ? '1.5px solid #6ee7b7'
+                                      : isFailed
+                                        ? '1.5px solid #9f1239'
+                                        : '1.5px solid #1e3a8a',
+                                    boxShadow: isFailed
+                                      ? '0 4px 14px rgba(225, 29, 72, 0.35)'
+                                      : isPassed
+                                        ? '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                        : '0 2px 8px rgba(0, 0, 0, 0.08)',
+                                    cursor: isTesting ? 'wait' : 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
+                                    transition: 'all 0.25s ease'
+                                  }}
+                                >
+                                  {isTesting ? (
+                                    <><RefreshCw size={17} className="animate-spin" /> 카메라 실행 및 차단 상태 확인 중...</>
+                                  ) : isPassed ? (
+                                    <><CheckCircle2 size={17} color="#059669" /> 카메라 차단 확인됨 (재검수 가능)</>
+                                  ) : isFailed ? (
+                                    <><RotateCcw size={17} /> ❌ 검수 실패 - 카메라 차단 후 다시 검수하기</>
+                                  ) : (
+                                    <><Camera size={17} /> 카메라 차단 검수 시작 (카메라 실행 확인)</>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div style={{
@@ -3741,17 +3894,27 @@ export default function SecurityChecklistTab({
                                 background: cameraCheckVerified
                                   ? '#ecfdf5'
                                   : cameraCheckState.result === 'UNLOCKED'
-                                    ? '#fff1f2'
+                                    ? 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)'
                                     : (!cameraCheckVerified && step2Attempted)
                                       ? '#fff1f2'
                                       : '#eff6ff',
-                                color: cameraCheckVerified ? '#059669' : (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted)) ? '#e11d48' : '#1e3a8a',
+                                color: cameraCheckVerified
+                                  ? '#059669'
+                                  : cameraCheckState.result === 'UNLOCKED'
+                                    ? '#ffffff'
+                                    : (!cameraCheckVerified && step2Attempted)
+                                      ? '#e11d48'
+                                      : '#1e3a8a',
                                 border: cameraCheckVerified
                                   ? '1.5px solid #a7f3d0'
-                                  : (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted))
-                                    ? '1.5px solid #fda4af'
-                                    : '1.5px solid #cbd5e1',
-                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                                  : cameraCheckState.result === 'UNLOCKED'
+                                    ? '1.5px solid #9f1239'
+                                    : (!cameraCheckVerified && step2Attempted)
+                                      ? '1.5px solid #fda4af'
+                                      : '1.5px solid #cbd5e1',
+                                boxShadow: cameraCheckState.result === 'UNLOCKED'
+                                  ? '0 4px 14px rgba(225, 29, 72, 0.35)'
+                                  : '0 2px 8px rgba(0, 0, 0, 0.04)',
                                 cursor: cameraCheckState.isTesting ? 'wait' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
@@ -3765,7 +3928,7 @@ export default function SecurityChecklistTab({
                               ) : cameraCheckVerified ? (
                                 <><CheckCircle2 size={18} color="#059669" /> 카메라 차단 확인 완료 (재검수 가능)</>
                               ) : cameraCheckState.result === 'UNLOCKED' ? (
-                                <><Camera size={18} /> 카메라 차단 재검수 (차단 후 클릭)</>
+                                <><RotateCcw size={18} /> ❌ 검수 실패 - 카메라 차단 후 다시 검수하기</>
                               ) : (
                                 <><Camera size={18} /> 카메라 차단 검수 시작 (카메라 실행 확인)</>
                               )}
