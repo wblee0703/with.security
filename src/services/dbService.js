@@ -3877,18 +3877,48 @@ class SecurityDatabase {
       await this.putItem('tbms', fullTbm);
     } catch (e) { }
 
-    // Strip large photo dataUrls before sending to Google Sheets (prevents 50k cell limit overflow)
+    // Send full TBM payload including photos (Google Apps Script will safely upload to Drive & return permanent URLs)
     const remotePayload = {
       ...fullTbm,
+      // 1. 사업장 및 기본 정보 (camelCase & snake_case 둘 다 명시적으로 매핑하여 시트 컬럼 100% 저장 보장)
+      site: fullTbm.site || fullTbm.siteName || '',
+      site_name: fullTbm.site || fullTbm.siteName || '',
+      siteName: fullTbm.site || fullTbm.siteName || '',
+      site_address: fullTbm.siteAddress || fullTbm.site_address || '',
+      siteAddress: fullTbm.siteAddress || fullTbm.site_address || '',
+      work_title: fullTbm.workTitle || fullTbm.work_title || '',
+      workTitle: fullTbm.workTitle || fullTbm.work_title || '',
+      work_area: fullTbm.workArea || fullTbm.work_area || '',
+      workArea: fullTbm.workArea || fullTbm.work_area || '',
+      work_category: fullTbm.workCategory || fullTbm.work_category || '일반작업',
+      workCategory: fullTbm.workCategory || fullTbm.work_category || '일반작업',
+      leader_division: fullTbm.leaderDivision || fullTbm.leader_division || '',
+      leaderDivision: fullTbm.leaderDivision || fullTbm.leader_division || '',
+      leader_team: fullTbm.leaderTeam || fullTbm.leader_team || '',
+      leaderTeam: fullTbm.leaderTeam || fullTbm.leader_team || '',
+      leader_name: fullTbm.leaderName || fullTbm.leader_name || '',
+      leaderName: fullTbm.leaderName || fullTbm.leader_name || '',
+      leader_rank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
+      leaderRank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
+      leader_phone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
+      leaderPhone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
+      work_content: fullTbm.workContent || fullTbm.work_content || '',
+      workContent: fullTbm.workContent || fullTbm.work_content || '',
+      tools_used: fullTbm.toolsUsed || fullTbm.tools_used || '',
+      toolsUsed: fullTbm.toolsUsed || fullTbm.tools_used || '',
       tbmType: fullTbm.tbmType,
       tbm_type: fullTbm.tbmType,
+
+      // 2. 추가 TBM 인원 및 사진
       additionalTbms: (fullTbm.additionalTbms || []).map(a => ({
         ...a,
         photos: (a.photos || []).map(p => ({
           id: p.id,
           name: p.name || 'photo.jpg',
           size: p.size || 0,
-          takenAt: p.takenAt || ''
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
         })),
         photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
       })),
@@ -3898,26 +3928,38 @@ class SecurityDatabase {
           id: p.id,
           name: p.name || 'photo.jpg',
           size: p.size || 0,
-          takenAt: p.takenAt || ''
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
         })),
         photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
       })),
+
+      // 3. 작업 전 점검 사진 (Drive 저장을 위해 dataUrl 유지 전달)
       preCheck: {
         ...fullTbm.preCheck,
         photos: (fullTbm.preCheck?.photos || []).map(p => ({
           id: p.id,
           name: p.name || 'photo.jpg',
           size: p.size || 0,
-          timestamp: p.timestamp || ''
+          timestamp: p.timestamp || p.takenAt || '',
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
         }))
       },
+
+      // 4. 작업 후 점검 사진 (Drive 저장을 위해 dataUrl 유지 전달)
       postCheck: {
         ...fullTbm.postCheck,
         photos: (fullTbm.postCheck?.photos || []).map(p => ({
           id: p.id,
           name: p.name || 'photo.jpg',
           size: p.size || 0,
-          timestamp: p.timestamp || ''
+          timestamp: p.timestamp || p.takenAt || '',
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
         }))
       }
     };

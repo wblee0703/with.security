@@ -878,9 +878,9 @@ export default function TbmSection({
       ...safeTbm,
       id: safeTbm.id,
       date: safeTbm.date || selectedDate || getTodayIsoDate(),
-      site: safeTbm.site || safeTbm.siteName || '',
-      siteAddress: safeTbm.siteAddress || safeTbm.site_address || '',
-      workTitle: safeTbm.workTitle || safeTbm.work_title || '',
+      site: safeTbm.site || safeTbm.siteName || safeTbm.site_name || '',
+      siteAddress: safeTbm.siteAddress || safeTbm.site_address || safeTbm.address || '',
+      workTitle: safeTbm.workTitle || safeTbm.work_title || safeTbm.title || '',
       workArea: safeTbm.workArea || safeTbm.work_area || '',
       workCategory: safeTbm.workCategory || safeTbm.work_category || '일반작업',
       leaderDivision: lDiv,
@@ -914,6 +914,20 @@ export default function TbmSection({
       ...normalized,
       id: undefined, // New record ID will be generated upon save
       date: selectedDate || preTbm.date || getTodayIsoDate(),
+      site: normalized.site || preTbm.site || preTbm.siteName || preTbm.site_name || '',
+      siteAddress: normalized.siteAddress || preTbm.siteAddress || preTbm.site_address || preTbm.address || '',
+      workTitle: normalized.workTitle || preTbm.workTitle || preTbm.work_title || `${normalized.leaderDivision || ''} ${normalized.leaderTeam || ''} TBM`.trim(),
+      workArea: normalized.workArea || preTbm.workArea || preTbm.work_area || '',
+      workCategory: normalized.workCategory || preTbm.workCategory || preTbm.work_category || '일반작업',
+      leaderDivision: normalized.leaderDivision || preTbm.leaderDivision || preTbm.leader_division || '',
+      leaderTeam: normalized.leaderTeam || preTbm.leaderTeam || preTbm.leader_team || '',
+      leaderName: normalized.leaderName || preTbm.leaderName || preTbm.leader_name || '',
+      leaderRank: normalized.leaderRank || preTbm.leaderRank || preTbm.leader_rank || '대리',
+      leaderPhone: normalized.leaderPhone || preTbm.leaderPhone || preTbm.leader_phone || '',
+      attendees: (normalized.attendees && normalized.attendees.length > 0) ? normalized.attendees : (preTbm.attendees || []),
+      absentees: Array.isArray(preTbm.absentees) ? preTbm.absentees : [],
+      workContent: normalized.workContent || preTbm.workContent || preTbm.work_content || '',
+      toolsUsed: normalized.toolsUsed || preTbm.toolsUsed || preTbm.tools_used || '',
       tbmType: 'post',
       includePostCheckNow: true,
       postCheck: {
@@ -1145,7 +1159,34 @@ export default function TbmSection({
       ...formData,
       id: editingTbmId || undefined,
       tbmType: formData.tbmType || 'pre',
+      tbm_type: formData.tbmType || 'pre',
+      site: formData.site?.trim() || '',
+      siteName: formData.site?.trim() || '',
+      site_name: formData.site?.trim() || '',
+      siteAddress: formData.siteAddress?.trim() || '',
+      site_address: formData.siteAddress?.trim() || '',
       workTitle: autoWorkTitle,
+      work_title: autoWorkTitle,
+      workArea: formData.workArea?.trim() || '',
+      work_area: formData.workArea?.trim() || '',
+      workCategory: formData.workCategory || '일반작업',
+      work_category: formData.workCategory || '일반작업',
+      leaderDivision: formData.leaderDivision?.trim() || '',
+      leader_division: formData.leaderDivision?.trim() || '',
+      leaderTeam: formData.leaderTeam?.trim() || '',
+      leader_team: formData.leaderTeam?.trim() || '',
+      leaderName: formData.leaderName?.trim() || '',
+      leader_name: formData.leaderName?.trim() || '',
+      leaderRank: formData.leaderRank || '대리',
+      leader_rank: formData.leaderRank || '대리',
+      leaderPhone: formData.leaderPhone || '',
+      leader_phone: formData.leaderPhone || '',
+      attendees: formData.attendees || [],
+      absentees: formData.absentees || [],
+      workContent: formData.workContent?.trim() || '',
+      work_content: formData.workContent?.trim() || '',
+      toolsUsed: formData.toolsUsed?.trim() || '',
+      tools_used: formData.toolsUsed?.trim() || '',
       status: finalStatus,
       preCheck: {
         ...formData.preCheck,
@@ -1858,9 +1899,9 @@ export default function TbmSection({
                           {(tbm.postCheck?.photos || []).slice(0, 4).map((p, pIdx) => (
                             <img
                               key={p.id || pIdx}
-                              src={p.dataUrl}
+                              src={p.dataUrl || p.thumbnailUrl || p.url || p.viewUrl}
                               alt="종료 사진"
-                              onClick={() => setPreviewModalPhoto(p.dataUrl)}
+                              onClick={() => setPreviewModalPhoto(p.dataUrl || p.viewUrl || p.url || p.thumbnailUrl)}
                               title="클릭하여 확대"
                               style={{
                                 width: '34px',
@@ -2255,9 +2296,9 @@ export default function TbmSection({
                         {(tbm.preCheck?.photos || []).slice(0, 4).map((p, pIdx) => (
                           <img
                             key={p.id || pIdx}
-                            src={p.dataUrl}
+                            src={p.dataUrl || p.thumbnailUrl || p.url || p.viewUrl}
                             alt="현장사진"
-                            onClick={() => setPreviewModalPhoto(p.dataUrl)}
+                            onClick={() => setPreviewModalPhoto(p.dataUrl || p.viewUrl || p.url || p.thumbnailUrl)}
                             title="클릭하여 확대"
                             style={{
                               width: '34px',
@@ -3083,6 +3124,50 @@ export default function TbmSection({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       🛡️ Step 2. TBM 내용 작성
+                    </div>
+
+                    {/* Basic Info Summary Banner (사업장 / 일자 / 주관자 확인 및 수정) */}
+                    <div style={{
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#0284c7', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
+                            기본정보
+                          </span>
+                          <strong style={{ fontSize: '12.5px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {formData.site || '사업장 미지정'} {formData.siteAddress ? `(${formData.siteAddress})` : ''}
+                          </strong>
+                        </div>
+                        <div style={{ fontSize: '11.5px', color: '#475569' }}>
+                          일자: <strong>{formData.date}</strong> · 책임자: <strong>{formData.leaderName || '미지정'} {formData.leaderRank}</strong> ({formData.leaderDivision} {formData.leaderTeam})
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveStep(1)}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          color: '#0284c7',
+                          fontSize: '11.5px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}
+                      >
+                        기본정보 수정 ✏️
+                      </button>
                     </div>
 
                     {/* Distinct Toggle Tabs: 업무 전 TBM vs 업무 후 TBM */}
@@ -4220,9 +4305,9 @@ export default function TbmSection({
                             }}
                           >
                             <img
-                              src={photo.dataUrl}
+                              src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
                               alt="TBM 현장 사진"
-                              onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                              onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
                               title="클릭하여 사진 확대"
                               style={{
                                 position: 'absolute',
@@ -4716,9 +4801,9 @@ export default function TbmSection({
                       {selectedTbm.preCheck.photos.map((photo, idx) => (
                         <img
                           key={photo.id || idx}
-                          src={photo.dataUrl}
+                          src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
                           alt="현장 사진"
-                          onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                          onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
                           title="클릭하여 사진 확대"
                           style={{
                             width: '75px',
@@ -4814,9 +4899,9 @@ export default function TbmSection({
                           {selectedTbm.postCheck.photos.map((photo, idx) => (
                             <img
                               key={photo.id || idx}
-                              src={photo.dataUrl}
+                              src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
                               alt="업무 후 현장 사진"
-                              onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                              onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
                               title="클릭하여 사진 확대"
                               style={{
                                 width: '75px',
@@ -5280,9 +5365,9 @@ export default function TbmSection({
                       {targetAdditionalTbm.preCheck.photos.map((photo, idx) => (
                         <img
                           key={photo.id || idx}
-                          src={photo.dataUrl}
+                          src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
                           alt="TBM 현장 사진"
-                          onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                          onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
                           title="클릭 시 사진 확대"
                           style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
                         />
@@ -5704,9 +5789,9 @@ export default function TbmSection({
                         }}
                       >
                         <img
-                          src={photo.dataUrl}
+                          src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
                           alt="추가 TBM 사진"
-                          onClick={() => setPreviewModalPhoto(photo.dataUrl)}
+                          onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
                           title="클릭하여 사진 확대"
                           style={{
                             position: 'absolute',

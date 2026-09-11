@@ -3,20 +3,22 @@
  * Withsharing_DB - 구글 스프레드시트 데이터베이스 전용 Apps Script
  * ==============================================================================
  * 
- * [MySQL 데이터베이스 스키마와 100% 완벽 동기화 버전]
+ * [MySQL 데이터베이스 스키마와 100% 완벽 동기화 & Google Drive 사진 자동 저장 v3]
  * 1. 생성하신 'Withsharing_DB' 구글 스프레드시트 열기
  * 2. 상단 메뉴 [확장 프로그램] > [Apps Script] 클릭
  * 3. 기존 코드를 모두 지우고 이 파일의 전체 코드를 그대로 붙여넣기
  * 4. 상단 툴바의 함수 선택 목록에서 'syncDatabaseHeaders' (또는 'initDatabase') 선택 후 [실행] 클릭
- *    -> 필요한 모든 탭(users, sites, work_logs, security_logs 등)의 컬럼이
- *       MySQL 테이블 컬럼과 100% 동일한 헤더와 서식으로 즉시 자동 동기화됩니다!
+ *    -> 필요한 모든 탭(users, sites, work_logs, security_logs, tbms 등)의 컬럼이
+ *       MySQL 테이블 컬럼 및 사진 링크(photo_urls)와 100% 동일한 헤더와 서식으로 즉시 자동 동기화됩니다!
  * 5. 우측 상단 [배포] > [새 배포] 클릭
  *    - 유형: '웹 앱' (톱니바퀴 아이콘 클릭)
- *    - 설명: Withsharing_DB MySQL Unified v2
+ *    - 설명: Withsharing_DB Google Drive Photos v3
  *    - 다음 사용자로 실행: '나'
  *    - 액세스 권한이 있는 사용자: '모든 사용자(Anyone)' (반드시 '모든 사용자' 선택!)
  * 6. [배포] 버튼 클릭 후 생성된 [웹 앱 URL] 복사
  * 7. 앱의 [사용자 설정] > [백엔드 DB API 서버 주소]에 붙여넣고 [저장 & 잠금] 클릭!
+ *    -> TBM 현장 사진이 Google Drive('WithSharing_TBM_Photos' 폴더)에 파일로 자동 저장되며,
+ *       스프레드시트에 바로보기 URL이 연동되어 용량 제한 없이 안전하게 영구 보존됩니다!
  * ==============================================================================
  */
 
@@ -63,7 +65,7 @@ const SCHEMAS = {
     'id', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
     'attendees', 'absentees', 'additional_tbms', 'tbm_type', 'work_content', 'tools_used',
-    'pre_check', 'post_check', 'status', 'created_at', 'updated_at'
+    'pre_check', 'post_check', 'status', 'photo_urls', 'created_at', 'updated_at'
   ],
   vault: [
     'id', 'category', 'title', 'encryptedData', 'updatedAt'
@@ -502,11 +504,16 @@ function doPost(e) {
             const rowNum = i + 1;
             const currentRow = rows[i];
             const updatedRow = headers.map((h, colIdx) => {
-              if (item[h] !== undefined) {
-                const val = item[h];
-                return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
+              const val = item[h];
+              if (val !== undefined && val !== null && val !== '') {
+                return (typeof val === 'object') ? JSON.stringify(val) : val;
               }
-              return currentRow[colIdx] !== undefined ? currentRow[colIdx] : '';
+              // 새 값이 비어있고 기존 행에 값이 이미 채워져 있다면 기존 값 보존 (기본정보 증발 원천 방지)
+              const existingVal = currentRow[colIdx];
+              if (existingVal !== undefined && existingVal !== null && existingVal !== '') {
+                return existingVal;
+              }
+              return (val !== undefined && val !== null) ? val : '';
             });
             sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
 
@@ -778,6 +785,84 @@ function doPost(e) {
 }
 
 // -------------------------------------------------------------
+// 구글 드라이브(Google Drive) 사진 자동 저장 헬퍼 함수
+// -------------------------------------------------------------
+
+/**
+ * 📷 Google Drive에 Base64 이미지를 자동 저장하고 영구 공유 URL을 반환하는 함수
+ */
+function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
+  try {
+    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+      return null;
+    }
+    
+    // 1. DataURL 정규식 파싱
+    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      return null;
+    }
+    
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const decodedBytes = Utilities.base64Decode(base64Data);
+    
+    let ext = 'jpg';
+    if (contentType.includes('png')) ext = 'png';
+    else if (contentType.includes('webp')) ext = 'webp';
+    else if (contentType.includes('gif')) ext = 'gif';
+    
+    const timeStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss');
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const safeName = fileName ? `${fileName.replace(/\.[^/.]+$/, '')}_${timeStr}.${ext}` : `tbm_${timeStr}_${randomSuffix}.${ext}`;
+    
+    const blob = Utilities.newBlob(decodedBytes, contentType, safeName);
+    
+    // 2. 구글 드라이브 전용 폴더 (WithSharing_TBM_Photos) 생성 또는 조회
+    const targetFolder = getOrCreateDriveFolder(folderName || 'WithSharing_TBM_Photos');
+    
+    // 3. 파일 생성 및 누구나 링크로 보기 권한 부여
+    const file = targetFolder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (e) { }
+    
+    const fileId = file.getId();
+    const viewUrl = file.getUrl();
+    const downloadUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
+    const thumbnailUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w800';
+    
+    return {
+      fileId: fileId,
+      name: safeName,
+      viewUrl: viewUrl,
+      url: downloadUrl,
+      thumbnailUrl: thumbnailUrl,
+      size: decodedBytes.length
+    };
+  } catch (err) {
+    Logger.log('Drive image save error: ' + err.toString());
+    return null;
+  }
+}
+
+/**
+ * 📁 구글 드라이브 폴더 생성 또는 기존 폴더 반환
+ */
+function getOrCreateDriveFolder(folderName) {
+  try {
+    const folders = DriveApp.getFoldersByName(folderName);
+    if (folders.hasNext()) {
+      return folders.next();
+    }
+    return DriveApp.createFolder(folderName);
+  } catch (err) {
+    Logger.log('getOrCreateDriveFolder error: ' + err.toString());
+    return DriveApp.getRootFolder();
+  }
+}
+
+// -------------------------------------------------------------
 // 헬퍼 유틸리티 함수
 // -------------------------------------------------------------
 
@@ -934,12 +1019,14 @@ function normalizeObjectForSheet(sheetName, rawObj) {
   // 7. TBM (tbms)
   if (sheetName === 'tbms') {
     const idVal = obj.id || obj.tbm_id || obj.tbmId || `TBM-${Date.now()}`;
-    const rawDate = obj.date || obj.log_date || '';
+    const rawDate = obj.date || obj.log_date || obj.logDate || '';
     const dVal = rawDate ? formatKstDate(rawDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
     const atts = obj.attendees || [];
     const abs = obj.absentees || [];
 
-    // Sanitize pre_check and post_check photos (strip large dataUrl to guarantee under 50k char cell limit)
+    const allDriveUrls = [];
+
+    // 1. pre_check photos 구글 드라이브 자동 저장 및 URL 변환
     let preChk = obj.preCheck || obj.pre_check || {};
     if (typeof preChk === 'string') {
       try { preChk = JSON.parse(preChk); } catch (e) { preChk = {}; }
@@ -947,15 +1034,33 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (preChk && typeof preChk === 'object') {
       preChk = { ...preChk };
       if (Array.isArray(preChk.photos)) {
-        preChk.photos = preChk.photos.map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || ''
-        }));
+        preChk.photos = preChk.photos.map((p, pIdx) => {
+          let driveInfo = null;
+          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
+            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_pre_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
+          }
+          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
+          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
+          const finalThumb = (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl;
+          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
+          else if (finalUrl) allDriveUrls.push(finalUrl);
+
+          return {
+            id: p.id || `pre_photo_${pIdx + 1}`,
+            name: p.name || `pre_photo_${pIdx + 1}.jpg`,
+            size: (driveInfo && driveInfo.size) || p.size || 0,
+            timestamp: p.timestamp || p.takenAt || '',
+            takenAt: p.takenAt || p.timestamp || '',
+            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
+            url: finalUrl,
+            viewUrl: finalViewUrl,
+            thumbnailUrl: finalThumb
+          };
+        });
       }
     }
 
+    // 2. post_check photos 구글 드라이브 자동 저장 및 URL 변환
     let postChk = obj.postCheck || obj.post_check || {};
     if (typeof postChk === 'string') {
       try { postChk = JSON.parse(postChk); } catch (e) { postChk = {}; }
@@ -963,13 +1068,71 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (postChk && typeof postChk === 'object') {
       postChk = { ...postChk };
       if (Array.isArray(postChk.photos)) {
-        postChk.photos = postChk.photos.map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || ''
-        }));
+        postChk.photos = postChk.photos.map((p, pIdx) => {
+          let driveInfo = null;
+          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
+            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_post_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
+          }
+          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
+          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
+          const finalThumb = (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl;
+          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
+          else if (finalUrl) allDriveUrls.push(finalUrl);
+
+          return {
+            id: p.id || `post_photo_${pIdx + 1}`,
+            name: p.name || `post_photo_${pIdx + 1}.jpg`,
+            size: (driveInfo && driveInfo.size) || p.size || 0,
+            timestamp: p.timestamp || p.takenAt || '',
+            takenAt: p.takenAt || p.timestamp || '',
+            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
+            url: finalUrl,
+            viewUrl: finalViewUrl,
+            thumbnailUrl: finalThumb
+          };
+        });
       }
+    }
+
+    // 3. additional_tbms photos 구글 드라이브 자동 저장 및 URL 변환
+    let addTbms = obj.additional_tbms || obj.additionalTbms || [];
+    if (typeof addTbms === 'string') {
+      try { addTbms = JSON.parse(addTbms); } catch (e) { addTbms = []; }
+    }
+    if (Array.isArray(addTbms)) {
+      addTbms = addTbms.map((a, aIdx) => {
+        let photosList = Array.isArray(a.photos) ? a.photos : [];
+        if (photosList.length === 0 && a.photo && typeof a.photo === 'string') {
+          photosList = [{ id: 'photo_1', dataUrl: a.photo, name: 'add_tbm.jpg' }];
+        }
+        const mappedPhotos = photosList.map((p, pIdx) => {
+          let driveInfo = null;
+          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
+            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_add_${dVal}_${aIdx + 1}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
+          }
+          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || '';
+          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
+          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
+          else if (finalUrl) allDriveUrls.push(finalUrl);
+
+          return {
+            id: p.id || `add_photo_${pIdx + 1}`,
+            name: p.name || 'photo.jpg',
+            size: (driveInfo && driveInfo.size) || p.size || 0,
+            takenAt: p.takenAt || p.timestamp || '',
+            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
+            url: finalUrl,
+            viewUrl: finalViewUrl,
+            thumbnailUrl: (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl
+          };
+        });
+
+        return {
+          ...a,
+          photo: mappedPhotos[0]?.url || mappedPhotos[0]?.viewUrl || '',
+          photos: mappedPhotos
+        };
+      });
     }
 
     let preCheckStr = JSON.stringify(preChk);
@@ -978,55 +1141,99 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     let postCheckStr = JSON.stringify(postChk);
     if (postCheckStr.length > 45000) postCheckStr = postCheckStr.substring(0, 45000);
 
-    let addTbms = obj.additional_tbms || obj.additionalTbms || [];
-    if (typeof addTbms === 'string') {
-      try { addTbms = JSON.parse(addTbms); } catch (e) { addTbms = []; }
-    }
-    if (Array.isArray(addTbms)) {
-      addTbms = addTbms.map(a => {
-        let cleanPhoto = a.photo;
-        if (cleanPhoto && typeof cleanPhoto === 'string' && cleanPhoto.length > 25000) {
-          cleanPhoto = cleanPhoto.slice(0, 25000);
-        }
-        return {
-          ...a,
-          photo: cleanPhoto,
-          photos: (a.photos || []).map(p => ({
-            id: p.id,
-            name: p.name || 'photo.jpg',
-            size: p.size || 0,
-            takenAt: p.takenAt || ''
-          }))
-        };
-      });
-    }
     let addTbmsStr = JSON.stringify(addTbms);
     if (addTbmsStr.length > 45000) addTbmsStr = addTbmsStr.substring(0, 45000);
 
+    // 기본 정보 완벽 추출 (모든 필드명 변형 수용)
+    const siteVal = String(obj.site || obj.siteName || obj.site_name || '').trim();
+    const siteAddrVal = String(obj.siteAddress || obj.site_address || obj.address || '').trim();
+    const workTitleVal = String(obj.workTitle || obj.work_title || obj.title || '').trim();
+    const workAreaVal = String(obj.workArea || obj.work_area || '').trim();
+    const workCatVal = String(obj.workCategory || obj.work_category || '일반작업').trim();
+    const leaderDivVal = String(obj.leaderDivision || obj.leader_division || obj.division || '').trim();
+    const leaderTeamVal = String(obj.leaderTeam || obj.leader_team || obj.team || obj.department || '').trim();
+    const leaderNameVal = String(obj.leaderName || obj.leader_name || obj.leader || '').trim();
+    const leaderRankVal = String(obj.leaderRank || obj.leader_rank || obj.rank || '대리').trim();
+    const leaderPhoneVal = String(obj.leaderPhone || obj.leader_phone || obj.phone || '').trim();
+    const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
+    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
+    const tbmTypeVal = String(obj.tbm_type || obj.tbmType || ((postChk && postChk.isCompleted) ? 'post' : 'pre')).trim().toLowerCase();
+    const statusVal = obj.status || (tbmTypeVal === 'post' || (postChk && postChk.isCompleted) ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    const photoUrlsStr = allDriveUrls.join('\n');
+
     return {
+      // 1. 식별자 및 일자
       id: idVal,
+      tbm_id: idVal,
+      tbmId: idVal,
       date: dVal,
-      site: obj.site || obj.siteName || obj.site_name || '',
-      site_address: obj.siteAddress || obj.site_address || obj.address || '',
-      work_title: obj.workTitle || obj.work_title || obj.title || '',
-      work_area: obj.workArea || obj.work_area || '',
-      work_category: obj.workCategory || obj.work_category || '일반작업',
-      leader_division: obj.leaderDivision || obj.leader_division || obj.division || '',
-      leader_team: obj.leaderTeam || obj.leader_team || obj.team || '',
-      leader_name: obj.leaderName || obj.leader_name || obj.leader || '',
-      leader_rank: obj.leaderRank || obj.leader_rank || obj.rank || '대리',
-      leader_phone: obj.leaderPhone || obj.leader_phone || obj.phone || '',
+      log_date: dVal,
+      logDate: dVal,
+
+      // 2. 사업장 정보 (양방향 매핑)
+      site: siteVal,
+      site_name: siteVal,
+      siteName: siteVal,
+      site_address: siteAddrVal,
+      siteAddress: siteAddrVal,
+      address: siteAddrVal,
+
+      // 3. 작업 정보 (양방향 매핑)
+      work_title: workTitleVal,
+      workTitle: workTitleVal,
+      title: workTitleVal,
+      work_area: workAreaVal,
+      workArea: workAreaVal,
+      work_category: workCatVal,
+      workCategory: workCatVal,
+
+      // 4. 주관자 정보 (양방향 매핑)
+      leader_division: leaderDivVal,
+      leaderDivision: leaderDivVal,
+      division: leaderDivVal,
+      leader_team: leaderTeamVal,
+      leaderTeam: leaderTeamVal,
+      team: leaderTeamVal,
+      department: leaderTeamVal,
+      leader_name: leaderNameVal,
+      leaderName: leaderNameVal,
+      leader: leaderNameVal,
+      leader_rank: leaderRankVal,
+      leaderRank: leaderRankVal,
+      rank: leaderRankVal,
+      leader_phone: leaderPhoneVal,
+      leaderPhone: leaderPhoneVal,
+      phone: leaderPhoneVal,
+
+      // 5. 참석자 및 부가 정보
       attendees: (typeof atts === 'object' && atts !== null) ? JSON.stringify(atts) : String(atts || ''),
       absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
       additional_tbms: addTbmsStr,
-      tbm_type: String(obj.tbm_type || obj.tbmType || ((postChk && postChk.isCompleted) ? 'post' : 'pre')).trim().toLowerCase(),
-      work_content: obj.workContent || obj.work_content || obj.content || '',
-      tools_used: obj.toolsUsed || obj.tools_used || '',
+      additionalTbms: addTbmsStr,
+
+      // 6. TBM 구분 및 작업 내용 (양방향 매핑)
+      tbm_type: tbmTypeVal,
+      tbmType: tbmTypeVal,
+      work_content: workContentVal,
+      workContent: workContentVal,
+      content: workContentVal,
+      tools_used: toolsUsedVal,
+      toolsUsed: toolsUsedVal,
+
+      // 7. 점검 체크리스트 & 사진 & 상태
       pre_check: preCheckStr,
+      preCheck: preCheckStr,
       post_check: postCheckStr,
-      status: obj.status || (postChk && postChk.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED'),
+      postCheck: postCheckStr,
+      status: statusVal,
+      photo_urls: photoUrlsStr,
+      photoUrls: photoUrlsStr,
+
+      // 8. 타임스탬프
       created_at: obj.createdAt || obj.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
-      updated_at: obj.updatedAt || obj.updated_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
+      createdAt: obj.createdAt || obj.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      updated_at: obj.updatedAt || obj.updated_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      updatedAt: obj.updatedAt || obj.updated_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
     };
   }
 
