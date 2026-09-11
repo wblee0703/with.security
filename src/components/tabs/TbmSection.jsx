@@ -602,39 +602,26 @@ export default function TbmSection({
   const displayTbms = React.useMemo(() => {
     const list = [];
     tbmList.forEach(item => {
-      const itemType = String(item.tbmType || item.tbm_type || '').toLowerCase();
+      const rawType = String(item.tbmType || item.tbm_type || item['구분'] || '').trim().toLowerCase();
+      const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || String(item.id || '').startsWith('tbm_post_');
       const hasCompletedPost = Boolean(item.postCheck?.isCompleted);
 
-      if (itemType === 'post') {
+      if (isPost) {
         // Purely Post-Work TBM record
         list.push({
           ...item,
           displayType: 'post',
           displayKey: `${item.id}_post`
         });
-      } else if (itemType === 'pre') {
+      } else {
         // Pre-Work TBM record
         list.push({
           ...item,
           displayType: 'pre',
           displayKey: `${item.id}_pre`
         });
-        // If legacy or combined record also has postCheck completed, display separate post card
-        if (hasCompletedPost) {
-          list.push({
-            ...item,
-            displayType: 'post',
-            displayKey: `${item.id}_post`
-          });
-        }
-      } else {
-        // Legacy record without explicit tbmType: pre check always exists
-        list.push({
-          ...item,
-          displayType: 'pre',
-          displayKey: `${item.id}_pre`
-        });
-        if (hasCompletedPost) {
+        // If legacy combined record also has postCheck completed, display separate post card
+        if (hasCompletedPost && !String(item.id || '').startsWith('tbm_pre_')) {
           list.push({
             ...item,
             displayType: 'post',
@@ -2369,7 +2356,7 @@ export default function TbmSection({
                 </div>
 
                 {/* Pre-TBM Card Action Buttons */}
-                <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                <div style={{ display: 'flex', gap: '5px', marginTop: '2px', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -2377,7 +2364,7 @@ export default function TbmSection({
                       setIsDetailModalOpen(true);
                     }}
                     style={{
-                      flex: 1,
+                      flex: '1 1 auto',
                       padding: '7px 8px',
                       borderRadius: '6px',
                       background: '#ffffff',
@@ -2397,16 +2384,40 @@ export default function TbmSection({
 
                   <button
                     type="button"
-                    onClick={() => handleOpenAdditionalTbm(tbm)}
+                    onClick={() => handleCreatePostTbmFromPre(tbm)}
                     style={{
-                      flex: 1.15,
+                      flex: '1.2 1 auto',
                       padding: '7px 8px',
                       borderRadius: '6px',
-                      background: isCurrentUserAbsenteeAndPending ? '#fef3c7' : '#f0fdf4',
-                      border: isCurrentUserAbsenteeAndPending ? '1.5px solid #f59e0b' : '1.5px solid #86efac',
+                      background: '#f0fdf4',
+                      border: '1.5px solid #86efac',
+                      fontSize: '11.5px',
+                      fontWeight: '800',
+                      color: '#15803d',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '3px',
+                      boxShadow: '0 1px 3px rgba(22, 163, 74, 0.12)'
+                    }}
+                    title="해당 작업에 대한 업무 후 TBM 별도 독립 등록"
+                  >
+                    <CheckCircle2 size={13} color="#16a34a" /> 🏁 업무 후 TBM 등록
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAdditionalTbm(tbm)}
+                    style={{
+                      flex: '1 1 auto',
+                      padding: '7px 8px',
+                      borderRadius: '6px',
+                      background: isCurrentUserAbsenteeAndPending ? '#fef3c7' : '#f8fafc',
+                      border: isCurrentUserAbsenteeAndPending ? '1.5px solid #f59e0b' : '1.5px solid #cbd5e1',
                       fontSize: '11.5px',
                       fontWeight: '700',
-                      color: isCurrentUserAbsenteeAndPending ? '#b45309' : '#15803d',
+                      color: isCurrentUserAbsenteeAndPending ? '#b45309' : '#475569',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
@@ -2416,15 +2427,15 @@ export default function TbmSection({
                     }}
                     title="미참석자 추가 TBM 이수 및 안전 확인 진행"
                   >
-                    <UserCheck size={13} color={isCurrentUserAbsenteeAndPending ? '#b45309' : '#15803d'} />
-                    {isCurrentUserAbsenteeAndPending ? '⚡ 내 추가TBM' : '추가 TBM 진행'}
+                    <UserCheck size={13} color={isCurrentUserAbsenteeAndPending ? '#b45309' : '#64748b'} />
+                    {isCurrentUserAbsenteeAndPending ? '⚡ 내 추가TBM' : '추가 TBM'}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleEditTbm(tbm, 'pre')}
                     style={{
-                      flex: 0.9,
+                      flex: '0.8 1 auto',
                       padding: '7px 8px',
                       borderRadius: '6px',
                       background: '#f8fafc',
@@ -5014,51 +5025,105 @@ export default function TbmSection({
                   <Printer size={15} /> 인쇄 / PDF
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const target = selectedTbm;
-                    setIsDetailModalOpen(false);
-                    handleOpenPostWorkTbm(target);
-                  }}
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '6px',
-                    background: '#f0fdf4',
-                    border: '1.5px solid #86efac',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    color: '#16a34a',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}
-                >
-                  <Edit size={15} /> 일지 수정 ✏️
-                </button>
+                {!isPostDetail ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedTbm;
+                        setIsDetailModalOpen(false);
+                        handleCreatePostTbmFromPre(target);
+                      }}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '6px',
+                        background: '#f0fdf4',
+                        border: '1.5px solid #86efac',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        color: '#15803d',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 1px 3px rgba(22, 163, 74, 0.15)'
+                      }}
+                      title="해당 작업의 업무 후 TBM 별도 신규 등록"
+                    >
+                      <CheckCircle2 size={15} color="#16a34a" /> 🏁 업무 후 TBM 등록
+                    </button>
 
-                {!isPostDetail && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = selectedTbm;
+                        setIsDetailModalOpen(false);
+                        handleEditTbm(target, 'pre');
+                      }}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '6px',
+                        background: '#f8fafc',
+                        border: '1.5px solid #cbd5e1',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        color: '#475569',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      title="업무 전 TBM 일지 수정"
+                    >
+                      <Edit3 size={15} color="#475569" /> 수정 ✏️
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenAdditionalTbm(selectedTbm);
+                      }}
+                      style={{
+                        padding: '8px 14px',
+                        borderRadius: '6px',
+                        background: '#fef3c7',
+                        border: '1.5px solid #fcd34d',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        color: '#b45309',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                    >
+                      <UserCheck size={15} /> 추가 TBM 진행
+                    </button>
+                  </>
+                ) : (
                   <button
                     type="button"
                     onClick={() => {
-                      handleOpenAdditionalTbm(selectedTbm);
+                      const target = selectedTbm;
+                      setIsDetailModalOpen(false);
+                      handleEditTbm(target, 'post');
                     }}
                     style={{
                       padding: '8px 14px',
                       borderRadius: '6px',
-                      background: '#fef3c7',
-                      border: '1.5px solid #fcd34d',
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
                       fontSize: '12px',
                       fontWeight: '700',
-                      color: '#b45309',
+                      color: '#475569',
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px'
                     }}
+                    title="업무 후 TBM 일지 수정"
                   >
-                    <UserCheck size={15} /> 추가 TBM 진행
+                    <Edit3 size={15} color="#475569" /> 수정 ✏️
                   </button>
                 )}
               </div>

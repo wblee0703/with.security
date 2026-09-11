@@ -3690,16 +3690,11 @@ class SecurityDatabase {
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
-    if (rawType.indexOf('후') !== -1 || rawType === 'post') {
-      tbm.tbmType = 'post';
-    } else if (rawType.indexOf('전') !== -1 || rawType === 'pre') {
-      tbm.tbmType = 'pre';
-    } else {
-      tbm.tbmType = (tbm.postCheck && tbm.postCheck.isCompleted) ? 'post' : 'pre';
-    }
-    tbm.tbm_type = tbm.tbmType === 'post' ? '업무 후' : '업무 전';
+    const isPostTbm = rawType.indexOf('후') !== -1 || rawType === 'post' || String(tbm.id || '').startsWith('tbm_post_') || Boolean(tbm.postCheck && tbm.postCheck.isCompleted);
+    tbm.tbmType = isPostTbm ? 'post' : 'pre';
+    tbm.tbm_type = isPostTbm ? '업무 후' : '업무 전';
     tbm['구분'] = tbm.tbm_type;
-    tbm.status = tbm.status || (tbm.tbmType === 'post' ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    tbm.status = tbm.status || (isPostTbm ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
 
@@ -3937,7 +3932,7 @@ class SecurityDatabase {
       work_content: fullTbm.workContent || fullTbm.work_content || '',
       workContent: fullTbm.workContent || fullTbm.work_content || '',
       tools_used: fullTbm.toolsUsed || fullTbm.tools_used || '',
-      tbmType: fullTbm.tbmType,
+      tbmType: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
       tbm_type: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
       구분: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
 

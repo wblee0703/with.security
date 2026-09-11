@@ -473,6 +473,7 @@ function doPost(e) {
             const siteIdx = headers.indexOf('site');
             const leaderIdx = headers.indexOf('leader_name');
             let typeIdx = headers.indexOf('tbm_type');
+            if (typeIdx === -1) typeIdx = headers.indexOf('tbmType');
             if (typeIdx === -1) typeIdx = headers.indexOf('구분');
 
             const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
@@ -483,18 +484,22 @@ function doPost(e) {
             const itemDate = formatKstDate(item.date || '', true);
             const itemSite = String(item.site || '').trim().toLowerCase();
             const itemLeader = String(item.leader_name || '').trim().toLowerCase();
-            const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre')).trim().toLowerCase();
+            const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
 
             // 업무 전/후 타입 정규화 ('pre' vs 'post')
-            const normalizeType = function(val) {
+            const normalizeType = function(val, idHint) {
+              if (idHint) {
+                if (String(idHint).startsWith('tbm_post_')) return 'post';
+                if (String(idHint).startsWith('tbm_pre_')) return 'pre';
+              }
               if (!val) return '';
               if (val.indexOf('후') !== -1 || val === 'post') return 'post';
               if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
               return val;
             };
 
-            const normRowType = normalizeType(rawRowType);
-            const normItemType = normalizeType(rawItemType);
+            const normRowType = normalizeType(rawRowType, rowId);
+            const normItemType = normalizeType(rawItemType, item.id);
 
             // ⭐ 핵심 규칙: 업무 전 TBM과 업무 후 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 별도 행으로 기록!
             if (normRowType && normItemType && normRowType !== normItemType) {
@@ -521,6 +526,10 @@ function doPost(e) {
             const rowNum = i + 1;
             const currentRow = rows[i];
             const updatedRow = headers.map((h, colIdx) => {
+              // TBM 구분 컬럼은 무조건 '업무 후' / '업무 전' 한글로 완벽 보장
+              if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
+                return (normItemType === 'post' || String(item.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
+              }
               const val = item[h];
               if (val !== undefined && val !== null && val !== '') {
                 return (typeof val === 'object') ? JSON.stringify(val) : val;
@@ -1209,7 +1218,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
     const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
-    const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || (postChk && postChk.isCompleted);
+    const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || String(idVal).startsWith('tbm_post_') || (postChk && postChk.isCompleted);
     const tbmTypeVal = isPost ? '업무 후' : '업무 전';
     const statusVal = obj.status || (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     const photoUrlsStr = allDriveUrls.join('\n');
@@ -1264,9 +1273,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       additional_tbms: addTbmsStr,
       additionalTbms: addTbmsStr,
 
-      // 6. TBM 구분 및 작업 내용 (양방향 매핑 - 스프레드시트에 '업무 전' / '업무 후' 명확히 기록)
+      // 6. TBM 구분 및 작업 내용 (양방향 매핑 - 스프레드시트 컬럼 헤더가 tbm_type, tbmType, 구분 중 어느 것이든 무조건 한글 '업무 후' / '업무 전' 고정 기록)
       tbm_type: tbmTypeVal,
-      tbmType: isPost ? 'post' : 'pre',
+      tbmType: tbmTypeVal,
       구분: tbmTypeVal,
       work_content: workContentVal,
       workContent: workContentVal,
@@ -1471,12 +1480,11 @@ function readSheetData(sheetName) {
         if (!obj.post_check && obj.postCheck) obj.post_check = obj.postCheck;
         if (!obj.status && obj.postCheck && obj.postCheck.isCompleted) obj.status = 'ALL_COMPLETED';
         if (!obj.status) obj.status = 'PRE_COMPLETED';
-        if (!obj.tbmType && obj.tbm_type) obj.tbmType = obj.tbm_type;
-        if (!obj.tbm_type && obj.tbmType) obj.tbm_type = obj.tbmType;
-        if (!obj.tbmType) {
-          obj.tbmType = (obj.postCheck && obj.postCheck.isCompleted) ? 'post' : 'pre';
-          obj.tbm_type = obj.tbmType;
-        }
+        const rawTypeStr = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
+        const isPostType = rawTypeStr.indexOf('후') !== -1 || rawTypeStr === 'post' || String(obj.id || '').startsWith('tbm_post_') || (obj.postCheck && obj.postCheck.isCompleted);
+        obj.tbm_type = isPostType ? '업무 후' : '업무 전';
+        obj.tbmType = isPostType ? 'post' : 'pre';
+        obj['구분'] = obj.tbm_type;
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       }
@@ -1721,8 +1729,13 @@ function cleanupDuplicates() {
 }
 
 function appendObjectRow(sheet, headers, rawObj) {
-  const obj = normalizeObjectForSheet(sheet.getName(), rawObj);
+  const sheetName = sheet.getName();
+  const obj = normalizeObjectForSheet(sheetName, rawObj);
   const row = headers.map(h => {
+    if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
+      const rawT = String(obj[h] || '').trim().toLowerCase();
+      return (rawT.indexOf('후') !== -1 || rawT === 'post' || String(obj.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
+    }
     const v = obj[h];
     if (v === undefined || v === null) return '';
     if (typeof v === 'object') return JSON.stringify(v);
