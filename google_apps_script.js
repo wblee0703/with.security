@@ -1218,9 +1218,20 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
     const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
-    const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || String(idVal).startsWith('tbm_post_') || (postChk && postChk.isCompleted);
+    let isPost = false;
+    if (String(idVal).startsWith('tbm_post_')) {
+      isPost = true;
+    } else if (String(idVal).startsWith('tbm_pre_')) {
+      isPost = false;
+    } else if (rawType.indexOf('후') !== -1 || rawType === 'post') {
+      isPost = true;
+    } else if (rawType.indexOf('전') !== -1 || rawType === 'pre') {
+      isPost = false;
+    } else {
+      isPost = Boolean(postChk && postChk.isCompleted && (!preChk || !preChk.isCompleted));
+    }
     const tbmTypeVal = isPost ? '업무 후' : '업무 전';
-    const statusVal = obj.status || (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    const statusVal = obj.status || (isPost ? 'POST_COMPLETED' : 'PRE_COMPLETED');
     const photoUrlsStr = allDriveUrls.join('\n');
 
     return {

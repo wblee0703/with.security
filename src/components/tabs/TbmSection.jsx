@@ -155,6 +155,7 @@ export default function TbmSection({
   const [targetAdditionalTbm, setTargetAdditionalTbm] = useState(null);
   const [additionalFormData, setAdditionalFormData] = useState({
     member: null,
+    members: [],
     conductedDate: getTodayIsoDate(),
     conductedTime: getCurrentTimeStr(),
     safetyChecked: true,
@@ -262,6 +263,32 @@ export default function TbmSection({
       return 0;
     });
   }, [filteredLeadersPool, formData.leaderName]);
+
+  // 업무 전 TBM 미참여 인원 제안 풀: 기본정보 참석자(formData.attendees) 및 이미 등록된 미참석자 제외
+  const availableAbsenteesPool = React.useMemo(() => {
+    const attendees = formData.attendees || [];
+    const currentAbsentees = formData.absentees || [];
+    return filteredLeadersPool.filter(user => {
+      const isAttendee = attendees.some(a => isSamePerson(a, user) || (a?.name && a.name.trim() === user.name?.trim()));
+      if (isAttendee) return false;
+      const isAlreadyAbsentee = currentAbsentees.some(abs => (abs?.name && abs.name.trim() === user.name?.trim()) || isSamePerson(abs, user));
+      if (isAlreadyAbsentee) return false;
+      return true;
+    });
+  }, [filteredLeadersPool, formData.attendees, formData.absentees]);
+
+  // 업무 후 TBM 미참여 인원 제안 풀: 기본정보 참석자(formData.attendees) 및 이미 등록된 업무 후 미참석자 제외
+  const availablePostAbsenteesPool = React.useMemo(() => {
+    const attendees = formData.attendees || [];
+    const currentPostAbsentees = formData.postCheck?.absentees || [];
+    return filteredLeadersPool.filter(user => {
+      const isAttendee = attendees.some(a => isSamePerson(a, user) || (a?.name && a.name.trim() === user.name?.trim()));
+      if (isAttendee) return false;
+      const isAlreadyAbsentee = currentPostAbsentees.some(abs => (abs?.name && abs.name.trim() === user.name?.trim()) || isSamePerson(abs, user));
+      if (isAlreadyAbsentee) return false;
+      return true;
+    });
+  }, [filteredLeadersPool, formData.attendees, formData.postCheck?.absentees]);
 
   // Pre-Work Checklist Selected Items Helpers
   const currentSelectedKeys = React.useMemo(() => {
@@ -597,37 +624,25 @@ export default function TbmSection({
 
   // Expand tbmList into separate Pre-Work and Post-Work items for display
   const displayTbms = React.useMemo(() => {
-    const list = [];
-    tbmList.forEach(item => {
+    return tbmList.map(item => {
       const rawType = String(item.tbmType || item.tbm_type || item['구분'] || '').trim().toLowerCase();
-      const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || String(item.id || '').startsWith('tbm_post_');
-      const hasCompletedPost = Boolean(item.postCheck?.isCompleted);
-
-      if (isPost) {
-        // Purely Post-Work TBM record
-        list.push({
-          ...item,
-          displayType: 'post',
-          displayKey: `${item.id}_post`
-        });
+      let isPost = false;
+      if (String(item.id || '').startsWith('tbm_post_')) {
+        isPost = true;
+      } else if (String(item.id || '').startsWith('tbm_pre_')) {
+        isPost = false;
+      } else if (rawType.indexOf('후') !== -1 || rawType === 'post') {
+        isPost = true;
       } else {
-        // Pre-Work TBM record
-        list.push({
-          ...item,
-          displayType: 'pre',
-          displayKey: `${item.id}_pre`
-        });
-        // If legacy combined record also has postCheck completed, display separate post card
-        if (hasCompletedPost && !String(item.id || '').startsWith('tbm_pre_')) {
-          list.push({
-            ...item,
-            displayType: 'post',
-            displayKey: `${item.id}_post`
-          });
-        }
+        isPost = false;
       }
+
+      return {
+        ...item,
+        displayType: isPost ? 'post' : 'pre',
+        displayKey: String(item.id)
+      };
     });
-    return list;
   }, [tbmList]);
 
   // Statistics for selected date across all TBM types
@@ -695,13 +710,14 @@ export default function TbmSection({
     setSelectedDate(getTodayIsoDate());
   };
 
-  // Open Register Modal for New TBM
-  const handleOpenNewTbm = () => {
+  // Open Register Modal for New TBM (pre or post)
+  const handleOpenNewTbm = (targetType = 'pre') => {
     if (!currentUser) {
       if (onTriggerToast) onTriggerToast('TBM 등록을 위해 먼저 로그인이 필요합니다.', 'warning');
       return;
     }
 
+    const isPost = targetType === 'post';
     setEditingTbmId(null);
     setActiveStep(1);
     const initialSite = availableSites.length > 0 ? availableSites[0] : { name: '위드텍', address: '동탄' };
@@ -742,7 +758,6 @@ export default function TbmSection({
       leaderName: curLeader,
       leaderRank: curRank,
       leaderPhone: curPhone,
-      // ALL team members selected!
       attendees: initialTeamUsers.map(u => ({
         name: u.name,
         rank: u.rank || '사원',
@@ -750,21 +765,28 @@ export default function TbmSection({
         division: u.division || curDiv,
         phone: u.phone || ''
       })),
-      // Absentees in initial state with NOBODY selected!
       absentees: [],
-      preCheck: {
-        ...prev.preCheck,
-        conductedAt: getCurrentTimeStr(),
-        isCompleted: true
-      },
-      postCheck: {
-        ...prev.postCheck,
-        absentees: [], // Post absentees also reset
-        conductedAt: getCurrentTimeStr(),
-        isCompleted: false
-      },
-      includePostCheckNow: false,
-      tbmType: 'pre'
+      preCheck: isPost
+        ? { isCompleted: false, selectedItems: [], photos: [], notes: '', conductedAt: '' }
+        : {
+          ...prev.preCheck,
+          conductedAt: getCurrentTimeStr(),
+          isCompleted: true
+        },
+      postCheck: isPost
+        ? {
+          ...prev.postCheck,
+          cleanupCheck: true,
+          toolRecoveryCheck: true,
+          securityMediaCheck: true,
+          powerSafetyCheck: true,
+          absentees: [],
+          conductedAt: getCurrentTimeStr(),
+          isCompleted: true
+        }
+        : { isCompleted: false, selectedItems: [], photos: [], absentees: [], handoverNotes: '', conductedAt: '' },
+      includePostCheckNow: isPost,
+      tbmType: isPost ? 'post' : 'pre'
     }));
     setIsRegisterModalOpen(true);
   };
@@ -879,8 +901,8 @@ export default function TbmSection({
       toolsUsed: safeTbm.toolsUsed || safeTbm.tools_used || '',
       preCheck: safePre,
       postCheck: safePost,
-      includePostCheckNow: true,
-      tbmType: (safeTbm.status === 'ALL_COMPLETED' || safeTbm.status === 'COMPLETED' || Boolean(safeTbm.postCheck?.isCompleted)) ? 'post' : (safeTbm.tbmType || 'pre')
+      includePostCheckNow: (String(safeTbm.id || '').startsWith('tbm_post_') || safeTbm.tbmType === 'post' || safeTbm.displayType === 'post'),
+      tbmType: (String(safeTbm.id || '').startsWith('tbm_post_') || safeTbm.tbmType === 'post' || safeTbm.displayType === 'post') ? 'post' : 'pre'
     };
   };
 
@@ -1003,10 +1025,24 @@ export default function TbmSection({
       }
     }
 
+    const tbmConductedDate = normalizeKstDate(tbm.date || tbm.log_date || '') || (tbm.date || '').slice(0, 10).replace(/\//g, '-') || getTodayIsoDate();
+    let tbmConductedTime = (tbm.displayType === 'post' || tbm.tbmType === 'post')
+      ? (tbm.postCheck?.conductedAt || tbm.preCheck?.conductedAt || tbm.conductedTime || tbm.time || '')
+      : (tbm.preCheck?.conductedAt || tbm.conductedTime || tbm.time || '');
+    if (tbmConductedTime.includes(' ') || tbmConductedTime.includes('T')) {
+      const parts = tbmConductedTime.split(/[ T]/);
+      tbmConductedTime = parts[1]?.slice(0, 5) || tbmConductedTime;
+    } else if (tbmConductedTime.includes(':')) {
+      tbmConductedTime = tbmConductedTime.slice(0, 5);
+    } else {
+      tbmConductedTime = getCurrentTimeStr();
+    }
+
     setAdditionalFormData({
       member: selectedMember,
-      conductedDate: getTodayIsoDate(),
-      conductedTime: getCurrentTimeStr(),
+      members: selectedMember ? [selectedMember] : [],
+      conductedDate: tbmConductedDate,
+      conductedTime: tbmConductedTime,
       safetyChecked: true,
       ppeChecked: true,
       emergencyChecked: true,
@@ -1021,8 +1057,12 @@ export default function TbmSection({
     if (isSubmittingAdditional) return;
     if (!targetAdditionalTbm) return;
 
-    if (!additionalFormData.member || !additionalFormData.member.name?.trim()) {
-      if (onTriggerToast) onTriggerToast('추가 TBM 대상자를 선택해주세요.', 'warning');
+    const selectedMembers = (additionalFormData.members && additionalFormData.members.length > 0)
+      ? additionalFormData.members
+      : (additionalFormData.member?.name ? [additionalFormData.member] : []);
+
+    if (selectedMembers.length === 0) {
+      if (onTriggerToast) onTriggerToast('추가 TBM 대상자를 최소 1명 이상 선택해주세요.', 'warning');
       return;
     }
 
@@ -1034,34 +1074,31 @@ export default function TbmSection({
     setIsSubmittingAdditional(true);
     try {
       const conductedAtStr = `${additionalFormData.conductedDate} ${additionalFormData.conductedTime}`;
-      const payload = {
-        name: additionalFormData.member.name,
-        rank: additionalFormData.member.rank || '사원',
-        team: additionalFormData.member.team || targetAdditionalTbm.leaderTeam || '',
-        division: additionalFormData.member.division || targetAdditionalTbm.leaderDivision || '',
-        phone: additionalFormData.member.phone || '',
-        conductedAt: conductedAtStr,
-        date: additionalFormData.conductedDate,
-        safetyChecked: true,
-        notes: (additionalFormData.notes || '').trim(),
-        photos: additionalFormData.photos || [],
-        photo: additionalFormData.photos?.[0]?.dataUrl || '',
-        registeredBy: currentUser?.name || '시스템'
-      };
 
-      const updatedTbm = await dbService.addAdditionalTbm(targetAdditionalTbm.id, payload);
+      for (const member of selectedMembers) {
+        const payload = {
+          name: member.name,
+          rank: member.rank || '사원',
+          team: member.team || targetAdditionalTbm.leaderTeam || '',
+          division: member.division || targetAdditionalTbm.leaderDivision || '',
+          phone: member.phone || '',
+          conductedAt: conductedAtStr,
+          date: additionalFormData.conductedDate,
+          safetyChecked: true,
+          notes: (additionalFormData.notes || '').trim(),
+          photos: additionalFormData.photos || [],
+          photo: additionalFormData.photos?.[0]?.dataUrl || '',
+          registeredBy: currentUser?.name || '시스템'
+        };
 
-      if (selectedTbm && String(selectedTbm.id) === String(targetAdditionalTbm.id)) {
-        setSelectedTbm(updatedTbm || {
-          ...selectedTbm,
-          additionalTbms: [...(selectedTbm.additionalTbms || []), payload]
-        });
+        await dbService.addAdditionalTbm(targetAdditionalTbm.id, payload);
       }
 
       setIsAdditionalModalOpen(false);
       setTargetAdditionalTbm(null);
       if (onTriggerToast) {
-        onTriggerToast(`[${additionalFormData.member.name}] 님의 추가 TBM 이수 확인이 정상 완료되었습니다.`, 'success');
+        const namesStr = selectedMembers.map(m => m.name).join(', ');
+        onTriggerToast(`[${namesStr}] 님(총 ${selectedMembers.length}명)의 추가 TBM 이수 확인이 정상 완료되었습니다.`, 'success');
       }
       loadData();
     } catch (err) {
@@ -1075,7 +1112,7 @@ export default function TbmSection({
   // Attendee Selection Helpers
   const toggleAttendee = (user) => {
     if (user.name === formData.leaderName) {
-      if (onTriggerToast) onTriggerToast('TBM 주관자(책임자)는 참여자에 필수 포함됩니다.', 'info');
+      if (onTriggerToast) onTriggerToast('TBM 주관자는 참여자에 필수 포함됩니다.', 'info');
       return;
     }
     const attList = formData.attendees || [];
@@ -1180,18 +1217,22 @@ export default function TbmSection({
       toolsUsed: formData.toolsUsed?.trim() || '',
       tools_used: formData.toolsUsed?.trim() || '',
       status: finalStatus,
-      preCheck: {
-        ...formData.preCheck,
-        selectedItems: currentSelectedKeys,
-        conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
-        isCompleted: true
-      },
-      postCheck: {
-        ...formData.postCheck,
-        selectedItems: currentPostSelectedKeys,
-        conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
-        isCompleted: isPost
-      }
+      preCheck: isPost
+        ? { isCompleted: false, selectedItems: [], photos: [], notes: '', conductedAt: '' }
+        : {
+          ...formData.preCheck,
+          selectedItems: currentSelectedKeys,
+          conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
+          isCompleted: true
+        },
+      postCheck: isPost
+        ? {
+          ...formData.postCheck,
+          selectedItems: currentPostSelectedKeys,
+          conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
+          isCompleted: true
+        }
+        : { isCompleted: false, selectedItems: [], photos: [], absentees: [], handoverNotes: '', conductedAt: '' }
     };
 
     setIsSubmitting(true);
@@ -1342,28 +1383,52 @@ export default function TbmSection({
             </div>
           </div>
 
-          <div style={{ display: 'flex', width: '100%' }}>
+          <div style={{ display: 'flex', width: '100%', gap: '8px' }}>
             <button
               type="button"
-              onClick={handleOpenNewTbm}
+              onClick={() => handleOpenNewTbm('pre')}
               className="glass-button-primary"
               style={{
-                width: '100%',
-                padding: '11px 18px',
+                flex: 1,
+                padding: '11px 10px',
                 borderRadius: '6px',
-                fontSize: '13.5px',
-                fontWeight: '700',
+                fontSize: '13px',
+                fontWeight: '800',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '8px',
+                gap: '6px',
                 background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                border: '1px solid #0284c7',
+                border: '1.5px solid #0284c7',
+                color: '#ffffff',
                 cursor: 'pointer',
                 boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
               }}
             >
-              <Plus size={18} /> TBM 등록
+              <ShieldCheck size={16} /> 업무 전 TBM 등록
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenNewTbm('post')}
+              className="glass-button-primary"
+              style={{
+                flex: 1,
+                padding: '11px 10px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: '800',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                border: '1.5px solid #16a34a',
+                color: '#ffffff',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(22, 163, 74, 0.25)'
+              }}
+            >
+              <CheckCircle2 size={16} /> 업무 후 TBM 등록
             </button>
           </div>
         </div>
@@ -1581,7 +1646,7 @@ export default function TbmSection({
             transition: 'all 0.15s ease'
           }}
         >
-          <span>🏁 업무 후</span>
+          <span>🛡️ 업무 후</span>
           <span style={{
             fontSize: '11px',
             fontWeight: '800',
@@ -1701,16 +1766,11 @@ export default function TbmSection({
 
                   {/* Work Title & Category Row */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      {tbm.workTitle && (
-                        <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.3' }}>
-                          {tbm.workTitle}
-                        </span>
-                      )}
-                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>
-                        {tbm.leaderTeam || '부서'}
+                    {tbm.workTitle && (
+                      <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.3', flex: 1 }}>
+                        {tbm.workTitle}
                       </span>
-                    </div>
+                    )}
                     {tbm.workCategory && (
                       <span style={{
                         flexShrink: 0,
@@ -1756,7 +1816,7 @@ export default function TbmSection({
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <UserCheck size={14} color="#16a34a" />
-                        <span>책임자: <strong style={{ color: '#0f172a' }}>{leaderVal || '미지정'} {leaderRankVal}</strong></span>
+                        <span>주관자: <strong style={{ color: '#0f172a' }}>{leaderVal || '미지정'} {leaderRankVal}</strong></span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Users size={14} color="#64748b" />
@@ -1793,10 +1853,10 @@ export default function TbmSection({
                     )}
                   </div>
 
-                  {/* Post-Check Safety Details Box */}
+                  {/* Post-Check Safety Details Box (작업 전 안전점검 항목 박스와 100% 동일 디자인 통일) */}
                   <div style={{
-                    background: '#f0fdf4',
-                    border: '1px solid #bbf7d0',
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
                     borderRadius: '6px',
                     padding: '8px 10px',
                     display: 'flex',
@@ -1814,55 +1874,77 @@ export default function TbmSection({
                       </span>
                     </div>
 
-                    {/* 4 Core Post Checks */}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                      <span style={{
-                        fontSize: '10.5px',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: tbm.postCheck?.cleanupCheck !== false ? '#dcfce7' : '#fee2e2',
-                        color: tbm.postCheck?.cleanupCheck !== false ? '#15803d' : '#b91c1c',
-                        border: '1px solid currentColor',
-                        fontWeight: '700'
-                      }}>
-                        {tbm.postCheck?.cleanupCheck !== false ? '✓ 정리정돈' : '✗ 정리정돈 미흡'}
-                      </span>
-                      <span style={{
-                        fontSize: '10.5px',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: tbm.postCheck?.toolRecoveryCheck !== false ? '#dcfce7' : '#fee2e2',
-                        color: tbm.postCheck?.toolRecoveryCheck !== false ? '#15803d' : '#b91c1c',
-                        border: '1px solid currentColor',
-                        fontWeight: '700'
-                      }}>
-                        {tbm.postCheck?.toolRecoveryCheck !== false ? '✓ 공구회수' : '✗ 공구 미회수'}
-                      </span>
-                      <span style={{
-                        fontSize: '10.5px',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: tbm.postCheck?.securityMediaCheck !== false ? '#dcfce7' : '#fee2e2',
-                        color: tbm.postCheck?.securityMediaCheck !== false ? '#15803d' : '#b91c1c',
-                        border: '1px solid currentColor',
-                        fontWeight: '700'
-                      }}>
-                        {tbm.postCheck?.securityMediaCheck !== false ? '✓ 보안반납' : '✗ 보안반납 미비'}
-                      </span>
-                      <span style={{
-                        fontSize: '10.5px',
-                        padding: '1px 6px',
-                        borderRadius: '4px',
-                        background: tbm.postCheck?.powerSafetyCheck !== false ? '#dcfce7' : '#fee2e2',
-                        color: tbm.postCheck?.powerSafetyCheck !== false ? '#15803d' : '#b91c1c',
-                        border: '1px solid currentColor',
-                        fontWeight: '700'
-                      }}>
-                        {tbm.postCheck?.powerSafetyCheck !== false ? '✓ 전원·화기차단' : '✗ 전원 미차단'}
-                      </span>
+                    {/* 4 Core Post Checks & Selected Checklist Tags (기본 항상 표출) */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        <span style={{
+                          fontSize: '10.5px',
+                          color: (tbm.postCheck?.cleanupCheck !== false) ? '#15803d' : '#b91c1c',
+                          background: (tbm.postCheck?.cleanupCheck !== false) ? '#dcfce7' : '#fee2e2',
+                          border: (tbm.postCheck?.cleanupCheck !== false) ? '1px solid #86efac' : '1px solid #fca5a5',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '700'
+                        }}>
+                          {(tbm.postCheck?.cleanupCheck !== false) ? '✓ 현장 정리정돈' : '✗ 정리정돈 미흡'}
+                        </span>
+                        <span style={{
+                          fontSize: '10.5px',
+                          color: (tbm.postCheck?.toolRecoveryCheck !== false) ? '#15803d' : '#b91c1c',
+                          background: (tbm.postCheck?.toolRecoveryCheck !== false) ? '#dcfce7' : '#fee2e2',
+                          border: (tbm.postCheck?.toolRecoveryCheck !== false) ? '1px solid #86efac' : '1px solid #fca5a5',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '700'
+                        }}>
+                          {(tbm.postCheck?.toolRecoveryCheck !== false) ? '✓ 공구·자재 회수' : '✗ 공구 미회수'}
+                        </span>
+                        <span style={{
+                          fontSize: '10.5px',
+                          color: (tbm.postCheck?.securityMediaCheck !== false) ? '#15803d' : '#b91c1c',
+                          background: (tbm.postCheck?.securityMediaCheck !== false) ? '#dcfce7' : '#fee2e2',
+                          border: (tbm.postCheck?.securityMediaCheck !== false) ? '1px solid #86efac' : '1px solid #fca5a5',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '700'
+                        }}>
+                          {(tbm.postCheck?.securityMediaCheck !== false) ? '✓ 보안매체·문서 점검' : '✗ 보안반납 미비'}
+                        </span>
+                        <span style={{
+                          fontSize: '10.5px',
+                          color: (tbm.postCheck?.powerSafetyCheck !== false) ? '#15803d' : '#b91c1c',
+                          background: (tbm.postCheck?.powerSafetyCheck !== false) ? '#dcfce7' : '#fee2e2',
+                          border: (tbm.postCheck?.powerSafetyCheck !== false) ? '1px solid #86efac' : '1px solid #fca5a5',
+                          padding: '1px 6px',
+                          borderRadius: '4px',
+                          fontWeight: '700'
+                        }}>
+                          {(tbm.postCheck?.powerSafetyCheck !== false) ? '✓ 잔류 전원·화기 확인' : '✗ 전원 미차단'}
+                        </span>
+
+                        {/* 추가 체크리스트 항목들 (선택된 경우 함께 표출) */}
+                        {POST_WORK_CHECKLIST_ITEMS.filter(item => {
+                          if (tbm.postCheck?.selectedItems && Array.isArray(tbm.postCheck.selectedItems)) {
+                            return tbm.postCheck.selectedItems.includes(item.key);
+                          }
+                          return Boolean(tbm.postCheck?.[item.key]);
+                        }).map(item => (
+                          <span key={item.key} style={{
+                            fontSize: '10.5px',
+                            color: '#15803d',
+                            background: '#dcfce7',
+                            border: '1px solid #86efac',
+                            padding: '1px 6px',
+                            borderRadius: '4px',
+                            fontWeight: '600'
+                          }}>
+                            ✓ {item.label}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
-                    {/* Post Handover Notes */}
+                    {/* Post Handover Notes (작업 전 전달사항 박스와 100% 동일 디자인) */}
                     {postNotes && (
                       <div style={{
                         fontSize: '13px',
@@ -1870,18 +1952,14 @@ export default function TbmSection({
                         background: '#ffffff',
                         padding: '10px 12px',
                         borderRadius: '6px',
-                        border: '1.5px solid #86efac',
-                        boxShadow: '0 2px 6px rgba(22, 163, 74, 0.08)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px'
+                        border: '1px solid #cbd5e1',
+                        lineHeight: '1.5',
+                        boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.03)'
                       }}>
-                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#15803d', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          📢 전달 사항 (인수인계 / 특이사항)
+                        <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#15803d', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          📢 전달 사항 (인수인계 / 특이사항):
                         </div>
-                        <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#0f172a', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                          {postNotes}
-                        </div>
+                        <div style={{ whiteSpace: 'pre-wrap' }}>{postNotes}</div>
                       </div>
                     )}
 
@@ -2043,16 +2121,11 @@ export default function TbmSection({
 
                 {/* Work Title & Category Row */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {tbm.workTitle && (
-                      <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.3' }}>
-                        {tbm.workTitle}
-                      </span>
-                    )}
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#475569' }}>
-                      {tbm.leaderTeam || '부서'}
+                  {tbm.workTitle && (
+                    <span style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', lineHeight: '1.3', flex: 1 }}>
+                      {tbm.workTitle}
                     </span>
-                  </div>
+                  )}
                   {tbm.workCategory && (
                     <span style={{
                       flexShrink: 0,
@@ -2098,7 +2171,7 @@ export default function TbmSection({
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <UserCheck size={14} color="#0284c7" />
-                      <span>책임자: <strong style={{ color: '#0f172a' }}>{leaderVal || '미지정'} {leaderRankVal}</strong></span>
+                      <span>주관자: <strong style={{ color: '#0f172a' }}>{leaderVal || '미지정'} {leaderRankVal}</strong></span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Users size={14} color="#64748b" />
@@ -2449,23 +2522,31 @@ export default function TbmSection({
                   width: '36px',
                   height: '36px',
                   borderRadius: '6px',
-                  background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                  border: '1.5px solid #0284c7',
+                  background: (formData.tbmType || 'pre') === 'post'
+                    ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)'
+                    : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                  border: (formData.tbmType || 'pre') === 'post' ? '1.5px solid #16a34a' : '1.5px solid #0284c7',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#ffffff',
-                  boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)',
+                  boxShadow: (formData.tbmType || 'pre') === 'post'
+                    ? '0 2px 6px rgba(22, 163, 74, 0.25)'
+                    : '0 2px 6px rgba(2, 132, 199, 0.25)',
                   flexShrink: 0
                 }}>
                   <HardHat size={20} />
                 </div>
                 <div>
                   <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px', margin: 0 }}>
-                    {editingTbmId ? '업무전후 TBM 일지 점검' : '업무전후 TBM 등록'}
+                    {(formData.tbmType || 'pre') === 'post'
+                      ? (editingTbmId ? '업무 후 TBM 수정' : '업무 후 TBM 등록')
+                      : (editingTbmId ? '업무 전 TBM 수정' : '업무 전 TBM 등록')}
                   </h3>
                   <span style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', display: 'block' }}>
-                    작업 전 안전·보안 점검 & 사후 정리
+                    {(formData.tbmType || 'pre') === 'post'
+                      ? '작업 후 정리정돈 및 안전·보안 확인'
+                      : '작업 전 안전·보안 점검 & 위험성 파악'}
                   </span>
                 </div>
               </div>
@@ -2519,7 +2600,7 @@ export default function TbmSection({
 
                 return [
                   { step: 1, title: '기본정보' },
-                  { step: 2, title: 'TBM' },
+                  { step: 2, title: (formData.tbmType || 'pre') === 'post' ? '업무 후 TBM' : '업무 전 TBM' },
                   { step: 3, title: '현장사진 등록' }
                 ].map(s => {
                   const isActive = activeStep === s.step;
@@ -3105,52 +3186,8 @@ export default function TbmSection({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {/* TBM Type Selector Header */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      🛡️ Step 2. TBM 내용 작성
-                    </div>
-
-                    {/* Basic Info Summary Banner (사업장 / 일자 / 주관자 확인 및 수정) */}
-                    <div style={{
-                      background: '#f8fafc',
-                      border: '1.5px solid #cbd5e1',
-                      borderRadius: '10px',
-                      padding: '10px 12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '10px'
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '11px', fontWeight: '800', color: '#0284c7', background: '#e0f2fe', padding: '1px 6px', borderRadius: '4px' }}>
-                            기본정보
-                          </span>
-                          <strong style={{ fontSize: '12.5px', color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {formData.site || '사업장 미지정'} {formData.siteAddress ? `(${formData.siteAddress})` : ''}
-                          </strong>
-                        </div>
-                        <div style={{ fontSize: '11.5px', color: '#475569' }}>
-                          일자: <strong>{formData.date}</strong> · 책임자: <strong>{formData.leaderName || '미지정'} {formData.leaderRank}</strong> ({formData.leaderDivision} {formData.leaderTeam})
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveStep(1)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          background: '#ffffff',
-                          border: '1px solid #cbd5e1',
-                          color: '#0284c7',
-                          fontSize: '11.5px',
-                          fontWeight: '700',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0
-                        }}
-                      >
-                        기본정보 수정 ✏️
-                      </button>
+                    <div style={{ fontSize: '13px', fontWeight: '800', color: (formData.tbmType || 'pre') === 'post' ? '#16a34a' : '#0369a1', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      🛡️ Step 2. {(formData.tbmType || 'pre') === 'post' ? '업무 후 TBM 점검 작성' : '업무 전 TBM 점검 작성'}
                     </div>
 
                     {/* Distinct Toggle Tabs: 업무 전 TBM vs 업무 후 TBM */}
@@ -3275,8 +3312,10 @@ export default function TbmSection({
                                 outline: 'none'
                               }}
                             >
-                              <option value="">-- 미참여 인원 선택 --</option>
-                              {filteredLeadersPool.map((u, idx) => (
+                              <option value="">
+                                {availableAbsenteesPool.length > 0 ? '-- 미참여 인원 선택 --' : '-- 미참여 대상 없음 (전원 참석) --'}
+                              </option>
+                              {availableAbsenteesPool.map((u, idx) => (
                                 <option key={u.id || `${u.name}-${idx}`} value={u.name}>
                                   {u.name} ({u.rank || '사원'})
                                 </option>
@@ -3664,8 +3703,10 @@ export default function TbmSection({
                                 outline: 'none'
                               }}
                             >
-                              <option value="">-- 미참여 인원 선택 --</option>
-                              {filteredLeadersPool.map((u, idx) => (
+                              <option value="">
+                                {availablePostAbsenteesPool.length > 0 ? '-- 미참여 인원 선택 --' : '-- 미참여 대상 없음 (전원 참석) --'}
+                              </option>
+                              {availablePostAbsenteesPool.map((u, idx) => (
                                 <option key={u.id || `${u.name}-${idx}`} value={u.name}>
                                   {u.name} ({u.rank || '사원'})
                                 </option>
@@ -4061,7 +4102,7 @@ export default function TbmSection({
                       className="glass-button"
                       style={{ flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', fontWeight: '700', fontSize: '12.5px' }}
                     >
-                      ← 이전 단계 (기본정보)
+                      ← 이전 단계
                     </button>
                     <button
                       type="button"
@@ -4726,9 +4767,6 @@ export default function TbmSection({
                   <h3 style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
                     미참석자 추가 TBM 진행 및 확인
                   </h3>
-                  <span style={{ fontSize: '11px', color: '#64748b', marginTop: '1px', display: 'block' }}>
-                    [{targetAdditionalTbm.site}] {targetAdditionalTbm.workTitle || 'TBM 안전점검 내용 확인'}
-                  </span>
                 </div>
               </div>
 
@@ -4777,10 +4815,7 @@ export default function TbmSection({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11.5px', color: '#334155' }}>
                   <div><strong>사업장:</strong> {targetAdditionalTbm.site} ({targetAdditionalTbm.siteAddress || '본사'})</div>
                   <div><strong>주관자:</strong> {targetAdditionalTbm.leaderName} ({targetAdditionalTbm.leaderRank})</div>
-                  <div><strong>작업명:</strong> {targetAdditionalTbm.workTitle || '일반 점검'}</div>
-                  <div><strong>작업구역:</strong> {targetAdditionalTbm.workArea || '현장 전체'}</div>
-                  {targetAdditionalTbm.toolsUsed && <div><strong>사용공구:</strong> {targetAdditionalTbm.toolsUsed}</div>}
-                  {targetAdditionalTbm.workCategory && <div><strong>작업구분:</strong> {targetAdditionalTbm.workCategory}</div>}
+                  <div><strong>작업구분:</strong> {targetAdditionalTbm.workCategory}</div>
                 </div>
 
                 {targetAdditionalTbm.workContent && (
@@ -4838,22 +4873,6 @@ export default function TbmSection({
                       <div style={{ whiteSpace: 'pre-wrap', marginTop: '2px' }}>{targetAdditionalTbm.preCheck.notes}</div>
                     </div>
                   )}
-
-                  {/* Photos if any */}
-                  {targetAdditionalTbm.preCheck?.photos && targetAdditionalTbm.preCheck.photos.length > 0 && (
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                      {targetAdditionalTbm.preCheck.photos.map((photo, idx) => (
-                        <img
-                          key={photo.id || idx}
-                          src={photo.dataUrl || photo.thumbnailUrl || photo.url || photo.viewUrl}
-                          alt="TBM 현장 사진"
-                          onClick={() => setPreviewModalPhoto(photo.dataUrl || photo.viewUrl || photo.url || photo.thumbnailUrl)}
-                          title="클릭 시 사진 확대"
-                          style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
-                        />
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 {/* Post-Check Items (if completed) */}
@@ -4869,7 +4888,7 @@ export default function TbmSection({
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#059669' }}>
-                        🏁 업무 후 점검 결과: {targetAdditionalTbm.postCheck?.workOutcome || '완료'}
+                        🛡️ 업무 후 점검 결과: {targetAdditionalTbm.postCheck?.workOutcome || '완료'}
                       </span>
                       <span style={{ fontSize: '10.5px', color: '#64748b' }}>{targetAdditionalTbm.postCheck?.conductedAt || ''}</span>
                     </div>
@@ -4882,72 +4901,170 @@ export default function TbmSection({
                 )}
               </div>
 
-              {/* 2. Candidate Member Selection */}
+              {/* 2. Candidate Member Selection (TBM 미참석자만 필터링 & 다중 선택 지원) */}
               {(() => {
                 const rawAbs = Array.isArray(targetAdditionalTbm.absentees) ? targetAdditionalTbm.absentees : [];
                 const postAbs = Array.isArray(targetAdditionalTbm.postCheck?.absentees) ? targetAdditionalTbm.postCheck.absentees : [];
-                const map = new Map();
-                rawAbs.forEach(a => {
-                  const name = typeof a === 'string' ? a : a?.name;
-                  const reason = typeof a === 'object' ? a.reason : '';
-                  const rank = (typeof a === 'object' ? a.rank : '') || '';
-                  if (name) map.set(name, { name, reason, rank });
-                });
-                postAbs.forEach(a => {
-                  const name = typeof a === 'string' ? a : a?.name;
-                  const reason = typeof a === 'object' ? a.reason : '';
-                  const rank = (typeof a === 'object' ? a.rank : '') || '';
-                  if (name && !map.has(name)) map.set(name, { name, reason, rank });
-                });
-                const absCandidates = Array.from(map.values());
+                const tbmAttendees = targetAdditionalTbm.attendees || [];
                 const completedNames = new Set((targetAdditionalTbm.additionalTbms || []).map(a => a.name));
 
+                // 1. 소속 팀 인원 목록
                 const teamUsers = allUsers.filter(u =>
                   (!targetAdditionalTbm.leaderDivision || u.division === targetAdditionalTbm.leaderDivision) &&
                   (!targetAdditionalTbm.leaderTeam || u.team === targetAdditionalTbm.leaderTeam || u.department === targetAdditionalTbm.leaderTeam)
                 );
 
+                // 2. TBM 참석자(attendees) 제외 판별 헬퍼
+                const isTbmAttendee = (u) => {
+                  return tbmAttendees.some(a => isSamePerson(a, u) || (a?.name && a.name.trim() === (u.name || '').trim()));
+                };
+
+                // 3. 미참석자 등록 풀 + 팀원 중 미참석자 풀 통합 (본 TBM 참석자는 100% 제외)
+                const map = new Map();
+
+                // 3-1. 미참석자 명단에 등록된 인원 중 본 TBM 참석자가 아닌 사람 추가
+                rawAbs.concat(postAbs).forEach(a => {
+                  const name = typeof a === 'string' ? a : a?.name;
+                  const reason = typeof a === 'object' ? a.reason : '';
+                  const rank = (typeof a === 'object' ? a.rank : '') || '';
+                  if (name && !isTbmAttendee({ name })) {
+                    const uMatch = allUsers.find(u => u.name === name);
+                    map.set(name, uMatch ? {
+                      ...uMatch,
+                      reason
+                    } : {
+                      name,
+                      rank: rank || '사원',
+                      team: targetAdditionalTbm.leaderTeam || '',
+                      division: targetAdditionalTbm.leaderDivision || '',
+                      reason
+                    });
+                  }
+                });
+
+                // 3-2. 팀원 중 본 TBM 참석자가 아닌 사람 추가
+                teamUsers.forEach(u => {
+                  if (u.name && !isTbmAttendee(u) && !map.has(u.name)) {
+                    map.set(u.name, u);
+                  }
+                });
+
+                const nonAttendeeCandidates = Array.from(map.values());
+
+                // 현재 선택된 대상자 목록 (다중 선택)
+                const selectedMembers = (additionalFormData.members && additionalFormData.members.length > 0)
+                  ? additionalFormData.members
+                  : (additionalFormData.member?.name ? [additionalFormData.member] : []);
+
+                // 멤버 선택/해제 토글 함수
+                const toggleAdditionalMember = (userToToggle) => {
+                  if (!userToToggle || !userToToggle.name) return;
+                  const exists = selectedMembers.some(m => m.name === userToToggle.name);
+                  let nextList;
+                  if (exists) {
+                    nextList = selectedMembers.filter(m => m.name !== userToToggle.name);
+                  } else {
+                    nextList = [...selectedMembers, {
+                      name: userToToggle.name,
+                      rank: userToToggle.rank || '사원',
+                      team: userToToggle.team || userToToggle.department || targetAdditionalTbm.leaderTeam || '',
+                      division: userToToggle.division || targetAdditionalTbm.leaderDivision || '',
+                      phone: userToToggle.phone || ''
+                    }];
+                  }
+                  setAdditionalFormData(prev => ({
+                    ...prev,
+                    members: nextList,
+                    member: nextList[0] || null
+                  }));
+                };
+
+                // 전체 선택
+                const handleSelectAll = () => {
+                  const allToAdd = nonAttendeeCandidates.map(u => ({
+                    name: u.name,
+                    rank: u.rank || '사원',
+                    team: u.team || u.department || targetAdditionalTbm.leaderTeam || '',
+                    division: u.division || targetAdditionalTbm.leaderDivision || '',
+                    phone: u.phone || ''
+                  }));
+                  setAdditionalFormData(prev => ({
+                    ...prev,
+                    members: allToAdd,
+                    member: allToAdd[0] || null
+                  }));
+                };
+
+                // 전체 해제
+                const handleClearAll = () => {
+                  setAdditionalFormData(prev => ({
+                    ...prev,
+                    members: [],
+                    member: null
+                  }));
+                };
+
                 return (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
-                      추가 TBM 대상자 선택 *
-                    </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+                        추가 TBM 대상자 선택 * (중복/복수 선택 가능)
+                      </label>
+                      {nonAttendeeCandidates.length > 0 && (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            type="button"
+                            onClick={handleSelectAll}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #0284c7',
+                              background: '#f0f9ff',
+                              color: '#0284c7',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            전체 선택
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleClearAll}
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #cbd5e1',
+                              background: '#ffffff',
+                              color: '#64748b',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            선택 해제
+                          </button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Absentee Quick Pick Chips */}
-                    {absCandidates.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {nonAttendeeCandidates.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                         <span style={{ fontSize: '11px', color: '#64748b' }}>
-                          📌 미참석자 목록 (클릭하여 즉시 지정):
+                          📌 미참석 대상자 목록 (클릭하여 선택/해제):
                         </span>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {absCandidates.map((abs, idx) => {
-                            const isSelected = additionalFormData.member?.name === abs.name;
+                          {nonAttendeeCandidates.map((abs, idx) => {
+                            const isSelected = selectedMembers.some(m => m.name === abs.name);
                             const isDone = completedNames.has(abs.name);
                             return (
                               <button
                                 key={idx}
                                 type="button"
-                                onClick={() => {
-                                  const userMatch = allUsers.find(u => u.name === abs.name);
-                                  setAdditionalFormData(prev => ({
-                                    ...prev,
-                                    member: userMatch ? {
-                                      name: userMatch.name,
-                                      rank: userMatch.rank || abs.rank || '사원',
-                                      team: userMatch.team || userMatch.department || targetAdditionalTbm.leaderTeam || '',
-                                      division: userMatch.division || targetAdditionalTbm.leaderDivision || '',
-                                      phone: userMatch.phone || ''
-                                    } : {
-                                      name: abs.name,
-                                      rank: abs.rank || '사원',
-                                      team: targetAdditionalTbm.leaderTeam || '',
-                                      division: targetAdditionalTbm.leaderDivision || '',
-                                      phone: ''
-                                    }
-                                  }));
-                                }}
+                                onClick={() => toggleAdditionalMember(abs)}
                                 style={{
-                                  padding: '5px 10px',
+                                  padding: '6px 10px',
                                   borderRadius: '6px',
                                   border: isSelected ? '2px solid #0284c7' : '1px solid #cbd5e1',
                                   background: isSelected ? '#e0f2fe' : isDone ? '#f8fafc' : '#ffffff',
@@ -4957,10 +5074,12 @@ export default function TbmSection({
                                   cursor: 'pointer',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '4px'
+                                  gap: '5px',
+                                  transition: 'all 0.15s ease'
                                 }}
                               >
-                                {abs.name} {abs.reason ? `(${abs.reason})` : ''}
+                                <span>{isSelected ? '☑' : '☐'}</span>
+                                <span>{abs.name} ({abs.rank || '사원'}){abs.reason ? ` - ${abs.reason}` : ''}</span>
                                 {isDone && <span style={{ fontSize: '10px', color: '#16a34a' }}>✓이수완료</span>}
                               </button>
                             );
@@ -4969,27 +5088,16 @@ export default function TbmSection({
                       </div>
                     )}
 
-                    {/* Direct Member Dropdown Selection */}
+                    {/* Direct Member Dropdown Selection (TBM 미참석 인원만 노출) */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                        또는 부서 인원 중 직접 선택:
-                      </span>
                       <select
-                        value={additionalFormData.member?.name || ''}
+                        value=""
                         onChange={(e) => {
                           const val = e.target.value;
-                          const found = allUsers.find(u => u.name === val);
+                          if (!val) return;
+                          const found = nonAttendeeCandidates.find(u => u.name === val);
                           if (found) {
-                            setAdditionalFormData(prev => ({
-                              ...prev,
-                              member: {
-                                name: found.name,
-                                rank: found.rank || '사원',
-                                team: found.team || found.department || targetAdditionalTbm.leaderTeam || '',
-                                division: found.division || targetAdditionalTbm.leaderDivision || '',
-                                phone: found.phone || ''
-                              }
-                            }));
+                            toggleAdditionalMember(found);
                           }
                         }}
                         style={{
@@ -5002,78 +5110,144 @@ export default function TbmSection({
                           background: '#ffffff'
                         }}
                       >
-                        <option value="">-- 대상자를 선택하세요 --</option>
-                        {teamUsers.map(u => (
-                          <option key={u.id || u.username || u.name} value={u.name}>
-                            {u.name} ({u.rank || '사원'} · {u.team || u.department || ''})
-                          </option>
-                        ))}
+                        <option value="">
+                          {nonAttendeeCandidates.length > 0
+                            ? `➕ 대상자 선택/추가 (미참석 ${nonAttendeeCandidates.length}명 중 선택)`
+                            : `-- TBM 미참석 인원이 없습니다 (전원 참석) --`}
+                        </option>
+                        {nonAttendeeCandidates.map(u => {
+                          const isSelected = selectedMembers.some(m => m.name === u.name);
+                          const isDone = completedNames.has(u.name);
+                          return (
+                            <option key={u.id || u.username || u.name} value={u.name}>
+                              {isSelected ? '✓ [선택됨] ' : '+ '} {u.name} ({u.rank || '사원'} · {u.team || u.department || ''}){u.reason ? ` [사유: ${u.reason}]` : ''}{isDone ? ' [이수완료]' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
-                    {/* Selected Person Card Display */}
-                    {additionalFormData.member?.name && (
+                    {/* Selected Person Badges Display (복수 선택된 인원 태그) */}
+                    {selectedMembers.length > 0 ? (
                       <div style={{
                         background: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        fontSize: '12px',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '8px',
+                        padding: '10px 12px',
                         display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
+                        flexDirection: 'column',
+                        gap: '6px'
                       }}>
-                        <div>
-                          <strong>선택된 대상자:</strong>{' '}
-                          <span style={{ color: '#0284c7', fontWeight: '800' }}>
-                            {additionalFormData.member.name} ({additionalFormData.member.rank || '사원'})
-                          </span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: '#475569' }}>
+                          <span><strong>선택된 대상자:</strong> <span style={{ color: '#0284c7', fontWeight: '800' }}>총 {selectedMembers.length}명</span></span>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>태그의 ✕를 눌러 개별 취소 가능</span>
                         </div>
-                        <span style={{ color: '#64748b', fontSize: '11px' }}>
-                          {additionalFormData.member.team || targetAdditionalTbm.leaderTeam}
-                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {selectedMembers.map((m, idx) => (
+                            <span
+                              key={m.name || idx}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                background: '#e0f2fe',
+                                color: '#0369a1',
+                                border: '1px solid #7dd3fc',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                fontSize: '12px',
+                                fontWeight: '700'
+                              }}
+                            >
+                              <span>{m.name} ({m.rank || '사원'})</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleAdditionalMember(m)}
+                                style={{
+                                  background: 'transparent',
+                                  border: 'none',
+                                  color: '#0369a1',
+                                  cursor: 'pointer',
+                                  padding: 0,
+                                  fontSize: '12px',
+                                  fontWeight: '800',
+                                  display: 'flex',
+                                  alignItems: 'center'
+                                }}
+                                title="선택 해제"
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '10px 12px',
+                        background: '#fff1f2',
+                        border: '1px dashed #fda4af',
+                        borderRadius: '6px',
+                        color: '#e11d48',
+                        fontSize: '12px',
+                        textAlign: 'center',
+                        fontWeight: '600'
+                      }}>
+                        선택된 대상자가 없습니다. 위 칩 또는 드롭다운에서 대상자를 선택해주세요.
                       </div>
                     )}
                   </div>
                 );
               })()}
 
-              {/* 3. Execution Date & Time */}
+              {/* 3. Execution Date & Time (Fixed to TBM's Date & Time) */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    실시 일자 *
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                    <span>실시 일자</span>
+                    <span style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: '700', background: '#e0f2fe', padding: '1px 5px', borderRadius: '3px' }}>TBM 일자 고정</span>
                   </label>
                   <input
                     type="date"
                     value={additionalFormData.conductedDate}
-                    onChange={(e) => setAdditionalFormData(prev => ({ ...prev, conductedDate: e.target.value }))}
+                    readOnly
                     style={{
                       width: '100%',
                       padding: '8px 10px',
                       borderRadius: '6px',
                       border: '1.5px solid #cbd5e1',
                       fontSize: '12.5px',
-                      outline: 'none'
+                      outline: 'none',
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      fontWeight: '700',
+                      cursor: 'not-allowed'
                     }}
+                    title="해당 TBM의 실시 일자로 고정됩니다."
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    실시 시각 *
+                  <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                    <span>실시 시각</span>
+                    <span style={{ fontSize: '10.5px', color: '#0284c7', fontWeight: '700', background: '#e0f2fe', padding: '1px 5px', borderRadius: '3px' }}>TBM 시간 고정</span>
                   </label>
                   <input
                     type="time"
                     value={additionalFormData.conductedTime}
-                    onChange={(e) => setAdditionalFormData(prev => ({ ...prev, conductedTime: e.target.value }))}
+                    readOnly
                     style={{
                       width: '100%',
                       padding: '8px 10px',
                       borderRadius: '6px',
                       border: '1.5px solid #cbd5e1',
                       fontSize: '12.5px',
-                      outline: 'none'
+                      outline: 'none',
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      fontWeight: '700',
+                      cursor: 'not-allowed'
                     }}
+                    title="해당 TBM의 실시 시각으로 고정됩니다."
                   />
                 </div>
               </div>
@@ -5100,7 +5274,7 @@ export default function TbmSection({
                     style={{ marginTop: '2px', width: '16px', height: '16px', accentColor: '#0284c7' }}
                   />
                   <span>
-                    <strong>[필수]</strong> 위 TBM 안전 점검 항목, 주관자 전달사항 및 현장 위험요인을 모두 확인하고 숙지하였습니다.
+                    TBM 안전 점검 항목 및 주관자 전달사항을 모두 확인하고 숙지하였습니다.
                   </span>
                 </label>
 
@@ -5112,7 +5286,7 @@ export default function TbmSection({
                     style={{ marginTop: '2px', width: '16px', height: '16px', accentColor: '#0284c7' }}
                   />
                   <span>
-                    <strong>[필수]</strong> 해당 작업의 개인 보호구를 착용하고, 사내 안전보건 수칙을 철저히 준수하겠습니다.
+                    작업 전 위험 요인 파악 및 절차서 외 작업은 하지 않겠습니다.
                   </span>
                 </label>
               </div>
@@ -5120,13 +5294,13 @@ export default function TbmSection({
               {/* 5. Optional Notes / Remarks */}
               <div>
                 <label style={{ fontSize: '12px', fontWeight: '700', color: '#475569', display: 'block', marginBottom: '4px' }}>
-                  추가 확인 의견 및 작업 시 유의사항 (선택)
+                  금일 작업 내용 또는 특이 사항 기입 (선택)
                 </label>
                 <textarea
                   rows={2}
                   value={additionalFormData.notes}
                   onChange={(e) => setAdditionalFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="예: 현장 복귀 후 보호구 착용 완료 및 위험 구역 안전조치 확인함."
+                  placeholder="예: SKH 이천 장비 점검"
                   style={{
                     width: '100%',
                     padding: '8px 10px',

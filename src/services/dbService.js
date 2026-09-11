@@ -3685,16 +3685,31 @@ class SecurityDatabase {
     if (!tbm.postCheck || typeof tbm.postCheck !== 'object') {
       tbm.postCheck = { isCompleted: false, selectedItems: [], photos: [], absentees: [] };
     }
+    if (tbm.postCheck.cleanupCheck === undefined) tbm.postCheck.cleanupCheck = true;
+    if (tbm.postCheck.toolRecoveryCheck === undefined) tbm.postCheck.toolRecoveryCheck = true;
+    if (tbm.postCheck.securityMediaCheck === undefined) tbm.postCheck.securityMediaCheck = true;
+    if (tbm.postCheck.powerSafetyCheck === undefined) tbm.postCheck.powerSafetyCheck = true;
     if (!Array.isArray(tbm.postCheck.selectedItems)) tbm.postCheck.selectedItems = [];
     if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
-    const isPostTbm = rawType.indexOf('후') !== -1 || rawType === 'post' || String(tbm.id || '').startsWith('tbm_post_') || Boolean(tbm.postCheck && tbm.postCheck.isCompleted);
+    let isPostTbm = false;
+    if (String(tbm.id || '').startsWith('tbm_post_')) {
+      isPostTbm = true;
+    } else if (String(tbm.id || '').startsWith('tbm_pre_')) {
+      isPostTbm = false;
+    } else if (rawType.indexOf('후') !== -1 || rawType === 'post') {
+      isPostTbm = true;
+    } else if (rawType.indexOf('전') !== -1 || rawType === 'pre') {
+      isPostTbm = false;
+    } else {
+      isPostTbm = Boolean(tbm.postCheck && tbm.postCheck.isCompleted && !tbm.preCheck?.isCompleted);
+    }
     tbm.tbmType = isPostTbm ? 'post' : 'pre';
     tbm.tbm_type = isPostTbm ? '업무 후' : '업무 전';
     tbm['구분'] = tbm.tbm_type;
-    tbm.status = tbm.status || (isPostTbm ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    tbm.status = tbm.status || (isPostTbm ? 'POST_COMPLETED' : 'PRE_COMPLETED');
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
 
