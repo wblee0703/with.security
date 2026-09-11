@@ -2793,8 +2793,9 @@ class SecurityDatabase {
         const curDate = normalizeKstDate(loc.date || loc.log_date);
         const writer = String(loc.authorUsername || loc.writerId || loc.writer_id || loc.name || '').trim().toLowerCase();
         const title = String(loc.title || '').trim().toLowerCase();
+        const locId = String(loc.id || loc.log_id || '').trim();
         if (origDate && origDate !== curDate) {
-          recentLocalMoves.push({ writer, origDate, title, curDate });
+          recentLocalMoves.push({ id: locId, writer, origDate, title, curDate });
         }
       }
     }
@@ -2809,7 +2810,8 @@ class SecurityDatabase {
 
       // Check if this remote item is a stale pre-move ghost of an item recently moved to a new date
       const isStaleGhost = recentLocalMoves.some(m =>
-        m.origDate === rDate && m.writer === rWriter && m.title === rTitle
+        (m.id && rId && m.id === rId && m.origDate === rDate) ||
+        (m.origDate === rDate && m.writer === rWriter && m.title === rTitle)
       );
       if (isStaleGhost) continue;
 
@@ -2880,7 +2882,7 @@ class SecurityDatabase {
     return [];
   }
 
-  async saveWorkLog(logItem) {
+  async saveWorkLog(logItem, options = {}) {
     if (!logItem) return null;
     const targetId = String(logItem.id || logItem.log_id || `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`).trim();
     // ⭐ 핵심 격리 규칙: 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장하지 않고 saveChecklist로 안전하게 전환
@@ -3024,42 +3026,44 @@ class SecurityDatabase {
     recentResponseCache.clear();
     this._lastWorkLogsRevalidate = Date.now() + 8000;
 
-    // 2. Safe async sync with server (non-blocking, eliminates UI freeze/lag)
-    safeFetchApi('/api/work-logs', {
+    // 2. Safe async sync with server (supports immediate sync for calendar drag & drop)
+    const syncPayload = {
+      id: targetId,
+      log_id: targetId,
+      logId: targetId,
+      original_date: logItem._originalDate || logItem.originalDate || logItem.prevDate || '',
+      name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
+      writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
+      writerId: preparedLog.authorUsername || preparedLog.writerId || '',
+      division: preparedLog.authorDivision || preparedLog.division || '',
+      team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
+      rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
+      role: preparedLog.authorRole || preparedLog.role || '일반',
+      category: preparedLog.category || '사내 업무',
+      sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
+      subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
+      due_date: cleanDueDate,
+      dueDate: cleanDueDate,
+      site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+      siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
+      log_date: cleanDate,
+      date: cleanDate,
+      title: preparedLog.title,
+      tasks_done: preparedLog.details || preparedLog.tasksDone || '',
+      tasksDone: preparedLog.details || preparedLog.tasksDone || '',
+      is_shared: preparedLog.isShared ? 1 : 0,
+      isShared: preparedLog.isShared ?? false,
+      shared_with: cleanSharedWith,
+      sharedWith: cleanSharedWith,
+      shared_at: preparedLog.sharedAt || '',
+      sharedAt: preparedLog.sharedAt || '',
+      created_at: preparedLog.createdAt || new Date().toISOString()
+    };
+
+    const syncPromise = safeFetchApi('/api/work-logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: targetId,
-        log_id: targetId,
-        logId: targetId,
-        original_date: logItem._originalDate || logItem.originalDate || '',
-        name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
-        writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
-        writerId: preparedLog.authorUsername || preparedLog.writerId || '',
-        division: preparedLog.authorDivision || preparedLog.division || '',
-        team: preparedLog.authorTeam || preparedLog.team || preparedLog.writerTeam || preparedLog.department || '보안관제팀',
-        rank: preparedLog.authorRank || preparedLog.rank || preparedLog.writerRank || '대리',
-        role: preparedLog.authorRole || preparedLog.role || '일반',
-        category: preparedLog.category || '사내 업무',
-        sub_category: preparedLog.subCategory || preparedLog.sub_category || '',
-        subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
-        due_date: cleanDueDate,
-        dueDate: cleanDueDate,
-        site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
-        siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
-        log_date: cleanDate,
-        date: cleanDate,
-        title: preparedLog.title,
-        tasks_done: preparedLog.details || preparedLog.tasksDone || '',
-        tasksDone: preparedLog.details || preparedLog.tasksDone || '',
-        is_shared: preparedLog.isShared ? 1 : 0,
-        isShared: preparedLog.isShared ?? false,
-        shared_with: cleanSharedWith,
-        sharedWith: cleanSharedWith,
-        shared_at: preparedLog.sharedAt || '',
-        sharedAt: preparedLog.sharedAt || '',
-        created_at: preparedLog.createdAt || new Date().toISOString()
-      })
+      body: JSON.stringify(syncPayload)
     }).then(() => {
       setTimeout(() => {
         if (this._recentLocalWorkLogEdits) {
@@ -3068,6 +3072,12 @@ class SecurityDatabase {
         }
       }, 15000);
     }).catch(err => console.warn('Background work log save sync warning:', err));
+
+    if (options && options.syncImmediate) {
+      try {
+        await syncPromise;
+      } catch (e) { }
+    }
 
     notifyDataChanged();
     return pureUpdated;

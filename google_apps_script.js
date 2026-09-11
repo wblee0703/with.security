@@ -420,19 +420,27 @@ function doPost(e) {
             );
 
             const writerIdx = headers.indexOf('writer_id');
+            const nameIdx = headers.indexOf('name');
             const dateIdx = headers.indexOf('log_date');
             const titleIdx = headers.indexOf('title');
             const rowWriter = writerIdx !== -1 ? String(rows[i][writerIdx] || '').trim().toLowerCase() : '';
+            const rowName = nameIdx !== -1 ? String(rows[i][nameIdx] || '').trim().toLowerCase() : '';
             const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
             const rowTitle = titleIdx !== -1 ? String(rows[i][titleIdx] || '').trim().toLowerCase() : '';
 
             const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
+            const itemName = String(item.name || '').trim().toLowerCase();
             const itemDate = formatKstDate(item.log_date || item.date || '', true);
             const origDate = formatKstDate(rawData.original_date || rawData._originalDate || rawData.originalDate || '', true);
             const itemTitle = String(item.title || '').trim().toLowerCase();
 
+            const writerMatched = Boolean(
+              (itemWriter && (rowWriter === itemWriter || rowName === itemWriter)) ||
+              (itemName && (rowName === itemName || rowWriter === itemName))
+            );
+
             const compositeMatched = Boolean(
-              itemWriter && itemTitle && rowWriter === itemWriter && rowTitle === itemTitle &&
+              writerMatched && itemTitle && rowTitle === itemTitle &&
               (rowDate === itemDate || (origDate && rowDate === origDate))
             );
 
@@ -502,24 +510,102 @@ function doPost(e) {
             });
             sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
 
-            // 일자 변경(드래그 이동) 시 기존 일자(origDate)에 남아있는 중복 행이 있다면 완전 삭제하여 과거 일자로 부활하는 현상 차단
-            if (sheetName === 'work_logs' && origDate && origDate !== itemDate) {
-              for (let j = rows.length - 1; j > i; j--) {
-                const jRowDate = dateIdx !== -1 ? formatKstDate(rows[j][dateIdx], true) : '';
-                const jRowWriter = writerIdx !== -1 ? String(rows[j][writerIdx] || '').trim().toLowerCase() : '';
-                const jRowTitle = titleIdx !== -1 ? String(rows[j][titleIdx] || '').trim().toLowerCase() : '';
-                if (jRowWriter === itemWriter && jRowTitle === itemTitle && (jRowDate === origDate || jRowDate === itemDate)) {
-                  try { sheet.deleteRow(j + 1); } catch (e) {}
+            // 일자 변경(드래그 이동) 시 기존 일자(origDate) 또는 동일 ID/일지 중복 행이 있다면 완전 삭제하여 과거 일자로 부활하는 현상 차단
+            if (sheetName === 'work_logs') {
+              const origDate = formatKstDate(rawData.original_date || rawData._originalDate || rawData.originalDate || '', true);
+              const itemDate = formatKstDate(item.log_date || item.date || '', true);
+              const targetId = String(item.id || '').trim();
+              const targetLogId = String(item.log_id || '').trim();
+              const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
+              const itemName = String(item.name || '').trim().toLowerCase();
+              const itemTitle = String(item.title || '').trim().toLowerCase();
+              const dateIdx = headers.indexOf('log_date');
+              const writerIdx = headers.indexOf('writer_id');
+              const nameIdx = headers.indexOf('name');
+              const titleIdx = headers.indexOf('title');
+
+              const rowsToDelete = [];
+              for (let j = rows.length - 1; j >= 1; j--) {
+                if (j === i) continue; // 방금 수정한 대상 행은 보존
+                const jRow = rows[j];
+                const jId = idColIdx !== -1 ? String(jRow[idColIdx] || '').trim() : '';
+                const jLogId = logIdColIdx !== -1 ? String(jRow[logIdColIdx] || '').trim() : '';
+                const jRowDate = dateIdx !== -1 ? formatKstDate(jRow[dateIdx], true) : '';
+                const jRowWriter = writerIdx !== -1 ? String(jRow[writerIdx] || '').trim().toLowerCase() : '';
+                const jRowName = nameIdx !== -1 ? String(jRow[nameIdx] || '').trim().toLowerCase() : '';
+                const jRowTitle = titleIdx !== -1 ? String(jRow[titleIdx] || '').trim().toLowerCase() : '';
+
+                const idMatches = Boolean(
+                  (targetId && (jId === targetId || jLogId === targetId)) ||
+                  (targetLogId && (jId === targetLogId || jLogId === targetLogId))
+                );
+
+                const compMatches = Boolean(
+                  ((jRowWriter && (jRowWriter === itemWriter || jRowName === itemWriter)) || (jRowName && (jRowName === itemName || jRowWriter === itemName))) &&
+                  jRowTitle === itemTitle &&
+                  (origDate ? (jRowDate === origDate || jRowDate === itemDate) : (jRowDate === itemDate))
+                );
+
+                if (idMatches || compMatches) {
+                  rowsToDelete.push(j + 1); // 1-indexed row number
                 }
               }
+
+              // 아래에서 위로 삭제하여 행 번호 변동 방지
+              rowsToDelete.sort((a, b) => b - a).forEach(rNum => {
+                try { sheet.deleteRow(rNum); } catch (e) {}
+              });
             }
 
+            SpreadsheetApp.flush();
             return jsonResponse({ success: true, message: 'Row updated in-place (deduplicated upsert)', data: item });
           }
         }
       }
 
+      // 일자 이동 대상인데 기존 행을 루프에서 찾지 못한 경우, origDate에 해당 일지가 있다면 덮어쓰기 우선 적용
+      const origDate = formatKstDate(rawData.original_date || rawData._originalDate || rawData.originalDate || '', true);
+      const itemDate = formatKstDate(item.log_date || item.date || '', true);
+      if (sheetName === 'work_logs' && origDate && origDate !== itemDate && sheet.getLastRow() > 1) {
+        const rows = sheet.getDataRange().getValues();
+        const dateIdx = headers.indexOf('log_date');
+        const writerIdx = headers.indexOf('writer_id');
+        const nameIdx = headers.indexOf('name');
+        const titleIdx = headers.indexOf('title');
+        const itemWriter = String(item.writer_id || item.authorUsername || item.name || '').trim().toLowerCase();
+        const itemName = String(item.name || '').trim().toLowerCase();
+        const itemTitle = String(item.title || '').trim().toLowerCase();
+        const targetId = String(item.id || '').trim();
+        const targetLogId = String(item.log_id || '').trim();
+
+        for (let i = rows.length - 1; i >= 1; i--) {
+          const rId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+          const rLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
+          const rDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
+          const rWriter = writerIdx !== -1 ? String(rows[i][writerIdx] || '').trim().toLowerCase() : '';
+          const rName = nameIdx !== -1 ? String(rows[i][nameIdx] || '').trim().toLowerCase() : '';
+          const rTitle = titleIdx !== -1 ? String(rows[i][titleIdx] || '').trim().toLowerCase() : '';
+
+          const idMatch = Boolean((targetId && (rId === targetId || rLogId === targetId)) || (targetLogId && (rId === targetLogId || rLogId === targetLogId)));
+          const compMatch = Boolean(((rWriter && (rWriter === itemWriter || rName === itemWriter)) || (rName && (rName === itemName || rWriter === itemName))) && rTitle === itemTitle && (rDate === origDate || rDate === itemDate));
+
+          if (idMatch || compMatch) {
+            const updatedRow = headers.map((h, colIdx) => {
+              if (item[h] !== undefined) {
+                const val = item[h];
+                return (typeof val === 'object' && val !== null) ? JSON.stringify(val) : val;
+              }
+              return rows[i][colIdx] !== undefined ? rows[i][colIdx] : '';
+            });
+            sheet.getRange(i + 1, 1, 1, headers.length).setValues([updatedRow]);
+            SpreadsheetApp.flush();
+            return jsonResponse({ success: true, message: 'Existing row on origDate updated with new date', data: item });
+          }
+        }
+      }
+
       appendObjectRow(sheet, headers, item);
+      SpreadsheetApp.flush();
       return jsonResponse({ success: true, message: 'Row created', data: item });
     }
     
@@ -531,18 +617,22 @@ function doPost(e) {
       
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(patch);
       const headers = ensureHeaders(sheet, targetHeaders);
-      const rows = sheet.getDataRange().getValues();
-      const keyColIdx = headers.indexOf(keyField);
+      const idColIdx = headers.indexOf('id');
+      const logIdColIdx = headers.indexOf('log_id');
       
-      if (keyColIdx === -1) {
+      if (keyColIdx === -1 && idColIdx === -1 && logIdColIdx === -1) {
         return jsonResponse({ success: false, error: 'Key field not found: ' + keyField });
       }
       
       for (let i = 1; i < rows.length; i++) {
-        const cellValue = String(rows[i][keyColIdx] || '').trim();
+        const cellValue = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
+        const idVal = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+        const logIdVal = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
+        const targetStr = String(id).trim();
+
         const isMatch = (sheetName === 'users')
-          ? cellValue.toLowerCase() === String(id).trim().toLowerCase()
-          : cellValue === String(id).trim();
+          ? (cellValue.toLowerCase() === targetStr.toLowerCase())
+          : (cellValue === targetStr || (idVal && idVal === targetStr) || (logIdVal && logIdVal === targetStr));
 
         if (isMatch) {
           const rowNum = i + 1;
@@ -555,12 +645,14 @@ function doPost(e) {
             }
           }
           sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
+          SpreadsheetApp.flush();
           return jsonResponse({ success: true, message: 'Row updated', id: id });
         }
       }
       
       // 대상이 없으면 새로 추가
       appendObjectRow(sheet, headers, { ...patch, [keyField]: id });
+      SpreadsheetApp.flush();
       return jsonResponse({ success: true, message: 'Row inserted (upsert)', id: id });
     }
     
@@ -1146,7 +1238,8 @@ function readSheetData(sheetName) {
           obj.id = idVal;
           obj.log_id = idVal;
         }
-        key = (writerVal && dateVal && titleVal) ? `WORK::${writerVal}::${dateVal}::${titleVal}` : idVal;
+        // 고유 ID를 최우선 키로 삼아 일자 변경 시 과거 일자 유령 행이 아닌 최신 행만 단일 반환
+        key = idVal || ((writerVal && titleVal) ? `WORK::${writerVal}::${titleVal}` : `WORK_ROW_${i}`);
       } else if (sheetName === 'security_logs') {
         let idVal = String(obj.log_id || obj.id || '').trim();
         const visitorVal = String(obj.visitor_phone || obj.visitorPhone || obj.phone || '').replace(/\D/g, '');
@@ -1264,7 +1357,7 @@ function cleanupDuplicates() {
         const dateVal = dateIdx !== -1 ? formatKstDate(row[dateIdx], true) : '';
         const titleVal = titleIdx !== -1 ? String(row[titleIdx] || '').trim().toLowerCase() : '';
 
-        key = (writerVal && dateVal && titleVal) ? `WORK::${writerVal}::${dateVal}::${titleVal}` : (logId || id);
+        key = logId || id || ((writerVal && titleVal) ? `WORK::${writerVal}::${titleVal}` : '');
       } else if (sheetName === 'security_logs') {
         const phoneIdx = headers.indexOf('visitor_phone');
         const dateIdx = headers.indexOf('signature_date');

@@ -998,22 +998,25 @@ export default function WorkLogTab({ onTriggerToast }) {
     setSelectedDate(cleanTargetDate);
     setViewAllDates(false);
 
-    // 3. Persist to storage & DB
+    // 3. Persist to storage & DB with immediate Google Sheets synchronization
     try {
       let savedLogs = null;
       for (const item of logsToMove) {
         const timePart = item.createdAt && item.createdAt.includes(' ')
           ? item.createdAt.split(' ')[1]
           : '09:00:00';
+        const origItemDate = normalizeKstDate(item.date || item.log_date) || curLogDate;
         const updatedLog = {
           ...item,
-          _originalDate: item.date || item.log_date,
+          _originalDate: origItemDate,
+          original_date: origItemDate,
+          originalDate: origItemDate,
           date: cleanTargetDate,
           log_date: cleanTargetDate,
           createdAt: `${cleanTargetDate} ${timePart}`,
           updatedAt: nowIso
         };
-        savedLogs = await dbService.saveWorkLog(updatedLog);
+        savedLogs = await dbService.saveWorkLog(updatedLog, { syncImmediate: true });
       }
 
       if (savedLogs && Array.isArray(savedLogs)) {
@@ -1022,7 +1025,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
       if (onTriggerToast) {
         const title = targetLog.title || (fallbackLog && fallbackLog.siteName ? `${fallbackLog.siteName} 출장` : '업무');
-        onTriggerToast(`'${title}' 업무가 [${cleanTargetDate}] 일자로 이동되었습니다.`, 'success');
+        onTriggerToast(`'${title}' 업무가 [${cleanTargetDate}] 일자로 이동되어 스프레드시트에 즉시 반영되었습니다.`, 'success');
       }
     } catch (err) {
       console.error('Failed to move work log date:', err);
