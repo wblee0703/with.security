@@ -3650,9 +3650,14 @@ class SecurityDatabase {
     if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
-    tbm.tbmType = tbm.tbmType || tbm.tbm_type || (tbm.postCheck?.isCompleted ? 'post' : 'pre');
+    const rawType = String(tbm.tbmType || tbm.tbm_type || '').trim().toLowerCase();
+    if (rawType === 'post' || rawType === 'pre') {
+      tbm.tbmType = rawType;
+    } else {
+      tbm.tbmType = tbm.postCheck?.isCompleted ? 'post' : 'pre';
+    }
     tbm.tbm_type = tbm.tbmType;
-    tbm.status = tbm.status || (tbm.postCheck?.isCompleted ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    tbm.status = tbm.status || (tbm.tbmType === 'post' ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
 
@@ -3865,6 +3870,8 @@ class SecurityDatabase {
     // Strip large photo dataUrls before sending to Google Sheets (prevents 50k cell limit overflow)
     const remotePayload = {
       ...fullTbm,
+      tbmType: fullTbm.tbmType,
+      tbm_type: fullTbm.tbmType,
       additionalTbms: (fullTbm.additionalTbms || []).map(a => ({
         ...a,
         photos: (a.photos || []).map(p => ({

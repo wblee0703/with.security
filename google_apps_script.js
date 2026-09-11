@@ -462,17 +462,25 @@ function doPost(e) {
             const dateIdx = headers.indexOf('date');
             const siteIdx = headers.indexOf('site');
             const leaderIdx = headers.indexOf('leader_name');
+            const typeIdx = headers.indexOf('tbm_type');
 
             const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
             const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
             const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
+            const rowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
 
             const itemDate = formatKstDate(item.date || '', true);
             const itemSite = String(item.site || '').trim().toLowerCase();
             const itemLeader = String(item.leader_name || '').trim().toLowerCase();
+            const itemType = String(item.tbm_type || item.tbmType || '').trim().toLowerCase();
 
-            const compositeMatched = Boolean(itemDate && itemSite && itemLeader &&
-              rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader);
+            // ⭐ 업무전과 업무후 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 행으로 스프레드시트에 기록되어야 함!
+            // compositeMatched는 반드시 tbm_type(pre vs post)까지 동일해야만 같은 일지로 판정
+            const compositeMatched = Boolean(
+              itemDate && itemSite && itemLeader && itemType &&
+              rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader &&
+              rowType === itemType
+            );
 
             isMatch = idMatched || compositeMatched;
           } else {
@@ -919,7 +927,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       attendees: (typeof atts === 'object' && atts !== null) ? JSON.stringify(atts) : String(atts || ''),
       absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
       additional_tbms: addTbmsStr,
-      tbm_type: obj.tbmType || obj.tbm_type || ((postChk && postChk.isCompleted) ? 'post' : 'pre'),
+      tbm_type: String(obj.tbm_type || obj.tbmType || ((postChk && postChk.isCompleted) ? 'post' : 'pre')).trim().toLowerCase(),
       work_content: obj.workContent || obj.work_content || obj.content || '',
       tools_used: obj.toolsUsed || obj.tools_used || '',
       pre_check: preCheckStr,
@@ -1110,6 +1118,12 @@ function readSheetData(sheetName) {
         if (!obj.post_check && obj.postCheck) obj.post_check = obj.postCheck;
         if (!obj.status && obj.postCheck && obj.postCheck.isCompleted) obj.status = 'ALL_COMPLETED';
         if (!obj.status) obj.status = 'PRE_COMPLETED';
+        if (!obj.tbmType && obj.tbm_type) obj.tbmType = obj.tbm_type;
+        if (!obj.tbm_type && obj.tbmType) obj.tbm_type = obj.tbmType;
+        if (!obj.tbmType) {
+          obj.tbmType = (obj.postCheck && obj.postCheck.isCompleted) ? 'post' : 'pre';
+          obj.tbm_type = obj.tbmType;
+        }
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       }
@@ -1148,7 +1162,8 @@ function readSheetData(sheetName) {
         const dateVal = String(obj.date || obj.log_date || '').trim();
         const siteVal = String(obj.site || obj.siteName || '').trim();
         const leaderVal = String(obj.leaderName || obj.leader || '').trim();
-        key = idVal || (dateVal && siteVal ? `TBM::${dateVal}::${siteVal}::${leaderVal}` : '');
+        const typeVal = String(obj.tbm_type || obj.tbmType || '').trim().toLowerCase();
+        key = idVal || (dateVal && siteVal ? `TBM::${dateVal}::${siteVal}::${leaderVal}::${typeVal}` : '');
       } else {
         key = String(obj.log_id || obj.id || '').trim();
       }
@@ -1262,6 +1277,21 @@ function cleanupDuplicates() {
         const logId = logIdIdx !== -1 ? String(row[logIdIdx] || '').trim() : '';
 
         key = (phone && date) ? `SEC::${phone}::${date}` : (logId || id);
+      } else if (sheetName === 'tbms') {
+        const idIdx = headers.indexOf('id');
+        const dateIdx = headers.indexOf('date');
+        const siteIdx = headers.indexOf('site');
+        const leaderIdx = headers.indexOf('leader_name');
+        const typeIdx = headers.indexOf('tbm_type');
+
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+        const dVal = dateIdx !== -1 ? formatKstDate(row[dateIdx], true) : '';
+        const sVal = siteIdx !== -1 ? String(row[siteIdx] || '').trim().toLowerCase() : '';
+        const lVal = leaderIdx !== -1 ? String(row[leaderIdx] || '').trim().toLowerCase() : '';
+        const tVal = typeIdx !== -1 ? String(row[typeIdx] || '').trim().toLowerCase() : '';
+
+        // Pre and Post TBMs must NEVER collide during duplicate cleanup!
+        key = id || (dVal && sVal ? `TBM::${dVal}::${sVal}::${lVal}::${tVal}` : '');
       } else {
         const idIdx = headers.indexOf('id');
         const logIdIdx = headers.indexOf('log_id');

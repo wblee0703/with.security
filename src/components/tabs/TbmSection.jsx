@@ -602,7 +602,7 @@ export default function TbmSection({
   const displayTbms = React.useMemo(() => {
     const list = [];
     tbmList.forEach(item => {
-      const itemType = item.tbmType;
+      const itemType = String(item.tbmType || item.tbm_type || '').toLowerCase();
       const hasCompletedPost = Boolean(item.postCheck?.isCompleted);
 
       if (itemType === 'post') {
@@ -2310,8 +2310,8 @@ export default function TbmSection({
                     type="button"
                     onClick={() => handleEditTbm(tbm, 'pre')}
                     style={{
-                      flex: 0.9,
-                      padding: '7px 8px',
+                      flex: 1,
+                      padding: '7px 10px',
                       borderRadius: '6px',
                       background: '#f8fafc',
                       border: '1.5px solid #cbd5e1',
@@ -2326,30 +2326,6 @@ export default function TbmSection({
                     }}
                   >
                     <Edit3 size={13} color="#475569" /> 수정
-                  </button>
-
-                  {/* Button to directly register Post-Work TBM separately for this task */}
-                  <button
-                    type="button"
-                    onClick={() => handleCreatePostTbmFromPre(tbm)}
-                    style={{
-                      flex: 1.4,
-                      padding: '7px 10px',
-                      borderRadius: '6px',
-                      background: '#16a34a',
-                      border: '1.5px solid #16a34a',
-                      fontSize: '11.5px',
-                      fontWeight: '800',
-                      color: '#ffffff',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '4px',
-                      boxShadow: '0 1px 3px rgba(22, 163, 74, 0.2)'
-                    }}
-                  >
-                    <CheckSquare size={13} /> 🏁 업무 후 TBM 등록
                   </button>
 
                   {rawAbs.length > 0 && (
