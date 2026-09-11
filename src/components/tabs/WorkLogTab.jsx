@@ -341,24 +341,45 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
-  // Toggle Share for a single work log item
+  // Toggle Share for a single work log item (Optimistic 0ms instant UI reaction)
   const handleToggleShareLog = async (item) => {
+    if (!item) return;
+
     if (item.isShared) {
-      // 1. 공유 해제 시: 기존에 공유되었던 대상자 목록을 완전히 비움
+      // 1. 공유 해제 시: 즉각적인 낙관적 UI 업데이트 (0ms 지연 없이 즉시 버튼 전환)
+      const targetId = String(item.id || item.log_id || '').trim();
       const updatedItem = {
         ...item,
         isShared: false,
         sharedWith: [],
         sharedAt: ''
       };
-      const updatedLogs = await dbService.saveWorkLog(updatedItem);
-      setWorkLogs(updatedLogs);
-      window.dispatchEvent(new Event('with_security_data_changed'));
+
+      // 즉시 로컬 상태 갱신하여 버튼 색상 및 상태가 0ms로 즉각 반영
+      setWorkLogs(prev => prev.map(l => {
+        const lId = String(l.id || l.log_id || '').trim();
+        if ((targetId && lId === targetId) || l === item) {
+          return updatedItem;
+        }
+        return l;
+      }));
+
       if (onTriggerToast) {
         onTriggerToast(`'${item.title}' 업무 공유가 해제되었습니다.`, 'info');
       }
+
+      // 비동기 백그라운드 영구 저장 (DB & Google Sheets 동기화)
+      try {
+        const updatedLogs = await dbService.saveWorkLog(updatedItem);
+        if (updatedLogs && Array.isArray(updatedLogs)) {
+          setWorkLogs(updatedLogs);
+        }
+      } catch (err) {
+        console.error('Failed to unshare work log:', err);
+        loadData();
+      }
     } else {
-      // 2. 공유 활성화 시: 현재 설정된 최신 공유 대상자 목록을 불러와서 즉시 공유
+      // 2. 공유 활성화 시: 현재 설정된 최신 공유 대상자 목록 확인
       const userKey = getUserShareTargetsStorageKey(currentUser);
       let latestTargets = shareTargets;
       if (userKey) {
@@ -382,17 +403,36 @@ export default function WorkLogTab({ onTriggerToast }) {
 
       const now = new Date();
       const timeStr = `${item.date || selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const targetId = String(item.id || item.log_id || '').trim();
       const updatedItem = {
         ...item,
         isShared: true,
         sharedWith: latestTargets,
         sharedAt: timeStr
       };
-      const updatedLogs = await dbService.saveWorkLog(updatedItem);
-      setWorkLogs(updatedLogs);
-      window.dispatchEvent(new Event('with_security_data_changed'));
+
+      // 즉시 로컬 상태 갱신하여 버튼 색상 및 상태가 0ms로 즉각 반영
+      setWorkLogs(prev => prev.map(l => {
+        const lId = String(l.id || l.log_id || '').trim();
+        if ((targetId && lId === targetId) || l === item) {
+          return updatedItem;
+        }
+        return l;
+      }));
+
       if (onTriggerToast) {
         onTriggerToast(`'${item.title}' 업무가 현재 공유 대상(${latestTargets.length}명)에게 공유되었습니다.`, 'success');
+      }
+
+      // 비동기 백그라운드 영구 저장 (DB & Google Sheets 동기화)
+      try {
+        const updatedLogs = await dbService.saveWorkLog(updatedItem);
+        if (updatedLogs && Array.isArray(updatedLogs)) {
+          setWorkLogs(updatedLogs);
+        }
+      } catch (err) {
+        console.error('Failed to share work log:', err);
+        loadData();
       }
     }
   };
@@ -2043,7 +2083,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                     {/* 공유 버튼 (수정/삭제 버튼과 100% 동일 크기 및 패딩) */}
                                                     <button
                                                       type="button"
-                                                      onClick={() => handleToggleShareLog(item)}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleToggleShareLog(item);
+                                                      }}
                                                       style={{
                                                         background: item.isShared ? '#16a34a' : '#ffffff',
                                                         border: item.isShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
@@ -2058,7 +2101,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                         justifyContent: 'center',
                                                         gap: '3px',
                                                         boxShadow: item.isShared ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
-                                                        transition: 'all 0.15s ease'
+                                                        transition: 'all 0.08s ease',
+                                                        userSelect: 'none',
+                                                        WebkitTapHighlightColor: 'transparent'
                                                       }}
                                                       title={item.isShared ? "업무 공유 해제 (현재 공유 대상에게 공유중)" : "업무 공유 (지정된 대상에게 공유)"}
                                                     >
