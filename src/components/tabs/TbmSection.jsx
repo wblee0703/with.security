@@ -1155,11 +1155,19 @@ export default function TbmSection({
     const finalStatus = isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED';
     const autoWorkTitle = formData.workTitle?.trim() || `${formData.leaderDivision} ${formData.leaderTeam} TBM`;
 
+    // 신규 등록 시 고유 ID 발급 (특히 업무 후 TBM은 독립된 post ID를 부여하여 업무 전 TBM과 100% 분리 독립 기록)
+    let assignedId = editingTbmId;
+    if (!assignedId) {
+      const prefix = isPost ? 'tbm_post_' : 'tbm_pre_';
+      assignedId = `${prefix}${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    }
+
     const tbmPayload = {
       ...formData,
-      id: editingTbmId || undefined,
-      tbmType: formData.tbmType || 'pre',
-      tbm_type: formData.tbmType || 'pre',
+      id: assignedId,
+      tbmType: isPost ? 'post' : 'pre',
+      tbm_type: isPost ? '업무 후' : '업무 전',
+      구분: isPost ? '업무 후' : '업무 전',
       site: formData.site?.trim() || '',
       siteName: formData.site?.trim() || '',
       site_name: formData.site?.trim() || '',

@@ -259,8 +259,9 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
       data: bodyData
     });
   } else if (method === 'PUT') {
-    const parts = endpoint.split('/');
-    const id = decodeURIComponent(parts[parts.length - 1]);
+    const cleanPath = endpoint.split('?')[0];
+    const parts = cleanPath.split('/');
+    const id = decodeURIComponent(parts[parts.length - 1] || '');
     const keyField = (sheetName === 'users') ? 'username' : 'id';
     fetchOptions.method = 'POST';
     fetchOptions.redirect = 'follow';
@@ -276,8 +277,17 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
       data: bodyData
     });
   } else if (method === 'DELETE') {
-    const parts = endpoint.split('/');
-    const id = decodeURIComponent(parts[parts.length - 1]);
+    const cleanPath = endpoint.split('?')[0];
+    const qs = endpoint.includes('?') ? endpoint.substring(endpoint.indexOf('?') + 1) : '';
+    const parts = cleanPath.split('/');
+    const id = decodeURIComponent(parts[parts.length - 1] || '');
+    const queryParams = {};
+    if (qs) {
+      try {
+        const searchParams = new URLSearchParams(qs);
+        searchParams.forEach((val, key) => { queryParams[key] = val; });
+      } catch (e) { }
+    }
     const keyField = (sheetName === 'users') ? 'username' : 'id';
     fetchOptions.method = 'POST';
     fetchOptions.redirect = 'follow';
@@ -289,7 +299,9 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
       action: 'delete',
       sheet: sheetName,
       key: keyField,
-      id: id
+      id: id,
+      meta: queryParams,
+      data: { ...queryParams, ...(bodyData || {}) }
     });
   }
 
@@ -3359,13 +3371,16 @@ class SecurityDatabase {
   _filterEduLogs(logs, filter = {}) {
     const dedupMap = new Map();
     (logs || []).forEach(item => {
-      if ((item.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
+      const title = String(item.title || '').trim();
+      const compDate = String(item.completionDate || item.completion_date || '').trim();
+      if (!title || !compDate) return;
+      if (title === '사내 정기 정보보안 및 안전 교육') return;
       if (String(item.id || item.eduId || '').startsWith('EDU-INIT-')) return;
       if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
 
       const uKey = String(item.userId || item.name || '').trim().toLowerCase();
-      const tKey = String(item.title || '').trim().toLowerCase();
-      const cKey = String(item.completionDate || item.completion_date || '').trim();
+      const tKey = title.toLowerCase();
+      const cKey = compDate;
       const key = `${uKey}__${tKey}__${cKey}`;
       if (!dedupMap.has(key)) {
         dedupMap.set(key, item);
@@ -3374,14 +3389,18 @@ class SecurityDatabase {
     const uniqueLogs = Array.from(dedupMap.values());
 
     return uniqueLogs.filter(item => {
+      const title = String(item.title || '').trim();
+      const compDate = String(item.completionDate || item.completion_date || '').trim();
+      if (!title || !compDate) return false;
+
       if (filter.userId || filter.username || filter.name) {
         const uTarget = String(filter.userId || filter.username || '').trim().toLowerCase();
         const nTarget = String(filter.name || '').trim().toLowerCase();
         const itemUser = String(item.userId || '').trim().toLowerCase();
         const itemName = String(item.name || '').trim().toLowerCase();
 
-        const matchUser = uTarget && (itemUser === uTarget || itemName === uTarget);
-        const matchName = nTarget && (itemName === nTarget || itemUser === nTarget);
+        const matchUser = Boolean(uTarget && (itemUser === uTarget || itemName === uTarget));
+        const matchName = Boolean(nTarget && (itemName === nTarget || itemUser === nTarget));
         if (!matchUser && !matchName) return false;
       }
       if (filter.category && filter.category !== '전체') {
@@ -3563,7 +3582,17 @@ class SecurityDatabase {
       if (meta.name) qs.set('name', meta.name);
       const queryStr = qs.toString() ? `?${qs.toString()}` : '';
 
-      await safeFetchApi(`/api/edu-logs/${encodeURIComponent(eduId)}${queryStr}`, { method: 'DELETE' });
+      await safeFetchApi(`/api/edu-logs/${encodeURIComponent(eduId || 'unknown')}${queryStr}`, {
+        method: 'DELETE',
+        body: JSON.stringify({
+          id: eduId,
+          edu_id: eduId,
+          title: meta.title || '',
+          completion_date: meta.completionDate || meta.completion_date || '',
+          user_id: meta.userId || meta.username || '',
+          name: meta.name || ''
+        })
+      });
     } catch (e) { }
 
     notifyDataChanged();
@@ -3660,13 +3689,16 @@ class SecurityDatabase {
     if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
-    const rawType = String(tbm.tbmType || tbm.tbm_type || '').trim().toLowerCase();
-    if (rawType === 'post' || rawType === 'pre') {
-      tbm.tbmType = rawType;
+    const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
+    if (rawType.indexOf('후') !== -1 || rawType === 'post') {
+      tbm.tbmType = 'post';
+    } else if (rawType.indexOf('전') !== -1 || rawType === 'pre') {
+      tbm.tbmType = 'pre';
     } else {
-      tbm.tbmType = tbm.postCheck?.isCompleted ? 'post' : 'pre';
+      tbm.tbmType = (tbm.postCheck && tbm.postCheck.isCompleted) ? 'post' : 'pre';
     }
-    tbm.tbm_type = tbm.tbmType;
+    tbm.tbm_type = tbm.tbmType === 'post' ? '업무 후' : '업무 전';
+    tbm['구분'] = tbm.tbm_type;
     tbm.status = tbm.status || (tbm.tbmType === 'post' ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
@@ -3905,9 +3937,9 @@ class SecurityDatabase {
       work_content: fullTbm.workContent || fullTbm.work_content || '',
       workContent: fullTbm.workContent || fullTbm.work_content || '',
       tools_used: fullTbm.toolsUsed || fullTbm.tools_used || '',
-      toolsUsed: fullTbm.toolsUsed || fullTbm.tools_used || '',
       tbmType: fullTbm.tbmType,
-      tbm_type: fullTbm.tbmType,
+      tbm_type: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
+      구분: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
 
       // 2. 추가 TBM 인원 및 사진
       additionalTbms: (fullTbm.additionalTbms || []).map(a => ({

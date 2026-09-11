@@ -268,23 +268,33 @@ export default function App() {
           const dbEduLogs = await dbService.getEduLogs({ userId: user.username, name: user.name });
           const merged = new Map();
           allTrainings.forEach(t => {
-            const key = `${(t.title || '').trim().toLowerCase()}__${(t.completionDate || t.completion_date || '').trim()}`;
+            const tit = String(t.title || '').trim();
+            const comp = String(t.completionDate || t.completion_date || '').trim();
+            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+            if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const key = `${tit.toLowerCase()}__${comp}`;
             merged.set(key, t);
           });
           (dbEduLogs || []).forEach(e => {
-            if ((e.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
-            const key = `${(e.title || '').trim().toLowerCase()}__${(e.completionDate || e.completion_date || '').trim()}`;
+            const tit = String(e.title || '').trim();
+            const comp = String(e.completionDate || e.completion_date || '').trim();
+            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+            if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const key = `${tit.toLowerCase()}__${comp}`;
             merged.set(key, e);
           });
           allTrainings = Array.from(merged.values());
         } catch (e) {}
 
         // Filter out dummy/legacy placeholders if any (only actual user-registered items)
-        allTrainings = allTrainings.filter(t => 
-          !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
-          !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
-          (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
-        );
+        allTrainings = allTrainings.filter(t => {
+          const tit = String(t.title || '').trim();
+          const comp = String(t.completionDate || t.completion_date || '').trim();
+          return tit && comp &&
+            !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
+            !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
+            tit !== '사내 정기 정보보안 및 안전 교육';
+        });
 
         const today = new Date();
         today.setHours(0, 0, 0, 0);

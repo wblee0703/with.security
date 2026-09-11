@@ -197,12 +197,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           const eduLogs = await dbService.getEduLogs({ userId: active.username, name: active.name });
           const mergedMap = new Map();
           userTrainings.forEach(t => {
-            const key = `${(t.title || '').trim().toLowerCase()}__${(t.completionDate || t.completion_date || '').trim()}`;
+            const tit = String(t.title || '').trim();
+            const comp = String(t.completionDate || t.completion_date || '').trim();
+            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+            if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const key = `${tit.toLowerCase()}__${comp}`;
             mergedMap.set(key, t);
           });
           (eduLogs || []).forEach(e => {
-            if ((e.title || '').trim() === '사내 정기 정보보안 및 안전 교육') return;
-            const key = `${(e.title || '').trim().toLowerCase()}__${(e.completionDate || e.completion_date || '').trim()}`;
+            const tit = String(e.title || '').trim();
+            const comp = String(e.completionDate || e.completion_date || '').trim();
+            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+            if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const key = `${tit.toLowerCase()}__${comp}`;
             mergedMap.set(key, e);
           });
           userTrainings = Array.from(mergedMap.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));

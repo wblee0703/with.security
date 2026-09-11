@@ -62,9 +62,9 @@ const SCHEMAS = {
     'id', 'site', 'status', 'createdAt', 'data'
   ],
   tbms: [
-    'id', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
+    'id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
-    'attendees', 'absentees', 'additional_tbms', 'tbm_type', 'work_content', 'tools_used',
+    'attendees', 'absentees', 'additional_tbms', 'work_content', 'tools_used',
     'pre_check', 'post_check', 'status', 'photo_urls', 'created_at', 'updated_at'
   ],
   vault: [
@@ -472,27 +472,44 @@ function doPost(e) {
             const dateIdx = headers.indexOf('date');
             const siteIdx = headers.indexOf('site');
             const leaderIdx = headers.indexOf('leader_name');
-            const typeIdx = headers.indexOf('tbm_type');
+            let typeIdx = headers.indexOf('tbm_type');
+            if (typeIdx === -1) typeIdx = headers.indexOf('구분');
 
             const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
             const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
             const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
-            const rowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
+            const rawRowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
 
             const itemDate = formatKstDate(item.date || '', true);
             const itemSite = String(item.site || '').trim().toLowerCase();
             const itemLeader = String(item.leader_name || '').trim().toLowerCase();
-            const itemType = String(item.tbm_type || item.tbmType || '').trim().toLowerCase();
+            const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre')).trim().toLowerCase();
 
-            // ⭐ 업무전과 업무후 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 행으로 스프레드시트에 기록되어야 함!
-            // compositeMatched는 반드시 tbm_type(pre vs post)까지 동일해야만 같은 일지로 판정
-            const compositeMatched = Boolean(
-              itemDate && itemSite && itemLeader && itemType &&
-              rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader &&
-              rowType === itemType
-            );
+            // 업무 전/후 타입 정규화 ('pre' vs 'post')
+            const normalizeType = function(val) {
+              if (!val) return '';
+              if (val.indexOf('후') !== -1 || val === 'post') return 'post';
+              if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
+              return val;
+            };
 
-            isMatch = idMatched || compositeMatched;
+            const normRowType = normalizeType(rawRowType);
+            const normItemType = normalizeType(rawItemType);
+
+            // ⭐ 핵심 규칙: 업무 전 TBM과 업무 후 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 별도 행으로 기록!
+            if (normRowType && normItemType && normRowType !== normItemType) {
+              // 타입이 다르면(업무 전 vs 업무 후) 설령 id가 같더라도 절대로 같은 행으로 취급하지 않음 (새 행으로 추가)
+              isMatch = false;
+            } else {
+              // 동일 타입(둘 다 업무 전 또는 둘 다 업무 후)인 경우에만 ID 매칭 또는 동일 조건 매칭
+              const compositeMatched = Boolean(
+                itemDate && itemSite && itemLeader && normItemType &&
+                rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader &&
+                normRowType === normItemType
+              );
+
+              isMatch = idMatched || compositeMatched;
+            }
           } else {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
             const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
@@ -667,22 +684,56 @@ function doPost(e) {
     if (action === 'delete') {
       const id = String(payload.id || '').trim();
       const keyField = payload.key || 'id';
+      const meta = payload.meta || payload.data || {};
       const rows = sheet.getDataRange().getValues();
       if (rows.length <= 1) return jsonResponse({ success: true, message: 'Sheet is empty' });
       
       const headers = rows[0];
       const keyColIdx = headers.indexOf(keyField);
       const altKeyColIdx = headers.indexOf('log_id');
+      const eduIdColIdx = headers.indexOf('edu_id');
+      const titleColIdx = headers.indexOf('title');
+      const compDateColIdx = headers.indexOf('completion_date');
+      const userColIdx = headers.indexOf('user_id');
+      const nameColIdx = headers.indexOf('name');
+
+      const targetTitle = String(meta.title || '').trim().toLowerCase();
+      const targetComp = formatKstDate(meta.completionDate || meta.completion_date || '', true);
+      const targetUser = String(meta.userId || meta.user_id || meta.username || '').trim().toLowerCase();
+      const targetName = String(meta.name || '').trim().toLowerCase();
       
       let deletedCount = 0;
       for (let i = rows.length - 1; i >= 1; i--) {
         const val1 = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
         const val2 = altKeyColIdx !== -1 ? String(rows[i][altKeyColIdx] || '').trim() : '';
-        if ((val1 && val1 === id) || (val2 && val2 === id)) {
+        const valEdu = eduIdColIdx !== -1 ? String(rows[i][eduIdColIdx] || '').trim() : '';
+
+        let isMatch = Boolean(id && (val1 === id || val2 === id || valEdu === id));
+
+        // edu_logs의 경우 제목 + 수료일 (+ 사용자) 복합 조건으로도 확실한 삭제 지원
+        if (!isMatch && sheetName === 'edu_logs' && targetTitle && targetComp) {
+          const rowTitle = titleColIdx !== -1 ? String(rows[i][titleColIdx] || '').trim().toLowerCase() : '';
+          const rowComp = compDateColIdx !== -1 ? formatKstDate(rows[i][compDateColIdx], true) : '';
+          const rowUser = userColIdx !== -1 ? String(rows[i][userColIdx] || '').trim().toLowerCase() : '';
+          const rowName = nameColIdx !== -1 ? String(rows[i][nameColIdx] || '').trim().toLowerCase() : '';
+
+          const titleMatched = (rowTitle === targetTitle);
+          const compMatched = (rowComp === targetComp);
+          const userMatched = (!targetUser && !targetName) ||
+                              (targetUser && (rowUser === targetUser || rowName === targetUser)) ||
+                              (targetName && (rowName === targetName || rowUser === targetName));
+
+          if (titleMatched && compMatched && userMatched) {
+            isMatch = true;
+          }
+        }
+
+        if (isMatch) {
           sheet.deleteRow(i + 1);
           deletedCount++;
         }
       }
+      SpreadsheetApp.flush();
       return jsonResponse({ success: true, message: 'Rows deleted: ' + deletedCount, id: id, count: deletedCount });
     }
     
@@ -1156,9 +1207,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const leaderRankVal = String(obj.leaderRank || obj.leader_rank || obj.rank || '대리').trim();
     const leaderPhoneVal = String(obj.leaderPhone || obj.leader_phone || obj.phone || '').trim();
     const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
-    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
-    const tbmTypeVal = String(obj.tbm_type || obj.tbmType || ((postChk && postChk.isCompleted) ? 'post' : 'pre')).trim().toLowerCase();
-    const statusVal = obj.status || (tbmTypeVal === 'post' || (postChk && postChk.isCompleted) ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+    const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
+    const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || (postChk && postChk.isCompleted);
+    const tbmTypeVal = isPost ? '업무 후' : '업무 전';
+    const statusVal = obj.status || (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
     const photoUrlsStr = allDriveUrls.join('\n');
 
     return {
@@ -1211,9 +1263,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       additional_tbms: addTbmsStr,
       additionalTbms: addTbmsStr,
 
-      // 6. TBM 구분 및 작업 내용 (양방향 매핑)
+      // 6. TBM 구분 및 작업 내용 (양방향 매핑 - 스프레드시트에 '업무 전' / '업무 후' 명확히 기록)
       tbm_type: tbmTypeVal,
-      tbmType: tbmTypeVal,
+      tbmType: isPost ? 'post' : 'pre',
+      구분: tbmTypeVal,
       work_content: workContentVal,
       workContent: workContentVal,
       content: workContentVal,
@@ -1464,6 +1517,18 @@ function readSheetData(sheetName) {
         const leaderVal = String(obj.leaderName || obj.leader || '').trim();
         const typeVal = String(obj.tbm_type || obj.tbmType || '').trim().toLowerCase();
         key = idVal || (dateVal && siteVal ? `TBM::${dateVal}::${siteVal}::${leaderVal}::${typeVal}` : '');
+      } else if (sheetName === 'edu_logs') {
+        const uVal = String(obj.user_id || obj.userId || obj.name || '').trim().toLowerCase();
+        const tVal = String(obj.title || '').trim().toLowerCase();
+        const cVal = formatKstDate(obj.completion_date || obj.completionDate || '', true);
+        const idVal = String(obj.edu_id || obj.eduId || obj.id || '').trim();
+
+        // 무효하거나 더미/레거시 유령 행은 원천 제외
+        if (!tVal || tVal === '사내 정기 정보보안 및 안전 교육' || idVal.startsWith('EDU-INIT-') || idVal.startsWith('EDU-LEGACY-')) {
+          continue;
+        }
+
+        key = idVal || ((uVal && tVal && cVal) ? `EDU::${uVal}::${tVal}::${cVal}` : `EDU_ROW_${i}`);
       } else {
         key = String(obj.log_id || obj.id || '').trim();
       }
@@ -1592,6 +1657,29 @@ function cleanupDuplicates() {
 
         // Pre and Post TBMs must NEVER collide during duplicate cleanup!
         key = id || (dVal && sVal ? `TBM::${dVal}::${sVal}::${lVal}::${tVal}` : '');
+      } else if (sheetName === 'edu_logs') {
+        const titleIdx = headers.indexOf('title');
+        const compDateIdx = headers.indexOf('completion_date');
+        const userIdx = headers.indexOf('user_id');
+        const nameIdx = headers.indexOf('name');
+        const eduIdIdx = headers.indexOf('edu_id');
+        const idIdx = headers.indexOf('id');
+
+        const titleVal = titleIdx !== -1 ? String(row[titleIdx] || '').trim().toLowerCase() : '';
+        const compVal = compDateIdx !== -1 ? formatKstDate(row[compDateIdx], true) : '';
+        const userVal = userIdx !== -1 ? String(row[userIdx] || '').trim().toLowerCase() : '';
+        const nameVal = nameIdx !== -1 ? String(row[nameIdx] || '').trim().toLowerCase() : '';
+        const eduId = eduIdIdx !== -1 ? String(row[eduIdIdx] || '').trim() : '';
+        const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
+
+        // 유령 데이터 / 빈 행 / 레거시 더미 데이터는 즉시 삭제 대상 지정
+        if (!titleVal || titleVal === '사내 정기 정보보안 및 안전 교육' || eduId.startsWith('EDU-INIT-') || eduId.startsWith('EDU-LEGACY-') || id.startsWith('EDU-INIT-') || id.startsWith('EDU-LEGACY-')) {
+          rowsToDelete.push(r + 1);
+          continue;
+        }
+
+        const uVal = userVal || nameVal;
+        key = (uVal && titleVal && compVal) ? `EDU::${uVal}::${titleVal}::${compVal}` : (eduId || id);
       } else {
         const idIdx = headers.indexOf('id');
         const logIdIdx = headers.indexOf('log_id');
