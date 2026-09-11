@@ -1207,6 +1207,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const leaderRankVal = String(obj.leaderRank || obj.leader_rank || obj.rank || '대리').trim();
     const leaderPhoneVal = String(obj.leaderPhone || obj.leader_phone || obj.phone || '').trim();
     const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
+    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
     const isPost = rawType.indexOf('후') !== -1 || rawType === 'post' || (postChk && postChk.isCompleted);
     const tbmTypeVal = isPost ? '업무 후' : '업무 전';
