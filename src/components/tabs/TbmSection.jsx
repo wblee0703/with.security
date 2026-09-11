@@ -4729,7 +4729,85 @@ export default function TbmSection({
                     )}
 
                     {/* Additional TBM List in Detail Modal */}
-                        {/* Pre-Check Section (Pre-TBM only) */}
+                    {Array.isArray(selectedTbm.additionalTbms) && selectedTbm.additionalTbms.length > 0 && (
+                      <div style={{ background: '#f0fdf4', padding: '10px 12px', borderRadius: '6px', border: '1.5px solid #86efac', color: '#15803d' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <ShieldCheck size={16} color="#16a34a" />
+                            <strong style={{ fontSize: '12.5px' }}>미참석자 추가 TBM 이수 확인 ({selectedTbm.additionalTbms.length}명)</strong>
+                          </div>
+                          <span style={{ fontSize: '10.5px', background: '#dcfce7', border: '1px solid #86efac', padding: '1px 6px', borderRadius: '4px', fontWeight: '700' }}>
+                            개별 확인 완료
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          {selectedTbm.additionalTbms.map((add, idx) => (
+                            <div key={idx} style={{
+                              background: '#ffffff',
+                              padding: '6px 10px',
+                              borderRadius: '5px',
+                              border: '1px solid #bbf7d0',
+                              fontSize: '11.5px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px'
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: '800', color: '#0f172a' }}>
+                                  {add.name} <span style={{ fontWeight: '500', color: '#64748b' }}>({add.rank || '사원'} · {add.team || selectedTbm.leaderTeam || ''})</span>
+                                </span>
+                                <span style={{ fontSize: '10.5px', color: '#16a34a', fontWeight: '700' }}>
+                                  ⏱️ {add.conductedAt || '확인완료'}
+                                </span>
+                              </div>
+                              {add.notes && (
+                                <div style={{ color: '#475569', fontSize: '11px', background: '#f8fafc', padding: '3px 6px', borderRadius: '3px' }}>
+                                  💬 {add.notes}
+                                </div>
+                              )}
+                              {/* Attached Photos for this additional TBM */}
+                              {((Array.isArray(add.photos) && add.photos.length > 0) || add.photo) && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '10.5px', color: '#0369a1', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                    <Camera size={12} /> 현장 사진:
+                                  </span>
+                                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                                    {(Array.isArray(add.photos) && add.photos.length > 0 ? add.photos : [{ id: 'p1', dataUrl: add.photo }]).map((p, pIdx) => (
+                                      p.dataUrl ? (
+                                        <img
+                                          key={p.id || pIdx}
+                                          src={p.dataUrl}
+                                          alt="추가 TBM 사진"
+                                          onClick={() => setPreviewModalPhoto(p.dataUrl)}
+                                          title="클릭하여 사진 확대"
+                                          style={{
+                                            width: '38px',
+                                            height: '38px',
+                                            borderRadius: '4px',
+                                            objectFit: 'cover',
+                                            border: '1.5px solid #0284c7',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                          }}
+                                        />
+                                      ) : null
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div style={{ color: '#15803d', fontSize: '10.5px', fontWeight: '600' }}>
+                                ✓ TBM 안전지침 및 보호구 착용 준수 확인 완료
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Pre-Check Section (Pre-TBM only) */}
               {!isPostDetail && (
                 <div style={{ border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '12px', background: '#ffffff' }}>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#0369a1', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
