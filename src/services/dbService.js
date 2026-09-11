@@ -582,6 +582,28 @@ class SecurityDatabase {
     }
   }
 
+  // Generic Get Single Item by Key
+  async getItem(storeName, key) {
+    if (key === undefined || key === null) return null;
+    try {
+      const db = await this.initDB(storeName);
+      if (!db || !db.objectStoreNames.contains(storeName)) return null;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(storeName, 'readonly');
+          const store = tx.objectStore(storeName);
+          const request = store.get(key);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    } catch (e) {
+      return null;
+    }
+  }
+
   // Generic Save or Update Item
   async putItem(storeName, item) {
     try {
@@ -3694,8 +3716,11 @@ class SecurityDatabase {
     if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
 
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
+    let isAdditional = false;
     let isPostTbm = false;
-    if (String(tbm.id || '').startsWith('tbm_post_')) {
+    if (String(tbm.id || '').startsWith('tbm_add_') || rawType.indexOf('추가') !== -1 || rawType === 'additional') {
+      isAdditional = true;
+    } else if (String(tbm.id || '').startsWith('tbm_post_')) {
       isPostTbm = true;
     } else if (String(tbm.id || '').startsWith('tbm_pre_')) {
       isPostTbm = false;
@@ -3706,10 +3731,10 @@ class SecurityDatabase {
     } else {
       isPostTbm = Boolean(tbm.postCheck && tbm.postCheck.isCompleted && !tbm.preCheck?.isCompleted);
     }
-    tbm.tbmType = isPostTbm ? 'post' : 'pre';
-    tbm.tbm_type = isPostTbm ? '업무 후' : '업무 전';
+    tbm.tbmType = isAdditional ? 'additional' : (isPostTbm ? 'post' : 'pre');
+    tbm.tbm_type = isAdditional ? '추가 TBM' : (isPostTbm ? '업무 후' : '업무 전');
     tbm['구분'] = tbm.tbm_type;
-    tbm.status = tbm.status || (isPostTbm ? 'POST_COMPLETED' : 'PRE_COMPLETED');
+    tbm.status = tbm.status || (isAdditional ? 'ADDITIONAL_COMPLETED' : (isPostTbm ? 'POST_COMPLETED' : 'PRE_COMPLETED'));
     tbm.createdAt = tbm.createdAt || tbm.created_at || new Date().toISOString();
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
 
@@ -3947,9 +3972,11 @@ class SecurityDatabase {
       work_content: fullTbm.workContent || fullTbm.work_content || '',
       workContent: fullTbm.workContent || fullTbm.work_content || '',
       tools_used: fullTbm.toolsUsed || fullTbm.tools_used || '',
-      tbmType: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
-      tbm_type: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
-      구분: fullTbm.tbmType === 'post' ? '업무 후' : '업무 전',
+      parent_tbm_id: fullTbm.parentTbmId || fullTbm.parent_tbm_id || '',
+      parentTbmId: fullTbm.parentTbmId || fullTbm.parent_tbm_id || '',
+      tbmType: fullTbm.tbmType === 'additional' ? '추가 TBM' : (fullTbm.tbmType === 'post' ? '업무 후' : '업무 전'),
+      tbm_type: fullTbm.tbmType === 'additional' ? '추가 TBM' : (fullTbm.tbmType === 'post' ? '업무 후' : '업무 전'),
+      구분: fullTbm.tbmType === 'additional' ? '추가 TBM' : (fullTbm.tbmType === 'post' ? '업무 후' : '업무 전'),
 
       // 2. 추가 TBM 인원 및 사진
       additionalTbms: (fullTbm.additionalTbms || []).map(a => ({
@@ -4017,10 +4044,43 @@ class SecurityDatabase {
     return fullTbm;
   }
 
+  async getTbmById(id) {
+    if (!id) return null;
+    const targetStr = String(id).trim();
+
+    try {
+      const raw = localStorage.getItem('with_security_tbms_backup');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const found = list.find(t => String(t.id || '').trim() === targetStr || String(t.displayKey || '').trim() === targetStr);
+          if (found) return this._normalizeTbm(found);
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const item = await this.getItem('tbms', targetStr);
+      if (item) return this._normalizeTbm(item);
+    } catch (e) { }
+
+    try {
+      const all = await this.getAll('tbms');
+      if (Array.isArray(all)) {
+        const found = all.find(t => String(t.id || '').trim() === targetStr || String(t.displayKey || '').trim() === targetStr);
+        if (found) return this._normalizeTbm(found);
+      }
+    } catch (e) { }
+
+    return null;
+  }
+
   async updateTbm(id, patch) {
     if (!id) return null;
-    const existing = await this.getTbmById(id);
-    if (!existing) return null;
+    let existing = await this.getTbmById(id);
+    if (!existing) {
+      existing = { id, ...patch };
+    }
 
     const updated = {
       ...existing,

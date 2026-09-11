@@ -62,7 +62,7 @@ const SCHEMAS = {
     'id', 'site', 'status', 'createdAt', 'data'
   ],
   tbms: [
-    'id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
+    'id', 'parent_tbm_id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
     'attendees', 'absentees', 'additional_tbms', 'work_content', 'tools_used',
     'pre_check', 'post_check', 'status', 'photo_urls', 'created_at', 'updated_at'
@@ -486,13 +486,15 @@ function doPost(e) {
             const itemLeader = String(item.leader_name || '').trim().toLowerCase();
             const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
 
-            // 업무 전/후 타입 정규화 ('pre' vs 'post')
+            // 업무 전/후/추가 TBM 타입 정규화 ('pre' vs 'post' vs 'additional')
             const normalizeType = function(val, idHint) {
               if (idHint) {
+                if (String(idHint).startsWith('tbm_add_')) return 'additional';
                 if (String(idHint).startsWith('tbm_post_')) return 'post';
                 if (String(idHint).startsWith('tbm_pre_')) return 'pre';
               }
               if (!val) return '';
+              if (val.indexOf('추가') !== -1 || val === 'additional') return 'additional';
               if (val.indexOf('후') !== -1 || val === 'post') return 'post';
               if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
               return val;
@@ -501,12 +503,12 @@ function doPost(e) {
             const normRowType = normalizeType(rawRowType, rowId);
             const normItemType = normalizeType(rawItemType, item.id);
 
-            // ⭐ 핵심 규칙: 업무 전 TBM과 업무 후 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 별도 행으로 기록!
+            // ⭐ 핵심 규칙: 업무 전 TBM, 업무 후 TBM, 추가 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 별도 행으로 기록!
             if (normRowType && normItemType && normRowType !== normItemType) {
-              // 타입이 다르면(업무 전 vs 업무 후) 설령 id가 같더라도 절대로 같은 행으로 취급하지 않음 (새 행으로 추가)
+              // 타입이 다르면(업무 전 vs 업무 후 vs 추가 TBM) 설령 id나 날짜가 같더라도 절대로 같은 행으로 취급하지 않음 (새 행으로 추가)
               isMatch = false;
             } else {
-              // 동일 타입(둘 다 업무 전 또는 둘 다 업무 후)인 경우에만 ID 매칭 또는 동일 조건 매칭
+              // 동일 타입인 경우에만 ID 매칭 또는 동일 조건 매칭
               const compositeMatched = Boolean(
                 itemDate && itemSite && itemLeader && normItemType &&
                 rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader &&
@@ -526,8 +528,9 @@ function doPost(e) {
             const rowNum = i + 1;
             const currentRow = rows[i];
             const updatedRow = headers.map((h, colIdx) => {
-              // TBM 구분 컬럼은 무조건 '업무 후' / '업무 전' 한글로 완벽 보장
+              // TBM 구분 컬럼은 무조건 '업무 전' / '업무 후' / '추가 TBM' 한글로 완벽 보장
               if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
+                if (normItemType === 'additional' || String(item.id || '').startsWith('tbm_add_')) return '추가 TBM';
                 return (normItemType === 'post' || String(item.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
               }
               const val = item[h];
@@ -650,8 +653,10 @@ function doPost(e) {
       
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(patch);
       const headers = ensureHeaders(sheet, targetHeaders);
+      const keyColIdx = headers.indexOf(keyField);
       const idColIdx = headers.indexOf('id');
       const logIdColIdx = headers.indexOf('log_id');
+      const rows = sheet.getLastRow() > 1 ? sheet.getDataRange().getValues() : [];
       
       if (keyColIdx === -1 && idColIdx === -1 && logIdColIdx === -1) {
         return jsonResponse({ success: false, error: 'Key field not found: ' + keyField });
@@ -1219,7 +1224,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
     let isPost = false;
-    if (String(idVal).startsWith('tbm_post_')) {
+    let isAdditional = false;
+    if (String(idVal).startsWith('tbm_add_') || rawType.indexOf('추가') !== -1 || rawType === 'additional') {
+      isAdditional = true;
+    } else if (String(idVal).startsWith('tbm_post_')) {
       isPost = true;
     } else if (String(idVal).startsWith('tbm_pre_')) {
       isPost = false;
@@ -1230,13 +1238,15 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     } else {
       isPost = Boolean(postChk && postChk.isCompleted && (!preChk || !preChk.isCompleted));
     }
-    const tbmTypeVal = isPost ? '업무 후' : '업무 전';
-    const statusVal = obj.status || (isPost ? 'POST_COMPLETED' : 'PRE_COMPLETED');
+    const tbmTypeVal = isAdditional ? '추가 TBM' : (isPost ? '업무 후' : '업무 전');
+    const statusVal = obj.status || (isAdditional ? 'ADDITIONAL_COMPLETED' : (isPost ? 'POST_COMPLETED' : 'PRE_COMPLETED'));
     const photoUrlsStr = allDriveUrls.join('\n');
 
     return {
       // 1. 식별자 및 일자
       id: idVal,
+      parent_tbm_id: String(obj.parentTbmId || obj.parent_tbm_id || '').trim(),
+      parentTbmId: String(obj.parentTbmId || obj.parent_tbm_id || '').trim(),
       tbm_id: idVal,
       tbmId: idVal,
       date: dVal,
