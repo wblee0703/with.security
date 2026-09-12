@@ -1134,6 +1134,7 @@ export default function TbmSection({
     setAdditionalFormData({
       member: firstMember || null,
       members: group.members.map(m => ({
+        id: m.id,
         name: m.name,
         rank: m.rank || '사원',
         team: m.team || tbm.leaderTeam || '',
@@ -1166,7 +1167,11 @@ export default function TbmSection({
 
       // 1. 부모 TBM additionalTbms에서 해당 세션 멤버들 제거
       const updatedAdditional = currentAdditional.filter(a => {
-        const isTarget = deletingNames.includes(a.name) && (a.conductedAt === group.conductedAt || a.notes === group.notes);
+        const isTarget = deletingNames.includes(a.name) && (
+          a.conductedAt === group.conductedAt ||
+          (a.notes || '').trim() === (group.notes || '').trim() ||
+          group.members.some(m => String(m.id) === String(a.id))
+        );
         return !isTarget;
       });
 
@@ -1196,14 +1201,21 @@ export default function TbmSection({
         additionalTbms: updatedAdditional
       });
 
-      // 3. 독립 행(tbm_add_)으로 저장되어 있던 행도 삭제
-      for (const m of group.members) {
-        if (m.id && String(m.id).startsWith('tbm_add_')) {
-          try {
-            await dbService.deleteTbm(m.id);
-          } catch (delErr) {
-            console.warn('Row deletion note:', m.id, delErr);
-          }
+      // 3. 독립 행(tbm_add_)으로 저장되어 있던 행도 삭제 (ID 또는 parentId+이름 매칭)
+      const rowsToDelete = tbmList.filter(r => {
+        const isAddRow = String(r.id || '').startsWith('tbm_add_') || String(r.tbmType || r.tbm_type || '').includes('추가');
+        if (!isAddRow) return false;
+        const matchGroupMemberId = group.members.some(m => String(m.id) === String(r.id));
+        const matchParent = String(r.parentTbmId || r.parentId || '') === String(parentId);
+        const matchName = (r.attendees || []).some(a => deletingNames.includes(typeof a === 'string' ? a : a.name)) || deletingNames.includes(r.name);
+        return matchGroupMemberId || (matchParent && matchName);
+      });
+
+      for (const r of rowsToDelete) {
+        try {
+          await dbService.deleteTbm(r.id);
+        } catch (delErr) {
+          console.warn('Row deletion note:', r.id, delErr);
         }
       }
 
@@ -1249,7 +1261,28 @@ export default function TbmSection({
         ? `${targetAdditionalTbm.workTitle} [${isTargetPost ? '작업 후' : '작업 전'} 추가 TBM]`
         : `${targetAdditionalTbm.leaderDivision || ''} ${targetAdditionalTbm.leaderTeam || ''} ${isTargetPost ? '작업 후' : '작업 전'} 추가 TBM`;
 
-      // 1. 스프레드시트에 독립된 별도 행으로 추가 관리될 신규 추가 TBM 페이로드 (최초 TBM과 분리된 독립 행)
+      // 1. 수정 모드일 때: 기존 세션의 구 독립 행(Row)들을 먼저 정리/삭제하여 중복 방지
+      if (editingAdditionalGroup) {
+        const oldNames = editingAdditionalGroup.members.map(m => m.name);
+        const rowsToDelete = tbmList.filter(r => {
+          const isAddRow = String(r.id || '').startsWith('tbm_add_') || String(r.tbmType || r.tbm_type || '').includes('추가');
+          if (!isAddRow) return false;
+          const matchGroupMemberId = editingAdditionalGroup.members.some(m => String(m.id) === String(r.id));
+          const matchParent = String(r.parentTbmId || r.parentId || '') === String(parentId);
+          const matchName = (r.attendees || []).some(a => oldNames.includes(typeof a === 'string' ? a : a.name)) || oldNames.includes(r.name);
+          return matchGroupMemberId || (matchParent && matchName);
+        });
+
+        for (const oldRow of rowsToDelete) {
+          try {
+            await dbService.deleteTbm(oldRow.id);
+          } catch (delErr) {
+            console.warn('Old additional row deletion note:', oldRow.id, delErr);
+          }
+        }
+      }
+
+      // 2. 스프레드시트 및 DB에 독립된 별도 행으로 저장
       const addTbmPayload = {
         id: addTbmId,
         parentTbmId: parentId,
@@ -1289,8 +1322,8 @@ export default function TbmSection({
           phone: m.phone || ''
         })),
         absentees: [],
-        workContent: targetAdditionalTbm.workContent || '',
-        work_content: targetAdditionalTbm.workContent || '',
+        workContent: (additionalFormData.notes || '').trim() || (targetAdditionalTbm.workContent || ''),
+        work_content: (additionalFormData.notes || '').trim() || (targetAdditionalTbm.workContent || ''),
         toolsUsed: targetAdditionalTbm.toolsUsed || '',
         tools_used: targetAdditionalTbm.toolsUsed || '',
         status: 'ALL_COMPLETED',
@@ -1318,18 +1351,23 @@ export default function TbmSection({
         registeredBy: currentUser?.name || '시스템'
       };
 
-      // 스프레드시트 및 DB에 신규 독립 행(Row)으로 저장
       await dbService.saveTbm(addTbmPayload);
 
-      // 2. 최초 TBM(targetAdditionalTbm)의 미참석자 이수 상태도 함께 동기화 갱신
+      // 3. 최초 TBM(targetAdditionalTbm)의 미참석자 상태 및 additionalTbms 목록 동기화
       try {
+        const currentSelectedNames = new Set(selectedMembers.map(m => m.name));
+        const oldGroupNames = new Set((editingAdditionalGroup?.members || []).map(m => m.name));
+
         const rawAbs = Array.isArray(targetAdditionalTbm.absentees) ? targetAdditionalTbm.absentees : [];
         const updatedAbsentees = rawAbs.map(abs => {
           const aName = typeof abs === 'string' ? abs : abs?.name;
-          if (selectedMembers.some(m => m.name === aName)) {
+          if (currentSelectedNames.has(aName)) {
             return typeof abs === 'string'
               ? { name: abs, reason: '추가TBM완료', additionalCompleted: true, completedAt: conductedAtStr }
               : { ...abs, additionalCompleted: true, completedAt: conductedAtStr };
+          }
+          if (oldGroupNames.has(aName) && !currentSelectedNames.has(aName)) {
+            return typeof abs === 'string' ? abs : { ...abs, additionalCompleted: false, completedAt: '' };
           }
           return abs;
         });
@@ -1337,10 +1375,13 @@ export default function TbmSection({
         const rawPostAbs = Array.isArray(targetAdditionalTbm.postCheck?.absentees) ? targetAdditionalTbm.postCheck.absentees : [];
         const updatedPostAbsentees = rawPostAbs.map(abs => {
           const aName = typeof abs === 'string' ? abs : abs?.name;
-          if (selectedMembers.some(m => m.name === aName)) {
+          if (currentSelectedNames.has(aName)) {
             return typeof abs === 'string'
               ? { name: abs, reason: '추가TBM완료', additionalCompleted: true, completedAt: conductedAtStr }
               : { ...abs, additionalCompleted: true, completedAt: conductedAtStr };
+          }
+          if (oldGroupNames.has(aName) && !currentSelectedNames.has(aName)) {
+            return typeof abs === 'string' ? abs : { ...abs, additionalCompleted: false, completedAt: '' };
           }
           return abs;
         });
@@ -1349,15 +1390,18 @@ export default function TbmSection({
         if (editingAdditionalGroup) {
           const oldNames = editingAdditionalGroup.members.map(m => m.name);
           existingAdditionalList = existingAdditionalList.filter(a => {
-            const isOld = oldNames.includes(a.name) && (a.conductedAt === editingAdditionalGroup.conductedAt || a.notes === editingAdditionalGroup.notes);
+            const isOld = oldNames.includes(a.name) && (
+              a.conductedAt === editingAdditionalGroup.conductedAt ||
+              (a.notes || '').trim() === (editingAdditionalGroup.notes || '').trim() ||
+              editingAdditionalGroup.members.some(m => String(m.id) === String(a.id))
+            );
             return !isOld;
           });
         }
 
         selectedMembers.forEach(m => {
-          const existIdx = existingAdditionalList.findIndex(item => item.name === m.name && (item.targetType || 'pre') === targetKind);
           const entry = {
-            id: `add_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: addTbmId,
             name: m.name,
             rank: m.rank || '사원',
             team: m.team || targetAdditionalTbm.leaderTeam || '',
@@ -1371,8 +1415,7 @@ export default function TbmSection({
             photo: additionalFormData.photos?.[0]?.dataUrl || '',
             registeredBy: currentUser?.name || '시스템'
           };
-          if (existIdx >= 0) existingAdditionalList[existIdx] = entry;
-          else existingAdditionalList.push(entry);
+          existingAdditionalList.push(entry);
         });
 
         await dbService.updateTbm(parentId, {
@@ -5970,6 +6013,13 @@ export default function TbmSection({
                   }
                 });
 
+                // 3-3. 현재 수정 중인 세션의 기존 대상자들도 목록에 반드시 포함
+                (editingAdditionalGroup?.members || []).forEach(m => {
+                  if (m.name && !isTbmAttendee(m) && !map.has(m.name)) {
+                    map.set(m.name, m);
+                  }
+                });
+
                 const nonAttendeeCandidates = Array.from(map.values());
 
                 // 현재 선택된 대상자 목록 (다중 선택)
@@ -6540,7 +6590,7 @@ export default function TbmSection({
                 }}
               >
                 <CheckCircle2 size={16} />
-                {isSubmittingAdditional ? '저장 중...' : '추가 TBM 확인 완료 (등록)'}
+                {isSubmittingAdditional ? '저장 중...' : (editingAdditionalGroup ? '수정 완료 (저장)' : '추가 TBM 확인 완료 (등록)')}
               </button>
             </div>
           </div>
