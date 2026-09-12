@@ -3630,6 +3630,8 @@ class SecurityDatabase {
     const tbm = { ...raw };
     tbm.id = String(tbm.id || tbm.tbm_id || tbm.tbmId || `tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`).trim();
     tbm.date = normalizeKstDate(tbm.date || tbm.log_date || tbm.logDate) || new Date().toLocaleDateString('sv-SE');
+    tbm.parentTbmId = String(tbm.parentTbmId || tbm.parent_tbm_id || tbm.parentId || '').trim();
+    tbm.parent_tbm_id = tbm.parentTbmId;
     tbm.site = (tbm.site || tbm.siteName || tbm.site_name || '').trim();
     tbm.siteAddress = (tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
     tbm.workTitle = (tbm.workTitle || tbm.work_title || tbm.title || '').trim();
@@ -3680,40 +3682,97 @@ class SecurityDatabase {
     }).filter(Boolean);
     tbm.additional_tbms = tbm.additionalTbms;
 
-    // Parse preCheck safely
-    if (typeof tbm.preCheck === 'string') {
-      try { tbm.preCheck = JSON.parse(tbm.preCheck); } catch (e) { tbm.preCheck = {}; }
+    // Parse preCheck safely with photo preservation
+    let preCheckObj = tbm.preCheck;
+    if (typeof preCheckObj === 'string') {
+      try { preCheckObj = JSON.parse(preCheckObj); } catch (e) { preCheckObj = {}; }
     }
-    if (typeof tbm.pre_check === 'string') {
-      try { tbm.preCheck = JSON.parse(tbm.pre_check); } catch (e) { tbm.preCheck = tbm.preCheck || {}; }
-    } else if (tbm.pre_check && typeof tbm.pre_check === 'object') {
-      tbm.preCheck = tbm.pre_check;
+    let pre_checkObj = tbm.pre_check;
+    if (typeof pre_checkObj === 'string') {
+      try { pre_checkObj = JSON.parse(pre_checkObj); } catch (e) { pre_checkObj = {}; }
     }
-    if (!tbm.preCheck || typeof tbm.preCheck !== 'object') {
-      tbm.preCheck = { isCompleted: true, selectedItems: [], photos: [] };
-    }
-    if (!Array.isArray(tbm.preCheck.selectedItems)) tbm.preCheck.selectedItems = [];
-    if (!Array.isArray(tbm.preCheck.photos)) tbm.preCheck.photos = [];
+    if (!preCheckObj || typeof preCheckObj !== 'object') preCheckObj = {};
+    if (!pre_checkObj || typeof pre_checkObj !== 'object') pre_checkObj = {};
 
-    // Parse postCheck safely
-    if (typeof tbm.postCheck === 'string') {
-      try { tbm.postCheck = JSON.parse(tbm.postCheck); } catch (e) { tbm.postCheck = {}; }
+    const mergedPre = { ...pre_checkObj, ...preCheckObj };
+    const prePhotos1 = Array.isArray(preCheckObj.photos) ? preCheckObj.photos : [];
+    const prePhotos2 = Array.isArray(pre_checkObj.photos) ? pre_checkObj.photos : [];
+    let combinedPrePhotos = prePhotos1.length >= prePhotos2.length ? prePhotos1 : prePhotos2;
+    if (combinedPrePhotos.length === 0 && (prePhotos1.length > 0 || prePhotos2.length > 0)) {
+      combinedPrePhotos = prePhotos1.length > 0 ? prePhotos1 : prePhotos2;
     }
-    if (typeof tbm.post_check === 'string') {
-      try { tbm.postCheck = JSON.parse(tbm.post_check); } catch (e) { tbm.postCheck = tbm.postCheck || {}; }
-    } else if (tbm.post_check && typeof tbm.post_check === 'object') {
-      tbm.postCheck = tbm.post_check;
+    mergedPre.photos = combinedPrePhotos.map((p, pIdx) => {
+      if (!p) return null;
+      if (typeof p === 'string') {
+        return { id: `pre_photo_${pIdx + 1}`, name: `photo_${pIdx + 1}.jpg`, dataUrl: p, url: p, thumbnailUrl: p, viewUrl: p };
+      }
+      const otherP = (prePhotos1[pIdx]?.id === p.id ? prePhotos1[pIdx] : prePhotos2[pIdx]) || {};
+      const dataUrl = p.dataUrl || otherP.dataUrl || (typeof p === 'string' ? p : '');
+      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || '';
+      return {
+        id: p.id || otherP.id || `pre_photo_${pIdx + 1}`,
+        name: p.name || otherP.name || `photo_${pIdx + 1}.jpg`,
+        size: p.size || otherP.size || 0,
+        takenAt: p.takenAt || otherP.takenAt || p.timestamp || otherP.timestamp || '',
+        dataUrl,
+        url,
+        viewUrl: p.viewUrl || otherP.viewUrl || url,
+        thumbnailUrl: p.thumbnailUrl || otherP.thumbnailUrl || url
+      };
+    }).filter(Boolean);
+
+    if (!Array.isArray(mergedPre.selectedItems)) mergedPre.selectedItems = [];
+    if (mergedPre.isCompleted === undefined) mergedPre.isCompleted = true;
+    tbm.preCheck = mergedPre;
+    tbm.pre_check = mergedPre;
+
+    // Parse postCheck safely with photo preservation
+    let postCheckObj = tbm.postCheck;
+    if (typeof postCheckObj === 'string') {
+      try { postCheckObj = JSON.parse(postCheckObj); } catch (e) { postCheckObj = {}; }
     }
-    if (!tbm.postCheck || typeof tbm.postCheck !== 'object') {
-      tbm.postCheck = { isCompleted: false, selectedItems: [], photos: [], absentees: [] };
+    let post_checkObj = tbm.post_check;
+    if (typeof post_checkObj === 'string') {
+      try { post_checkObj = JSON.parse(post_checkObj); } catch (e) { post_checkObj = {}; }
     }
-    if (tbm.postCheck.cleanupCheck === undefined) tbm.postCheck.cleanupCheck = true;
-    if (tbm.postCheck.toolRecoveryCheck === undefined) tbm.postCheck.toolRecoveryCheck = true;
-    if (tbm.postCheck.securityMediaCheck === undefined) tbm.postCheck.securityMediaCheck = true;
-    if (tbm.postCheck.powerSafetyCheck === undefined) tbm.postCheck.powerSafetyCheck = true;
-    if (!Array.isArray(tbm.postCheck.selectedItems)) tbm.postCheck.selectedItems = [];
-    if (!Array.isArray(tbm.postCheck.photos)) tbm.postCheck.photos = [];
-    if (!Array.isArray(tbm.postCheck.absentees)) tbm.postCheck.absentees = [];
+    if (!postCheckObj || typeof postCheckObj !== 'object') postCheckObj = {};
+    if (!post_checkObj || typeof post_checkObj !== 'object') post_checkObj = {};
+
+    const mergedPost = { ...post_checkObj, ...postCheckObj };
+    const postPhotos1 = Array.isArray(postCheckObj.photos) ? postCheckObj.photos : [];
+    const postPhotos2 = Array.isArray(post_checkObj.photos) ? post_checkObj.photos : [];
+    let combinedPostPhotos = postPhotos1.length >= postPhotos2.length ? postPhotos1 : postPhotos2;
+    if (combinedPostPhotos.length === 0 && (postPhotos1.length > 0 || postPhotos2.length > 0)) {
+      combinedPostPhotos = postPhotos1.length > 0 ? postPhotos1 : postPhotos2;
+    }
+    mergedPost.photos = combinedPostPhotos.map((p, pIdx) => {
+      if (!p) return null;
+      if (typeof p === 'string') {
+        return { id: `post_photo_${pIdx + 1}`, name: `photo_${pIdx + 1}.jpg`, dataUrl: p, url: p, thumbnailUrl: p, viewUrl: p };
+      }
+      const otherP = (postPhotos1[pIdx]?.id === p.id ? postPhotos1[pIdx] : postPhotos2[pIdx]) || {};
+      const dataUrl = p.dataUrl || otherP.dataUrl || (typeof p === 'string' ? p : '');
+      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || '';
+      return {
+        id: p.id || otherP.id || `post_photo_${pIdx + 1}`,
+        name: p.name || otherP.name || `photo_${pIdx + 1}.jpg`,
+        size: p.size || otherP.size || 0,
+        takenAt: p.takenAt || otherP.takenAt || p.timestamp || otherP.timestamp || '',
+        dataUrl,
+        url,
+        viewUrl: p.viewUrl || otherP.viewUrl || url,
+        thumbnailUrl: p.thumbnailUrl || otherP.thumbnailUrl || url
+      };
+    }).filter(Boolean);
+
+    if (mergedPost.cleanupCheck === undefined) mergedPost.cleanupCheck = true;
+    if (mergedPost.toolRecoveryCheck === undefined) mergedPost.toolRecoveryCheck = true;
+    if (mergedPost.securityMediaCheck === undefined) mergedPost.securityMediaCheck = true;
+    if (mergedPost.powerSafetyCheck === undefined) mergedPost.powerSafetyCheck = true;
+    if (!Array.isArray(mergedPost.selectedItems)) mergedPost.selectedItems = [];
+    if (!Array.isArray(mergedPost.absentees)) mergedPost.absentees = [];
+    tbm.postCheck = mergedPost;
+    tbm.post_check = mergedPost;
 
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
     let isAdditional = false;
@@ -3741,25 +3800,213 @@ class SecurityDatabase {
     return tbm;
   }
 
+  // Robust helper to merge photo arrays without losing local dataUrls or remote URLs
+  _mergeTbmPhotos(dest, src) {
+    if (!dest) return src;
+    if (!src) return dest;
+    const res = { ...dest };
+
+    // 1. preCheck photos
+    const srcPrePhotos = Array.isArray(src.preCheck?.photos) ? src.preCheck.photos : [];
+    if (srcPrePhotos.length > 0) {
+      if (!res.preCheck) res.preCheck = { ...src.preCheck };
+      const destPrePhotos = Array.isArray(res.preCheck.photos) ? res.preCheck.photos : [];
+      const baseList = destPrePhotos.length >= srcPrePhotos.length ? destPrePhotos : srcPrePhotos;
+      res.preCheck.photos = baseList.map((bp, idx) => {
+        const sp = srcPrePhotos[idx] || {};
+        const dp = destPrePhotos[idx] || {};
+        return {
+          ...sp,
+          ...dp,
+          dataUrl: dp.dataUrl || sp.dataUrl || '',
+          url: dp.url || sp.url || dp.viewUrl || sp.viewUrl || '',
+          thumbnailUrl: dp.thumbnailUrl || sp.thumbnailUrl || dp.url || sp.url || '',
+          viewUrl: dp.viewUrl || sp.viewUrl || dp.url || sp.url || ''
+        };
+      });
+      res.pre_check = res.preCheck;
+    }
+
+    // 2. postCheck photos
+    const srcPostPhotos = Array.isArray(src.postCheck?.photos) ? src.postCheck.photos : [];
+    if (srcPostPhotos.length > 0) {
+      if (!res.postCheck) res.postCheck = { ...src.postCheck };
+      const destPostPhotos = Array.isArray(res.postCheck.photos) ? res.postCheck.photos : [];
+      const baseList = destPostPhotos.length >= srcPostPhotos.length ? destPostPhotos : srcPostPhotos;
+      res.postCheck.photos = baseList.map((bp, idx) => {
+        const sp = srcPostPhotos[idx] || {};
+        const dp = destPostPhotos[idx] || {};
+        return {
+          ...sp,
+          ...dp,
+          dataUrl: dp.dataUrl || sp.dataUrl || '',
+          url: dp.url || sp.url || dp.viewUrl || sp.viewUrl || '',
+          thumbnailUrl: dp.thumbnailUrl || sp.thumbnailUrl || dp.url || sp.url || '',
+          viewUrl: dp.viewUrl || sp.viewUrl || dp.url || sp.url || ''
+        };
+      });
+      res.post_check = res.postCheck;
+    }
+
+    // 3. additionalTbms photos
+    const srcAdd = Array.isArray(src.additionalTbms) ? src.additionalTbms : [];
+    const destAdd = Array.isArray(res.additionalTbms) ? res.additionalTbms : [];
+    if (srcAdd.length > 0) {
+      const addMap = new Map();
+      destAdd.forEach(a => { if (a && (a.name || a.id)) addMap.set(a.name || a.id, a); });
+      srcAdd.forEach(sa => {
+        if (sa && (sa.name || sa.id)) {
+          const key = sa.name || sa.id;
+          const da = addMap.get(key);
+          if (!da) {
+            addMap.set(key, sa);
+          } else {
+            const daPhotos = Array.isArray(da.photos) ? da.photos : [];
+            const saPhotos = Array.isArray(sa.photos) ? sa.photos : [];
+            const basePhotos = daPhotos.length >= saPhotos.length ? daPhotos : saPhotos;
+            const mergedAddPhotos = basePhotos.map((bp, pIdx) => {
+              const sap = saPhotos[pIdx] || {};
+              const dap = daPhotos[pIdx] || {};
+              return {
+                ...sap,
+                ...dap,
+                dataUrl: dap.dataUrl || sap.dataUrl || '',
+                url: dap.url || sap.url || dap.viewUrl || sap.viewUrl || '',
+                thumbnailUrl: dap.thumbnailUrl || sap.thumbnailUrl || dap.url || sap.url || ''
+              };
+            });
+            addMap.set(key, {
+              ...sa,
+              ...da,
+              photos: mergedAddPhotos.length > 0 ? mergedAddPhotos : (daPhotos.length > 0 ? daPhotos : saPhotos),
+              photo: da.photo || sa.photo || mergedAddPhotos[0]?.dataUrl || ''
+            });
+          }
+        }
+      });
+      res.additionalTbms = Array.from(addMap.values());
+      res.additional_tbms = res.additionalTbms;
+    }
+
+    return res;
+  }
+
+  // Safe LocalStorage setter preventing QuotaExceededError while retaining recent photos
+  _safeSaveTbmsToLocalStorage(list) {
+    if (!Array.isArray(list)) return;
+    try {
+      localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
+    } catch (e) {
+      try {
+        const lightweightList = list.map((item, idx) => {
+          if (idx < 15) return item;
+          const cleanItem = { ...item };
+          if (cleanItem.preCheck?.photos) {
+            cleanItem.preCheck = {
+              ...cleanItem.preCheck,
+              photos: cleanItem.preCheck.photos.map(p => ({ ...p, dataUrl: '' }))
+            };
+            cleanItem.pre_check = cleanItem.preCheck;
+          }
+          if (cleanItem.postCheck?.photos) {
+            cleanItem.postCheck = {
+              ...cleanItem.postCheck,
+              photos: cleanItem.postCheck.photos.map(p => ({ ...p, dataUrl: '' }))
+            };
+            cleanItem.post_check = cleanItem.postCheck;
+          }
+          if (cleanItem.additionalTbms) {
+            cleanItem.additionalTbms = cleanItem.additionalTbms.map(a => ({
+              ...a,
+              photos: (a.photos || []).map(p => ({ ...p, dataUrl: '' })),
+              photo: ''
+            }));
+            cleanItem.additional_tbms = cleanItem.additionalTbms;
+          }
+          return cleanItem;
+        });
+        localStorage.setItem('with_security_tbms_backup', JSON.stringify(lightweightList));
+      } catch (innerErr) {
+        console.warn('LocalStorage quota exceeded, relying on IndexedDB:', innerErr);
+      }
+    }
+  }
+
+  // Merge remote sync items with IndexedDB local items to permanently preserve photos
+  async _mergeRemoteWithLocalTbms(remoteList) {
+    if (!Array.isArray(remoteList)) return [];
+    let localItems = [];
+    try {
+      localItems = await this.getAll('tbms');
+    } catch (e) {
+      localItems = [];
+    }
+    const localMap = new Map();
+    localItems.forEach(item => {
+      if (item && item.id) localMap.set(String(item.id), item);
+    });
+
+    const merged = remoteList.map(remote => {
+      const normRemote = this._normalizeTbm(remote);
+      if (!normRemote) return null;
+      const local = localMap.get(String(normRemote.id));
+      if (!local) return normRemote;
+      return this._normalizeTbm(this._mergeTbmPhotos(normRemote, local));
+    }).filter(Boolean);
+
+    // Retain any local TBMs created offline or not yet synchronized to remote
+    const remoteIdSet = new Set(merged.map(m => String(m.id)));
+    localItems.forEach(loc => {
+      if (loc && loc.id && !remoteIdSet.has(String(loc.id))) {
+        merged.push(this._normalizeTbm(loc));
+      }
+    });
+
+    return merged;
+  }
+
   async getTbms(filterDate = null, forceRemote = false) {
-    // 1. Instant Local Cache Return (0.1ms) - completely eliminates UI freezing/lag
+    // 1. Instant Local Cache + IndexedDB photo enrichment (0.1ms UI response)
     if (!forceRemote) {
       try {
+        let cachedList = null;
         const raw = localStorage.getItem('with_security_tbms_backup');
         if (raw) {
-          const list = JSON.parse(raw);
-          if (Array.isArray(list) && list.length > 0) {
-            const normalizedList = list.map(item => this._normalizeTbm(item)).filter(Boolean);
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            cachedList = parsed;
+          }
+        }
+
+        const dbItems = await this.getAll('tbms');
+        if (Array.isArray(dbItems) && dbItems.length > 0) {
+          const dbMap = new Map();
+          dbItems.forEach(item => {
+            if (item && item.id) dbMap.set(String(item.id), item);
+          });
+
+          if (cachedList && cachedList.length > 0) {
+            // Enrich cachedList with photos and fields from IndexedDB
+            const enriched = cachedList.map(item => {
+              const dbItem = dbMap.get(String(item.id));
+              if (!dbItem) return this._normalizeTbm(item);
+              return this._normalizeTbm(this._mergeTbmPhotos(item, dbItem));
+            });
+            // Include any items in IndexedDB that weren't in localStorage
+            dbItems.forEach(dbItem => {
+              if (dbItem && dbItem.id && !enriched.some(e => String(e.id) === String(dbItem.id))) {
+                enriched.push(this._normalizeTbm(dbItem));
+              }
+            });
+            this._revalidateTbmsInBackground().catch(() => { });
+            return this._filterAndSortTbms(enriched, filterDate);
+          } else {
+            const normalizedList = dbItems.map(item => this._normalizeTbm(item)).filter(Boolean);
             this._revalidateTbmsInBackground().catch(() => { });
             return this._filterAndSortTbms(normalizedList, filterDate);
           }
-        }
-      } catch (e) { }
-
-      try {
-        const dbItems = await this.getAll('tbms');
-        if (Array.isArray(dbItems) && dbItems.length > 0) {
-          const normalizedList = dbItems.map(item => this._normalizeTbm(item)).filter(Boolean);
+        } else if (cachedList && cachedList.length > 0) {
+          const normalizedList = cachedList.map(item => this._normalizeTbm(item)).filter(Boolean);
           this._revalidateTbmsInBackground().catch(() => { });
           return this._filterAndSortTbms(normalizedList, filterDate);
         }
@@ -3878,7 +4125,7 @@ class SecurityDatabase {
             } catch (e) { }
           }
 
-          localStorage.setItem('with_security_tbms_backup', JSON.stringify(mergedList));
+          this._safeSaveTbmsToLocalStorage(mergedList);
           list = mergedList;
           this.notifyDataChanged(true);
         }
@@ -3912,12 +4159,6 @@ class SecurityDatabase {
     return sorted;
   }
 
-  async getTbmById(id) {
-    if (!id) return null;
-    const all = await this.getTbms();
-    return all.find(item => String(item.id) === String(id)) || null;
-  }
-
   async saveTbm(tbm) {
     if (!tbm) return null;
     const fullTbm = this._normalizeTbm({
@@ -3925,7 +4166,7 @@ class SecurityDatabase {
       updatedAt: new Date().toISOString()
     });
 
-    // 1. Immediately update LocalStorage cache (0.1ms UI response)
+    // 1. Immediately update LocalStorage cache safely (0.1ms UI response)
     try {
       const raw = localStorage.getItem('with_security_tbms_backup');
       let list = raw ? JSON.parse(raw) : [];
@@ -3936,7 +4177,7 @@ class SecurityDatabase {
       } else {
         list.unshift(fullTbm);
       }
-      localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
+      this._safeSaveTbmsToLocalStorage(list);
     } catch (e) { }
 
     // 2. Put into IndexedDB immediately with full photos
@@ -4048,21 +4289,27 @@ class SecurityDatabase {
     if (!id) return null;
     const targetStr = String(id).trim();
 
+    let localItem = null;
+    try {
+      localItem = await this.getItem('tbms', targetStr);
+    } catch (e) { }
+
+    let cacheItem = null;
     try {
       const raw = localStorage.getItem('with_security_tbms_backup');
       if (raw) {
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
-          const found = list.find(t => String(t.id || '').trim() === targetStr || String(t.displayKey || '').trim() === targetStr);
-          if (found) return this._normalizeTbm(found);
+          cacheItem = list.find(t => String(t.id || '').trim() === targetStr || String(t.displayKey || '').trim() === targetStr);
         }
       }
     } catch (e) { }
 
-    try {
-      const item = await this.getItem('tbms', targetStr);
-      if (item) return this._normalizeTbm(item);
-    } catch (e) { }
+    if (localItem && cacheItem) {
+      return this._normalizeTbm(this._mergeTbmPhotos(cacheItem, localItem));
+    }
+    if (localItem) return this._normalizeTbm(localItem);
+    if (cacheItem) return this._normalizeTbm(cacheItem);
 
     try {
       const all = await this.getAll('tbms');
@@ -4306,8 +4553,9 @@ class SecurityDatabase {
 
     // 5. tbms
     if (syncData.tbms && Array.isArray(syncData.tbms)) {
-      localStorage.setItem('with_security_tbms_backup', JSON.stringify(syncData.tbms));
-      await this.replaceCollection('tbms', syncData.tbms);
+      const mergedTbms = await this._mergeRemoteWithLocalTbms(syncData.tbms);
+      this._safeSaveTbmsToLocalStorage(mergedTbms);
+      await this.replaceCollection('tbms', mergedTbms);
     }
 
     // 6. weekly_reports

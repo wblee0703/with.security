@@ -382,30 +382,50 @@ export default function TbmSection({
         if (file.type && file.type.startsWith('image/')) {
           ext = 'jpg';
         } else {
-          return reject(new Error(`보안 정책: 허용되지 않은 파일 형식(${ext ? '.' + ext : '확장자 없음'})입니다. 핸드폰 카메라 촬영 및 캡처 이미지(JPG, PNG, WEBP, HEIC)만 등록할 수 있습니다.`));
+          // Default camera capture blob safely to jpg
+          ext = 'jpg';
         }
       }
 
-      // 2. Check MIME type
+      // 2. Check MIME type (permit image/* or empty on mobile native camera)
       if (file.type && !file.type.startsWith('image/')) {
         return reject(new Error('보안 정책: 이미지가 아닌 파일은 업로드할 수 없습니다.'));
       }
 
-      // 3. File size check (Max 15MB before compression)
-      if (file.size > 15 * 1024 * 1024) {
-        return reject(new Error('사진 파일 용량은 최대 15MB 이하만 등록 가능합니다.'));
+      // 3. File size check (Max 25MB before compression)
+      if (file.size > 25 * 1024 * 1024) {
+        return reject(new Error('사진 파일 용량은 최대 25MB 이하만 등록 가능합니다.'));
       }
 
-      // 4. Client-side canvas sanitization & compression
+      // 4. Client-side canvas sanitization & high-efficiency compression
       const reader = new FileReader();
       reader.onerror = () => reject(new Error('사진 파일을 읽는 중 오류가 발생했습니다.'));
       reader.onload = (e) => {
+        const rawDataUrl = e.target.result;
+        if (!rawDataUrl || typeof rawDataUrl !== 'string') {
+          return reject(new Error('이미지 데이터를 읽을 수 없습니다.'));
+        }
+
         const img = new window.Image();
-        img.onerror = () => reject(new Error('손상되었거나 올바르지 않은 이미지 파일입니다.'));
+        img.onerror = () => {
+          // Fallback: If image canvas decoding fails (e.g. HEIC or raw blob), preserve the read dataUrl directly
+          if (rawDataUrl.startsWith('data:image')) {
+            resolve({
+              id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              name: rawName,
+              dataUrl: rawDataUrl,
+              size: file.size || Math.round(rawDataUrl.length * 0.75),
+              takenAt: getCurrentTimeStr()
+            });
+          } else {
+            reject(new Error('손상되었거나 지원되지 않는 이미지 파일입니다.'));
+          }
+        };
+
         img.onload = () => {
           try {
             const canvas = document.createElement('canvas');
-            const MAX_DIM = 1280;
+            const MAX_DIM = 960;
             let width = img.width;
             let height = img.height;
             if (width > height) {
@@ -419,24 +439,35 @@ export default function TbmSection({
                 height = MAX_DIM;
               }
             }
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = Math.max(width, 1);
+            canvas.height = Math.max(height, 1);
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
 
             resolve({
               id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-              name: file.name,
+              name: rawName,
               dataUrl: compressedDataUrl,
               size: Math.round(compressedDataUrl.length * 0.75),
               takenAt: getCurrentTimeStr()
             });
           } catch (err) {
-            reject(new Error('이미지 안전 처리 중 문제가 발생했습니다.'));
+            // If canvas drawing throws security/cors error, fallback safely to raw dataUrl
+            if (rawDataUrl.startsWith('data:image')) {
+              resolve({
+                id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+                name: rawName,
+                dataUrl: rawDataUrl,
+                size: file.size || Math.round(rawDataUrl.length * 0.75),
+                takenAt: getCurrentTimeStr()
+              });
+            } else {
+              reject(new Error('이미지 안전 처리 중 문제가 발생했습니다.'));
+            }
           }
         };
-        img.src = e.target.result;
+        img.src = rawDataUrl;
       };
       reader.readAsDataURL(file);
     });
@@ -627,6 +658,16 @@ export default function TbmSection({
     };
   }, []);
 
+  // Helper to accurately determine if an additional TBM item belongs to Post-Work
+  const isAdditionalPostItem = (item) => {
+    if (!item) return false;
+    const t = String(item.targetType || item.targetTbmType || item.sourceTbmType || '').toLowerCase().trim();
+    if (t === 'post' || t.includes('후')) return true;
+    const title = String(item.workTitle || item.work_title || '').toLowerCase();
+    if (title.includes('작업 후') || title.includes('업무 후') || title.includes('[후]')) return true;
+    return false;
+  };
+
   // Expand tbmList into separate Pre-Work and Post-Work items, merging additional TBM rows into their parent boxes
   const displayTbms = React.useMemo(() => {
     const additionalRows = [];
@@ -650,49 +691,135 @@ export default function TbmSection({
 
     // Merge standalone spreadsheet additional TBM rows into parent TBM records
     additionalRows.forEach(addRow => {
-      const parentId = addRow.parentTbmId || addRow.parentId;
-      const targetType = addRow.targetType || addRow.targetTbmType || addRow.sourceTbmType ||
-        (String(addRow.workTitle || '').includes('후') ? 'post' : 'pre');
+      const parentId = addRow.parentTbmId || addRow.parent_tbm_id || addRow.parentId || '';
+      const isTargetPost = isAdditionalPostItem(addRow);
+      const targetType = isTargetPost ? 'post' : 'pre';
+      const addRowDate = normalizeKstDate(addRow.date || addRow.log_date || '') || (addRow.date || '').slice(0, 10).replace(/\//g, '-');
 
-      let parent = mainItems.find(m => String(m.id) === String(parentId));
-      if (!parent) {
-        parent = mainItems.find(m =>
-          m.site === addRow.site &&
-          (m.date || '').slice(0, 10) === (addRow.date || '').slice(0, 10) &&
-          m.displayType === targetType
-        );
+      // 1. Try match by parentId exact
+      let parent = null;
+      if (parentId) {
+        parent = mainItems.find(m => String(m.id) === String(parentId));
+        if (!parent) {
+          const stripped = String(parentId).replace(/^tbm_(pre|post)_/, '');
+          parent = mainItems.find(m => String(m.id).replace(/^tbm_(pre|post)_/, '') === stripped && m.displayType === targetType);
+        }
+        if (!parent) {
+          const stripped = String(parentId).replace(/^tbm_(pre|post)_/, '');
+          parent = mainItems.find(m => String(m.id).replace(/^tbm_(pre|post)_/, '') === stripped);
+        }
       }
+
+      // 2. Fallback: match by site, normalized date, and targetType
       if (!parent) {
-        parent = mainItems.find(m =>
-          m.site === addRow.site &&
-          (m.date || '').slice(0, 10) === (addRow.date || '').slice(0, 10)
-        );
+        parent = mainItems.find(m => {
+          const mDate = normalizeKstDate(m.date || m.log_date || '') || (m.date || '').slice(0, 10).replace(/\//g, '-');
+          const mSite = (m.site || m.siteName || '').trim();
+          const addSite = (addRow.site || addRow.siteName || '').trim();
+          return (mSite === addSite || !addSite || !mSite) && mDate === addRowDate && m.displayType === targetType;
+        });
       }
+
+      // 3. Fallback: match by site and normalized date
+      if (!parent) {
+        parent = mainItems.find(m => {
+          const mDate = normalizeKstDate(m.date || m.log_date || '') || (m.date || '').slice(0, 10).replace(/\//g, '-');
+          const mSite = (m.site || m.siteName || '').trim();
+          const addSite = (addRow.site || addRow.siteName || '').trim();
+          return (mSite === addSite || !addSite || !mSite) && mDate === addRowDate;
+        });
+      }
+
+      // Parse attendees safely (supports Array, JSON string, or comma-separated)
+      let rawAtts = addRow.attendees;
+      let attendees = [];
+      if (Array.isArray(rawAtts) && rawAtts.length > 0) {
+        attendees = rawAtts;
+      } else if (typeof rawAtts === 'string' && rawAtts.trim()) {
+        try {
+          const parsed = JSON.parse(rawAtts);
+          attendees = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (e) {
+          attendees = rawAtts.split(',').map(n => ({ name: n.trim() })).filter(x => x.name);
+        }
+      }
+      if (attendees.length === 0 && addRow.name) {
+        attendees = [{ name: addRow.name, rank: addRow.rank, team: addRow.team, division: addRow.division }];
+      }
+
+      const notesText = (addRow.preCheck?.notes || addRow.notes || addRow.workContent || addRow.work_content || '').trim();
+      const photosArr = Array.isArray(addRow.preCheck?.photos) && addRow.preCheck.photos.length > 0
+        ? addRow.preCheck.photos
+        : (Array.isArray(addRow.photos) ? addRow.photos : []);
 
       if (parent) {
-        const attendees = Array.isArray(addRow.attendees) && addRow.attendees.length > 0
-          ? addRow.attendees
-          : (addRow.name ? [{ name: addRow.name, rank: addRow.rank, team: addRow.team, division: addRow.division }] : []);
-
         attendees.forEach(att => {
           const attName = typeof att === 'string' ? att : att.name;
-          const exists = parent.additionalTbms.some(a => a.name === attName && (a.targetType || 'pre') === targetType);
-          if (!exists) {
-            parent.additionalTbms.push({
-              id: addRow.id || `add_${Date.now()}`,
-              name: attName,
-              rank: att.rank || addRow.leaderRank || '사원',
-              team: att.team || addRow.leaderTeam || '',
-              division: att.division || addRow.leaderDivision || '',
-              conductedAt: addRow.conductedAt || `${addRow.date || ''} ${addRow.time || ''}`.trim(),
-              date: addRow.date,
-              safetyChecked: true,
-              targetType: targetType,
-              notes: (addRow.preCheck?.notes || addRow.notes || '').trim(),
-              photos: addRow.preCheck?.photos || addRow.photos || [],
-              registeredBy: addRow.registeredBy || addRow.leaderName || ''
-            });
+          if (!attName) return;
+
+          const existIdx = parent.additionalTbms.findIndex(a =>
+            (a.id && addRow.id && String(a.id) === String(addRow.id)) ||
+            (a.name === attName && isAdditionalPostItem(a) === isTargetPost)
+          );
+
+          const entry = {
+            id: addRow.id || `add_${Date.now()}`,
+            name: attName,
+            rank: (typeof att === 'object' ? att.rank : '') || addRow.leaderRank || '사원',
+            team: (typeof att === 'object' ? att.team : '') || addRow.leaderTeam || '',
+            division: (typeof att === 'object' ? att.division : '') || addRow.leaderDivision || '',
+            conductedAt: addRow.conductedAt || `${addRow.date || ''} ${addRow.time || ''}`.trim() || '실시 완료',
+            date: addRowDate || addRow.date,
+            safetyChecked: true,
+            targetType: targetType,
+            notes: notesText,
+            photos: photosArr,
+            registeredBy: addRow.registeredBy || addRow.leaderName || ''
+          };
+
+          if (existIdx >= 0) {
+            parent.additionalTbms[existIdx] = {
+              ...parent.additionalTbms[existIdx],
+              ...entry,
+              notes: notesText || parent.additionalTbms[existIdx].notes || '',
+              photos: photosArr.length > 0 ? photosArr : (parent.additionalTbms[existIdx].photos || [])
+            };
+          } else {
+            parent.additionalTbms.push(entry);
           }
+        });
+      } else {
+        // Fallback: If no parent TBM is found on that date, keep it as a standalone card so it's NEVER lost
+        mainItems.push({
+          id: addRow.id || `tbm_${Date.now()}`,
+          date: addRowDate,
+          site: addRow.site || '사업장 미지정',
+          siteAddress: addRow.siteAddress || '',
+          workTitle: addRow.workTitle || addRow.work_title || (isTargetPost ? '업무 후 추가 TBM' : '업무 전 추가 TBM'),
+          workArea: addRow.workArea || '',
+          workCategory: addRow.workCategory || '일반작업',
+          leaderDivision: addRow.leaderDivision || '',
+          leaderTeam: addRow.leaderTeam || '',
+          leaderName: addRow.leaderName || '미지정',
+          leaderRank: addRow.leaderRank || '대리',
+          attendees: attendees,
+          absentees: [],
+          displayType: targetType,
+          displayKey: String(addRow.id),
+          additionalTbms: attendees.map(att => ({
+            id: addRow.id,
+            name: typeof att === 'string' ? att : att.name,
+            rank: typeof att === 'object' ? (att.rank || '사원') : '사원',
+            team: typeof att === 'object' ? (att.team || '') : '',
+            division: typeof att === 'object' ? (att.division || '') : '',
+            conductedAt: addRow.conductedAt || `${addRow.date || ''} ${addRow.time || ''}`.trim() || '실시 완료',
+            date: addRowDate,
+            safetyChecked: true,
+            targetType: targetType,
+            notes: notesText,
+            photos: photosArr,
+            registeredBy: addRow.registeredBy || addRow.leaderName || ''
+          }))
         });
       }
     });
@@ -705,7 +832,6 @@ export default function TbmSection({
     let total = 0;
     let pre = 0;
     let post = 0;
-    let additional = 0;
 
     displayTbms.forEach(item => {
       const itemDate = normalizeKstDate(item.date || item.log_date || '') || (item.date || '').slice(0, 10).replace(/\//g, '-');
@@ -713,13 +839,10 @@ export default function TbmSection({
         total += 1;
         if (item.displayType === 'pre') pre += 1;
         if (item.displayType === 'post') post += 1;
-        if (Array.isArray(item.additionalTbms)) {
-          additional += item.additionalTbms.length;
-        }
       }
     });
 
-    return { total, pre, post, additional };
+    return { total, pre, post };
   }, [displayTbms, selectedDate]);
 
   // Filtered TBM List for Selected Date, Type Filter and Search Query
@@ -729,13 +852,9 @@ export default function TbmSection({
       const matchesDate = itemDate === selectedDate;
       if (!matchesDate) return false;
 
-      // Filter by Type (ALL, PRE, POST, ADDITIONAL)
+      // Filter by Type (ALL, PRE, POST)
       if (typeFilter === 'PRE' && item.displayType !== 'pre') return false;
       if (typeFilter === 'POST' && item.displayType !== 'post') return false;
-      if (typeFilter === 'ADDITIONAL') {
-        const hasAdd = Array.isArray(item.additionalTbms) && item.additionalTbms.length > 0;
-        if (!hasAdd) return false;
-      }
 
       if (!searchTerm.trim()) return true;
       const query = searchTerm.toLowerCase();
@@ -750,6 +869,36 @@ export default function TbmSection({
       );
     });
   }, [displayTbms, selectedDate, typeFilter, searchTerm]);
+
+  // Check if currentUser's team has already completed Pre or Post TBM for selectedDate (1일 1회 제한 판별)
+  const myTeamName = (currentUser?.team || currentUser?.department || '').trim();
+  const myDivName = (currentUser?.division || '').trim();
+
+  const isPreDoneForMyTeam = React.useMemo(() => {
+    if (!myTeamName) return false;
+    const targetDate = normalizeKstDate(selectedDate) || selectedDate;
+    return displayTbms.some(t => {
+      const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+      if (tDate !== targetDate) return false;
+      if (t.displayType !== 'pre') return false;
+      const tTeam = (t.leaderTeam || '').trim();
+      const tDiv = (t.leaderDivision || '').trim();
+      return tTeam === myTeamName && (!myDivName || !tDiv || tDiv === myDivName);
+    });
+  }, [displayTbms, selectedDate, myTeamName, myDivName]);
+
+  const isPostDoneForMyTeam = React.useMemo(() => {
+    if (!myTeamName) return false;
+    const targetDate = normalizeKstDate(selectedDate) || selectedDate;
+    return displayTbms.some(t => {
+      const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+      if (tDate !== targetDate) return false;
+      if (t.displayType !== 'post') return false;
+      const tTeam = (t.leaderTeam || '').trim();
+      const tDiv = (t.leaderDivision || '').trim();
+      return tTeam === myTeamName && (!myDivName || !tDiv || tDiv === myDivName);
+    });
+  }, [displayTbms, selectedDate, myTeamName, myDivName]);
 
   // Date Navigation Handlers
   const handlePrevDay = () => {
@@ -782,6 +931,30 @@ export default function TbmSection({
     }
 
     const isPost = targetType === 'post';
+    const targetDate = normalizeKstDate(selectedDate || getTodayIsoDate()) || (selectedDate || getTodayIsoDate()).slice(0, 10).replace(/\//g, '-');
+    const myTeam = (currentUser.team || currentUser.department || formData.leaderTeam || '').trim();
+    const myDiv = (currentUser.division || formData.leaderDivision || '').trim();
+
+    // 각 팀 소속당 1일 1회 제한 검사
+    if (myTeam) {
+      const alreadyDone = displayTbms.find(t => {
+        const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+        if (tDate !== targetDate) return false;
+        if (t.displayType !== (isPost ? 'post' : 'pre')) return false;
+        const tTeam = (t.leaderTeam || '').trim();
+        const tDiv = (t.leaderDivision || '').trim();
+        return tTeam === myTeam && (!myDiv || !tDiv || tDiv === myDiv);
+      });
+
+      if (alreadyDone) {
+        const tbmLabel = isPost ? '업무 후 TBM' : '업무 전 TBM';
+        if (onTriggerToast) {
+          onTriggerToast(`[${myTeam}] 소속은 ${targetDate}에 이미 ${tbmLabel}이 진행되었습니다. (각 팀 소속당 1일 1회 제한)`, 'warning');
+        }
+        return;
+      }
+    }
+
     setEditingTbmId(null);
     setActiveStep(1);
     const initialSite = availableSites.length > 0 ? availableSites[0] : { name: '위드텍', address: '동탄' };
@@ -976,6 +1149,29 @@ export default function TbmSection({
       if (onTriggerToast) onTriggerToast('TBM 등록을 위해 먼저 로그인이 필요합니다.', 'warning');
       return;
     }
+
+    const targetDate = normalizeKstDate(selectedDate || preTbm.date || getTodayIsoDate()) || (selectedDate || preTbm.date || getTodayIsoDate()).slice(0, 10).replace(/\//g, '-');
+    const targetTeam = (preTbm.leaderTeam || currentUser?.team || currentUser?.department || '').trim();
+    const targetDiv = (preTbm.leaderDivision || currentUser?.division || '').trim();
+
+    if (targetTeam) {
+      const alreadyPost = displayTbms.find(t => {
+        const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+        if (tDate !== targetDate) return false;
+        if (t.displayType !== 'post') return false;
+        const tTeam = (t.leaderTeam || '').trim();
+        const tDiv = (t.leaderDivision || '').trim();
+        return tTeam === targetTeam && (!targetDiv || !tDiv || tDiv === targetDiv);
+      });
+
+      if (alreadyPost) {
+        if (onTriggerToast) {
+          onTriggerToast(`[${targetTeam}] 소속은 ${targetDate}에 이미 업무 후 TBM이 진행되었습니다. (각 팀 소속당 1일 1회 제한)`, 'warning');
+        }
+        return;
+      }
+    }
+
     const normalized = normalizeTbmForForm(preTbm);
     // CRITICAL: Clear editingTbmId and id so saving creates a BRAND NEW independent post-work record in the list!
     setEditingTbmId(null);
@@ -1517,6 +1713,31 @@ export default function TbmSection({
     const finalStatus = isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED';
     const autoWorkTitle = formData.workTitle?.trim() || `${formData.leaderDivision} ${formData.leaderTeam} TBM`;
 
+    // 각 팀 소속당 1일 1회 제한 검증 (신규 등록 시)
+    if (!editingTbmId) {
+      const targetDate = normalizeKstDate(formData.date || selectedDate) || (formData.date || selectedDate || '').slice(0, 10).replace(/\//g, '-');
+      const targetTeam = (formData.leaderTeam || '').trim();
+      const targetDiv = (formData.leaderDivision || '').trim();
+      const existingSameTeam = displayTbms.find(t => {
+        const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+        if (tDate !== targetDate) return false;
+        if (t.displayType !== (isPost ? 'post' : 'pre')) return false;
+        const tTeam = (t.leaderTeam || '').trim();
+        const tDiv = (t.leaderDivision || '').trim();
+        const matchTeam = tTeam && targetTeam && tTeam === targetTeam;
+        const matchDiv = !targetDiv || !tDiv || tDiv === targetDiv;
+        return matchTeam && matchDiv && String(t.id) !== String(editingTbmId || '');
+      });
+
+      if (existingSameTeam) {
+        const tbmLabel = isPost ? '업무 후 TBM' : '업무 전 TBM';
+        if (onTriggerToast) {
+          onTriggerToast(`[${targetTeam}] 소속은 ${targetDate}에 이미 ${tbmLabel}이 등록/진행되었습니다. (각 팀 소속당 1일 1회 제한)`, 'warning');
+        }
+        return;
+      }
+    }
+
     // 신규 등록 시 고유 ID 발급 (특히 업무 후 TBM은 독립된 post ID를 부여하여 업무 전 TBM과 100% 분리 독립 기록)
     let assignedId = editingTbmId;
     if (!assignedId) {
@@ -1739,14 +1960,19 @@ export default function TbmSection({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
-                border: '1.5px solid #0284c7',
-                color: '#ffffff',
+                background: isPreDoneForMyTeam
+                  ? '#f1f5f9'
+                  : 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                border: isPreDoneForMyTeam ? '1.5px solid #cbd5e1' : '1.5px solid #0284c7',
+                color: isPreDoneForMyTeam ? '#64748b' : '#ffffff',
                 cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(2, 132, 199, 0.25)'
+                boxShadow: isPreDoneForMyTeam ? 'none' : '0 4px 14px rgba(2, 132, 199, 0.25)',
+                transition: 'all 0.2s ease'
               }}
+              title={isPreDoneForMyTeam ? `[${myTeamName || '소속팀'}]은 ${selectedDate}에 이미 업무 전 TBM이 진행되었습니다. (1일 1회 제한)` : '업무 전 TBM 등록'}
             >
-              <ShieldCheck size={16} /> 업무 전 TBM 등록
+              {isPreDoneForMyTeam ? <CheckCircle2 size={16} color="#16a34a" /> : <ShieldCheck size={16} />}
+              <span>{isPreDoneForMyTeam ? '업무 전 TBM 진행완료' : '업무 전 TBM 등록'}</span>
             </button>
             <button
               type="button"
@@ -1762,14 +1988,19 @@ export default function TbmSection({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '6px',
-                background: 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
-                border: '1.5px solid #16a34a',
-                color: '#ffffff',
+                background: isPostDoneForMyTeam
+                  ? '#f1f5f9'
+                  : 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)',
+                border: isPostDoneForMyTeam ? '1.5px solid #cbd5e1' : '1.5px solid #16a34a',
+                color: isPostDoneForMyTeam ? '#64748b' : '#ffffff',
                 cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(22, 163, 74, 0.25)'
+                boxShadow: isPostDoneForMyTeam ? 'none' : '0 4px 14px rgba(22, 163, 74, 0.25)',
+                transition: 'all 0.2s ease'
               }}
+              title={isPostDoneForMyTeam ? `[${myTeamName || '소속팀'}]은 ${selectedDate}에 이미 업무 후 TBM이 진행되었습니다. (1일 1회 제한)` : '업무 후 TBM 등록'}
             >
-              <CheckCircle2 size={16} /> 업무 후 TBM 등록
+              {isPostDoneForMyTeam ? <CheckCircle2 size={16} color="#16a34a" /> : <CheckCircle2 size={16} />}
+              <span>{isPostDoneForMyTeam ? '업무 후 TBM 진행완료' : '업무 후 TBM 등록'}</span>
             </button>
           </div>
         </div>
@@ -1841,10 +2072,7 @@ export default function TbmSection({
               해당 날짜 TBM: <strong style={{ color: '#0369a1', fontWeight: '800' }}>{dateStats.total}건</strong>
               {dateStats.total > 0 && (
                 <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '4px' }}>
-                  (전 <strong style={{ color: '#0284c7' }}>{dateStats.pre}</strong> / 후 <strong style={{ color: '#16a34a' }}>{dateStats.post}</strong>
-                  {dateStats.additional > 0 && (
-                    <> / 추가 <strong style={{ color: '#9333ea' }}>{dateStats.additional}</strong></>
-                  )})
+                  (전 <strong style={{ color: '#0284c7' }}>{dateStats.pre}</strong> / 후 <strong style={{ color: '#16a34a' }}>{dateStats.post}</strong>)
                 </span>
               )}
             </span>
@@ -2003,38 +2231,6 @@ export default function TbmSection({
           </span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setTypeFilter('ADDITIONAL')}
-          style={{
-            flex: 1,
-            padding: '8px 10px',
-            borderRadius: '6px',
-            fontSize: '12px',
-            fontWeight: typeFilter === 'ADDITIONAL' ? '800' : '600',
-            background: typeFilter === 'ADDITIONAL' ? '#9333ea' : '#ffffff',
-            color: typeFilter === 'ADDITIONAL' ? '#ffffff' : '#7e22ce',
-            border: typeFilter === 'ADDITIONAL' ? '1.5px solid #9333ea' : '1.5px solid #cbd5e1',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '5px',
-            transition: 'all 0.15s ease'
-          }}
-        >
-          <span>👤 추가 TBM</span>
-          <span style={{
-            fontSize: '11px',
-            fontWeight: '800',
-            padding: '1px 6px',
-            borderRadius: '10px',
-            background: typeFilter === 'ADDITIONAL' ? 'rgba(255,255,255,0.25)' : '#f3e8ff',
-            color: typeFilter === 'ADDITIONAL' ? '#ffffff' : '#7e22ce'
-          }}>
-            {dateStats.additional}
-          </span>
-        </button>
       </div>
 
       {/* TBM List Section */}
@@ -2046,9 +2242,7 @@ export default function TbmSection({
               ? '선택하신 날짜에 등록된 업무 전 TBM이 없습니다.'
               : typeFilter === 'POST'
                 ? '선택하신 날짜에 등록된 업무 후 TBM이 없습니다.'
-                : typeFilter === 'ADDITIONAL'
-                  ? '선택하신 날짜에 등록된 추가 TBM이 없습니다.'
-                  : '선택하신 날짜에 등록된 TBM 일지가 없습니다.'}
+                : '선택하신 날짜에 등록된 TBM 일지가 없습니다.'}
           </div>
         </div>
       ) : (
@@ -2091,8 +2285,8 @@ export default function TbmSection({
               : (Array.isArray(tbm.absentees) && tbm.absentees.length > 0 ? tbm.absentees : []);
             const allAdditional = Array.isArray(tbm.additionalTbms) ? tbm.additionalTbms : [];
             const additionalList = isPost
-              ? allAdditional.filter(a => a.targetType === 'post')
-              : allAdditional.filter(a => a.targetType !== 'post');
+              ? allAdditional.filter(a => isAdditionalPostItem(a))
+              : allAdditional.filter(a => !isAdditionalPostItem(a));
             const isCurrentUserAbsenteeAndPending = Boolean(
               currentUser &&
               rawAbs.some(a => (typeof a === 'string' ? a : a?.name) === currentUser.name) &&
@@ -2102,20 +2296,36 @@ export default function TbmSection({
             // 동일 세션(실시일시, 전달사항, 확인자)별 추가 TBM 그룹화
             const additionalGroups = [];
             additionalList.forEach(item => {
-              const key = `${item.conductedAt || ''}_${(item.notes || '').trim()}_${item.registeredBy || ''}`;
+              const conductedAtVal = (item.conductedAt || tbm.conductedAt || '').slice(0, 16);
+              const notesVal = (item.notes || '').trim();
+              const regVal = (item.registeredBy || '').trim();
+              const key = `${conductedAtVal}_${notesVal}_${regVal}`;
+
               let grp = additionalGroups.find(g => g.key === key);
               if (!grp) {
                 grp = {
                   key,
-                  conductedAt: item.conductedAt,
-                  notes: (item.notes || '').trim(),
-                  registeredBy: item.registeredBy,
-                  photos: item.photos && item.photos.length > 0 ? item.photos : (item.photo ? [{ dataUrl: item.photo }] : []),
+                  conductedAt: item.conductedAt || tbm.conductedAt || '실시 완료',
+                  notes: notesVal,
+                  registeredBy: regVal,
+                  photos: Array.isArray(item.photos) && item.photos.length > 0
+                    ? item.photos
+                    : (item.photo ? [{ dataUrl: item.photo }] : []),
                   members: []
                 };
                 additionalGroups.push(grp);
               }
-              grp.members.push(item);
+
+              const mName = typeof item === 'string' ? item : item.name;
+              if (mName && !grp.members.some(m => m.name === mName)) {
+                grp.members.push({
+                  id: item.id,
+                  name: mName,
+                  rank: item.rank || '사원',
+                  team: item.team || '',
+                  division: item.division || ''
+                });
+              }
             });
 
             // ========================================================
@@ -4179,6 +4389,33 @@ export default function TbmSection({
                           if (onTriggerToast) onTriggerToast('TBM 주관자를 선택해주세요.', 'warning');
                           return;
                         }
+
+                        // 각 팀 소속당 1일 1회 제한 검증
+                        if (!editingTbmId) {
+                          const targetDate = normalizeKstDate(formData.date || selectedDate) || (formData.date || selectedDate || '').slice(0, 10).replace(/\//g, '-');
+                          const targetTeam = (formData.leaderTeam || '').trim();
+                          const targetDiv = (formData.leaderDivision || '').trim();
+                          const isPost = (formData.tbmType || 'pre') === 'post';
+                          const existingSameTeam = displayTbms.find(t => {
+                            const tDate = normalizeKstDate(t.date || t.log_date || '') || (t.date || '').slice(0, 10).replace(/\//g, '-');
+                            if (tDate !== targetDate) return false;
+                            if (t.displayType !== (isPost ? 'post' : 'pre')) return false;
+                            const tTeam = (t.leaderTeam || '').trim();
+                            const tDiv = (t.leaderDivision || '').trim();
+                            const matchTeam = tTeam && targetTeam && tTeam === targetTeam;
+                            const matchDiv = !targetDiv || !tDiv || tDiv === targetDiv;
+                            return matchTeam && matchDiv && String(t.id) !== String(editingTbmId || '');
+                          });
+
+                          if (existingSameTeam) {
+                            const tbmLabel = isPost ? '업무 후 TBM' : '업무 전 TBM';
+                            if (onTriggerToast) {
+                              onTriggerToast(`[${targetTeam}] 소속은 ${targetDate}에 이미 ${tbmLabel}이 진행되었습니다. (각 팀 소속당 1일 1회 제한)`, 'warning');
+                            }
+                            return;
+                          }
+                        }
+
                         setActiveStep(2);
                       }}
                       className="glass-button-primary"

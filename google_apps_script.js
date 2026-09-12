@@ -894,14 +894,15 @@ function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
     
     const fileId = file.getId();
     const viewUrl = file.getUrl();
+    const directCdnUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
     const downloadUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
-    const thumbnailUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w800';
+    const thumbnailUrl = directCdnUrl;
     
     return {
       fileId: fileId,
       name: safeName,
       viewUrl: viewUrl,
-      url: downloadUrl,
+      url: directCdnUrl,
       thumbnailUrl: thumbnailUrl,
       size: decodedBytes.length
     };
@@ -1200,14 +1201,84 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       });
     }
 
-    let preCheckStr = JSON.stringify(preChk);
-    if (preCheckStr.length > 45000) preCheckStr = preCheckStr.substring(0, 45000);
+    function safeJsonStringifyForSheet(dataObj, maxLen) {
+      if (!dataObj) return '{}';
+      let json = JSON.stringify(dataObj);
+      if (json.length <= maxLen) return json;
 
-    let postCheckStr = JSON.stringify(postChk);
-    if (postCheckStr.length > 45000) postCheckStr = postCheckStr.substring(0, 45000);
+      // If length exceeds maxLen (Google Sheet cell limit), strip bulky dataUrl from photos while keeping Drive URLs
+      try {
+        const copy = JSON.parse(JSON.stringify(dataObj));
+        if (Array.isArray(copy.photos)) {
+          copy.photos = copy.photos.map(function(p) {
+            return {
+              id: p.id || '',
+              name: p.name || '',
+              size: p.size || 0,
+              takenAt: p.takenAt || p.timestamp || '',
+              url: p.url || p.viewUrl || '',
+              viewUrl: p.viewUrl || p.url || '',
+              thumbnailUrl: p.thumbnailUrl || p.url || ''
+            };
+          });
+        }
+        json = JSON.stringify(copy);
+        if (json.length <= maxLen) return json;
+      } catch (e) { }
 
-    let addTbmsStr = JSON.stringify(addTbms);
-    if (addTbmsStr.length > 45000) addTbmsStr = addTbmsStr.substring(0, 45000);
+      // Minimal fallback representation
+      try {
+        const minimal = {
+          isCompleted: Boolean(dataObj.isCompleted),
+          selectedItems: Array.isArray(dataObj.selectedItems) ? dataObj.selectedItems : [],
+          photoCount: Array.isArray(dataObj.photos) ? dataObj.photos.length : 0,
+          photos: (Array.isArray(dataObj.photos) ? dataObj.photos : []).map(function(p) {
+            return { id: p.id || '', name: p.name || '', url: p.url || p.viewUrl || '' };
+          })
+        };
+        json = JSON.stringify(minimal);
+        if (json.length <= maxLen) return json;
+      } catch (e) { }
+
+      return '{}';
+    }
+
+    let preCheckStr = safeJsonStringifyForSheet(preChk, 45000);
+    let postCheckStr = safeJsonStringifyForSheet(postChk, 45000);
+
+    function safeAddTbmsStringifyForSheet(addList, maxLen) {
+      if (!Array.isArray(addList)) return '[]';
+      let json = JSON.stringify(addList);
+      if (json.length <= maxLen) return json;
+
+      try {
+        const copy = JSON.parse(JSON.stringify(addList));
+        const cleanList = copy.map(function(item) {
+          const c = { ...item };
+          if (Array.isArray(c.photos)) {
+            c.photos = c.photos.map(function(p) {
+              return {
+                id: p.id || '',
+                name: p.name || '',
+                url: p.url || p.viewUrl || '',
+                viewUrl: p.viewUrl || p.url || '',
+                thumbnailUrl: p.thumbnailUrl || p.url || ''
+              };
+            });
+          }
+          if (c.photo && typeof c.photo === 'string' && c.photo.startsWith('data:image')) {
+            c.photo = (c.photos && c.photos[0] && (c.photos[0].url || c.photos[0].viewUrl)) || '';
+          }
+          return c;
+        });
+        json = JSON.stringify(cleanList);
+        if (json.length <= maxLen) return json;
+      } catch (e) { }
+
+      return '[]';
+    }
+
+    let addTbmsStr = safeAddTbmsStringifyForSheet(addTbms, 45000);
 
     // 기본 정보 완벽 추출 (모든 필드명 변형 수용)
     const siteVal = String(obj.site || obj.siteName || obj.site_name || '').trim();
