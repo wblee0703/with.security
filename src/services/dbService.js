@@ -159,11 +159,20 @@ export function getApiServerUrl() {
     return sheetUrl;
   }
 
-  // 3. PC 브라우저 로컬 개발 모드 기본 fallback (시트 URL이 없을 때)
+  // 3. 브라우저 환경 (PC 웹, 스마트폰 모바일 브라우저) Same-Origin API fallback
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-      return ''; // Use relative '/api' via local Vite dev server proxy -> http://localhost:4000 (MySQL)
+    // 로컬호스트, 사설망 IP (스마트폰 모바일 브라우저 접속 192.168.x, 10.x, 172.x), 동일 출처 호스팅
+    if (
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.startsWith('192.168.') ||
+      host.startsWith('10.') ||
+      host.startsWith('172.') ||
+      !sheetUrl
+    ) {
+      return ''; // Use relative '/api' via local Vite proxy -> http://localhost:4000
     }
   }
 
@@ -3774,6 +3783,7 @@ class SecurityDatabase {
     tbm.leaderPhone = (tbm.leaderPhone || tbm.leader_phone || tbm.phone || '').trim();
     tbm.workContent = (tbm.workContent || tbm.work_content || tbm.content || '').trim();
     tbm.toolsUsed = (tbm.toolsUsed || tbm.tools_used || '').trim();
+    const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
 
     // Parse attendees safely
     if (typeof tbm.attendees === 'string') {
@@ -3831,14 +3841,33 @@ class SecurityDatabase {
     if (combinedPrePhotos.length === 0 && (prePhotos1.length > 0 || prePhotos2.length > 0)) {
       combinedPrePhotos = prePhotos1.length > 0 ? prePhotos1 : prePhotos2;
     }
+
+    // 구글 시트 photo_urls 또는 최상위 photos fallback 지원
+    if (combinedPrePhotos.length === 0) {
+      if (Array.isArray(tbm.photos) && tbm.photos.length > 0) {
+        combinedPrePhotos = tbm.photos;
+      } else if (tbm.photo_urls || tbm.photoUrls) {
+        const rawUrls = tbm.photo_urls || tbm.photoUrls;
+        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split('\n').map(u => u.trim()).filter(Boolean);
+        combinedPrePhotos = urlList.map((u, uIdx) => ({
+          id: `pre_url_${uIdx + 1}`,
+          name: `photo_${uIdx + 1}.jpg`,
+          dataUrl: u,
+          url: u,
+          viewUrl: u,
+          thumbnailUrl: u
+        }));
+      }
+    }
+
     mergedPre.photos = combinedPrePhotos.map((p, pIdx) => {
       if (!p) return null;
       if (typeof p === 'string') {
         return { id: `pre_photo_${pIdx + 1}`, name: `photo_${pIdx + 1}.jpg`, dataUrl: p, url: p, thumbnailUrl: p, viewUrl: p };
       }
       const otherP = (prePhotos1[pIdx]?.id === p.id ? prePhotos1[pIdx] : prePhotos2[pIdx]) || {};
-      const dataUrl = p.dataUrl || otherP.dataUrl || (typeof p === 'string' ? p : '');
-      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || '';
+      const dataUrl = p.dataUrl || otherP.dataUrl || p.url || p.viewUrl || (typeof p === 'string' ? p : '');
+      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || dataUrl;
       return {
         id: p.id || otherP.id || `pre_photo_${pIdx + 1}`,
         name: p.name || otherP.name || `photo_${pIdx + 1}.jpg`,
@@ -3875,14 +3904,33 @@ class SecurityDatabase {
     if (combinedPostPhotos.length === 0 && (postPhotos1.length > 0 || postPhotos2.length > 0)) {
       combinedPostPhotos = postPhotos1.length > 0 ? postPhotos1 : postPhotos2;
     }
+
+    // 구글 시트 photo_urls 또는 최상위 photos fallback 지원
+    if (combinedPostPhotos.length === 0 && (String(tbm.id || '').startsWith('tbm_post_') || rawType.indexOf('후') !== -1 || rawType === 'post')) {
+      if (Array.isArray(tbm.photos) && tbm.photos.length > 0) {
+        combinedPostPhotos = tbm.photos;
+      } else if (tbm.photo_urls || tbm.photoUrls) {
+        const rawUrls = tbm.photo_urls || tbm.photoUrls;
+        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split('\n').map(u => u.trim()).filter(Boolean);
+        combinedPostPhotos = urlList.map((u, uIdx) => ({
+          id: `post_url_${uIdx + 1}`,
+          name: `photo_${uIdx + 1}.jpg`,
+          dataUrl: u,
+          url: u,
+          viewUrl: u,
+          thumbnailUrl: u
+        }));
+      }
+    }
+
     mergedPost.photos = combinedPostPhotos.map((p, pIdx) => {
       if (!p) return null;
       if (typeof p === 'string') {
         return { id: `post_photo_${pIdx + 1}`, name: `photo_${pIdx + 1}.jpg`, dataUrl: p, url: p, thumbnailUrl: p, viewUrl: p };
       }
       const otherP = (postPhotos1[pIdx]?.id === p.id ? postPhotos1[pIdx] : postPhotos2[pIdx]) || {};
-      const dataUrl = p.dataUrl || otherP.dataUrl || (typeof p === 'string' ? p : '');
-      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || '';
+      const dataUrl = p.dataUrl || otherP.dataUrl || p.url || p.viewUrl || (typeof p === 'string' ? p : '');
+      const url = p.url || otherP.url || p.viewUrl || otherP.viewUrl || p.thumbnailUrl || otherP.thumbnailUrl || dataUrl;
       return {
         id: p.id || otherP.id || `post_photo_${pIdx + 1}`,
         name: p.name || otherP.name || `photo_${pIdx + 1}.jpg`,
@@ -3904,7 +3952,6 @@ class SecurityDatabase {
     tbm.postCheck = mergedPost;
     tbm.post_check = mergedPost;
 
-    const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
     let isAdditional = false;
     let isPostTbm = false;
     if (String(tbm.id || '').startsWith('tbm_add_') || rawType.indexOf('추가') !== -1 || rawType === 'additional') {
@@ -4207,11 +4254,17 @@ class SecurityDatabase {
               const localDbItem = await this.getItem('tbms', item.id);
               if (localDbItem) {
                 // Restore pre/post check photos
+                let restoredPhoto = false;
                 if ((!item.preCheck?.photos?.[0]?.dataUrl) && localDbItem.preCheck?.photos?.[0]?.dataUrl) {
                   item.preCheck.photos = localDbItem.preCheck.photos;
+                  restoredPhoto = true;
                 }
                 if ((!item.postCheck?.photos?.[0]?.dataUrl) && localDbItem.postCheck?.photos?.[0]?.dataUrl) {
                   item.postCheck.photos = localDbItem.postCheck.photos;
+                  restoredPhoto = true;
+                }
+                if (restoredPhoto) {
+                  this.saveTbm(item).catch(() => { });
                 }
                 // Restore & merge additionalTbms from local DB (including full photo dataUrls)
                 const localAdd = Array.isArray(localDbItem.additionalTbms) ? localDbItem.additionalTbms : [];
@@ -4375,7 +4428,7 @@ class SecurityDatabase {
         photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
       })),
 
-      // 3. 작업 전 점검 사진 (Drive 저장을 위해 dataUrl 유지 전달)
+      // 3. 작업 전 점검 사진 (Drive/서버 저장을 위해 dataUrl 및 사진 정보 유지 전달)
       preCheck: {
         ...fullTbm.preCheck,
         photos: (fullTbm.preCheck?.photos || []).map(p => ({
@@ -4388,9 +4441,33 @@ class SecurityDatabase {
           url: p.url || p.viewUrl || p.thumbnailUrl || ''
         }))
       },
+      pre_check: {
+        ...fullTbm.preCheck,
+        photos: (fullTbm.preCheck?.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || p.takenAt || '',
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
+        }))
+      },
 
-      // 4. 작업 후 점검 사진 (Drive 저장을 위해 dataUrl 유지 전달)
+      // 4. 작업 후 점검 사진 (Drive/서버 저장을 위해 dataUrl 및 사진 정보 유지 전달)
       postCheck: {
+        ...fullTbm.postCheck,
+        photos: (fullTbm.postCheck?.photos || []).map(p => ({
+          id: p.id,
+          name: p.name || 'photo.jpg',
+          size: p.size || 0,
+          timestamp: p.timestamp || p.takenAt || '',
+          takenAt: p.takenAt || p.timestamp || '',
+          dataUrl: p.dataUrl || '',
+          url: p.url || p.viewUrl || p.thumbnailUrl || ''
+        }))
+      },
+      post_check: {
         ...fullTbm.postCheck,
         photos: (fullTbm.postCheck?.photos || []).map(p => ({
           id: p.id,

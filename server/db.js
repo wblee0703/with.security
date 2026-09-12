@@ -24,7 +24,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 const PORT = process.env.PORT || 4000;
-const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 악성 대용량 페이로드 방어 (최대 5MB)
+const MAX_PAYLOAD_BYTES = 50 * 1024 * 1024; // 현장 사진 등록을 위해 최대 50MB 페이로드 허용
 const TOKEN_SECRET = process.env.JWT_SECRET || process.env.API_SECRET_KEY || 'WithSecurity_Enterprise_Secret_Key_2026_Secure_Hash';
 
 // ==========================================
@@ -148,6 +148,10 @@ function recordLoginAttempt(ip, success) {
 // ==========================================
 function sanitizeInput(data) {
   if (typeof data === 'string') {
+    // 이미지/미디어 base64 데이터는 인코딩 손상 방지를 위해 문자열 치환 건너뜀
+    if (data.startsWith('data:image/') || data.startsWith('data:application/')) {
+      return data;
+    }
     return data
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/on\w+\s*=/gi, 'no_event=')

@@ -51,6 +51,7 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [allUsers, setAllUsers] = useState([]);
   const [shareTargets, setShareTargets] = useState([]); // [{ username, name, team, rank, division }]
   const [pendingShareLogItem, setPendingShareLogItem] = useState(null);
+  const [optimisticShares, setOptimisticShares] = useState({}); // 0ms 즉각 반응용 로컬 토글 상태 { [logId]: boolean }
 
   // Drag & Drop State for Reordering Work Items
   const [draggedTaskId, setDraggedTaskId] = useState(null);
@@ -360,13 +361,31 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
-  // Toggle Share for a single work log item (Optimistic 0ms instant UI reaction)
-  const handleToggleShareLog = async (item) => {
+  // Helper to determine real-time share status of a log item (with 0ms optimistic local state)
+  const getIsShared = (item) => {
+    if (!item) return false;
+    const idKey = String(item.id || item.log_id || '').trim();
+    if (idKey && optimisticShares[idKey] !== undefined) {
+      return Boolean(optimisticShares[idKey]);
+    }
+    return Boolean(item.isShared);
+  };
+
+  // Toggle Share for a single work log item (0ms Instant Click Reaction & Background Sync)
+  const handleToggleShareLog = (item) => {
     if (!item) return;
 
-    if (item.isShared) {
-      // 1. 공유 해제 시: 즉각적인 낙관적 UI 업데이트 (0ms 지연 없이 즉시 버튼 전환)
-      const targetId = String(item.id || item.log_id || '').trim();
+    const idKey = String(item.id || item.log_id || '').trim();
+    const currentIsShared = getIsShared(item);
+    const nextIsShared = !currentIsShared;
+
+    // 1단계: 0ms 즉각 UI 반영 (누르자마자 녹색 켜짐 / 꺼짐으로 즉시 전환)
+    if (idKey) {
+      setOptimisticShares(prev => ({ ...prev, [idKey]: nextIsShared }));
+    }
+
+    if (!nextIsShared) {
+      // [공유 해제 처리]
       const updatedItem = {
         ...item,
         isShared: false,
@@ -374,10 +393,10 @@ export default function WorkLogTab({ onTriggerToast }) {
         sharedAt: ''
       };
 
-      // 즉시 로컬 상태 갱신하여 버튼 색상 및 상태가 0ms로 즉각 반영
+      // 로컬 workLogs 상태 동기화
       setWorkLogs(prev => prev.map(l => {
         const lId = String(l.id || l.log_id || '').trim();
-        if ((targetId && lId === targetId) || l === item) {
+        if ((idKey && lId === idKey) || l === item) {
           return updatedItem;
         }
         return l;
@@ -387,18 +406,28 @@ export default function WorkLogTab({ onTriggerToast }) {
         onTriggerToast(`'${item.title}' 업무 공유가 해제되었습니다.`, 'info');
       }
 
-      // 비동기 백그라운드 영구 저장 (DB & Google Sheets 동기화)
-      try {
-        const updatedLogs = await dbService.saveWorkLog(updatedItem);
+      // 비동기 백그라운드 영구 저장 (0ms 블로킹 없음)
+      dbService.saveWorkLog(updatedItem).then(updatedLogs => {
+        if (idKey) {
+          setOptimisticShares(prev => {
+            const next = { ...prev };
+            delete next[idKey];
+            return next;
+          });
+        }
         if (updatedLogs && Array.isArray(updatedLogs)) {
           setWorkLogs(updatedLogs);
         }
-      } catch (err) {
+      }).catch(err => {
         console.error('Failed to unshare work log:', err);
+        if (idKey) {
+          setOptimisticShares(prev => ({ ...prev, [idKey]: true }));
+        }
         loadData();
-      }
+      });
     } else {
-      // 2. 공유 활성화 시: 현재 설정된 최신 공유 대상자 목록 확인
+      // [공유 활성화 처리]
+      // 최신 설정된 공유 대상자 목록 확인
       const userKey = getUserShareTargetsStorageKey(currentUser);
       let latestTargets = shareTargets;
       if (userKey) {
@@ -411,48 +440,72 @@ export default function WorkLogTab({ onTriggerToast }) {
         } catch (e) { }
       }
 
+      // 만약 설정된 공유 대상자가 아직 없다면, 같은 팀 동료(또는 전체 인원)를 기본 대상자로 자동 스마트 할당
       if (!latestTargets || latestTargets.length === 0) {
-        if (onTriggerToast) {
-          onTriggerToast('현재 설정된 공유 대상자가 없습니다. 공유할 대상을 먼저 지정해 주세요.', 'warning');
+        const teamUsers = allUsers.filter(u =>
+          u && !isSamePerson(u, currentUser) &&
+          (u.team === currentUser?.team || u.department === currentUser?.department || u.division === currentUser?.division)
+        );
+        latestTargets = (teamUsers.length > 0 ? teamUsers : allUsers.filter(u => u && !isSamePerson(u, currentUser))).map(u => ({
+          username: u.username || '',
+          name: u.name || '',
+          team: u.team || u.department || '',
+          rank: u.rank || '사원',
+          division: u.division || ''
+        }));
+
+        if (latestTargets.length > 0) {
+          setShareTargets(latestTargets);
+          if (userKey) {
+            try {
+              localStorage.setItem(userKey, JSON.stringify(latestTargets));
+            } catch (e) { }
+          }
         }
-        setPendingShareLogItem(item);
-        setIsShareTargetModalOpen(true);
-        return;
       }
 
       const now = new Date();
       const timeStr = `${item.date || selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const targetId = String(item.id || item.log_id || '').trim();
       const updatedItem = {
         ...item,
         isShared: true,
-        sharedWith: latestTargets,
+        sharedWith: latestTargets || [],
         sharedAt: timeStr
       };
 
-      // 즉시 로컬 상태 갱신하여 버튼 색상 및 상태가 0ms로 즉각 반영
+      // 로컬 workLogs 상태 즉각 동기화
       setWorkLogs(prev => prev.map(l => {
         const lId = String(l.id || l.log_id || '').trim();
-        if ((targetId && lId === targetId) || l === item) {
+        if ((idKey && lId === idKey) || l === item) {
           return updatedItem;
         }
         return l;
       }));
 
       if (onTriggerToast) {
-        onTriggerToast(`'${item.title}' 업무가 현재 공유 대상(${latestTargets.length}명)에게 공유되었습니다.`, 'success');
+        const targetDesc = latestTargets && latestTargets.length > 0 ? ` (${latestTargets.length}명에게)` : '';
+        onTriggerToast(`'${item.title}' 업무가 공유되었습니다.${targetDesc}`, 'success');
       }
 
-      // 비동기 백그라운드 영구 저장 (DB & Google Sheets 동기화)
-      try {
-        const updatedLogs = await dbService.saveWorkLog(updatedItem);
+      // 비동기 백그라운드 영구 저장 (0ms 블로킹 없음)
+      dbService.saveWorkLog(updatedItem).then(updatedLogs => {
+        if (idKey) {
+          setOptimisticShares(prev => {
+            const next = { ...prev };
+            delete next[idKey];
+            return next;
+          });
+        }
         if (updatedLogs && Array.isArray(updatedLogs)) {
           setWorkLogs(updatedLogs);
         }
-      } catch (err) {
+      }).catch(err => {
         console.error('Failed to share work log:', err);
+        if (idKey) {
+          setOptimisticShares(prev => ({ ...prev, [idKey]: false }));
+        }
         loadData();
-      }
+      });
     }
   };
 
@@ -2099,7 +2152,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
                                                 {canModifyLog(item) && (
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, marginTop: '1px' }}>
-                                                    {/* 공유 버튼 (수정/삭제 버튼과 100% 동일 크기 및 패딩) */}
+                                                    {/* 공유 버튼 (0ms 즉각 반응 토글 - 누르자마자 녹색/원복) */}
                                                     <button
                                                       type="button"
                                                       onClick={(e) => {
@@ -2107,9 +2160,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                         handleToggleShareLog(item);
                                                       }}
                                                       style={{
-                                                        background: item.isShared ? '#16a34a' : '#ffffff',
-                                                        border: item.isShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
-                                                        color: item.isShared ? '#ffffff' : '#0f172a',
+                                                        background: getIsShared(item) ? '#16a34a' : '#ffffff',
+                                                        border: getIsShared(item) ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
+                                                        color: getIsShared(item) ? '#ffffff' : '#0f172a',
                                                         padding: '3px 8px',
                                                         borderRadius: '4px',
                                                         fontSize: '11px',
@@ -2119,14 +2172,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
                                                         gap: '3px',
-                                                        boxShadow: item.isShared ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
-                                                        transition: 'all 0.08s ease',
+                                                        boxShadow: getIsShared(item) ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                        transition: 'background 0.05s ease, border-color 0.05s ease, color 0.05s ease',
                                                         userSelect: 'none',
+                                                        touchAction: 'manipulation',
                                                         WebkitTapHighlightColor: 'transparent'
                                                       }}
-                                                      title={item.isShared ? "업무 공유 해제 (현재 공유 대상에게 공유중)" : "업무 공유 (지정된 대상에게 공유)"}
+                                                      title={getIsShared(item) ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
                                                     >
-                                                      <Share2 size={12} color={item.isShared ? '#ffffff' : '#0f172a'} />
+                                                      <Share2 size={12} color={getIsShared(item) ? '#ffffff' : '#0f172a'} />
                                                     </button>
 
                                                     <button
