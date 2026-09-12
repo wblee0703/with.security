@@ -420,8 +420,8 @@ const server = http.createServer(async (req, res) => {
           users = await jsonDb.getUsers(true);
         }
 
-        const reqUsername = String(creds.username || '').trim().toLowerCase();
-        const user = users.find(u => String(u.username || '').trim().toLowerCase() === reqUsername);
+        const reqUsername = String(creds.username || '').trim();
+        const user = users.find(u => String(u.username || '').trim() === reqUsername);
         const defaultAdminPass = process.env.ADMIN_DEFAULT_PASSWORD || 'withtech123!';
         
         let isPassValid = false;

@@ -328,12 +328,31 @@ export default function WorkLogTab({ onTriggerToast }) {
         sharedWith: shareTargets,
         sharedAt: timeStr
       };
-      const updatedLogs = await dbService.saveWorkLog(updatedItem);
-      setWorkLogs(updatedLogs);
+      
+      // 0ms 즉시 낙관적 UI 반영
+      const targetId = String(updatedItem.id || updatedItem.log_id || '').trim();
+      setWorkLogs(prev => prev.map(l => {
+        const lId = String(l.id || l.log_id || '').trim();
+        if ((targetId && lId === targetId) || l === pendingShareLogItem) {
+          return updatedItem;
+        }
+        return l;
+      }));
+
+      const targetTitle = pendingShareLogItem.title || '업무';
       setPendingShareLogItem(null);
       if (onTriggerToast) {
-        onTriggerToast(`공유 대상(${shareTargets.length}명)이 설정되었으며, '${pendingShareLogItem.title}' 업무가 공유되었습니다.`, 'success');
+        onTriggerToast(`공유 대상(${shareTargets.length}명)이 설정되었으며, '${targetTitle}' 업무가 공유되었습니다.`, 'success');
       }
+
+      // 백그라운드 비동기 저장 (DB & Google Sheets 동기화)
+      dbService.saveWorkLog(updatedItem).then(updatedLogs => {
+        if (updatedLogs && Array.isArray(updatedLogs)) {
+          setWorkLogs(updatedLogs);
+        }
+      }).catch(err => {
+        console.error('Failed to save shared work log:', err);
+      });
     } else {
       if (onTriggerToast) {
         onTriggerToast(`업무 일지 공유 대상(${shareTargets.length}명)이 저장되었습니다.`, 'success');
@@ -929,10 +948,10 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (currentUser.role === '개발자' || currentUser.role === '관리자' || currentUser.username === 'admin') {
       return true;
     }
-    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();
-    const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim().toLowerCase();
-    if (logWriter && userAccount && logWriter === userAccount) {
-      return true;
+    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
+    const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim();
+    if (logWriter && userAccount) {
+      return logWriter === userAccount;
     }
     return isSamePerson(log, currentUser);
   };
@@ -1076,17 +1095,17 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Filter logs visibility for current user: strictly own authored logs (해당 계정 및 동일인 기준)
   const isLogVisibleToCurrentUser = (log, user) => {
-    if (!user) return true;
+    if (!user || !user.username) return false;
     if (!log) return false;
 
     // 1. 해당 계정 아이디(username / writer_id) 일치 시 최우선 노출 (100% 확정)
-    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();
-    const userAccount = String(user.username || user.userId || user.id || '').trim().toLowerCase();
-    if (logWriter && userAccount && logWriter === userAccount) {
-      return true;
+    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
+    const userAccount = String(user.username || user.userId || user.id || '').trim();
+    if (logWriter && userAccount) {
+      return logWriter === userAccount;
     }
 
-    // 2. 프로필 동일인 기준 검사
+    // 2. 프로필 동일인 기준 검사 (계정 ID가 없는 레거시 데이터 대비)
     return isSamePerson(log, user);
   };
 

@@ -71,7 +71,7 @@ export function isSamePerson(personA, personB) {
       p.userId ||
       p.user_id ||
       ''
-    ).trim().toLowerCase();
+    ).trim();
   };
 
   const usernameA = getAccount(personA);

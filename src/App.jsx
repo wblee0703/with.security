@@ -13,6 +13,7 @@ import ExitConfirmModal from './components/common/ExitConfirmModal';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw, LogOut } from 'lucide-react';
 import { dbService } from './services/dbService';
 import { syncCalendarWidget, checkWidgetLaunchIntent } from './services/appLauncherService';
+import { isSamePerson } from './services/userMatcher';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
@@ -192,11 +193,45 @@ export default function App() {
     async function syncWidget() {
       if (!Capacitor.isNativePlatform()) return;
       try {
+        const currentUser = await dbService.getUserProfile();
+        if (!currentUser || !currentUser.username) {
+          await syncCalendarWidget({ workLogs: [], tbms: [] });
+          return;
+        }
+
         const [workLogs, tbms] = await Promise.all([
           dbService.getWorkLogs ? dbService.getWorkLogs() : [],
           dbService.getTbms ? dbService.getTbms() : []
         ]);
-        await syncCalendarWidget({ workLogs, tbms });
+
+        const uName = String(currentUser.username || '').trim();
+
+        // 위젯 캘린더에는 해당 계정의 작업만 엄격 필터링하여 반영
+        const myLogs = (workLogs || []).filter(log => {
+          if (!log) return false;
+          const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
+          if (logWriter && uName) {
+            return logWriter === uName;
+          }
+          return isSamePerson(log, currentUser);
+        });
+
+        const myTbms = (tbms || []).filter(tbm => {
+          if (!tbm) return false;
+          const leader = String(tbm.writer_id || tbm.writerId || tbm.authorUsername || tbm.username || tbm.leader || '').trim();
+          if (leader && uName && leader === uName) return true;
+          if (Array.isArray(tbm.attendees)) {
+            const isAtt = tbm.attendees.some(a => {
+              const aUser = String(typeof a === 'object' ? (a.username || a.userId || '') : '').trim();
+              if (aUser && uName && aUser === uName) return true;
+              return isSamePerson(a, currentUser);
+            });
+            if (isAtt) return true;
+          }
+          return isSamePerson(tbm, currentUser);
+        });
+
+        await syncCalendarWidget({ workLogs: myLogs, tbms: myTbms });
       } catch (err) {
         console.warn('Widget sync error:', err);
       }

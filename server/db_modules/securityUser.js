@@ -129,7 +129,7 @@ export async function getSecurityUsers(includePassword = false) {
  * 특정 사용자 상세 조회
  */
 export async function getSecurityUserByUsername(username, includePassword = false) {
-  const sql = 'SELECT * FROM security_user WHERE username = ? LIMIT 1';
+  const sql = 'SELECT * FROM security_user WHERE BINARY username = ? LIMIT 1';
   const results = await query(sql, [username]);
   if (results.length > 0) {
     const u = results[0];
@@ -219,7 +219,7 @@ export async function createSecurityUser(data = {}) {
  * 사용자 삭제
  */
 export async function deleteSecurityUser(username) {
-  const sql = 'DELETE FROM security_user WHERE username = ?';
+  const sql = 'DELETE FROM security_user WHERE BINARY username = ?';
   const result = await query(sql, [username]);
   return result.affectedRows > 0;
 }

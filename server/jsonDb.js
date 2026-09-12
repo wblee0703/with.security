@@ -202,11 +202,11 @@ class JsonDatabaseManager {
   }
 
   async createUser(data = {}) {
-    const username = String(data.username || '').trim().toLowerCase();
+    const username = String(data.username || '').trim();
     if (!username) throw new Error('Username is required');
 
     const list = this.cache.users || [];
-    const existingIndex = list.findIndex(u => String(u.username || '').trim().toLowerCase() === username);
+    const existingIndex = list.findIndex(u => String(u.username || '').trim() === username);
 
     const now = new Date().toISOString();
     let userObj = {};
@@ -250,10 +250,10 @@ class JsonDatabaseManager {
   }
 
   async deleteUser(username) {
-    const uname = String(username || '').trim().toLowerCase();
+    const uname = String(username || '').trim();
     if (uname === 'admin') return false; // admin account cannot be deleted
     const initialLen = (this.cache.users || []).length;
-    this.cache.users = (this.cache.users || []).filter(u => String(u.username || '').trim().toLowerCase() !== uname);
+    this.cache.users = (this.cache.users || []).filter(u => String(u.username || '').trim() !== uname);
     if (this.cache.users.length !== initialLen) {
       this.queueSave();
       return true;

@@ -118,6 +118,7 @@ export default function TbmSection({
   const [previewModalPhoto, setPreviewModalPhoto] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL'); // 'ALL' | 'PRE' | 'POST'
+  const [selectedAdminTeam, setSelectedAdminTeam] = useState('ALL');
 
   // Default Suggested Sites + Loaded Sites without duplicate
   const availableSites = React.useMemo(() => {
@@ -827,13 +828,136 @@ export default function TbmSection({
     return mainItems;
   }, [tbmList]);
 
-  // Statistics for selected date across all TBM types
+  // Current user's team & division for strict team-level access control
+  const myTeamName = (currentUser?.team || currentUser?.department || '').trim();
+  const myDivName = (currentUser?.division || '').trim();
+  const isPrivilegedUser = Boolean(
+    currentUser?.role === '관리자' ||
+    currentUser?.role === '개발자' ||
+    currentUser?.username === 'admin'
+  );
+
+  // Collect all unique team names for Admin/Developer team scope filter
+  const allTeamNames = React.useMemo(() => {
+    const set = new Set();
+    if (myTeamName) set.add(myTeamName);
+    allUsers.forEach(u => {
+      const t = (u.team || u.department || '').trim();
+      if (t) set.add(t);
+    });
+    tbmList.forEach(item => {
+      const t = (item.leaderTeam || item.leader_team || item.team || item.department || '').trim();
+      if (t) set.add(t);
+    });
+    return Array.from(set).filter(Boolean).sort();
+  }, [allUsers, tbmList, myTeamName]);
+
+  // Helper to determine if a TBM belongs to a specific team
+  const isTbmMatchingTeam = (tbm, targetTeam, targetDivision, user) => {
+    if (!tbm) return false;
+    const cleanTargetTeam = (targetTeam || '').trim();
+    const cleanTargetDiv = (targetDivision || '').trim();
+    if (!cleanTargetTeam) return true;
+
+    // 1. Check TBM Leader team & division
+    const leaderTeam = (tbm.leaderTeam || tbm.leader_team || tbm.team || tbm.department || '').trim();
+    const leaderDiv = (tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
+    if (leaderTeam && leaderTeam === cleanTargetTeam) {
+      if (!cleanTargetDiv || !leaderDiv || cleanTargetDiv === leaderDiv) {
+        return true;
+      }
+    }
+
+    // 2. Check Attendees list
+    const attendees = Array.isArray(tbm.attendees) ? tbm.attendees : [];
+    const hasAttendeeMatch = attendees.some(att => {
+      const aTeam = (typeof att === 'object' ? (att.team || att.department) : '')?.trim();
+      const aDiv = (typeof att === 'object' ? att.division : '')?.trim();
+      if (aTeam && aTeam === cleanTargetTeam) {
+        if (!cleanTargetDiv || !aDiv || cleanTargetDiv === aDiv) return true;
+      }
+      if (user && user.name) {
+        const aName = typeof att === 'string' ? att : att?.name;
+        if (aName && aName === user.name) return true;
+      }
+      return false;
+    });
+    if (hasAttendeeMatch) return true;
+
+    // 3. Check Additional TBMs list
+    const additionalTbms = Array.isArray(tbm.additionalTbms) ? tbm.additionalTbms : [];
+    const hasAdditionalMatch = additionalTbms.some(add => {
+      const aTeam = (add.team || add.department)?.trim();
+      const aDiv = (add.division)?.trim();
+      if (aTeam && aTeam === cleanTargetTeam) {
+        if (!cleanTargetDiv || !aDiv || cleanTargetDiv === aDiv) return true;
+      }
+      if (user && user.name && add.name === user.name) return true;
+      return false;
+    });
+    if (hasAdditionalMatch) return true;
+
+    // 4. Check Absentees list
+    const absentees = Array.isArray(tbm.absentees) ? tbm.absentees : [];
+    const hasAbsenteeMatch = absentees.some(abs => {
+      const aTeam = (typeof abs === 'object' ? (abs.team || abs.department) : '')?.trim();
+      const aDiv = (typeof abs === 'object' ? abs.division : '')?.trim();
+      if (aTeam && aTeam === cleanTargetTeam) {
+        if (!cleanTargetDiv || !aDiv || cleanTargetDiv === aDiv) return true;
+      }
+      if (user && user.name) {
+        const aName = typeof abs === 'string' ? abs : abs?.name;
+        if (aName && aName === user.name) return true;
+      }
+      return false;
+    });
+    if (hasAbsenteeMatch) return true;
+
+    // 5. Check if user is the leader or registrant
+    if (user && user.name) {
+      if (tbm.registeredBy && (tbm.registeredBy === user.name || tbm.registeredBy === user.username)) return true;
+      if (tbm.leaderName && tbm.leaderName === user.name) return true;
+    }
+
+    return false;
+  };
+
+  // Filter displayTbms so that ONLY members of the corresponding team can view their TBMs
+  const teamVisibleTbms = React.useMemo(() => {
+    if (!currentUser) return displayTbms;
+
+    // 1. Privileged users (Admin/Developer): can view all teams or filter by selected team
+    if (isPrivilegedUser) {
+      if (selectedAdminTeam === 'ALL') {
+        return displayTbms;
+      }
+      return displayTbms.filter(item => isTbmMatchingTeam(item, selectedAdminTeam, '', currentUser));
+    }
+
+    // 2. Standard members: strictly restricted to their own team
+    if (!myTeamName) {
+      return displayTbms.filter(item => {
+        const uName = currentUser?.name;
+        if (!uName) return true;
+        const atts = Array.isArray(item.attendees) ? item.attendees : [];
+        if (atts.some(a => (typeof a === 'string' ? a : a.name) === uName)) return true;
+        const adds = Array.isArray(item.additionalTbms) ? item.additionalTbms : [];
+        if (adds.some(a => a.name === uName)) return true;
+        if (item.leaderName === uName || item.registeredBy === uName) return true;
+        return false;
+      });
+    }
+
+    return displayTbms.filter(item => isTbmMatchingTeam(item, myTeamName, myDivName, currentUser));
+  }, [displayTbms, currentUser, isPrivilegedUser, selectedAdminTeam, myTeamName, myDivName]);
+
+  // Statistics for selected date across the team-visible TBM types
   const dateStats = React.useMemo(() => {
     let total = 0;
     let pre = 0;
     let post = 0;
 
-    displayTbms.forEach(item => {
+    teamVisibleTbms.forEach(item => {
       const itemDate = normalizeKstDate(item.date || item.log_date || '') || (item.date || '').slice(0, 10).replace(/\//g, '-');
       if (itemDate === selectedDate) {
         total += 1;
@@ -843,11 +967,11 @@ export default function TbmSection({
     });
 
     return { total, pre, post };
-  }, [displayTbms, selectedDate]);
+  }, [teamVisibleTbms, selectedDate]);
 
   // Filtered TBM List for Selected Date, Type Filter and Search Query
   const filteredTbms = React.useMemo(() => {
-    return displayTbms.filter(item => {
+    return teamVisibleTbms.filter(item => {
       const itemDate = normalizeKstDate(item.date || item.log_date || '') || (item.date || '').slice(0, 10).replace(/\//g, '-');
       const matchesDate = itemDate === selectedDate;
       if (!matchesDate) return false;
@@ -868,12 +992,14 @@ export default function TbmSection({
         (Array.isArray(item.additionalTbms) && item.additionalTbms.some(a => a.name && a.name.toLowerCase().includes(query)))
       );
     });
-  }, [displayTbms, selectedDate, typeFilter, searchTerm]);
+  }, [teamVisibleTbms, selectedDate, typeFilter, searchTerm]);
+
+  // Effective Team Label for messages and headers
+  const effectiveTeamLabel = isPrivilegedUser && selectedAdminTeam === 'ALL'
+    ? '선택하신 날짜에'
+    : `[${isPrivilegedUser ? selectedAdminTeam : (myTeamName || '소속팀')}]`;
 
   // Check if currentUser's team has already completed Pre or Post TBM for selectedDate (1일 1회 제한 판별)
-  const myTeamName = (currentUser?.team || currentUser?.department || '').trim();
-  const myDivName = (currentUser?.division || '').trim();
-
   const isPreDoneForMyTeam = React.useMemo(() => {
     if (!myTeamName) return false;
     const targetDate = normalizeKstDate(selectedDate) || selectedDate;
@@ -2125,6 +2251,74 @@ export default function TbmSection({
         </button>
       </div>
 
+      {/* Team Scope Indicator & Filter Bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '8px 12px',
+        borderRadius: '6px',
+        background: '#f8fafc',
+        border: '1.5px solid #e2e8f0',
+        fontSize: '12px',
+        color: '#334155',
+        flexWrap: 'wrap',
+        gap: '6px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <Users size={15} color="#0284c7" />
+          <span style={{ fontWeight: '700', color: '#475569' }}>
+            {isPrivilegedUser ? '조회 대상:' : '조회 소속팀:'}
+          </span>
+          <span style={{
+            color: '#0369a1',
+            background: '#e0f2fe',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            fontWeight: '800',
+            fontSize: '11.5px'
+          }}>
+            {isPrivilegedUser
+              ? (selectedAdminTeam === 'ALL' ? '전체 소속팀' : selectedAdminTeam)
+              : `${myDivName ? `${myDivName} ` : ''}${myTeamName || '소속팀 미지정'}`}
+          </span>
+          {isPrivilegedUser ? (
+            <span style={{ fontSize: '10.5px', padding: '1.5px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: '700' }}>
+              관리자 모드
+            </span>
+          ) : (
+            <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: '600' }}>
+              (해당 소속팀만 표시)
+            </span>
+          )}
+        </div>
+
+        {isPrivilegedUser && allTeamNames.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <select
+              value={selectedAdminTeam}
+              onChange={(e) => setSelectedAdminTeam(e.target.value)}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: '1.5px solid #cbd5e1',
+                fontSize: '11.5px',
+                fontWeight: '700',
+                color: '#0f172a',
+                background: '#ffffff',
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value="ALL">전체 팀 보기</option>
+              {allTeamNames.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
       {/* Quick Filter Tabs: 전체 / 업무 전 / 업무 후 */}
       <div style={{
         display: 'flex',
@@ -2237,12 +2431,17 @@ export default function TbmSection({
       {filteredTbms.length === 0 ? (
         <div className="glass-panel" style={{ padding: '36px 20px', textAlign: 'center', borderRadius: '6px', border: '1.5px solid #cbd5e1', color: '#64748b', background: '#ffffff' }}>
           <HardHat size={36} color="#94a3b8" style={{ marginBottom: '10px' }} />
-          <div style={{ fontSize: '14px', fontWeight: '700' }}>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>
             {typeFilter === 'PRE'
-              ? '선택하신 날짜에 등록된 업무 전 TBM이 없습니다.'
+              ? `${effectiveTeamLabel} 등록된 업무 전 TBM이 없습니다.`
               : typeFilter === 'POST'
-                ? '선택하신 날짜에 등록된 업무 후 TBM이 없습니다.'
-                : '선택하신 날짜에 등록된 TBM 일지가 없습니다.'}
+                ? `${effectiveTeamLabel} 등록된 업무 후 TBM이 없습니다.`
+                : `${effectiveTeamLabel} 등록된 TBM 일지가 없습니다.`}
+          </div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+            {isPrivilegedUser
+              ? '상단 팀 필터 또는 날짜를 변경하거나 새로운 TBM을 등록해보세요.'
+              : 'TBM 리스트는 본인 소속팀 인원만 안전하게 확인할 수 있습니다.'}
           </div>
         </div>
       ) : (

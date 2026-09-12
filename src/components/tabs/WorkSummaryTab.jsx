@@ -257,40 +257,61 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       createdAt: timeStr
     };
 
-    // 2. LocalStorage 명시적 저장
+    // 2. LocalStorage 즉시 저장 및 dirty 플래그 리셋 (0ms 즉각 반응)
     try {
       localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(weeklyCustomReports));
     } catch (e) {
       console.error('Failed to save to localStorage', e);
     }
-
-    // 3. Database 동기화
-    await dbService.saveWeeklyReport(payload);
-
-    // 4. 사내 공유 대상자가 설정되어 있다면 이번 주 일일 업무들도 자동 공유 동기화
-    if (formattedTargets.length > 0 && weeklyOwnLogs.length > 0) {
-      for (const logItem of weeklyOwnLogs) {
-        const updated = {
-          ...logItem,
-          isShared: true,
-          sharedWith: formattedTargets,
-          sharedAt: timeStr
-        };
-        await dbService.saveWorkLog(updated);
-      }
-    }
-
-    await loadData();
-    window.dispatchEvent(new Event('with_security_data_changed'));
     setIsWeeklyDirty(false);
+
+    // 3. UI 즉시 낙관적 갱신 (0ms 지연)
+    setSharedWeeklyReports(prev => {
+      const idx = prev.findIndex(r => r.id === payload.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = payload;
+        return next;
+      }
+      return [payload, ...prev];
+    });
+
+    if (formattedTargets.length > 0 && weeklyOwnLogs.length > 0) {
+      const targetIds = new Set(weeklyOwnLogs.map(l => String(l.id || l.log_id || '')));
+      setWorkLogs(prev => prev.map(log => {
+        const id = String(log.id || log.log_id || '');
+        if (targetIds.has(id)) {
+          return { ...log, isShared: true, sharedWith: formattedTargets, sharedAt: timeStr };
+        }
+        return log;
+      }));
+    }
 
     if (onTriggerToast) {
       if (formattedTargets.length > 0) {
         onTriggerToast(`주간 업무 보고가 저장 및 지정된 사내 동료(${formattedTargets.length}명)에게 공유되었습니다.`, 'success');
       } else {
-        onTriggerToast('주간 업무 보고서 내용이 안전하게 저장되었습니다.', 'success');
+        onTriggerToast('주간 업무 보고가 성공적으로 저장되었습니다.', 'success');
       }
     }
+
+    // 4. 비동기 백그라운드 일괄 저장 (DB 및 원격 서버 동기화 - 화면 멈춤 100% 제거)
+    (async () => {
+      try {
+        await dbService.saveWeeklyReport(payload);
+        if (formattedTargets.length > 0 && weeklyOwnLogs.length > 0) {
+          const logsToUpdate = weeklyOwnLogs.map(logItem => ({
+            ...logItem,
+            isShared: true,
+            sharedWith: formattedTargets,
+            sharedAt: timeStr
+          }));
+          await dbService.saveWorkLogsBatch(logsToUpdate);
+        }
+      } catch (err) {
+        console.warn('Background weekly report save warning:', err);
+      }
+    })();
   };
 
   // 미저장 팝업 - 저장 후 이동
@@ -323,28 +344,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     setPendingAction(null);
   };
 
-  // Load Work Logs & User Profile
-  const loadData = async () => {
-    setIsLoading(true);
+  // Load Work Logs & User Profile (병렬 비동기 조회 및 화면 멈춤 없는 부드러운 갱신)
+  const loadData = async (isInitial = false) => {
+    if (isInitial) setIsLoading(true);
     try {
-      const u = await dbService.getUserProfile();
+      const [u, logs, users, weeklyReps] = await Promise.all([
+        dbService.getUserProfile(),
+        dbService.getWorkLogs(),
+        dbService.getAllUsers(),
+        dbService.getWeeklyReports()
+      ]);
       setCurrentUser(u);
-      const logs = await dbService.getWorkLogs();
       setWorkLogs(logs || []);
-      const users = await dbService.getAllUsers();
       setAllUsers(users || []);
-      const weeklyReps = await dbService.getWeeklyReports();
       setSharedWeeklyReports(weeklyReps || []);
     } catch (e) {
       console.error(e);
     } finally {
-      setIsLoading(false);
+      if (isInitial) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-    const handleDataChange = () => loadData();
+    loadData(true);
+    const handleDataChange = () => loadData(false);
     window.addEventListener('with_security_data_changed', handleDataChange);
     return () => window.removeEventListener('with_security_data_changed', handleDataChange);
   }, []);
@@ -508,22 +531,29 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       createdAt: timeStr
     };
 
-    await dbService.saveWeeklyReport(weeklyReportPayload);
-
-    // 2. 이번 주 내 일일 업무들(weeklyOwnLogs)도 함께 공유 상태로 업데이트
-    for (const logItem of weeklyOwnLogs) {
-      const updated = {
-        ...logItem,
-        isShared: isSharingActive,
-        sharedWith: formattedTargets,
-        sharedAt: isSharingActive ? timeStr : ''
-      };
-      await dbService.saveWorkLog(updated);
-    }
-
-    await loadData();
-    window.dispatchEvent(new Event('with_security_data_changed'));
+    // 1. 모달 즉시 닫기 & 낙관적 UI 업데이트 (0ms 즉각 반응)
     setIsWeeklyShareModalOpen(false);
+
+    setSharedWeeklyReports(prev => {
+      const idx = prev.findIndex(r => r.id === weeklyReportPayload.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = weeklyReportPayload;
+        return next;
+      }
+      return [weeklyReportPayload, ...prev];
+    });
+
+    if (weeklyOwnLogs.length > 0) {
+      const targetIds = new Set(weeklyOwnLogs.map(l => String(l.id || l.log_id || '')));
+      setWorkLogs(prev => prev.map(log => {
+        const id = String(log.id || log.log_id || '');
+        if (targetIds.has(id)) {
+          return { ...log, isShared: isSharingActive, sharedWith: formattedTargets, sharedAt: isSharingActive ? timeStr : '' };
+        }
+        return log;
+      }));
+    }
 
     if (onTriggerToast) {
       if (isSharingActive) {
@@ -532,6 +562,24 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         onTriggerToast('주간 업무 공유 대상자가 0명으로 등록(공유 해제)되었습니다.', 'success');
       }
     }
+
+    // 2. 비동기 백그라운드 일괄 저장 (DB 및 원격 서버 동기화 - 화면 멈춤 100% 제거)
+    (async () => {
+      try {
+        await dbService.saveWeeklyReport(weeklyReportPayload);
+        if (weeklyOwnLogs.length > 0) {
+          const logsToUpdate = weeklyOwnLogs.map(logItem => ({
+            ...logItem,
+            isShared: isSharingActive,
+            sharedWith: formattedTargets,
+            sharedAt: isSharingActive ? timeStr : ''
+          }));
+          await dbService.saveWorkLogsBatch(logsToUpdate);
+        }
+      } catch (err) {
+        console.warn('Background weekly share save warning:', err);
+      }
+    })();
   };
 
   // '이름 직급 (소속)' 문자열 또는 사용자 객체와 현재 사용자 매칭 검사기

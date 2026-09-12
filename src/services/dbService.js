@@ -1377,7 +1377,7 @@ class SecurityDatabase {
 
   // Local Login Failure Tracker
   getLocalLoginFailInfo(username = '') {
-    const key = `with_security_login_fail_${(username || 'default').trim().toLowerCase()}`;
+    const key = `with_security_login_fail_${(username || 'default').trim()}`;
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
     if (!raw) return { failCount: 0, remainingAttempts: 5, blocked: false, remainingSec: 0 };
     try {
@@ -1408,7 +1408,7 @@ class SecurityDatabase {
   }
 
   recordLocalLoginAttempt(username = '', success = false) {
-    const key = `with_security_login_fail_${(username || 'default').trim().toLowerCase()}`;
+    const key = `with_security_login_fail_${(username || 'default').trim()}`;
     if (success) {
       if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
       return { failCount: 0, remainingAttempts: 5, blocked: false, remainingSec: 0 };
@@ -1441,7 +1441,7 @@ class SecurityDatabase {
     const pass = password.trim();
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-    const isMasterUser = ['admin', 'wblee', 'wblee0703'].includes(uName.toLowerCase());
+    const isMasterUser = ['admin', 'wblee', 'wblee0703'].includes(uName);
     const isMasterPass = [defaultAdminPass, 'withtech123!', 'admin', 'lwb920703!', '1234'].includes(pass);
 
     // 1. Local-first verification (0.1ms)
@@ -1450,7 +1450,7 @@ class SecurityDatabase {
     let isPasswordCorrect = false;
 
     for (const u of users) {
-      if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
+      if (String(u?.username || '').trim() === uName) {
         foundUser = u;
         const dbPass = String(u?.password || '').trim();
         const dbHash = String(u?.passwordHash || '').trim();
@@ -1485,7 +1485,7 @@ class SecurityDatabase {
         const freshUsers = await this._fetchUsersRemote();
         if (Array.isArray(freshUsers)) {
           for (const u of freshUsers) {
-            if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
+            if (String(u?.username || '').trim() === uName) {
               foundUser = u;
               const dbPass = String(u?.password || '').trim();
               const dbHash = String(u?.passwordHash || '').trim();
@@ -1512,10 +1512,10 @@ class SecurityDatabase {
     }
 
     // 3. Admin / Developer emergency failsafe fallback
-    if (!foundUser && (uName.toLowerCase() === 'admin' || uName.toLowerCase() === 'wblee0703')) {
+    if (!foundUser && (uName === 'admin' || uName === 'wblee0703')) {
       if (isMasterPass) {
         foundUser = {
-          username: uName.toLowerCase() === 'admin' ? 'admin' : 'wblee0703',
+          username: uName === 'admin' ? 'admin' : 'wblee0703',
           name: '이원배',
           role: '개발자',
           division: '영업/운영사업부',
@@ -1530,7 +1530,7 @@ class SecurityDatabase {
     }
 
     // 4. Wblee emergency failsafe fallback
-    if (!foundUser && uName.toLowerCase() === 'wblee') {
+    if (!foundUser && uName === 'wblee') {
       if (isMasterPass) {
         foundUser = {
           username: 'wblee',
@@ -1677,8 +1677,8 @@ class SecurityDatabase {
       const lsRaw = localStorage.getItem('with_security_users_db');
       let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
       if (!Array.isArray(currentUsers)) currentUsers = [];
-      const uname = String(safeUser.username || '').trim().toLowerCase();
-      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      const uname = String(safeUser.username || '').trim();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim() === uname);
       if (existingIdx >= 0) {
         currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
       } else {
@@ -1718,8 +1718,8 @@ class SecurityDatabase {
       const lsRaw = localStorage.getItem('with_security_users_db');
       let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
       if (!Array.isArray(currentUsers)) currentUsers = [];
-      const uname = String(safeUser.username || '').trim().toLowerCase();
-      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      const uname = String(safeUser.username || '').trim();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim() === uname);
       if (existingIdx >= 0) {
         currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
       } else {
@@ -1742,7 +1742,7 @@ class SecurityDatabase {
       const activeRaw = localStorage.getItem('with_security_active_user');
       if (activeRaw) {
         const activeUser = JSON.parse(activeRaw);
-        if (String(activeUser.username || '').trim().toLowerCase() === String(safeUser.username || '').trim().toLowerCase()) {
+        if (String(activeUser.username || '').trim() === String(safeUser.username || '').trim()) {
           const updatedActive = { ...activeUser, ...safeUser };
           localStorage.setItem('with_security_active_user', JSON.stringify(updatedActive));
         }
@@ -1786,8 +1786,8 @@ class SecurityDatabase {
       const lsRaw = localStorage.getItem('with_security_users_db');
       let currentUsers = lsRaw ? JSON.parse(lsRaw) : [];
       if (!Array.isArray(currentUsers)) currentUsers = [];
-      const uname = String(safeUser.username || '').trim().toLowerCase();
-      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim().toLowerCase() === uname);
+      const uname = String(safeUser.username || '').trim();
+      const existingIdx = currentUsers.findIndex(u => String(u.username || '').trim() === uname);
       if (existingIdx >= 0) {
         currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...safeUser };
       } else {
@@ -1982,7 +1982,7 @@ class SecurityDatabase {
       if (delRaw) {
         const arr = JSON.parse(delRaw);
         if (Array.isArray(arr)) {
-          deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
+          deletedUsernames = new Set(arr.map(u => String(u || '').trim()));
         }
       }
     } catch (e) { }
@@ -1990,7 +1990,7 @@ class SecurityDatabase {
     const userMap = new Map();
     for (const u of usersList) {
       if (!u || !u.username) continue;
-      const uname = String(u.username).trim().toLowerCase();
+      const uname = String(u.username).trim();
       if (deletedUsernames.has(uname)) continue;
 
       if (!userMap.has(uname)) {
@@ -2245,7 +2245,7 @@ class SecurityDatabase {
     const list = this._deduplicateUsers(usersList);
 
     // 1. Ensure admin account exists
-    const adminIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
+    const adminIdx = list.findIndex(u => String(u.username || '').trim() === 'admin');
     if (adminIdx === -1) {
       list.unshift({
         username: 'admin',
@@ -2272,7 +2272,7 @@ class SecurityDatabase {
     }
 
     // 2. Ensure wblee standard account exists
-    const wbleeIdx = list.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
+    const wbleeIdx = list.findIndex(u => String(u.username || '').trim() === 'wblee');
     if (wbleeIdx === -1) {
       list.push({
         username: 'wblee',
@@ -2311,7 +2311,7 @@ class SecurityDatabase {
       if (delRaw) {
         const arr = JSON.parse(delRaw);
         if (Array.isArray(arr)) {
-          deletedUsernames = new Set(arr.map(u => String(u || '').trim().toLowerCase()));
+          deletedUsernames = new Set(arr.map(u => String(u || '').trim()));
         }
       }
     } catch (e) { }
@@ -2323,7 +2323,7 @@ class SecurityDatabase {
       if (Array.isArray(dbUsers)) {
         for (const u of dbUsers) {
           if (u && u.username) {
-            const k = String(u.username).trim().toLowerCase();
+            const k = String(u.username).trim();
             if (!deletedUsernames.has(k)) {
               localUsersMap.set(k, u);
             }
@@ -2339,7 +2339,7 @@ class SecurityDatabase {
         if (Array.isArray(lsUsers)) {
           for (const u of lsUsers) {
             if (u && u.username) {
-              const k = String(u.username).trim().toLowerCase();
+              const k = String(u.username).trim();
               if (deletedUsernames.has(k)) continue;
               if (!localUsersMap.has(k)) {
                 localUsersMap.set(k, u);
@@ -2361,9 +2361,9 @@ class SecurityDatabase {
         const remoteData = json.data || json;
         if (Array.isArray(remoteData)) {
           usersList = remoteData
-            .filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()))
+            .filter(u => !deletedUsernames.has(String(u.username || '').trim()))
             .map(u => {
-              const uKey = String(u.username || '').trim().toLowerCase();
+              const uKey = String(u.username || '').trim();
               const existingLocal = localUsersMap.get(uKey);
 
               let parsedTrainings = [];
@@ -2403,7 +2403,7 @@ class SecurityDatabase {
     } catch (e) { }
 
     if (!usersList || usersList.length === 0) {
-      usersList = Array.from(localUsersMap.values()).filter(u => !deletedUsernames.has(String(u.username || '').trim().toLowerCase()));
+      usersList = Array.from(localUsersMap.values()).filter(u => !deletedUsernames.has(String(u.username || '').trim()));
     }
 
     const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
@@ -2413,7 +2413,7 @@ class SecurityDatabase {
     const defaultAdminHash = cachedDefaultAdminHash;
 
     // Ensure default admin user always exists (without hardcoded dummy education)
-    const adminIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'admin');
+    const adminIdx = usersList.findIndex(u => String(u.username || '').trim() === 'admin');
     if (adminIdx === -1) {
       const defaultAdmin = {
         username: 'admin',
@@ -2446,7 +2446,7 @@ class SecurityDatabase {
     }
 
     // Ensure default wblee standard user always exists
-    const wbleeIdx = usersList.findIndex(u => String(u.username || '').toLowerCase() === 'wblee');
+    const wbleeIdx = usersList.findIndex(u => String(u.username || '').trim() === 'wblee');
     if (wbleeIdx === -1) {
       const defaultWblee = {
         username: 'wblee',
@@ -2499,15 +2499,14 @@ class SecurityDatabase {
     if (!username || username === 'admin') return false;
 
     const uname = String(username).trim();
-    const unameLower = uname.toLowerCase();
 
     // 1. Mark in deleted users blacklist (localStorage)
     try {
       const delRaw = localStorage.getItem('with_security_deleted_users');
       let delList = delRaw ? JSON.parse(delRaw) : [];
       if (!Array.isArray(delList)) delList = [];
-      if (!delList.some(d => String(d).trim().toLowerCase() === unameLower)) {
-        delList.push(unameLower);
+      if (!delList.some(d => String(d).trim() === uname)) {
+        delList.push(uname);
         localStorage.setItem('with_security_deleted_users', JSON.stringify(delList));
       }
     } catch (e) { }
@@ -2518,7 +2517,7 @@ class SecurityDatabase {
       if (lsRaw) {
         let currentUsers = JSON.parse(lsRaw);
         if (Array.isArray(currentUsers)) {
-          currentUsers = currentUsers.filter(u => String(u.username || '').trim().toLowerCase() !== unameLower);
+          currentUsers = currentUsers.filter(u => String(u.username || '').trim() !== uname);
           localStorage.setItem('with_security_users_db', JSON.stringify(currentUsers));
         }
       }
@@ -2527,7 +2526,6 @@ class SecurityDatabase {
     // 3. Remove user-specific storage keys
     try {
       localStorage.removeItem(`with_security_user_trainings_${uname}`);
-      localStorage.removeItem(`with_security_user_trainings_${unameLower}`);
     } catch (e) { }
 
     // 4. Remote Server DELETE API
@@ -2538,7 +2536,6 @@ class SecurityDatabase {
     // 5. Delete from IndexedDB
     try {
       await this.deleteItem('users', uname);
-      await this.deleteItem('users', unameLower);
     } catch (e) { }
 
     notifyDataChanged();
@@ -2549,7 +2546,7 @@ class SecurityDatabase {
     localStorage.removeItem('with_security_active_user');
     localStorage.removeItem('with_security_auth_token');
     localStorage.removeItem('with_security_active_tab');
-    notifyDataChanged();
+    notifyDataChanged(true);
   }
 
   getGoogleSheetsUrl() {
@@ -3117,6 +3114,101 @@ class SecurityDatabase {
     return pureUpdated;
   }
 
+  // Batch Save Work Logs (for instant multi-item sharing and weekly log updates)
+  async saveWorkLogsBatch(logsList) {
+    if (!Array.isArray(logsList) || logsList.length === 0) return [];
+
+    const currentLocal = (() => {
+      try {
+        const raw = localStorage.getItem('with_security_work_logs');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    const localMap = new Map();
+    for (const l of currentLocal) {
+      if (!l) continue;
+      const id = String(l.id || l.log_id || '').trim();
+      if (id) localMap.set(id, l);
+    }
+
+    const now = Date.now();
+    const preparedList = [];
+    if (!this._recentLocalWorkLogEdits) this._recentLocalWorkLogEdits = new Map();
+
+    for (const logItem of logsList) {
+      const normalized = this._normalizeWorkLog(logItem);
+      if (!normalized) continue;
+      const id = String(normalized.id || normalized.log_id || '').trim();
+      localMap.set(id, { ...(localMap.get(id) || {}), ...normalized });
+      preparedList.push(normalized);
+      this._recentLocalWorkLogEdits.set(id, now);
+    }
+
+    const pureUpdated = this._deduplicateWorkLogs(Array.from(localMap.values()));
+    localStorage.setItem('with_security_work_logs', JSON.stringify(pureUpdated));
+
+    // Single background IndexedDB write
+    this.replaceCollection('work_logs', pureUpdated).catch(() => {});
+
+    recentResponseCache.clear();
+    this._lastWorkLogsRevalidate = Date.now() + 8000;
+
+    // Parallel background server sync without blocking UI
+    Promise.all(preparedList.map(log => {
+      const syncPayload = {
+        id: log.id,
+        log_id: log.id,
+        logId: log.id,
+        name: log.authorName || log.name || '작성자',
+        writer_id: log.authorUsername || log.writerId || '',
+        writerId: log.authorUsername || log.writerId || '',
+        division: log.authorDivision || log.division || '',
+        team: log.authorTeam || log.team || '운영팀',
+        rank: log.authorRank || log.rank || '대리',
+        role: log.authorRole || log.role || '일반',
+        category: log.category || '사내 업무',
+        sub_category: log.subCategory || log.sub_category || '',
+        subCategory: log.subCategory || log.sub_category || '',
+        due_date: log.dueDate || log.due_date || '',
+        dueDate: log.dueDate || log.due_date || '',
+        site_name: log.siteName || log.site_name || '',
+        siteName: log.siteName || log.site_name || '',
+        log_date: log.date || log.log_date || '',
+        date: log.date || log.log_date || '',
+        title: log.title || '',
+        tasks_done: log.details || log.tasksDone || '',
+        tasksDone: log.details || log.tasksDone || '',
+        is_shared: log.isShared ? 1 : 0,
+        isShared: log.isShared ?? false,
+        shared_with: log.sharedWith || [],
+        sharedWith: log.sharedWith || [],
+        shared_at: log.sharedAt || '',
+        sharedAt: log.sharedAt || '',
+        created_at: log.createdAt || new Date().toISOString()
+      };
+      return safeFetchApi('/api/work-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(syncPayload)
+      });
+    })).then(() => {
+      setTimeout(() => {
+        if (this._recentLocalWorkLogEdits) {
+          for (const item of preparedList) {
+            const id = String(item.id || item.log_id || '').trim();
+            if (id) this._recentLocalWorkLogEdits.delete(id);
+          }
+        }
+      }, 15000);
+    }).catch(err => console.warn('Batch work log sync warning:', err));
+
+    notifyDataChanged();
+    return pureUpdated;
+  }
+
   async deleteWorkLog(target) {
     if (!target) return [];
     const targetId = typeof target === 'string' || typeof target === 'number'
@@ -3191,7 +3283,7 @@ class SecurityDatabase {
   // -------------------------------------------------------------
   // Shared Weekly Custom Reports Persistence (주간 직접 입력 1~4번 보고서 사내 공유 & 컬럼별 분리 저장)
   // -------------------------------------------------------------
-  async getWeeklyReports(searchParams = {}) {
+  async getWeeklyReports(searchParams = {}, forceRemote = false) {
     const localOverrides = (() => {
       try {
         const raw = localStorage.getItem('with_sec_shared_weekly_reports');
@@ -3200,6 +3292,35 @@ class SecurityDatabase {
         return [];
       }
     })();
+
+    // 1. Instant return from cache (0.1ms) - eliminates UI freezing/lag
+    if (!forceRemote && localOverrides.length > 0) {
+      this._revalidateWeeklyReportsInBackground(searchParams).catch(() => {});
+      return localOverrides;
+    }
+
+    return await this._fetchWeeklyReportsRemote(searchParams, localOverrides);
+  }
+
+  async _revalidateWeeklyReportsInBackground(searchParams) {
+    const now = Date.now();
+    if (this._lastWeeklyRevalidate && (now - this._lastWeeklyRevalidate < 30000)) return;
+    this._lastWeeklyRevalidate = now;
+    const local = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_shared_weekly_reports');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+    const remote = await this._fetchWeeklyReportsRemote(searchParams, local);
+    if (Array.isArray(remote) && remote.length > 0) {
+      notifyDataChanged();
+    }
+  }
+
+  async _fetchWeeklyReportsRemote(searchParams = {}, localOverrides = []) {
     const localMap = new Map(localOverrides.map(r => [(r.id || r.reportId), r]));
 
     try {
@@ -3258,7 +3379,14 @@ class SecurityDatabase {
 
   async saveWeeklyReport(report) {
     if (!report) return null;
-    const current = await this.getWeeklyReports();
+    const current = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_shared_weekly_reports');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
     const targetId = report.id || report.reportId || `weekly-rep-${report.authorUsername || report.authorName || 'user'}-${report.weeklyMonday || Date.now()}`;
 
     // ⭐ sharedWith를 '이름 직급 (소속)' 형태로만 정제 (예: '홍길동 대리 (운영1팀)')
@@ -3317,32 +3445,34 @@ class SecurityDatabase {
       updated = [normalized, ...current];
     }
 
+    // Instant local save (0.1ms)
     localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(updated));
 
-    // Async REST API Sync
-    try {
-      await safeFetchApi('/api/weekly-reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reportId: targetId,
-          weeklyMonday: normalized.weeklyMonday,
-          weekText: normalized.weekText,
-          authorName: normalized.authorName,
-          authorUsername: normalized.authorUsername,
-          authorTeam: normalized.authorTeam,
-          authorRank: normalized.authorRank,
-          authorDivision: normalized.authorDivision,
-          authorRole: normalized.authorRole,
-          mainTasks: normalized.mainTasks,
-          infoSharing: normalized.infoSharing,
-          workSupport: normalized.workSupport,
-          etcTasks: normalized.etcTasks,
-          sharedWith: normalized.sharedWith,
-          sharedAt: normalized.sharedAt
-        })
-      });
-    } catch (e) { }
+    // Background IndexedDB write
+    this.replaceCollection('weekly_reports', updated).catch(() => {});
+
+    // Non-blocking background API sync
+    safeFetchApi('/api/weekly-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reportId: targetId,
+        weeklyMonday: normalized.weeklyMonday,
+        weekText: normalized.weekText,
+        authorName: normalized.authorName,
+        authorUsername: normalized.authorUsername,
+        authorTeam: normalized.authorTeam,
+        authorRank: normalized.authorRank,
+        authorDivision: normalized.authorDivision,
+        authorRole: normalized.authorRole,
+        mainTasks: normalized.mainTasks,
+        infoSharing: normalized.infoSharing,
+        workSupport: normalized.workSupport,
+        etcTasks: normalized.etcTasks,
+        sharedWith: normalized.sharedWith,
+        sharedAt: normalized.sharedAt
+      })
+    }).catch(e => console.warn('Background weekly report save warning:', e));
 
     notifyDataChanged();
     return updated;

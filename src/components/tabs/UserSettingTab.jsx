@@ -220,7 +220,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         setEditForm(null);
         setTrainings([]);
         setAuthMode('login');
-        setLoginForm({ username: '', password: '' });
+        // Do not clear loginForm here: preserves user keystrokes if background sync/event triggers while typing
       }
       const hUrl = dbService.getHostedServerUrl();
       setActiveHostedServerUrl(hUrl);
@@ -712,7 +712,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
 
     const users = await dbService.getRegisteredUsers();
-    if (users.some(u => u.username.trim().toLowerCase() === signupForm.username.trim().toLowerCase())) {
+    if (users.some(u => String(u.username || '').trim() === signupForm.username.trim())) {
       if (onTriggerToast) onTriggerToast('이미 존재하는 아이디입니다. 다른 아이디를 사용해 주세요.', 'warning');
       return;
     }
@@ -793,7 +793,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     if (!isPasswordCorrect && currentUser?.username) {
       try {
         const latestUsers = await dbService.getRegisteredUsers();
-        const found = latestUsers.find(u => u.username?.toLowerCase() === currentUser.username.toLowerCase());
+        const found = latestUsers.find(u => String(u.username || '').trim() === currentUser.username.trim());
         if (found) {
           const fPass = String(found.password || '').trim();
           const fHash = String(found.passwordHash || '').trim();
@@ -883,8 +883,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     const ok = await dbService.deleteUser(targetUser.username);
     if (ok) {
-      const unameLower = String(targetUser.username || '').trim().toLowerCase();
-      setMgmtUsers(prevUsers => prevUsers.filter(u => String(u.username || '').trim().toLowerCase() !== unameLower));
+      const uname = String(targetUser.username || '').trim();
+      setMgmtUsers(prevUsers => prevUsers.filter(u => String(u.username || '').trim() !== uname));
       if (onTriggerToast) onTriggerToast(`'${targetUser.name}(${targetUser.username})' 사용자 계정이 성공적으로 삭제되었습니다.`, 'success');
     } else {
       if (onTriggerToast) onTriggerToast('계정 삭제에 실패했습니다.', 'warning');
@@ -920,17 +920,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // Handle Logout
   const handleLogout = async () => {
+    setAuthMode('login');
+    setLoginForm({ username: '', password: '' });
     await dbService.logoutUser();
     setCurrentUser(null);
     setEditForm(null);
     setTrainings([]);
     setIsEditUnlocked(false);
     setIsAccountMgmtModalOpen(false);
-    setAuthMode('login');
-    setLoginForm({ username: '', password: '' });
     if (setActiveTab) setActiveTab('userProfile');
     if (onTriggerToast) onTriggerToast('로그아웃 되었습니다. 다시 로그인해 주세요.', 'info');
-    window.dispatchEvent(new Event('with_security_data_changed'));
   };
 
   const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
