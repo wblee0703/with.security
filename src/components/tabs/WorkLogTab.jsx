@@ -2205,7 +2205,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
                                                 {canModify ? (
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>
-                                                    {/* 공유 버튼 (0ms 즉각 반응 토글 - 선명한 초록색/텍스트로 활성화 상태 명확히 표시) */}
+                                                    {/* 공유 버튼 (아이콘 전용, 0ms 즉각 반응 - 활성화 시 녹색 하이라이트) */}
                                                     <button
                                                       type="button"
                                                       onClick={(e) => {
@@ -2215,27 +2215,25 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                       style={{
                                                         background: isItemShared ? '#16a34a' : '#ffffff',
                                                         border: isItemShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
-                                                        color: isItemShared ? '#ffffff' : '#475569',
+                                                        color: isItemShared ? '#ffffff' : '#0f172a',
                                                         padding: '3px 8px',
                                                         borderRadius: '4px',
                                                         fontSize: '11px',
-                                                        fontWeight: '800',
+                                                        fontWeight: '700',
                                                         cursor: 'pointer',
-                                                        display: 'inline-flex',
+                                                        display: 'flex',
                                                         alignItems: 'center',
                                                         justifyContent: 'center',
-                                                        gap: '4px',
+                                                        gap: '3px',
                                                         boxShadow: isItemShared ? '0 2px 6px rgba(22, 163, 74, 0.35)' : '0 1px 2px rgba(0,0,0,0.02)',
                                                         transition: 'all 0.15s ease',
                                                         userSelect: 'none',
                                                         touchAction: 'manipulation',
-                                                        WebkitTapHighlightColor: 'transparent',
-                                                        lineHeight: 1
+                                                        WebkitTapHighlightColor: 'transparent'
                                                       }}
                                                       title={isItemShared ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
                                                     >
-                                                      <Share2 size={12} color={isItemShared ? '#ffffff' : '#64748b'} strokeWidth={isItemShared ? 2.5 : 2} />
-                                                      <span>{isItemShared ? '공유중' : '공유'}</span>
+                                                      <Share2 size={12} color={isItemShared ? '#ffffff' : '#0f172a'} strokeWidth={isItemShared ? 2.5 : 2} />
                                                     </button>
 
                                                     <button
