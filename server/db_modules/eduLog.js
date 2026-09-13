@@ -168,7 +168,7 @@ export async function getEduLogs(filter = {}) {
       params.push(filter.category);
     }
 
-    sql += ' ORDER BY completion_date DESC, id DESC';
+    sql += ' ORDER BY CASE WHEN expiry_date IS NULL OR expiry_date = \'\' THEN 1 ELSE 0 END, expiry_date ASC, completion_date DESC';
     const rows = await query(sql, params);
     if (!Array.isArray(rows)) return [];
     return rows.map(r => ({

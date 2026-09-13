@@ -1664,7 +1664,28 @@ function readSheetData(sheetName) {
   }
 
   if (keyMap.size > 0) {
-    return Array.from(keyMap.values()).concat(list);
+    let resultList = Array.from(keyMap.values()).concat(list);
+    if (sheetName === 'edu_logs') {
+      resultList.sort(function(a, b) {
+        var expA = String(a.expiry_date || a.expiryDate || '').trim();
+        var expB = String(b.expiry_date || b.expiryDate || '').trim();
+        if (expA && !expB) return -1;
+        if (!expA && expB) return 1;
+        if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+        return String(b.completion_date || b.completionDate || '').localeCompare(String(a.completion_date || a.completionDate || ''));
+      });
+    }
+    return resultList;
+  }
+  if (sheetName === 'edu_logs' && Array.isArray(list)) {
+    list.sort(function(a, b) {
+      var expA = String(a.expiry_date || a.expiryDate || '').trim();
+      var expB = String(b.expiry_date || b.expiryDate || '').trim();
+      if (expA && !expB) return -1;
+      if (!expA && expB) return 1;
+      if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+      return String(b.completion_date || b.completionDate || '').localeCompare(String(a.completion_date || a.completionDate || ''));
+    });
   }
   return list;
 }

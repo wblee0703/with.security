@@ -57,6 +57,17 @@ const getTrainingStatus = (expiryStr) => {
   }
 };
 
+export const sortTrainingsByExpiry = (list = []) => {
+  return [...list].sort((a, b) => {
+    const expA = normalizeKstDate(a.expiryDate || a.expiry_date || '');
+    const expB = normalizeKstDate(b.expiryDate || b.expiry_date || '');
+    if (expA && !expB) return -1;
+    if (!expA && expB) return 1;
+    if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+    return (b.completionDate || b.completion_date || '').localeCompare(a.completionDate || a.completion_date || '');
+  });
+};
+
 const formatPhoneNumber = (value) => {
   if (!value) return '';
   const clean = value.replace(/[^0-9]/g, '').slice(0, 11);
@@ -230,7 +241,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               eduId: existing?.eduId || e.eduId || e.id
             });
           });
-          userTrainings = Array.from(mergedMap.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+          userTrainings = sortTrainingsByExpiry(Array.from(mergedMap.values()));
 
           // 중복 정리가 발생했거나 날짜 형식이 교정된 경우, 로컬 프로필을 자동 치유하여 영구 보존
           const hasDifference = (active.trainings || []).length !== userTrainings.length ||
@@ -394,6 +405,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       await dbService.saveEduLog(newItem);
     }
 
+    updatedList = sortTrainingsByExpiry(updatedList);
     setTrainings(updatedList);
     setIsAddingTraining(false);
     setEditingTrainingId(null);
@@ -1004,13 +1016,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     return false;
   });
 
-  const filteredTrainings = trainings.filter(item => {
+  const filteredTrainings = sortTrainingsByExpiry(trainings.filter(item => {
     if (selectedTrainingCategory === '전체') return true;
     if (selectedTrainingCategory === '기타') {
       return !['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category) || item.category === '기타';
     }
     return item.category === selectedTrainingCategory;
-  });
+  }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

@@ -57,7 +57,17 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
   const evaluatedTrainings = allTrainings.map(item => ({
     ...item,
     status: getTrainingStatus(item.expiryDate)
-  })).sort((a, b) => (a.status.diffDays || 999) - (b.status.diffDays || 999));
+  })).sort((a, b) => {
+    const diffA = typeof a.status?.diffDays === 'number' ? a.status.diffDays : 99999;
+    const diffB = typeof b.status?.diffDays === 'number' ? b.status.diffDays : 99999;
+    if (diffA !== diffB) return diffA - diffB;
+    const expA = normalizeKstDate(a.expiryDate || '');
+    const expB = normalizeKstDate(b.expiryDate || '');
+    if (expA && !expB) return -1;
+    if (!expA && expB) return 1;
+    if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+    return (b.completionDate || '').localeCompare(a.completionDate || '');
+  });
 
   const expiredCount = evaluatedTrainings.filter(t => t.status.isExpired).length;
   const urgentCount = evaluatedTrainings.filter(t => t.status.isUrgent).length;

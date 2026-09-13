@@ -61,7 +61,17 @@ export default function TrainingExpiryModal({
       };
     }
     return null;
-  }).filter(Boolean);
+  }).filter(Boolean).sort((a, b) => {
+    const diffA = typeof a.diffDays === 'number' ? a.diffDays : 99999;
+    const diffB = typeof b.diffDays === 'number' ? b.diffDays : 99999;
+    if (diffA !== diffB) return diffA - diffB;
+    const expA = normalizeKstDate(a.expiryDate || '');
+    const expB = normalizeKstDate(b.expiryDate || '');
+    if (expA && !expB) return -1;
+    if (!expA && expB) return 1;
+    if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+    return (b.completionDate || '').localeCompare(a.completionDate || '');
+  });
 
   if (evaluatedItems.length === 0) return null;
 

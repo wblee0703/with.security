@@ -584,7 +584,14 @@ class JsonDatabaseManager {
         });
       }
     });
-    return Array.from(dedupMap.values()).sort((a, b) => new Date(b.completion_date || 0) - new Date(a.completion_date || 0));
+    return Array.from(dedupMap.values()).sort((a, b) => {
+      const expA = a.expiry_date || a.expiryDate || '';
+      const expB = b.expiry_date || b.expiryDate || '';
+      if (expA && !expB) return -1;
+      if (!expA && expB) return 1;
+      if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+      return (b.completion_date || b.completionDate || '').localeCompare(a.completion_date || a.completionDate || '');
+    });
   }
 
   async getEduLogById(id) {

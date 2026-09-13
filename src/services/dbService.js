@@ -3626,7 +3626,14 @@ class SecurityDatabase {
         }
       }
       return true;
-    }).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+    }).sort((a, b) => {
+      const expA = normalizeKstDate(a.expiryDate || a.expiry_date || '');
+      const expB = normalizeKstDate(b.expiryDate || b.expiry_date || '');
+      if (expA && !expB) return -1;
+      if (!expA && expB) return 1;
+      if (expA && expB && expA !== expB) return expA.localeCompare(expB);
+      return (b.completionDate || b.completion_date || '').localeCompare(a.completionDate || a.completion_date || '');
+    });
   }
 
   async _fetchEduLogsRemote(filter = {}) {
