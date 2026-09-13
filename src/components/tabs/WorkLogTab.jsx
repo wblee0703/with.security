@@ -1962,11 +1962,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       const isEditingThis = inlineEditingId === item.id;
                                       const isBeingDragged = draggedTaskId === item.id;
                                       const isDragOver = dragOverTaskId === item.id && draggedTaskId !== item.id;
+                                      const canModify = canModifyLog(item);
+                                      const isItemShared = getIsShared(item);
 
                                       return (
                                         <div
                                           key={item.id}
-                                          draggable={!isEditingThis && canModifyLog(item)}
+                                          draggable={!isEditingThis && canModify}
                                           onDragStart={(e) => handleDragStart(e, item)}
                                           onDragOver={(e) => handleDragOver(e, item)}
                                           onDragLeave={handleDragLeave}
@@ -2201,89 +2203,86 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   </span>
                                                 </div>
 
-                                                {canModifyLog(item) ? (() => {
-                                                  const isItemShared = getIsShared(item);
-                                                  return (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>
-                                                      {/* 공유 버튼 (0ms 즉각 반응 토글 - 선명한 초록색/텍스트로 활성화 상태 명확히 표시) */}
-                                                      <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          handleToggleShareLog(item);
-                                                        }}
-                                                        style={{
-                                                          background: isItemShared ? '#16a34a' : '#ffffff',
-                                                          border: isItemShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
-                                                          color: isItemShared ? '#ffffff' : '#475569',
-                                                          padding: '3px 8px',
-                                                          borderRadius: '4px',
-                                                          fontSize: '11px',
-                                                          fontWeight: '800',
-                                                          cursor: 'pointer',
-                                                          display: 'inline-flex',
-                                                          alignItems: 'center',
-                                                          justifyContent: 'center',
-                                                          gap: '4px',
-                                                          boxShadow: isItemShared ? '0 2px 6px rgba(22, 163, 74, 0.35)' : '0 1px 2px rgba(0,0,0,0.02)',
-                                                          transition: 'all 0.15s ease',
-                                                          userSelect: 'none',
-                                                          touchAction: 'manipulation',
-                                                          WebkitTapHighlightColor: 'transparent',
-                                                          lineHeight: 1
-                                                        }}
-                                                        title={isItemShared ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
-                                                      >
-                                                        <Share2 size={12} color={isItemShared ? '#ffffff' : '#64748b'} strokeWidth={isItemShared ? 2.5 : 2} />
-                                                        <span>{isItemShared ? '공유중' : '공유'}</span>
-                                                      </button>
+                                                {canModify ? (
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>
+                                                    {/* 공유 버튼 (0ms 즉각 반응 토글 - 선명한 초록색/텍스트로 활성화 상태 명확히 표시) */}
+                                                    <button
+                                                      type="button"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleToggleShareLog(item);
+                                                      }}
+                                                      style={{
+                                                        background: isItemShared ? '#16a34a' : '#ffffff',
+                                                        border: isItemShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
+                                                        color: isItemShared ? '#ffffff' : '#475569',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '800',
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '4px',
+                                                        boxShadow: isItemShared ? '0 2px 6px rgba(22, 163, 74, 0.35)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                        transition: 'all 0.15s ease',
+                                                        userSelect: 'none',
+                                                        touchAction: 'manipulation',
+                                                        WebkitTapHighlightColor: 'transparent',
+                                                        lineHeight: 1
+                                                      }}
+                                                      title={isItemShared ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
+                                                    >
+                                                      <Share2 size={12} color={isItemShared ? '#ffffff' : '#64748b'} strokeWidth={isItemShared ? 2.5 : 2} />
+                                                      <span>{isItemShared ? '공유중' : '공유'}</span>
+                                                    </button>
 
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleStartInlineEdit(item)}
-                                                        style={{
-                                                          background: '#ffffff',
-                                                          border: '1.5px solid #cbd5e1',
-                                                          color: '#0f172a',
-                                                          padding: '3px 8px',
-                                                          borderRadius: '4px',
-                                                          fontSize: '11px',
-                                                          fontWeight: '700',
-                                                          cursor: 'pointer',
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          gap: '3px',
-                                                          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                        }}
-                                                        title="이 업무 바로 수정"
-                                                      >
-                                                        <Edit3 size={12} />
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleInitiateDeleteLog(item)}
-                                                        style={{
-                                                          background: '#ffffff',
-                                                          border: '1.5px solid #fca5a5',
-                                                          color: '#dc2626',
-                                                          padding: '3px 8px',
-                                                          borderRadius: '4px',
-                                                          fontSize: '11px',
-                                                          fontWeight: '700',
-                                                          cursor: 'pointer',
-                                                          display: 'flex',
-                                                          alignItems: 'center',
-                                                          gap: '3px',
-                                                          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                        }}
-                                                        title="이 업무 삭제"
-                                                      >
-                                                        <Trash2 size={12} />
-                                                      </button>
-                                                    </div>
-                                                  );
-                                                })() : (
-                                                  getIsShared(item) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleStartInlineEdit(item)}
+                                                      style={{
+                                                        background: '#ffffff',
+                                                        border: '1.5px solid #cbd5e1',
+                                                        color: '#0f172a',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '700',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                      }}
+                                                      title="이 업무 바로 수정"
+                                                    >
+                                                      <Edit3 size={12} />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleInitiateDeleteLog(item)}
+                                                      style={{
+                                                        background: '#ffffff',
+                                                        border: '1.5px solid #fca5a5',
+                                                        color: '#dc2626',
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        fontSize: '11px',
+                                                        fontWeight: '700',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '3px',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                      }}
+                                                      title="이 업무 삭제"
+                                                    >
+                                                      <Trash2 size={12} />
+                                                    </button>
+                                                  </div>
+                                                ) : (
+                                                  isItemShared ? (
                                                     <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginTop: '1px' }}>
                                                       <span style={{
                                                         display: 'inline-flex',
@@ -2301,7 +2300,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                         공유중
                                                       </span>
                                                     </div>
-                                                  )
+                                                  ) : null
                                                 )}
                                               </div>
 
