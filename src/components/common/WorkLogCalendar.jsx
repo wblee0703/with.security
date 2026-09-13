@@ -817,8 +817,17 @@ export default function WorkLogCalendar({
                     const isDue = !item.isTripGroup && (log.isDueMarker || (log.dueDate && log.dueDate === cell.dateStr) || (log.due_date && log.due_date === cell.dateStr));
                     const isBeingDragged = draggedLog?.id === log.id || touchState?.log?.id === log.id;
                     const canEditThis = !isDue && (!canModifyLog || canModifyLog(log));
-                    const subCat = item.isTripGroup ? item.subCategory : (log.subCategory || log.sub_category || '');
-                    const isShared = item.isTripGroup ? item.logs.some(l => l.isShared) : Boolean(log.isShared);
+                    const checkIsShared = (l) => Boolean(
+                      l && (
+                        l.isShared === true ||
+                        l.isShared === 'true' ||
+                        l.is_shared === 1 ||
+                        l.is_shared === '1' ||
+                        l.is_shared === true ||
+                        l.is_shared === 'true'
+                      )
+                    );
+                    const isShared = item.isTripGroup ? item.logs.some(checkIsShared) : checkIsShared(log);
 
                     // Styling based on category, due status, or subCategory
                     let bg = '#eff6ff';

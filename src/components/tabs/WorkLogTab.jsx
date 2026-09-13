@@ -326,15 +326,27 @@ export default function WorkLogTab({ onTriggerToast }) {
       const updatedItem = {
         ...pendingShareLogItem,
         isShared: true,
+        is_shared: 1,
         sharedWith: shareTargets,
-        sharedAt: timeStr
+        shared_with: shareTargets,
+        sharedAt: timeStr,
+        shared_at: timeStr
       };
       
       // 0ms 즉시 낙관적 UI 반영
       const targetId = String(updatedItem.id || updatedItem.log_id || '').trim();
+      const altTargetId = String(updatedItem.log_id || updatedItem.id || '').trim();
+      if (targetId) {
+        setOptimisticShares(prev => ({
+          ...prev,
+          [targetId]: true,
+          ...(altTargetId ? { [altTargetId]: true } : {})
+        }));
+      }
       setWorkLogs(prev => prev.map(l => {
-        const lId = String(l.id || l.log_id || '').trim();
-        if ((targetId && lId === targetId) || l === pendingShareLogItem) {
+        const lId = String(l.id || '').trim();
+        const lLogId = String(l.log_id || '').trim();
+        if ((targetId && (lId === targetId || lLogId === targetId)) || (altTargetId && (lId === altTargetId || lLogId === altTargetId)) || l === pendingShareLogItem) {
           return updatedItem;
         }
         return l;
@@ -348,6 +360,13 @@ export default function WorkLogTab({ onTriggerToast }) {
 
       // 백그라운드 비동기 저장 (DB & Google Sheets 동기화)
       dbService.saveWorkLog(updatedItem).then(updatedLogs => {
+        if (targetId) {
+          setOptimisticShares(prev => ({
+            ...prev,
+            [targetId]: true,
+            ...(altTargetId ? { [altTargetId]: true } : {})
+          }));
+        }
         if (updatedLogs && Array.isArray(updatedLogs)) {
           setWorkLogs(updatedLogs);
         }
@@ -364,11 +383,22 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Helper to determine real-time share status of a log item (with 0ms optimistic local state)
   const getIsShared = (item) => {
     if (!item) return false;
-    const idKey = String(item.id || item.log_id || '').trim();
-    if (idKey && optimisticShares[idKey] !== undefined) {
-      return Boolean(optimisticShares[idKey]);
+    const id = String(item.id || '').trim();
+    const logId = String(item.log_id || '').trim();
+    if (id && optimisticShares[id] !== undefined) {
+      return Boolean(optimisticShares[id]);
     }
-    return Boolean(item.isShared);
+    if (logId && optimisticShares[logId] !== undefined) {
+      return Boolean(optimisticShares[logId]);
+    }
+    return Boolean(
+      item.isShared === true ||
+      item.isShared === 'true' ||
+      item.is_shared === 1 ||
+      item.is_shared === '1' ||
+      item.is_shared === true ||
+      item.is_shared === 'true'
+    );
   };
 
   // Toggle Share for a single work log item (0ms Instant Click Reaction & Background Sync)
@@ -376,12 +406,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (!item) return;
 
     const idKey = String(item.id || item.log_id || '').trim();
+    const altKey = String(item.log_id || item.id || '').trim();
     const currentIsShared = getIsShared(item);
     const nextIsShared = !currentIsShared;
 
     // 1단계: 0ms 즉각 UI 반영 (누르자마자 녹색 켜짐 / 꺼짐으로 즉시 전환)
     if (idKey) {
-      setOptimisticShares(prev => ({ ...prev, [idKey]: nextIsShared }));
+      setOptimisticShares(prev => ({
+        ...prev,
+        [idKey]: nextIsShared,
+        ...(altKey ? { [altKey]: nextIsShared } : {})
+      }));
     }
 
     if (!nextIsShared) {
@@ -389,14 +424,18 @@ export default function WorkLogTab({ onTriggerToast }) {
       const updatedItem = {
         ...item,
         isShared: false,
+        is_shared: 0,
         sharedWith: [],
-        sharedAt: ''
+        shared_with: [],
+        sharedAt: '',
+        shared_at: ''
       };
 
       // 로컬 workLogs 상태 동기화
       setWorkLogs(prev => prev.map(l => {
-        const lId = String(l.id || l.log_id || '').trim();
-        if ((idKey && lId === idKey) || l === item) {
+        const lId = String(l.id || '').trim();
+        const lLogId = String(l.log_id || '').trim();
+        if ((idKey && (lId === idKey || lLogId === idKey)) || (altKey && (lId === altKey || lLogId === altKey)) || l === item) {
           return updatedItem;
         }
         return l;
@@ -409,11 +448,11 @@ export default function WorkLogTab({ onTriggerToast }) {
       // 비동기 백그라운드 영구 저장 (0ms 블로킹 없음)
       dbService.saveWorkLog(updatedItem).then(updatedLogs => {
         if (idKey) {
-          setOptimisticShares(prev => {
-            const next = { ...prev };
-            delete next[idKey];
-            return next;
-          });
+          setOptimisticShares(prev => ({
+            ...prev,
+            [idKey]: false,
+            ...(altKey ? { [altKey]: false } : {})
+          }));
         }
         if (updatedLogs && Array.isArray(updatedLogs)) {
           setWorkLogs(updatedLogs);
@@ -421,7 +460,11 @@ export default function WorkLogTab({ onTriggerToast }) {
       }).catch(err => {
         console.error('Failed to unshare work log:', err);
         if (idKey) {
-          setOptimisticShares(prev => ({ ...prev, [idKey]: true }));
+          setOptimisticShares(prev => ({
+            ...prev,
+            [idKey]: true,
+            ...(altKey ? { [altKey]: true } : {})
+          }));
         }
         loadData();
       });
@@ -469,14 +512,18 @@ export default function WorkLogTab({ onTriggerToast }) {
       const updatedItem = {
         ...item,
         isShared: true,
+        is_shared: 1,
         sharedWith: latestTargets || [],
-        sharedAt: timeStr
+        shared_with: latestTargets || [],
+        sharedAt: timeStr,
+        shared_at: timeStr
       };
 
       // 로컬 workLogs 상태 즉각 동기화
       setWorkLogs(prev => prev.map(l => {
-        const lId = String(l.id || l.log_id || '').trim();
-        if ((idKey && lId === idKey) || l === item) {
+        const lId = String(l.id || '').trim();
+        const lLogId = String(l.log_id || '').trim();
+        if ((idKey && (lId === idKey || lLogId === idKey)) || (altKey && (lId === altKey || lLogId === altKey)) || l === item) {
           return updatedItem;
         }
         return l;
@@ -490,11 +537,11 @@ export default function WorkLogTab({ onTriggerToast }) {
       // 비동기 백그라운드 영구 저장 (0ms 블로킹 없음)
       dbService.saveWorkLog(updatedItem).then(updatedLogs => {
         if (idKey) {
-          setOptimisticShares(prev => {
-            const next = { ...prev };
-            delete next[idKey];
-            return next;
-          });
+          setOptimisticShares(prev => ({
+            ...prev,
+            [idKey]: true,
+            ...(altKey ? { [altKey]: true } : {})
+          }));
         }
         if (updatedLogs && Array.isArray(updatedLogs)) {
           setWorkLogs(updatedLogs);
@@ -502,7 +549,11 @@ export default function WorkLogTab({ onTriggerToast }) {
       }).catch(err => {
         console.error('Failed to share work log:', err);
         if (idKey) {
-          setOptimisticShares(prev => ({ ...prev, [idKey]: false }));
+          setOptimisticShares(prev => ({
+            ...prev,
+            [idKey]: false,
+            ...(altKey ? { [altKey]: false } : {})
+          }));
         }
         loadData();
       });
@@ -2150,82 +2201,107 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   </span>
                                                 </div>
 
-                                                {canModifyLog(item) && (
-                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0, marginTop: '1px' }}>
-                                                    {/* 공유 버튼 (0ms 즉각 반응 토글 - 누르자마자 녹색/원복) */}
-                                                    <button
-                                                      type="button"
-                                                      onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleToggleShareLog(item);
-                                                      }}
-                                                      style={{
-                                                        background: getIsShared(item) ? '#16a34a' : '#ffffff',
-                                                        border: getIsShared(item) ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
-                                                        color: getIsShared(item) ? '#ffffff' : '#0f172a',
-                                                        padding: '3px 8px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '11px',
-                                                        fontWeight: '700',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: '3px',
-                                                        boxShadow: getIsShared(item) ? '0 1px 3px rgba(22, 163, 74, 0.25)' : '0 1px 2px rgba(0,0,0,0.02)',
-                                                        transition: 'background 0.05s ease, border-color 0.05s ease, color 0.05s ease',
-                                                        userSelect: 'none',
-                                                        touchAction: 'manipulation',
-                                                        WebkitTapHighlightColor: 'transparent'
-                                                      }}
-                                                      title={getIsShared(item) ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
-                                                    >
-                                                      <Share2 size={12} color={getIsShared(item) ? '#ffffff' : '#0f172a'} />
-                                                    </button>
+                                                {canModifyLog(item) ? (() => {
+                                                  const isItemShared = getIsShared(item);
+                                                  return (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>
+                                                      {/* 공유 버튼 (0ms 즉각 반응 토글 - 선명한 초록색/텍스트로 활성화 상태 명확히 표시) */}
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleToggleShareLog(item);
+                                                        }}
+                                                        style={{
+                                                          background: isItemShared ? '#16a34a' : '#ffffff',
+                                                          border: isItemShared ? '1.5px solid #15803d' : '1.5px solid #cbd5e1',
+                                                          color: isItemShared ? '#ffffff' : '#475569',
+                                                          padding: '3px 8px',
+                                                          borderRadius: '4px',
+                                                          fontSize: '11px',
+                                                          fontWeight: '800',
+                                                          cursor: 'pointer',
+                                                          display: 'inline-flex',
+                                                          alignItems: 'center',
+                                                          justifyContent: 'center',
+                                                          gap: '4px',
+                                                          boxShadow: isItemShared ? '0 2px 6px rgba(22, 163, 74, 0.35)' : '0 1px 2px rgba(0,0,0,0.02)',
+                                                          transition: 'all 0.15s ease',
+                                                          userSelect: 'none',
+                                                          touchAction: 'manipulation',
+                                                          WebkitTapHighlightColor: 'transparent',
+                                                          lineHeight: 1
+                                                        }}
+                                                        title={isItemShared ? "업무 공유 해제 (현재 공유 대상에게 공유중 - 클릭 시 해제)" : "업무 공유 (지정된 대상에게 공유 - 클릭 시 즉시 공유)"}
+                                                      >
+                                                        <Share2 size={12} color={isItemShared ? '#ffffff' : '#64748b'} strokeWidth={isItemShared ? 2.5 : 2} />
+                                                        <span>{isItemShared ? '공유중' : '공유'}</span>
+                                                      </button>
 
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => handleStartInlineEdit(item)}
-                                                      style={{
-                                                        background: '#ffffff',
-                                                        border: '1.5px solid #cbd5e1',
-                                                        color: '#0f172a',
-                                                        padding: '3px 8px',
-                                                        borderRadius: '4px',
-                                                        fontSize: '11px',
-                                                        fontWeight: '700',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleStartInlineEdit(item)}
+                                                        style={{
+                                                          background: '#ffffff',
+                                                          border: '1.5px solid #cbd5e1',
+                                                          color: '#0f172a',
+                                                          padding: '3px 8px',
+                                                          borderRadius: '4px',
+                                                          fontSize: '11px',
+                                                          fontWeight: '700',
+                                                          cursor: 'pointer',
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '3px',
+                                                          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                        }}
+                                                        title="이 업무 바로 수정"
+                                                      >
+                                                        <Edit3 size={12} />
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => handleInitiateDeleteLog(item)}
+                                                        style={{
+                                                          background: '#ffffff',
+                                                          border: '1.5px solid #fca5a5',
+                                                          color: '#dc2626',
+                                                          padding: '3px 8px',
+                                                          borderRadius: '4px',
+                                                          fontSize: '11px',
+                                                          fontWeight: '700',
+                                                          cursor: 'pointer',
+                                                          display: 'flex',
+                                                          alignItems: 'center',
+                                                          gap: '3px',
+                                                          boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
+                                                        }}
+                                                        title="이 업무 삭제"
+                                                      >
+                                                        <Trash2 size={12} />
+                                                      </button>
+                                                    </div>
+                                                  );
+                                                })() : (
+                                                  getIsShared(item) && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginTop: '1px' }}>
+                                                      <span style={{
+                                                        display: 'inline-flex',
                                                         alignItems: 'center',
                                                         gap: '3px',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                      }}
-                                                      title="이 업무 바로 수정"
-                                                    >
-                                                      <Edit3 size={12} />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => handleInitiateDeleteLog(item)}
-                                                      style={{
-                                                        background: '#ffffff',
-                                                        border: '1.5px solid #fca5a5',
-                                                        color: '#dc2626',
-                                                        padding: '3px 8px',
+                                                        background: '#dcfce7',
+                                                        color: '#15803d',
+                                                        border: '1px solid #86efac',
                                                         borderRadius: '4px',
+                                                        padding: '2px 7px',
                                                         fontSize: '11px',
-                                                        fontWeight: '700',
-                                                        cursor: 'pointer',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '3px',
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                                                      }}
-                                                      title="이 업무 삭제"
-                                                    >
-                                                      <Trash2 size={12} />
-                                                    </button>
-                                                  </div>
+                                                        fontWeight: '800'
+                                                      }}>
+                                                        <Share2 size={11} color="#15803d" strokeWidth={2.5} />
+                                                        공유중
+                                                      </span>
+                                                    </div>
+                                                  )
                                                 )}
                                               </div>
 

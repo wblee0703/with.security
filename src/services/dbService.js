@@ -2112,9 +2112,14 @@ class SecurityDatabase {
       }
     }
 
-    const isSharedVal = item.is_shared !== undefined
-      ? Boolean(item.is_shared)
-      : (item.isShared !== undefined ? Boolean(item.isShared) : false);
+    const isSharedVal = Boolean(
+      item.isShared === true ||
+      item.isShared === 'true' ||
+      item.is_shared === 1 ||
+      item.is_shared === '1' ||
+      item.is_shared === true ||
+      item.is_shared === 'true'
+    );
 
     const details = String(item.tasks_done || item.details || item.content || '').trim();
     const siteName = String(item.site_name || item.siteName || '').trim();
