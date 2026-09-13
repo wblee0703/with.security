@@ -842,102 +842,61 @@ export default function SecurityChecklistTab({
     setCameraCheckState(prev => ({
       ...prev,
       isTesting: true,
-      message: isChecklistMode ? '카메라 앱 실행 확인 중...' : '카메라 차단 상태 검사 중...'
+      message: '카메라 차단(제한) 상태 검사 중...'
     }));
     setAppScanState(prev => ({ ...prev, isScanning: true, status: 'CHECKING' }));
 
     // =========================================================================
-    // ⭐ [보안앱 예외 사업장(보안앱X) 또는 모바일 웹 브라우저 환경]
-    // 보안앱이 있는 사업장과 달리, 카메라 앱을 직접 실행시켜 확인되면 즉시 검수 통과!
+    // ⭐ [보안앱 및 웹브라우저/모바일 공통: 카메라 보안 정책 차단 검수]
+    // 규칙: 카메라를 실행했을 때 정상 켜지면 검수 실패(완료 불가)!
+    //       보안 정책에 의해 카메라가 제한/차단되었을 때만 검수 완료(통과)!
     // =========================================================================
-    if (isChecklistMode) {
-      try {
-        // 1. 스마트폰 기본 카메라 앱 직접 실행 트리거 (Mobile OS 기본 카메라 앱 오픈)
-        if (cameraTriggerInputRef.current) {
-          try {
-            cameraTriggerInputRef.current.click();
-          } catch (clickErr) {
-            console.warn('Camera trigger input click:', clickErr);
-          }
-        }
-
-        // 2. 브라우저 카메라 스트림 직접 실행 (하드웨어 활성화 확인)
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            if (stream) {
-              setTimeout(() => {
-                try {
-                  stream.getTracks().forEach(track => track.stop());
-                } catch (e) { }
-              }, 800);
+    try {
+      // 1. Android Native APK: Check DevicePolicyManager / CameraService (Knox / SSM / MDM)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const nativeSec = await checkCameraSecurityStatus();
+          if (nativeSec?.isBlocked) {
+            setAppCheckState({ isChecking: false, isVerified: true });
+            setCameraCheckVerified(true);
+            setCameraCheckState({
+              isTesting: false,
+              isVerified: true,
+              result: 'LOCKED',
+              message: '✓ 기기 보안 정책에 의해 카메라 차단 확인됨'
+            });
+            setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+            setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
+            setAppScanState({
+              isScanning: false,
+              status: 'VERIFIED',
+              lastScannedAt: new Date().toLocaleTimeString(),
+              scanLog: []
+            });
+            if (onTriggerToast) {
+              onTriggerToast('✓ [카메라 검수 성공] 보안 앱 정책에 의해 카메라가 정상 차단되어 있습니다!', 'success');
             }
-          } catch (streamErr) {
-            console.log('Camera stream check info:', streamErr.name);
+            return true;
           }
+        } catch (e) {
+          console.warn('Native camera check error:', e);
         }
-
-        // 3. 검수 즉시 성공 완료 처리
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckVerified(true);
-        setCameraCheckState({
-          isTesting: false,
-          isVerified: true,
-          result: 'VERIFIED',
-          message: '✓ 카메라 실행 확인 완료 (검수 통과)'
-        });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        setAppScanState({
-          isScanning: false,
-          status: 'VERIFIED',
-          lastScannedAt: new Date().toLocaleTimeString(),
-          scanLog: []
-        });
-
-        const updatedSelf = { ...cameraSelfChecklist, cameraChecked: true };
-        setCameraSelfChecklist(updatedSelf);
-
-        if (onTriggerToast) {
-          onTriggerToast('✓ [카메라 검수 성공] 스마트폰 카메라 앱이 정상 실행되었습니다!', 'success');
-        }
-        return true;
-      } catch (err) {
-        console.warn('Checklist camera launch note:', err);
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckVerified(true);
-        setCameraCheckState({
-          isTesting: false,
-          isVerified: true,
-          result: 'VERIFIED',
-          message: '✓ 카메라 실행 확인 완료'
-        });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
-        if (onTriggerToast) {
-          onTriggerToast('✓ [카메라 검수 성공] 카메라 실행 확인이 완료되었습니다.', 'success');
-        }
-        return true;
       }
-    }
 
-    // =========================================================================
-    // ⭐ [보안앱 필수 사업장 & 네이티브 앱(APK) 환경]
-    // 기존 로직: MDM/SSM 보안 정책에 의해 카메라가 차단(비활성화)되어 있어야 검수 통과!
-    // =========================================================================
-    // 1. Android Native APK: Check DevicePolicyManager / CameraService (Knox / SSM / MDM)
-    if (Capacitor.isNativePlatform()) {
+      // 2. 직접 카메라 실행 시도 -> 정상 작동(켜짐) 시 검수 실패, 보안정책에 의해 차단/제한 시 검수 완료!
       try {
-        const nativeSec = await checkCameraSecurityStatus();
-        if (nativeSec?.isBlocked) {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          // 브라우저/기기 정책에 의해 카메라 API가 차단/제한된 상태 -> 보안 정책에 의한 사용 제한으로 인정
           setAppCheckState({ isChecking: false, isVerified: true });
           setCameraCheckVerified(true);
           setCameraCheckState({
             isTesting: false,
             isVerified: true,
             result: 'LOCKED',
-            message: '✓ 기기 보안 정책에 의해 카메라 차단 확인됨'
+            message: '✓ 보안 정책에 의해 카메라 사용 제한 확인됨'
           });
           setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
           setAppScanState({
             isScanning: false,
             status: 'VERIFIED',
@@ -945,19 +904,100 @@ export default function SecurityChecklistTab({
             scanLog: []
           });
           if (onTriggerToast) {
-            onTriggerToast('✓ [카메라 검수 성공] 보안 앱 정책에 의해 카메라가 정상 차단되어 있습니다!', 'success');
+            onTriggerToast('✓ [검수 완료] 보안 정책에 의해 카메라 사용이 제한(차단)되어 있습니다!', 'success');
           }
           return true;
         }
-      } catch (e) {
-        console.warn('Native camera check error:', e);
-      }
-    }
 
-    // 2. 직접 카메라 실행 시도 -> 안 켜지고 보안정책에 의해 사용 제한되어야 검수 완료!
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // 브라우저/기기 정책에 의해 카메라 API가 차단/제한된 상태 -> 보안 정책에 의한 사용 제한으로 인정
+        // 카메라 하드웨어 직접 실행(스트림 요청) 시도 (타임아웃 4초 안전 가드)
+        const cameraTestPromise = (async () => {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          const isBlackout = await checkVideoFrameIsBlack(stream);
+          stream.getTracks().forEach(track => {
+            try { track.stop(); } catch (e) { }
+          });
+          return isBlackout;
+        })();
+
+        let timeoutId;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('CameraTimeout')), 4000);
+        });
+
+        let isBlackout = false;
+        try {
+          isBlackout = await Promise.race([cameraTestPromise, timeoutPromise]);
+        } finally {
+          clearTimeout(timeoutId);
+        }
+
+        if (isBlackout) {
+          // 스트림은 연결되었으나 화면이 완전 암전(블랙아웃) 차단된 상태 -> 차단 성공
+          setAppCheckState({ isChecking: false, isVerified: true });
+          setCameraCheckVerified(true);
+          setCameraCheckState({
+            isTesting: false,
+            isVerified: true,
+            result: 'LOCKED',
+            message: '✓ 보안 정책에 의해 카메라 사용 제한(블랙아웃) 확인됨'
+          });
+          setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+          setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
+          setAppScanState({
+            isScanning: false,
+            status: 'VERIFIED',
+            lastScannedAt: new Date().toLocaleTimeString(),
+            scanLog: []
+          });
+          if (onTriggerToast) {
+            onTriggerToast('✓ [검수 완료] 보안 정책에 의한 카메라 비활성화(블랙아웃) 상태가 확인되었습니다!', 'success');
+          }
+          return true;
+        }
+
+        // ❌ 실제 영상이 감지됨 -> 카메라가 정상적으로 켜져버림! (보안 차단 실패)
+        setAppCheckState({ isChecking: false, isVerified: false });
+        setCameraCheckVerified(false);
+        setCameraCheckState({
+          isTesting: false,
+          isVerified: false,
+          result: 'UNLOCKED',
+          message: '❌ 카메라 켜짐 감지 (보안 정책 미적용 - 차단 후 재검수 필요)'
+        });
+        setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+        setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: false }));
+        setAppScanState({
+          isScanning: false,
+          status: 'CAMERA_UNLOCKED',
+          lastScannedAt: new Date().toLocaleTimeString(),
+          scanLog: []
+        });
+
+        if (onTriggerToast) {
+          onTriggerToast('❌ [카메라 검수 미완료] 카메라가 차단되지 않고 정상 실행되었습니다! 보안 앱에서 카메라를 차단 후 [재확인] 버튼을 눌러 다시 검수해 주세요.', 'error');
+        }
+        return false;
+      } catch (err) {
+        if (err?.message === 'CameraTimeout') {
+          setAppCheckState({ isChecking: false, isVerified: false });
+          setCameraCheckVerified(false);
+          setCameraCheckState({
+            isTesting: false,
+            isVerified: false,
+            result: 'UNLOCKED',
+            message: '카메라 응답 시간 초과 (다시 검수 버튼을 눌러주세요)'
+          });
+          if (onTriggerToast) {
+            onTriggerToast('카메라 검수 응답 시간이 초과되었습니다. 다시 검수 버튼을 눌러주세요.', 'warning');
+          }
+          return false;
+        }
+
+        console.log('Camera Policy Restriction Check:', err.name, err.message);
+
+        // 카메라가 켜지지 않고 보안 정책, 권한 차단 등으로 에러가 발생한 경우:
+        // (NotAllowedError, PermissionDeniedError, SecurityError, NotReadableError, TrackStartError, AbortError, OverconstrainedError, NotFoundError 등)
+        // -> 보안 정책에 의해 카메라 사용이 정상적으로 제한(차단)된 것으로 판정하여 즉시 검수 완료!
         setAppCheckState({ isChecking: false, isVerified: true });
         setCameraCheckVerified(true);
         setCameraCheckState({
@@ -967,102 +1007,23 @@ export default function SecurityChecklistTab({
           message: '✓ 보안 정책에 의해 카메라 사용 제한 확인됨'
         });
         setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+        setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
         setAppScanState({
           isScanning: false,
           status: 'VERIFIED',
           lastScannedAt: new Date().toLocaleTimeString(),
           scanLog: []
         });
+
         if (onTriggerToast) {
           onTriggerToast('✓ [검수 완료] 보안 정책에 의해 카메라 사용이 제한(차단)되어 있습니다!', 'success');
         }
         return true;
       }
-
-      // 카메라 하드웨어 직접 실행(스트림 요청) 시도
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-
-      // 스트림이 열렸을 때, 실제 영상이 들어오는지 (밝기 검사) 확인
-      const isBlackout = await checkVideoFrameIsBlack(stream);
-      stream.getTracks().forEach(track => {
-        try { track.stop(); } catch (e) { }
-      });
-
-      if (isBlackout) {
-        // 스트림은 연결되었으나 화면이 완전 암전(블랙아웃) 차단된 상태 -> 차단 성공
-        setAppCheckState({ isChecking: false, isVerified: true });
-        setCameraCheckVerified(true);
-        setCameraCheckState({
-          isTesting: false,
-          isVerified: true,
-          result: 'LOCKED',
-          message: '✓ 보안 정책에 의해 카메라 사용 제한(블랙아웃) 확인됨'
-        });
-        setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-        setAppScanState({
-          isScanning: false,
-          status: 'VERIFIED',
-          lastScannedAt: new Date().toLocaleTimeString(),
-          scanLog: []
-        });
-        if (onTriggerToast) {
-          onTriggerToast('✓ [검수 완료] 보안 정책에 의한 카메라 비활성화(블랙아웃) 상태가 확인되었습니다!', 'success');
-        }
-        return true;
-      }
-
-      // ❌ 실제 영상이 감지됨 -> 카메라가 정상적으로 켜져버림! (보안 차단 실패)
-      setAppCheckState({ isChecking: false, isVerified: false });
-      setCameraCheckVerified(false);
-      setCameraCheckState({
-        isTesting: false,
-        isVerified: false,
-        result: 'UNLOCKED',
-        message: '❌ 카메라 켜짐 감지 (보안앱 차단 필요)'
-      });
-      setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
-      setAppScanState({
-        isScanning: false,
-        status: 'CAMERA_UNLOCKED',
-        lastScannedAt: new Date().toLocaleTimeString(),
-        scanLog: []
-      });
-
-      if (onTriggerToast) {
-        const isWebChecklist = !Capacitor.isNativePlatform() || targetApp?.isChecklistMode;
-        if (isWebChecklist) {
-          onTriggerToast('❌ [카메라 검수 실패] 카메라 화면이 정상 작동 중입니다! 보안 스티커를 부착하거나 카메라가 차단된 상태에서 다시 검수를 진행해 주세요.', 'error');
-        } else {
-          onTriggerToast('❌ [검수 실패] 카메라가 켜졌습니다. 모바일 보안 앱(MDM/SSM)에서 카메라를 먼저 차단(비활성화)해 주세요.', 'error');
-        }
-      }
-      return false;
-    } catch (err) {
-      console.log('Camera Policy Restriction Check:', err.name, err.message);
-
-      // 카메라가 켜지지 않고 보안 정책, 권한 차단 등으로 에러가 발생한 경우:
-      // (NotAllowedError, PermissionDeniedError, SecurityError, NotReadableError, TrackStartError, AbortError, OverconstrainedError, NotFoundError 등)
-      // -> 보안 정책에 의해 카메라 사용이 정상적으로 제한(차단)된 것으로 판정하여 즉시 검수 완료!
-      setAppCheckState({ isChecking: false, isVerified: true });
-      setCameraCheckVerified(true);
-      setCameraCheckState({
-        isTesting: false,
-        isVerified: true,
-        result: 'LOCKED',
-        message: '✓ 보안 정책에 의해 카메라 사용 제한 확인됨'
-      });
-      setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
-      setAppScanState({
-        isScanning: false,
-        status: 'VERIFIED',
-        lastScannedAt: new Date().toLocaleTimeString(),
-        scanLog: []
-      });
-
-      if (onTriggerToast) {
-        onTriggerToast('✓ [검수 완료] 보안 정책에 의해 카메라 사용이 제한(차단)되어 있습니다!', 'success');
-      }
-      return true;
+    } finally {
+      // 검수 종료 후 버튼이 비활성화(disabled)로 멈추지 않도록 100% 활성화 보장
+      setCameraCheckState(prev => ({ ...prev, isTesting: false }));
+      setAppCheckState(prev => ({ ...prev, isChecking: false }));
     }
   };
 
@@ -1075,6 +1036,7 @@ export default function SecurityChecklistTab({
       setSecAppVerified(false);
       setCameraCheckVerified(false);
       setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+      setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: false }));
       setAppScanState({ isScanning: false, status: 'NOT_RUNNING', lastScannedAt: null, scanLog: [] });
     } else if (statusType === 'VERIFIED') {
       setAppCheckState({ isChecking: false, isVerified: true });
@@ -1082,6 +1044,7 @@ export default function SecurityChecklistTab({
       setSecAppVerified(true);
       setCameraCheckVerified(true);
       setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
+      setCameraSelfChecklist(prev => ({ ...prev, cameraChecked: true }));
       setAppScanState({ isScanning: false, status: 'VERIFIED', lastScannedAt: null, scanLog: [] });
     }
   };
@@ -1209,7 +1172,8 @@ export default function SecurityChecklistTab({
       : (secAppVerified && cameraCheckVerified);
 
     if (targetStep > 2 && !isStep2Done) {
-      if (onTriggerToast) onTriggerToast('2단계: 모바일 보안 앱 검수를 먼저 완료해 주세요.', 'warning');
+      setStep2Attempted(true);
+      if (onTriggerToast) onTriggerToast('2단계: 모바일 보안 앱 및 카메라 검수를 먼저 완료해 주세요.', 'warning');
       setActiveStep(2);
       return;
     }
@@ -1792,7 +1756,7 @@ export default function SecurityChecklistTab({
         const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked;
         if (!isAll || !formData.mdmVerified || !formData.cameraLocked) {
           if (onTriggerToast) {
-            onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 3개 항목(스티커 부착, 촬영 금지, 카메라 실행 확인) 검수가 완료되지 않았습니다.', 'warning');
+            onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 3개 항목(스티커 부착, 촬영 금지, 카메라 차단 확인) 검수가 완료되지 않았습니다.', 'warning');
           }
           setActiveStep(2);
           return;
@@ -3554,11 +3518,14 @@ export default function SecurityChecklistTab({
                               capture="environment"
                               style={{ display: 'none' }}
                               onChange={() => {
-                                const updated = { ...cameraSelfChecklist, cameraChecked: true };
+                                // 사진이 실제로 촬영/선택되었다면 카메라가 차단되지 않고 작동하는 것이므로 검수 실패 처리
+                                const updated = { ...cameraSelfChecklist, cameraChecked: false };
                                 setCameraSelfChecklist(updated);
-                                const isAll = updated.stickerAttached && updated.noPhotoAgreed;
-                                setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
-                                setCameraCheckVerified(true);
+                                setFormData(prev => ({ ...prev, mdmVerified: false, cameraLocked: false }));
+                                setCameraCheckVerified(false);
+                                if (onTriggerToast) {
+                                  onTriggerToast('❌ [카메라 검수 실패] 카메라가 차단되지 않고 정상 실행되었습니다! 보안 정책에 의해 카메라가 제한되어 있어야 검수가 완료됩니다.', 'error');
+                                }
                               }}
                             />
 
@@ -3603,7 +3570,7 @@ export default function SecurityChecklistTab({
                                     gap: '6px'
                                   }}>
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      📸 2단계: 스마트폰 기본 카메라 실행 확인
+                                      📸 2단계: 카메라 보안 차단(제한) 상태 확인
                                     </span>
                                     {isPassed ? (
                                       <span style={{
@@ -3671,10 +3638,10 @@ export default function SecurityChecklistTab({
                                         gap: '6px'
                                       }}>
                                         <AlertTriangle size={15} color="#e11d48" />
-                                        <span>카메라 앱 실행 검수 미완료</span>
+                                        <span>카메라 차단(제한) 검수 미완료</span>
                                       </div>
                                       <div style={{ fontSize: '11.5px', color: '#881337', lineHeight: '1.5' }}>
-                                        스마트폰 카메라 앱 실행 검수가 아직 완료되지 않았습니다. 아래 <strong>[스마트폰 카메라 실행 및 검수 시작]</strong> 버튼을 눌러 카메라 앱을 실행해 주세요.
+                                        카메라 차단 검수가 완료되지 않았습니다. 아래 <strong>[카메라 차단 상태 재확인]</strong> 버튼을 눌러 카메라 제한 상태를 확인해 주세요. (보안 정책에 의해 카메라가 차단/제한되어 있어야 검수가 완료됩니다.)
                                       </div>
                                     </div>
                                   ) : isPassed ? (
@@ -3689,7 +3656,7 @@ export default function SecurityChecklistTab({
                                       lineHeight: '1.45',
                                       boxShadow: '0 2px 6px rgba(16, 185, 129, 0.06)'
                                     }}>
-                                      <strong>✓ 카메라 실행 확인 완료:</strong> 스마트폰 기본 카메라 앱이 정상 실행되어 현장 보안 검수가 안전하게 확인되었습니다.
+                                      <strong>✓ 카메라 차단 확인 완료:</strong> 보안 정책에 의해 카메라 사용이 정상적으로 제한(차단)된 상태가 확인되었습니다.
                                     </div>
                                   ) : (
                                     <div style={{
@@ -3701,7 +3668,7 @@ export default function SecurityChecklistTab({
                                       borderRadius: '8px',
                                       border: '1px solid #bfdbfe'
                                     }}>
-                                      💡 아래 <strong>[스마트폰 카메라 실행 및 검수 시작]</strong> 버튼을 누르면 기본 카메라 앱이 실행되며, 카메라 실행 확인 시 2단계 검수가 완료됩니다.
+                                      💡 아래 <strong>[카메라 차단 검수 시작]</strong> 버튼을 누르면 카메라 접근을 시도하며, 보안 정책에 의해 카메라가 정상적으로 제한(차단)되어야 검수가 완료됩니다.
                                     </div>
                                   )}
 
@@ -3712,15 +3679,10 @@ export default function SecurityChecklistTab({
                                       onClick={async () => {
                                         setStep2Attempted(true);
                                         const passed = await handleCheckAppExecutionStatus();
-                                        if (passed) {
-                                          const updated = { ...cameraSelfChecklist, cameraChecked: true };
-                                          setCameraSelfChecklist(updated);
-                                          const isAll = updated.stickerAttached && updated.noPhotoAgreed;
-                                          setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
-                                        } else {
-                                          const updated = { ...cameraSelfChecklist, cameraChecked: false };
-                                          setCameraSelfChecklist(updated);
-                                        }
+                                        const updated = { ...cameraSelfChecklist, cameraChecked: Boolean(passed) };
+                                        setCameraSelfChecklist(updated);
+                                        const isAll = Boolean(passed) && updated.stickerAttached && updated.noPhotoAgreed;
+                                        setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                                       }}
                                       style={{
                                         width: '100%',
@@ -3734,7 +3696,7 @@ export default function SecurityChecklistTab({
                                           : isPassed
                                             ? '#ecfdf5'
                                             : isFailed
-                                              ? 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)'
+                                              ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
                                               : '#1e3a8a',
                                         color: isTesting
                                           ? '#64748b'
@@ -3744,10 +3706,10 @@ export default function SecurityChecklistTab({
                                         border: isPassed
                                           ? '1.5px solid #6ee7b7'
                                           : isFailed
-                                            ? '1.5px solid #9f1239'
+                                            ? '1.5px solid #1e40af'
                                             : '1.5px solid #1e3a8a',
                                         boxShadow: isFailed
-                                          ? '0 4px 14px rgba(225, 29, 72, 0.35)'
+                                          ? '0 4px 14px rgba(37, 99, 235, 0.35)'
                                           : isPassed
                                             ? '0 2px 8px rgba(16, 185, 129, 0.15)'
                                             : '0 2px 8px rgba(0, 0, 0, 0.08)',
@@ -3760,11 +3722,13 @@ export default function SecurityChecklistTab({
                                       }}
                                     >
                                       {isTesting ? (
-                                        <><RefreshCw size={17} className="animate-spin" /> 카메라 앱 실행 확인 중...</>
+                                        <><RefreshCw size={17} className="animate-spin" /> 카메라 차단 상태 검사 중...</>
                                       ) : isPassed ? (
-                                        <><CheckCircle2 size={17} color="#059669" /> ✓ 카메라 실행 확인 완료 (재실행 가능)</>
+                                        <><CheckCircle2 size={17} color="#059669" /> ✓ 카메라 차단 확인 완료 (재검수 가능)</>
+                                      ) : isFailed ? (
+                                        <><RotateCcw size={17} /> 🔄 카메라 차단 상태 재확인 (다시 검수하기)</>
                                       ) : (
-                                        <><Camera size={17} /> 📸 스마트폰 카메라 실행 및 검수 시작</>
+                                        <><Camera size={17} /> 📸 카메라 차단 검수 시작 (보안 제한 확인)</>
                                       )}
                                     </button>
                                   </div>
@@ -3938,11 +3902,33 @@ export default function SecurityChecklistTab({
                                   {cameraCheckVerified ? (
                                     <span style={{ fontSize: '11px', color: '#059669', fontWeight: '700' }}>✓ 차단 확인됨 (검수 통과)</span>
                                   ) : cameraCheckState.result === 'UNLOCKED' ? (
-                                    <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '700' }}>❌ 차단 안 됨 (검수 실패)</span>
+                                    <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '700' }}>❌ 차단 안 됨 (검수 미완료)</span>
+                                  ) : (!cameraCheckVerified && step2Attempted) ? (
+                                    <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '700' }}>⚠️ 검수 미완료 (확인 필요)</span>
                                   ) : null}
                                 </div>
 
-                                {/* 실시간 카메라 차단 검수 실행 버튼 */}
+                                {!cameraCheckVerified && (
+                                  <div style={{
+                                    fontSize: '11.5px',
+                                    color: (cameraCheckState.result === 'UNLOCKED' || step2Attempted) ? '#881337' : '#1e3a8a',
+                                    lineHeight: '1.45',
+                                    background: (cameraCheckState.result === 'UNLOCKED' || step2Attempted) ? '#ffffff' : '#eff6ff',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: (cameraCheckState.result === 'UNLOCKED' || step2Attempted) ? '1px solid #fecdd3' : '1px solid #bfdbfe'
+                                  }}>
+                                    {cameraCheckState.result === 'UNLOCKED' ? (
+                                      <>⚠️ <strong>카메라 차단 미적용:</strong> 카메라가 정상 실행되었습니다. 보안 앱에서 카메라를 차단한 후 아래 <strong>[카메라 차단 상태 재확인]</strong> 버튼을 눌러주세요.</>
+                                    ) : step2Attempted ? (
+                                      <>⚠️ <strong>카메라 검수 미완료:</strong> 다음 단계로 진행하려면 아래 버튼을 눌러 카메라 차단 상태를 확인해 주세요.</>
+                                    ) : (
+                                      <>💡 아래 <strong>[카메라 차단 검수 시작]</strong> 버튼을 누르면 보안 정책에 의해 카메라가 정상 차단되어 있는지 실시간 검사합니다.</>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* 실시간 카메라 차단 검수 실행 버튼 (미완료 시 항상 클릭 가능하게 활성화) */}
                                 <button
                                   type="button"
                                   disabled={cameraCheckState.isTesting}
@@ -3957,30 +3943,28 @@ export default function SecurityChecklistTab({
                                     borderRadius: '12px',
                                     fontSize: '13px',
                                     fontWeight: '800',
-                                    background: cameraCheckVerified
-                                      ? '#ecfdf5'
-                                      : cameraCheckState.result === 'UNLOCKED'
-                                        ? 'linear-gradient(135deg, #e11d48 0%, #be123c 100%)'
-                                        : (!cameraCheckVerified && step2Attempted)
-                                          ? '#fff1f2'
-                                          : '#eff6ff',
-                                    color: cameraCheckVerified
-                                      ? '#059669'
-                                      : cameraCheckState.result === 'UNLOCKED'
-                                        ? '#ffffff'
-                                        : (!cameraCheckVerified && step2Attempted)
-                                          ? '#e11d48'
+                                    background: cameraCheckState.isTesting
+                                      ? '#e2e8f0'
+                                      : cameraCheckVerified
+                                        ? '#ecfdf5'
+                                        : (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted))
+                                          ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)'
                                           : '#1e3a8a',
+                                    color: cameraCheckState.isTesting
+                                      ? '#64748b'
+                                      : cameraCheckVerified
+                                        ? '#059669'
+                                        : '#ffffff',
                                     border: cameraCheckVerified
                                       ? '1.5px solid #a7f3d0'
-                                      : cameraCheckState.result === 'UNLOCKED'
-                                        ? '1.5px solid #9f1239'
-                                        : (!cameraCheckVerified && step2Attempted)
-                                          ? '1.5px solid #fda4af'
-                                          : '1.5px solid #cbd5e1',
-                                    boxShadow: cameraCheckState.result === 'UNLOCKED'
-                                      ? '0 4px 14px rgba(225, 29, 72, 0.35)'
-                                      : '0 2px 8px rgba(0, 0, 0, 0.04)',
+                                      : (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted))
+                                        ? '1.5px solid #1e40af'
+                                        : '1.5px solid #1e3a8a',
+                                    boxShadow: (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted))
+                                      ? '0 4px 14px rgba(37, 99, 235, 0.35)'
+                                      : cameraCheckVerified
+                                        ? '0 2px 8px rgba(16, 185, 129, 0.15)'
+                                        : '0 2px 8px rgba(0, 0, 0, 0.08)',
                                     cursor: cameraCheckState.isTesting ? 'wait' : 'pointer',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -3992,11 +3976,11 @@ export default function SecurityChecklistTab({
                                   {cameraCheckState.isTesting ? (
                                     <><RefreshCw size={18} className="animate-spin" /> 카메라 실행 및 차단 상태 검사 중...</>
                                   ) : cameraCheckVerified ? (
-                                    <><CheckCircle2 size={18} color="#059669" /> 카메라 차단 확인 완료 (재검수 가능)</>
-                                  ) : cameraCheckState.result === 'UNLOCKED' ? (
-                                    <><RotateCcw size={18} /> ❌ 검수 실패 - 카메라 차단 후 다시 검수하기</>
+                                    <><CheckCircle2 size={18} color="#059669" /> ✓ 카메라 차단 확인 완료 (재검수 가능)</>
+                                  ) : (cameraCheckState.result === 'UNLOCKED' || (!cameraCheckVerified && step2Attempted)) ? (
+                                    <><RotateCcw size={18} /> 🔄 카메라 차단 상태 재확인 (다시 검수하기)</>
                                   ) : (
-                                    <><Camera size={18} /> 카메라 차단 검수 시작 (카메라 실행 확인)</>
+                                    <><Camera size={18} /> 📸 카메라 차단 검수 시작 (보안 제한 확인)</>
                                   )}
                                 </button>
                               </div>
@@ -4091,7 +4075,7 @@ export default function SecurityChecklistTab({
                                     if (!cameraSelfChecklist.stickerAttached || !cameraSelfChecklist.noPhotoAgreed) {
                                       onTriggerToast('❌ [검수 미완료] 카메라 보안 체크리스트 2개 항목을 모두 체크해 주세요.', 'warning');
                                     } else if (!cameraSelfChecklist.cameraChecked) {
-                                      onTriggerToast('❌ [검수 미완료] 2단계 [카메라 실행]을 통해 스티커 차단 상태를 확인해 주세요.', 'warning');
+                                      onTriggerToast('❌ [검수 미완료] 2단계 [카메라 차단 상태 재확인] 버튼을 눌러 카메라 제한 상태를 확인해 주세요.', 'warning');
                                     }
                                   }
                                   return;
@@ -4104,7 +4088,7 @@ export default function SecurityChecklistTab({
                                   } else if (!secAppVerified) {
                                     if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 1단계 모바일 보안 앱 실행 검수가 완료되지 않았습니다.`, 'warning');
                                   } else {
-                                    if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 2단계 카메라 차단 검수가 완료되지 않았습니다. [기본 카메라 열기]를 진행해 주세요.`, 'warning');
+                                    if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 2단계 카메라 차단 검수가 완료되지 않았습니다. [카메라 차단 상태 재확인] 버튼을 눌러 검수를 완료해 주세요.`, 'warning');
                                   }
                                   return;
                                 }

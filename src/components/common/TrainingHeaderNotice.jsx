@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { GraduationCap, Clock, Calendar, AlertTriangle, ShieldAlert, ArrowRight, X, CheckCircle2, ChevronRight } from 'lucide-react';
 import { useModalBack } from '../../services/modalBackHandler';
+import { normalizeKstDate } from '../../services/dbService';
 
 const getCategoryBadgeStyle = (category) => {
   const cat = String(category || '').trim();
@@ -18,7 +19,8 @@ const getCategoryBadgeStyle = (category) => {
   }
 };
 
-const getTrainingStatus = (expiryStr) => {
+const getTrainingStatus = (rawExpiryStr) => {
+  const expiryStr = normalizeKstDate(rawExpiryStr);
   if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -388,10 +390,10 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
                       {/* Dates */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: '#64748b' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                          <Calendar size={11} /> 수료: {item.completionDate || '-'}
+                          <Calendar size={11} /> 수료: {normalizeKstDate(item.completionDate) || '-'}
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: st.color, fontWeight: '700' }}>
-                          <Clock size={11} /> 만료: {item.expiryDate || '-'}
+                          <Clock size={11} /> 만료: {normalizeKstDate(item.expiryDate) || '-'}
                         </span>
                       </div>
                     </div>

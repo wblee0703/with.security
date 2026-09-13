@@ -11,7 +11,7 @@ import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import TrainingExpiryModal from './components/common/TrainingExpiryModal';
 import ExitConfirmModal from './components/common/ExitConfirmModal';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw, LogOut } from 'lucide-react';
-import { dbService } from './services/dbService';
+import { dbService, normalizeKstDate } from './services/dbService';
 import { syncCalendarWidget, checkWidgetLaunchIntent } from './services/appLauncherService';
 import { isSamePerson } from './services/userMatcher';
 
@@ -303,20 +303,25 @@ export default function App() {
           const dbEduLogs = await dbService.getEduLogs({ userId: user.username, name: user.name });
           const merged = new Map();
           allTrainings.forEach(t => {
+            if (!t) return;
             const tit = String(t.title || '').trim();
-            const comp = String(t.completionDate || t.completion_date || '').trim();
+            const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
             if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '');
             const key = `${tit.toLowerCase()}__${comp}`;
-            merged.set(key, t);
+            merged.set(key, { ...t, title: tit, completionDate: comp, expiryDate: exp });
           });
           (dbEduLogs || []).forEach(e => {
+            if (!e) return;
             const tit = String(e.title || '').trim();
-            const comp = String(e.completionDate || e.completion_date || '').trim();
+            const comp = normalizeKstDate(e.completionDate || e.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
             if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(e.expiryDate || e.expiry_date || '');
             const key = `${tit.toLowerCase()}__${comp}`;
-            merged.set(key, e);
+            const existing = merged.get(key);
+            merged.set(key, { ...(existing || {}), ...e, title: tit, completionDate: comp, expiryDate: exp });
           });
           allTrainings = Array.from(merged.values());
         } catch (e) {}

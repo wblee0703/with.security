@@ -52,6 +52,35 @@ export function sanitizeUserOutput(user) {
   };
 }
 
+export function formatJsonDbKstDate(d) {
+  if (!d && d !== 0) return '';
+  if (typeof d === 'string') {
+    const clean = d.trim();
+    if (clean.includes('T') || clean.endsWith('Z')) {
+      try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(clean));
+      } catch (e) {
+        return clean.split('T')[0];
+      }
+    }
+    const match = clean.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+    return clean.split('T')[0];
+  }
+  if (d instanceof Date) {
+    if (isNaN(d.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    } catch (e) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+  return String(d).split('T')[0];
+}
+
 // 2. Default Seed Datasets
 const DEFAULT_SEED_USERS = [
   {
@@ -536,23 +565,56 @@ class JsonDatabaseManager {
         list = list.filter(e => e.category === filters.category);
       }
     }
-    return [...list].sort((a, b) => new Date(b.completion_date || 0) - new Date(a.completion_date || 0));
+    // Deduplicate and normalize dates
+    const dedupMap = new Map();
+    list.forEach(e => {
+      const u = String(e.user_id || e.userId || e.name || '').trim().toLowerCase();
+      const tit = String(e.title || '').trim().toLowerCase();
+      const comp = formatJsonDbKstDate(e.completion_date || e.completionDate);
+      const exp = formatJsonDbKstDate(e.expiry_date || e.expiryDate);
+      if (!tit || !comp) return;
+      const key = `${u}__${tit}__${comp}`;
+      if (!dedupMap.has(key)) {
+        dedupMap.set(key, {
+          ...e,
+          completion_date: comp,
+          completionDate: comp,
+          expiry_date: exp,
+          expiryDate: exp
+        });
+      }
+    });
+    return Array.from(dedupMap.values()).sort((a, b) => new Date(b.completion_date || 0) - new Date(a.completion_date || 0));
   }
 
   async getEduLogById(id) {
     const list = this.cache.edu_logs || [];
-    return list.find(e => String(e.edu_id || e.id) === String(id)) || null;
+    const item = list.find(e => String(e.edu_id || e.id) === String(id)) || null;
+    if (!item) return null;
+    return {
+      ...item,
+      completion_date: formatJsonDbKstDate(item.completion_date || item.completionDate),
+      completionDate: formatJsonDbKstDate(item.completion_date || item.completionDate),
+      expiry_date: formatJsonDbKstDate(item.expiry_date || item.expiryDate),
+      expiryDate: formatJsonDbKstDate(item.expiry_date || item.expiryDate)
+    };
   }
 
   async createEduLog(data = {}) {
     const list = this.cache.edu_logs || [];
     const eduId = data.edu_id || data.id || `EDU-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
     const now = new Date().toISOString();
+    const comp = formatJsonDbKstDate(data.completion_date || data.completionDate);
+    const exp = formatJsonDbKstDate(data.expiry_date || data.expiryDate);
 
     const eduObj = {
       ...data,
       id: eduId,
       edu_id: eduId,
+      completion_date: comp,
+      completionDate: comp,
+      expiry_date: exp,
+      expiryDate: exp,
       created_at: data.created_at || now,
       updated_at: now
     };

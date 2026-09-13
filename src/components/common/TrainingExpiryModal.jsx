@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, ShieldAlert, GraduationCap, Calendar, Clock, ArrowRight, X } from 'lucide-react';
 import { useModalBack } from '../../services/modalBackHandler';
+import { normalizeKstDate } from '../../services/dbService';
 
 const getCategoryBadgeStyle = (category) => {
   const cat = String(category || '').trim();
@@ -226,11 +227,11 @@ export default function TrainingExpiryModal({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11.5px', color: '#475569', flexWrap: 'wrap' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
                       <Calendar size={11} color="#64748b" />
-                      수료일: {item.completionDate || '-'}
+                      수료일: {normalizeKstDate(item.completionDate) || '-'}
                     </span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '3px', fontWeight: '800', color: badgeColor }}>
                       <Clock size={11} color={badgeColor} />
-                      만료일: {item.expiryDate || '-'}
+                      만료일: {normalizeKstDate(item.expiryDate) || '-'}
                     </span>
                     {item.memo && <span style={{ color: '#64748b' }}>({item.memo})</span>}
                   </div>

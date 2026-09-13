@@ -1538,8 +1538,12 @@ function readSheetData(sheetName) {
       } else if (sheetName === 'edu_logs') {
         if (!obj.eduId && obj.edu_id) obj.eduId = obj.edu_id;
         if (!obj.userId && obj.user_id) obj.userId = obj.user_id;
-        if (!obj.completionDate && obj.completion_date) obj.completionDate = obj.completion_date;
-        if (!obj.expiryDate && obj.expiry_date) obj.expiryDate = obj.expiry_date;
+        const normComp = formatKstDate(obj.completion_date || obj.completionDate || '', true);
+        const normExp = formatKstDate(obj.expiry_date || obj.expiryDate || '', true);
+        obj.completion_date = normComp;
+        obj.completionDate = normComp;
+        obj.expiry_date = normExp;
+        obj.expiryDate = normExp;
         if (!obj.notes && obj.memo) obj.notes = obj.memo;
       } else if (sheetName === 'tbms') {
         if (!obj.id && obj.tbm_id) obj.id = obj.tbm_id;
@@ -1629,7 +1633,7 @@ function readSheetData(sheetName) {
           continue;
         }
 
-        key = idVal || ((uVal && tVal && cVal) ? `EDU::${uVal}::${tVal}::${cVal}` : `EDU_ROW_${i}`);
+        key = (uVal && tVal && cVal) ? `EDU::${uVal}::${tVal}::${cVal}` : (idVal || `EDU_ROW_${i}`);
       } else {
         key = String(obj.log_id || obj.id || '').trim();
       }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
 import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter, Sparkles } from 'lucide-react';
-import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL } from '../../services/dbService';
+import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL, normalizeKstDate } from '../../services/dbService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
@@ -197,22 +197,54 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           const eduLogs = await dbService.getEduLogs({ userId: active.username, name: active.name });
           const mergedMap = new Map();
           userTrainings.forEach(t => {
+            if (!t) return;
             const tit = String(t.title || '').trim();
-            const comp = String(t.completionDate || t.completion_date || '').trim();
+            const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
             if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '') || calculateOneYearLater(comp);
             const key = `${tit.toLowerCase()}__${comp}`;
-            mergedMap.set(key, t);
+            mergedMap.set(key, {
+              ...t,
+              title: tit,
+              completionDate: comp,
+              expiryDate: exp
+            });
           });
           (eduLogs || []).forEach(e => {
+            if (!e) return;
             const tit = String(e.title || '').trim();
-            const comp = String(e.completionDate || e.completion_date || '').trim();
+            const comp = normalizeKstDate(e.completionDate || e.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
             if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(e.expiryDate || e.expiry_date || '') || calculateOneYearLater(comp);
             const key = `${tit.toLowerCase()}__${comp}`;
-            mergedMap.set(key, e);
+            const existing = mergedMap.get(key);
+            mergedMap.set(key, {
+              ...(existing || {}),
+              ...e,
+              title: tit,
+              completionDate: comp,
+              expiryDate: exp,
+              id: existing?.id || e.id || e.eduId,
+              eduId: existing?.eduId || e.eduId || e.id
+            });
           });
           userTrainings = Array.from(mergedMap.values()).sort((a, b) => (b.completionDate || '').localeCompare(a.completionDate || ''));
+
+          // 중복 정리가 발생했거나 날짜 형식이 교정된 경우, 로컬 프로필을 자동 치유하여 영구 보존
+          const hasDifference = (active.trainings || []).length !== userTrainings.length ||
+            userTrainings.some(t => t.completionDate !== (active.trainings || []).find(at => at.title === t.title)?.completionDate);
+          if (hasDifference) {
+            const healedUser = {
+              ...active,
+              trainings: userTrainings,
+              educationDate: userTrainings[0]?.completionDate || '',
+              educationExpiryDate: userTrainings[0]?.expiryDate || '',
+              educationName: userTrainings[0]?.title || ''
+            };
+            dbService.saveUserProfile(healedUser, false).catch(() => {});
+          }
         } catch (e) { }
         setTrainings(userTrainings);
       } else {
@@ -295,12 +327,15 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       ? (trainingForm.customCategory.trim() || '기타')
       : trainingForm.category;
 
+    const cleanComp = normalizeKstDate(trainingForm.completionDate);
+    const cleanExp = normalizeKstDate(trainingForm.expiryDate) || calculateOneYearLater(cleanComp);
+
     let updatedList = [];
     if (editingTrainingId) {
       const existing = trainings.find(t => 
         (t.id && t.id === editingTrainingId) || 
         (t.eduId && t.eduId === editingTrainingId) ||
-        (t.title === trainingForm.title && t.completionDate === trainingForm.completionDate)
+        ((t.title || '').trim().toLowerCase() === trainingForm.title.trim().toLowerCase() && normalizeKstDate(t.completionDate) === cleanComp)
       );
       const targetItem = {
         ...(existing || {}),
@@ -314,8 +349,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         category: finalCategory,
         customCategory: trainingForm.customCategory,
         title: trainingForm.title.trim(),
-        completionDate: trainingForm.completionDate,
-        expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
+        completionDate: cleanComp,
+        expiryDate: cleanExp,
         memo: trainingForm.memo.trim(),
         updatedAt: new Date().toISOString()
       };
@@ -323,7 +358,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         ((t.id && t.id === editingTrainingId) || (t.eduId && t.eduId === editingTrainingId)) ? targetItem : t
       );
       if (!updatedList.some(t => t.id === editingTrainingId || t.eduId === editingTrainingId)) {
-        updatedList = [targetItem, ...trainings.filter(t => t.title !== targetItem.title || t.completionDate !== targetItem.completionDate)];
+        updatedList = [targetItem, ...trainings.filter(t => (t.title || '').trim().toLowerCase() !== targetItem.title.toLowerCase() || normalizeKstDate(t.completionDate) !== cleanComp)];
       }
       await dbService.saveEduLog(targetItem);
     } else {
@@ -339,12 +374,23 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         category: finalCategory,
         customCategory: trainingForm.customCategory,
         title: trainingForm.title.trim(),
-        completionDate: trainingForm.completionDate,
-        expiryDate: trainingForm.expiryDate || calculateOneYearLater(trainingForm.completionDate),
+        completionDate: cleanComp,
+        expiryDate: cleanExp,
         memo: trainingForm.memo.trim(),
         createdAt: new Date().toISOString()
       };
-      updatedList = [newItem, ...trainings];
+      // 중복 등록 방지: 동일한 과정명과 수료일이 이미 존재하면 덮어쓰기
+      const existingIdx = trainings.findIndex(t => 
+        (t.title || '').trim().toLowerCase() === newItem.title.toLowerCase() && 
+        normalizeKstDate(t.completionDate) === cleanComp
+      );
+      if (existingIdx >= 0) {
+        const merged = { ...trainings[existingIdx], ...newItem, id: trainings[existingIdx].id || newItem.id, eduId: trainings[existingIdx].eduId || newItem.eduId };
+        updatedList = [...trainings];
+        updatedList[existingIdx] = merged;
+      } else {
+        updatedList = [newItem, ...trainings];
+      }
       await dbService.saveEduLog(newItem);
     }
 
@@ -375,20 +421,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
     const targetId = item.id || item.eduId || item.edu_id;
     const targetTitle = (item.title || '').trim().toLowerCase();
-    const targetComp = (item.completionDate || item.completion_date || '').trim();
+    const targetComp = normalizeKstDate(item.completionDate || item.completion_date || '');
 
     const updatedList = trainings.filter(t => {
       if (targetId && (t.id === targetId || t.eduId === targetId)) return false;
       const tTitle = (t.title || '').trim().toLowerCase();
-      const tComp = (t.completionDate || t.completion_date || '').trim();
-      if (targetTitle && targetComp && tTitle === targetTitle && tComp === targetComp) return false;
+      const tComp = normalizeKstDate(t.completionDate || t.completion_date || '');
+      if (targetTitle && tTitle === targetTitle && (targetComp === tComp || !targetComp)) return false;
       return true;
     });
     setTrainings(updatedList);
 
     await dbService.deleteEduLog(targetId, {
       title: item.title,
-      completionDate: item.completionDate || item.completion_date,
+      completionDate: targetComp,
       userId: currentUser?.username,
       name: currentUser?.name
     });
@@ -1966,7 +2012,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {filteredTrainings.map((item, idx) => {
                       const catStyle = getCategoryBadgeStyle(item.category);
-                      const status = getTrainingStatus(item.expiryDate);
+                      const normExp = normalizeKstDate(item.expiryDate);
+                      const normComp = normalizeKstDate(item.completionDate);
+                      const status = getTrainingStatus(normExp);
                       const isEditingThisItem = Boolean(editingTrainingId && (editingTrainingId === item.id || editingTrainingId === item.eduId));
 
                       return (
@@ -2059,11 +2107,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                               <span style={{ color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <Calendar size={12} color="#64748b" />
-                                수료일: <strong style={{ color: '#0f172a' }}>{item.completionDate || '-'}</strong>
+                                수료일: <strong style={{ color: '#0f172a' }}>{normComp || '-'}</strong>
                               </span>
                               <span style={{ color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <Clock size={12} color={status.color} />
-                                만료일: <strong style={{ color: status.color }}>{item.expiryDate || '-'}</strong>
+                                만료일: <strong style={{ color: status.color }}>{normExp || '-'}</strong>
                               </span>
                             </div>
 

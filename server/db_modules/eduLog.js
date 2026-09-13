@@ -29,6 +29,35 @@ async function ensureEduLogTable() {
   }
 }
 
+function formatNodeKstDate(d) {
+  if (!d && d !== 0) return '';
+  if (typeof d === 'string') {
+    const clean = d.trim();
+    if (clean.includes('T') || clean.endsWith('Z')) {
+      try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(clean));
+      } catch (e) {
+        return clean.split('T')[0];
+      }
+    }
+    const match = clean.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+    if (match) return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+    return clean.split('T')[0];
+  }
+  if (d instanceof Date) {
+    if (isNaN(d.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    } catch (e) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+  }
+  return String(d).split('T')[0];
+}
+
 /**
  * 교육수료일지(edu_log) 생성 및 업데이트
  */
@@ -153,8 +182,8 @@ export async function getEduLogs(filter = {}) {
       rank: r.rank,
       category: r.category,
       title: r.title,
-      completionDate: r.completion_date ? (typeof r.completion_date === 'string' ? r.completion_date.split('T')[0] : r.completion_date.toISOString().split('T')[0]) : '',
-      expiryDate: r.expiry_date ? (typeof r.expiry_date === 'string' ? r.expiry_date.split('T')[0] : r.expiry_date.toISOString().split('T')[0]) : '',
+      completionDate: formatNodeKstDate(r.completion_date),
+      expiryDate: formatNodeKstDate(r.expiry_date),
       memo: r.memo || '',
       createdAt: r.created_at,
       updatedAt: r.updated_at
@@ -187,8 +216,8 @@ export async function getEduLogById(eduId) {
       rank: r.rank,
       category: r.category,
       title: r.title,
-      completionDate: r.completion_date ? (typeof r.completion_date === 'string' ? r.completion_date.split('T')[0] : r.completion_date.toISOString().split('T')[0]) : '',
-      expiryDate: r.expiry_date ? (typeof r.expiry_date === 'string' ? r.expiry_date.split('T')[0] : r.expiry_date.toISOString().split('T')[0]) : '',
+      completionDate: formatNodeKstDate(r.completion_date),
+      expiryDate: formatNodeKstDate(r.expiry_date),
       memo: r.memo || '',
       createdAt: r.created_at,
       updatedAt: r.updated_at

@@ -100,23 +100,32 @@ export function notifyDataChanged(immediate = false) {
 export function normalizeKstDate(val) {
   if (!val && val !== 0) return '';
   if (val instanceof Date) {
-    const y = val.getFullYear();
-    const m = String(val.getMonth() + 1).padStart(2, '0');
-    const d = String(val.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+    if (isNaN(val.getTime())) return '';
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(val);
+    } catch (fmtErr) {
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
   }
   const str = String(val).trim();
   if (!str) return '';
 
-  // ISO 문자열이나 UTC(Z) 포함 시 Date로 파싱하여 브라우저 로컬(KST) 기준 변환
+  // ISO 문자열이나 UTC(Z) 포함 시 Date로 파싱하여 한국 시간(Asia/Seoul) 기준 변환
   if (str.includes('T') || str.endsWith('Z')) {
     try {
       const d = new Date(str);
       if (!isNaN(d.getTime())) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
+        try {
+          return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+        } catch (fmtErr) {
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const day = String(d.getDate()).padStart(2, '0');
+          return `${y}-${m}-${day}`;
+        }
       }
     } catch (e) { }
   }
@@ -1648,8 +1657,26 @@ class SecurityDatabase {
         user.trainings = [];
       }
 
-      // Filter out dummy/legacy placeholders if any
-      user.trainings = user.trainings.filter(t => !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-'));
+      // Filter out dummy/legacy placeholders and deduplicate with normalized KST dates
+      const cleanMap = new Map();
+      user.trainings.forEach(t => {
+        if (!t) return;
+        const tit = String(t.title || '').trim();
+        const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
+        if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+        if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+        const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '');
+        const key = `${tit.toLowerCase()}__${comp}`;
+        if (!cleanMap.has(key)) {
+          cleanMap.set(key, {
+            ...t,
+            title: tit,
+            completionDate: comp,
+            expiryDate: exp
+          });
+        }
+      });
+      user.trainings = Array.from(cleanMap.values());
     } catch (e) { }
 
     return user;
@@ -1777,6 +1804,25 @@ class SecurityDatabase {
 
     const uid = safeUser.username || safeUser.id || 'default';
     if (Array.isArray(safeUser.trainings)) {
+      const cleanMap = new Map();
+      safeUser.trainings.forEach(t => {
+        if (!t) return;
+        const tit = String(t.title || '').trim();
+        const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
+        if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
+        if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+        const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '');
+        const key = `${tit.toLowerCase()}__${comp}`;
+        if (!cleanMap.has(key)) {
+          cleanMap.set(key, {
+            ...t,
+            title: tit,
+            completionDate: comp,
+            expiryDate: exp
+          });
+        }
+      });
+      safeUser.trainings = Array.from(cleanMap.values());
       try {
         localStorage.setItem(`with_security_user_trainings_${uid}`, JSON.stringify(safeUser.trainings));
       } catch (e) { }
@@ -3533,25 +3579,33 @@ class SecurityDatabase {
     const dedupMap = new Map();
     (logs || []).forEach(item => {
       const title = String(item.title || '').trim();
-      const compDate = String(item.completionDate || item.completion_date || '').trim();
+      const compDate = normalizeKstDate(item.completionDate || item.completion_date || '');
       if (!title || !compDate) return;
       if (title === '사내 정기 정보보안 및 안전 교육') return;
       if (String(item.id || item.eduId || '').startsWith('EDU-INIT-')) return;
       if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
+
+      const expDate = normalizeKstDate(item.expiryDate || item.expiry_date || '');
+      const normalizedItem = {
+        ...item,
+        title,
+        completionDate: compDate,
+        expiryDate: expDate
+      };
 
       const uKey = String(item.userId || item.name || '').trim().toLowerCase();
       const tKey = title.toLowerCase();
       const cKey = compDate;
       const key = `${uKey}__${tKey}__${cKey}`;
       if (!dedupMap.has(key)) {
-        dedupMap.set(key, item);
+        dedupMap.set(key, normalizedItem);
       }
     });
     const uniqueLogs = Array.from(dedupMap.values());
 
     return uniqueLogs.filter(item => {
       const title = String(item.title || '').trim();
-      const compDate = String(item.completionDate || item.completion_date || '').trim();
+      const compDate = normalizeKstDate(item.completionDate || item.completion_date || '');
       if (!title || !compDate) return false;
 
       if (filter.userId || filter.username || filter.name) {
@@ -3603,6 +3657,8 @@ class SecurityDatabase {
               if (ts.length < 13) ts = String(Date.now());
               targetId = `EDU-${ts}-${Math.floor(100 + Math.random() * 900)}`;
             }
+            const normComp = normalizeKstDate(item.completion_date || item.completionDate || '');
+            const normExp = normalizeKstDate(item.expiry_date || item.expiryDate || '');
             const normalized = {
               id: targetId,
               eduId: targetId,
@@ -3613,8 +3669,8 @@ class SecurityDatabase {
               rank: item.rank || '',
               category: item.category || '법정',
               title: item.title || '',
-              completionDate: item.completion_date || item.completionDate || '',
-              expiryDate: item.expiry_date || item.expiryDate || '',
+              completionDate: normComp,
+              expiryDate: normExp,
               memo: item.memo || ''
             };
             await this.putItem('edu_logs', normalized).catch(() => { });
@@ -3635,6 +3691,8 @@ class SecurityDatabase {
       if (ts.length < 13) ts = String(Date.now());
       targetId = `EDU-${ts}-${Math.floor(100 + Math.random() * 900)}`;
     }
+    const normComp = normalizeKstDate(eduItem.completionDate || eduItem.completion_date || '');
+    const normExp = normalizeKstDate(eduItem.expiryDate || eduItem.expiry_date || '');
     const normalized = {
       id: targetId,
       eduId: targetId,
@@ -3645,8 +3703,8 @@ class SecurityDatabase {
       rank: eduItem.rank || eduItem.authorRank || '대리',
       category: eduItem.category || '법정',
       title: eduItem.title || '',
-      completionDate: eduItem.completionDate || eduItem.completion_date || '',
-      expiryDate: eduItem.expiryDate || eduItem.expiry_date || '',
+      completionDate: normComp,
+      expiryDate: normExp,
       memo: eduItem.memo || ''
     };
 
@@ -3678,19 +3736,19 @@ class SecurityDatabase {
 
   async deleteEduLog(eduId, meta = {}) {
     const targetTitle = (meta.title || '').trim().toLowerCase();
-    const targetComp = (meta.completionDate || '').trim();
+    const targetComp = normalizeKstDate(meta.completionDate || meta.completion_date || '');
     const targetUser = (meta.userId || meta.name || '').trim().toLowerCase();
 
     // 1. IndexedDB edu_logs
     try {
       if (eduId) await this.deleteItem('edu_logs', eduId);
-      if (targetTitle && targetComp) {
+      if (targetTitle) {
         const all = await this.getAll('edu_logs');
         for (const item of (all || [])) {
           const itemTitle = (item.title || '').trim().toLowerCase();
-          const itemComp = (item.completionDate || item.completion_date || '').trim();
+          const itemComp = normalizeKstDate(item.completionDate || item.completion_date || '');
           const itemUser = (item.userId || item.name || '').trim().toLowerCase();
-          if (itemTitle === targetTitle && itemComp === targetComp && (!targetUser || itemUser === targetUser)) {
+          if (itemTitle === targetTitle && (!targetComp || itemComp === targetComp) && (!targetUser || itemUser === targetUser)) {
             await this.deleteItem('edu_logs', item.id || item.eduId);
           }
         }
@@ -3703,10 +3761,10 @@ class SecurityDatabase {
       const current = raw ? JSON.parse(raw) : [];
       const updated = current.filter(l => {
         if (l.id === eduId || l.eduId === eduId) return false;
-        if (targetTitle && targetComp) {
+        if (targetTitle) {
           const itemTitle = (l.title || '').trim().toLowerCase();
-          const itemComp = (l.completionDate || l.completion_date || '').trim();
-          if (itemTitle === targetTitle && itemComp === targetComp) return false;
+          const itemComp = normalizeKstDate(l.completionDate || l.completion_date || '');
+          if (itemTitle === targetTitle && (!targetComp || itemComp === targetComp)) return false;
         }
         return true;
       });
@@ -3722,10 +3780,10 @@ class SecurityDatabase {
           const list = JSON.parse(rawU);
           const filtered = (list || []).filter(l => {
             if (l.id === eduId || l.eduId === eduId) return false;
-            if (targetTitle && targetComp) {
+            if (targetTitle) {
               const itemTitle = (l.title || '').trim().toLowerCase();
-              const itemComp = (l.completionDate || l.completion_date || '').trim();
-              if (itemTitle === targetTitle && itemComp === targetComp) return false;
+              const itemComp = normalizeKstDate(l.completionDate || l.completion_date || '');
+              if (itemTitle === targetTitle && (!targetComp || itemComp === targetComp)) return false;
             }
             return true;
           });
