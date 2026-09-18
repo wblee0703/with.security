@@ -5449,22 +5449,74 @@ class SecurityDatabase {
    * 브라우저/Capacitor 웹뷰 캐시를 무력화하고 GitHub 최신 버전으로 즉시 새로고침
    */
   async reloadAppWithoutCache() {
+    // 0. 인터넷 연결 상태 확인
+    if (typeof navigator !== 'undefined' && 'onLine' in navigator && !navigator.onLine) {
+      alert('인터넷이 연결되어 있지 않아 최신 버전을 불러올 수 없습니다.\n네트워크 연결 상태를 확인해 주세요.');
+      return;
+    }
+
+    // 1. Service Worker 등록 해제 및 캐시 무력화
+    try {
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ action: 'clearCache' });
+          navigator.serviceWorker.controller.postMessage({ action: 'skipWaiting' });
+        }
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(r => r.unregister()));
+      }
+    } catch (e) {
+      console.warn('SW unregister error during reload:', e);
+    }
+
+    // 2. CacheStorage API의 모든 캐시 키 삭제
     try {
       if (typeof caches !== 'undefined') {
         const keys = await caches.keys();
         await Promise.all(keys.map(k => caches.delete(k)));
       }
-    } catch (e) { }
+    } catch (e) {
+      console.warn('CacheStorage deletion error:', e);
+    }
 
+    // 3. sessionStorage 초기화
     try {
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.clear();
       }
     } catch (e) { }
 
-    const baseUrl = window.location.origin + window.location.pathname;
-    const cleanUrl = baseUrl.split('?')[0].split('#')[0];
-    window.location.replace(`${cleanUrl}?v=${Date.now()}`);
+    // 4. 대상 최신 URL 결정
+    // 로컬 Vite 개발 서버(localhost:3000)를 제외하고, 모바일 앱(localhost / Capacitor) 및 일반 웹에서는 항상 GitHub 최신 배포 주소를 타겟팅
+    const isLocalDev = window.location.hostname === 'localhost' && window.location.port === '3000';
+    let targetBase = isLocalDev 
+      ? (window.location.origin + window.location.pathname) 
+      : (this.getHostedServerUrl() || DEFAULT_PUBLIC_URL);
+
+    // GitHub Pages 경로에 트레일링 슬래시 보장 (301 Redirect 방지)
+    const cleanBase = targetBase.split('?')[0].split('#')[0].replace(/\/+$/, '');
+    const finalBase = isLocalDev ? cleanBase : `${cleanBase}/`;
+
+    const timestamp = Date.now();
+    const targetUrlWithCacheBuster = `${finalBase}?_v=${timestamp}`;
+
+    // 5. WebView/브라우저의 HTTP 디스크 캐시를 강제 파괴하기 위해 reload 모드로 사전 fetch 수행
+    try {
+      await fetch(targetUrlWithCacheBuster, {
+        method: 'GET',
+        cache: 'reload',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      });
+    } catch (e) {
+      console.warn('Pre-fetch cache bust warning:', e);
+    }
+
+    // 6. 최신 버전으로 즉시 교체 이동
+    window.location.replace(targetUrlWithCacheBuster);
   }
 }
 

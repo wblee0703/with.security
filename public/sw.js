@@ -45,10 +45,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigation requests (HTML document): Network-First, Cache-Fallback
+// Navigation requests (HTML document): Always Network-First (bypass HTTP cache), Cache-Fallback for Offline
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).then((networkRes) => {
+      fetch(req, { cache: 'no-cache' }).then((networkRes) => {
         if (networkRes && networkRes.status === 200) {
           const resClone = networkRes.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
@@ -64,6 +64,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // If request contains cache buster query parameter (_v or v), fetch from network directly
+  if (url.searchParams.has('_v') || url.searchParams.has('v')) {
+    event.respondWith(
+      fetch(req).then((networkRes) => {
+        if (networkRes && networkRes.status === 200) {
+          const resClone = networkRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, resClone));
+        }
+        return networkRes;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
+
   // Static Assets (JS, CSS, Images, Fonts): Stale-While-Revalidate
   event.respondWith(
     caches.match(req).then((cachedRes) => {
@@ -74,11 +88,22 @@ self.addEventListener('fetch', (event) => {
         }
         return networkRes;
       }).catch(() => {
-        // Return null or cached response if network fails
         return cachedRes;
       });
 
       return cachedRes || fetchPromise;
     })
   );
+});
+
+// Message Listener for explicit cache clearing & skipWaiting from app
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.action === 'skipWaiting') {
+    self.skipWaiting();
+  }
+  if (event.data && event.data.action === 'clearCache') {
+    event.waitUntil(
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    );
+  }
 });
