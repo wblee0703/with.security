@@ -582,20 +582,71 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     })();
   };
 
-  // '이름 직급 (소속)' 문자열 또는 사용자 객체와 현재 사용자 매칭 검사기
+  // '이름 직급 (소속)' 문자열 또는 사용자 객체, 아이디, 부서 등과 현재 사용자 매칭 검사기
   const isTargetMatchingMe = (target, my) => {
     if (!target || !my) return false;
-    if (typeof target === 'string') {
-      const myName = (my.name || '').trim();
-      const myRank = (my.rank || '').trim();
-      const myTeam = formatOnlyTeam(my.team || my.department || '');
-      let expectedFull = myName;
-      if (myRank && !expectedFull.includes(myRank)) expectedFull += ` ${myRank}`;
-      if (myTeam && !expectedFull.includes(myTeam)) expectedFull += ` (${myTeam})`;
-      const targetStr = target.trim();
-      return targetStr === expectedFull || (myName && targetStr.includes(myName));
+
+    // 1. 객체인 경우
+    if (typeof target === 'object') {
+      const tUser = String(target.username || target.userId || target.user_id || target.writer_id || target.id || '').trim().toLowerCase();
+      const myUser = String(my.username || my.userId || my.user_id || my.id || '').trim().toLowerCase();
+      if (tUser && myUser && tUser === myUser) return true;
+      return isSamePerson(target, my);
     }
-    return isSamePerson(target, my);
+
+    // 2. 문자열인 경우
+    const targetStr = String(target).trim();
+    if (!targetStr) return false;
+
+    const myName = (my.name || '').trim();
+    const myRank = (my.rank || '').trim();
+    const myTeam = (my.team || my.department || '').trim();
+    const myShortTeam = formatOnlyTeam(myTeam);
+    const myUser = String(my.username || my.userId || my.user_id || my.id || '').trim().toLowerCase();
+
+    // 2-1. 전체 공유 키워드 (전체, ALL, all, 회사전체, 임직원 등)
+    const lowerTarget = targetStr.toLowerCase();
+    if (lowerTarget === '전체' || lowerTarget === 'all' || lowerTarget === '임직원' || lowerTarget === '회사전체') {
+      return true;
+    }
+
+    // 2-2. 고유 계정 ID(username) 완전 일치 (예: target이 'wblee0703'으로 저장된 경우)
+    if (myUser && lowerTarget === myUser) {
+      return true;
+    }
+
+    // 2-3. '이름 직급 (소속)' 전체 문자열 완전 일치 검사
+    let expectedFull = myName;
+    if (myRank && !expectedFull.includes(myRank)) expectedFull += ` ${myRank}`;
+    if (myShortTeam && !expectedFull.includes(myShortTeam)) expectedFull += ` (${myShortTeam})`;
+    if (targetStr === expectedFull) return true;
+
+    // 2-4. 이름 매칭 + 동명이인 검증
+    if (myName && targetStr.includes(myName)) {
+      // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (품질경영팀)")
+      // 현재 사용자의 소속팀과 비교하여 다른 팀(상충)이면 동명이인 타인이므로 제외
+      const teamMatch = targetStr.match(/\(([^)]+)\)/);
+      if (teamMatch && teamMatch[1]) {
+        const targetTeam = teamMatch[1].trim().toLowerCase();
+        const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
+        const cleanTargetTeam = targetTeam.replace(/\s+/g, '').toLowerCase();
+        if (cleanMyTeam && cleanTargetTeam && !cleanMyTeam.includes(cleanTargetTeam) && !cleanTargetTeam.includes(cleanMyTeam)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // 2-5. 소속팀 일치 검사 (팀 전체 공유: 예: "인프라보안운영팀" 또는 "운영1팀")
+    if (myTeam) {
+      const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
+      const cleanTarget = targetStr.replace(/\s+/g, '').toLowerCase();
+      if (cleanMyTeam === cleanTarget || (cleanMyTeam.length >= 3 && cleanTarget.includes(cleanMyTeam))) {
+        return true;
+      }
+    }
+
+    return false;
   };
 
   // --- Helpers for User Filtering & Shared Task Detection ---
@@ -674,10 +725,42 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   // Work logs shared TO the current user from someone else (공유받은 업무)
   const isSharedToMe = (log) => {
-    if (!currentUser || !log || !log.isShared || !Array.isArray(log.sharedWith)) return false;
-    if (isSamePerson(log, currentUser)) return false;
+    if (!currentUser || !log) return false;
+    // 내가 작성한 본인 업무는 공유받은 업무 목록에서 제외 (100% 분리)
+    if (isMyAuthoredLog(log)) return false;
 
-    return log.sharedWith.some(target => isTargetMatchingMe(target, currentUser));
+    // sharedWith 목록 정제 (배열, 문자열, shared_with 대체 키 모두 지원)
+    let targets = [];
+    const rawSw = log.sharedWith || log.shared_with;
+    if (Array.isArray(rawSw)) {
+      targets = rawSw;
+    } else if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        targets = Array.isArray(p) ? p : rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        targets = rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    const rawIsSharedStr = String(log.isShared ?? log.is_shared ?? '').trim().toLowerCase();
+    const isSharedFlag = Boolean(
+      log.isShared === true ||
+      log.is_shared === true ||
+      log.is_shared === 1 ||
+      log.is_shared === '1' ||
+      rawIsSharedStr === 'true' ||
+      rawIsSharedStr === '1' ||
+      rawIsSharedStr === 'y' ||
+      rawIsSharedStr === 'yes' ||
+      rawIsSharedStr === '예' ||
+      rawIsSharedStr === 'o' ||
+      targets.length > 0 // ⭐ 공유 대상자가 1명 이상 존재하면 무조건 공유된 업무로 인정!
+    );
+
+    if (!isSharedFlag && targets.length === 0) return false;
+
+    return targets.some(target => isTargetMatchingMe(target, currentUser));
   };
 
   // --- Daily & Tomorrow Variables ---
@@ -873,9 +956,22 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 이번 주에 다른 동료로부터 사내 공유받은 주간 직접 입력 1~4번 보고서 목록
   const receivedWeeklyCustomReports = (sharedWeeklyReports || []).filter(rep => {
     if (!currentUser || !rep || rep.weeklyMonday !== weeklyMonday) return false;
-    if (isSamePerson(rep, currentUser)) return false;
-    if (!Array.isArray(rep.sharedWith)) return false;
-    return rep.sharedWith.some(target => isTargetMatchingMe(target, currentUser));
+    if (isMyAuthoredLog(rep)) return false;
+
+    let targets = [];
+    const rawSw = rep.sharedWith || rep.shared_with;
+    if (Array.isArray(rawSw)) {
+      targets = rawSw;
+    } else if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        targets = Array.isArray(p) ? p : rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        targets = rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    return targets.some(target => isTargetMatchingMe(target, currentUser));
   });
 
   // Initial work registration counts for weekly (처음 등록 기준 건수)

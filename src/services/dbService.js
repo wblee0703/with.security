@@ -2061,6 +2061,36 @@ class SecurityDatabase {
     return Array.from(userMap.values());
   }
 
+  _cleanSharedWithList(rawSw) {
+    if (!rawSw) return [];
+    if (Array.isArray(rawSw)) {
+      return rawSw.map(s => {
+        if (typeof s === 'string') return s.trim();
+        if (s && typeof s === 'object') {
+          const name = (s.name || s.authorName || s.writerName || '').trim();
+          const rank = (s.rank || s.authorRank || s.writerRank || '').trim();
+          let team = (s.team || s.department || s.authorTeam || s.writerTeam || '').trim();
+          if (team.includes('>')) team = team.split('>').pop().trim();
+          let label = name;
+          if (rank) label += ` ${rank}`;
+          if (team) label += ` (${team})`;
+          return label.trim() || name;
+        }
+        return String(s || '').trim();
+      }).filter(Boolean);
+    }
+    if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        if (Array.isArray(p)) {
+          return this._cleanSharedWithList(p);
+        }
+      } catch (e) { }
+      return rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
   _normalizeWorkLog(item) {
     if (!item) return null;
     let itemId = String(item.id || item.log_id || '').trim();
@@ -2083,30 +2113,22 @@ class SecurityDatabase {
       itemId = `LOG-${wPart}-${dPart}-${tPart || Date.now()}`;
     }
 
-    let parsedSharedWith = [];
     const rawSw = item.shared_with || item.sharedWith;
-    if (Array.isArray(rawSw)) {
-      parsedSharedWith = rawSw.map(s => typeof s === 'object' ? (s.name || s.authorName || '') : String(s).trim()).filter(Boolean);
-    } else if (typeof rawSw === 'string' && rawSw.trim()) {
-      try {
-        const p = JSON.parse(rawSw);
-        if (Array.isArray(p)) {
-          parsedSharedWith = p.map(s => typeof s === 'object' ? (s.name || s.authorName || '') : String(s).trim()).filter(Boolean);
-        } else {
-          parsedSharedWith = rawSw.split(',').map(s => s.trim()).filter(Boolean);
-        }
-      } catch (e) {
-        parsedSharedWith = rawSw.split(',').map(s => s.trim()).filter(Boolean);
-      }
-    }
+    const parsedSharedWith = this._cleanSharedWithList(rawSw);
 
+    const rawIsSharedStr = String(item.isShared ?? item.is_shared ?? item.is_share ?? '').trim().toLowerCase();
     const isSharedVal = Boolean(
       item.isShared === true ||
-      item.isShared === 'true' ||
+      item.is_shared === true ||
       item.is_shared === 1 ||
       item.is_shared === '1' ||
-      item.is_shared === true ||
-      item.is_shared === 'true'
+      rawIsSharedStr === 'true' ||
+      rawIsSharedStr === '1' ||
+      rawIsSharedStr === 'y' ||
+      rawIsSharedStr === 'yes' ||
+      rawIsSharedStr === '예' ||
+      rawIsSharedStr === 'o' ||
+      parsedSharedWith.length > 0 // ⭐ 공유 대상자가 1명 이상 존재하면 무조건 공유된 업무로 확정!
     );
 
     const details = String(item.tasks_done || item.details || item.content || '').trim();
@@ -3409,7 +3431,7 @@ class SecurityDatabase {
               workSupport: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
               teamCoop: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
               etcTasks: item.etcTasks || item.etc_tasks || localItem?.etcTasks || '',
-              sharedWith: item.sharedWith || item.shared_with || localItem?.sharedWith || [],
+              sharedWith: this._cleanSharedWithList(item.sharedWith || item.shared_with || localItem?.sharedWith),
               sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
               createdAt: item.createdAt || item.created_at || localItem?.createdAt || ''
             };

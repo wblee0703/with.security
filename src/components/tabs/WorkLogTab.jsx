@@ -391,13 +391,26 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (logId && optimisticShares[logId] !== undefined) {
       return Boolean(optimisticShares[logId]);
     }
+    const rawIsSharedStr = String(item.isShared ?? item.is_shared ?? item.is_share ?? '').trim().toLowerCase();
+    const hasTargets = Boolean(
+      (Array.isArray(item.sharedWith) && item.sharedWith.length > 0) ||
+      (Array.isArray(item.shared_with) && item.shared_with.length > 0) ||
+      (typeof item.sharedWith === 'string' && item.sharedWith.trim().length > 0) ||
+      (typeof item.shared_with === 'string' && item.shared_with.trim().length > 0)
+    );
+
     return Boolean(
       item.isShared === true ||
-      item.isShared === 'true' ||
+      item.is_shared === true ||
       item.is_shared === 1 ||
       item.is_shared === '1' ||
-      item.is_shared === true ||
-      item.is_shared === 'true'
+      rawIsSharedStr === 'true' ||
+      rawIsSharedStr === '1' ||
+      rawIsSharedStr === 'y' ||
+      rawIsSharedStr === 'yes' ||
+      rawIsSharedStr === '예' ||
+      rawIsSharedStr === 'o' ||
+      hasTargets
     );
   };
 

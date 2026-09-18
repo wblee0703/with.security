@@ -818,16 +818,29 @@ export default function WorkLogCalendar({
                     const isBeingDragged = draggedLog?.id === log.id || touchState?.log?.id === log.id;
                     const canEditThis = !isDue && (!canModifyLog || canModifyLog(log));
                     const subCat = item.isTripGroup ? item.subCategory : (log.subCategory || log.sub_category || '');
-                    const checkIsShared = (l) => Boolean(
-                      l && (
+                    const checkIsShared = (l) => {
+                      if (!l) return false;
+                      const rawIsSharedStr = String(l.isShared ?? l.is_shared ?? l.is_share ?? '').trim().toLowerCase();
+                      const hasTargets = Boolean(
+                        (Array.isArray(l.sharedWith) && l.sharedWith.length > 0) ||
+                        (Array.isArray(l.shared_with) && l.shared_with.length > 0) ||
+                        (typeof l.sharedWith === 'string' && l.sharedWith.trim().length > 0) ||
+                        (typeof l.shared_with === 'string' && l.shared_with.trim().length > 0)
+                      );
+                      return Boolean(
                         l.isShared === true ||
-                        l.isShared === 'true' ||
+                        l.is_shared === true ||
                         l.is_shared === 1 ||
                         l.is_shared === '1' ||
-                        l.is_shared === true ||
-                        l.is_shared === 'true'
-                      )
-                    );
+                        rawIsSharedStr === 'true' ||
+                        rawIsSharedStr === '1' ||
+                        rawIsSharedStr === 'y' ||
+                        rawIsSharedStr === 'yes' ||
+                        rawIsSharedStr === '예' ||
+                        rawIsSharedStr === 'o' ||
+                        hasTargets
+                      );
+                    };
                     const isShared = item.isTripGroup ? (Array.isArray(item.logs) && item.logs.some(checkIsShared)) : checkIsShared(log);
 
                     // Styling based on category, due status, or subCategory
