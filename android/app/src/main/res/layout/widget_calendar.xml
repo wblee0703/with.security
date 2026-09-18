@@ -374,7 +374,7 @@
                 android:layout_weight="1"
                 android:text="📌 오늘 업무 일정"
                 android:textColor="#0369A1"
-                android:textSize="15sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -389,7 +389,7 @@
                 android:paddingBottom="2dp"
                 android:text="🚩 대체공휴일"
                 android:textColor="#DC2626"
-                android:textSize="12sp"
+                android:textSize="11.5sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
 
@@ -399,21 +399,51 @@
                 android:layout_height="wrap_content"
                 android:text="업무 등록됨"
                 android:textColor="#0284C7"
-                android:textSize="14sp"
+                android:textSize="13.5sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Line 1: 출장 업무 (또는 주요 업무 1순위) -->
+        <TextView
+            android:id="@+id/tv_today_work_line1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2.5dp"
+            android:text="🚗 [출장] SKH 이천사업장 [작업]"
+            android:textColor="#0369A1"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <!-- Line 2: 사내 업무 (또는 2순위 업무) -->
+        <TextView
+            android:id="@+id/tv_today_work_line2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="1.5dp"
+            android:text="🏢 [사내] 일반업무 - 주간보고서 작성"
+            android:textColor="#1E293B"
+            android:textSize="13.5sp"
+            android:textStyle="normal"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:visibility="gone" />
+
+        <!-- 기본 / 안내 텍스트 뷰 (일정 없음 등) -->
         <TextView
             android:id="@+id/tv_today_work_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:text="등록된 일일업무를 확인하려면 터치하세요"
-            android:textColor="#0F172A"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:singleLine="true"
+            android:layout_marginTop="2.5dp"
+            android:text="해당 일자에 등록된 업무 일지가 없습니다."
+            android:textColor="#64748B"
+            android:textSize="13.5sp"
+            android:maxLines="2"
+            android:singleLine="false"
             android:ellipsize="end" />
     </LinearLayout>
 </LinearLayout>

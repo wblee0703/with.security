@@ -109,6 +109,8 @@ public class NativeAppLauncherPlugin extends Plugin {
             String todayTitle = call.getString("todayTitle", "");
             String todaySite = call.getString("todaySite", "");
             String todayStatus = call.getString("todayStatus", "점검 대기");
+            String todayLine1 = call.getString("todayLine1", "");
+            String todayLine2 = call.getString("todayLine2", "");
 
             android.content.SharedPreferences prefs = context.getSharedPreferences(
                     WorkCalendarWidgetProvider.PREFS_NAME,
@@ -120,6 +122,8 @@ public class NativeAppLauncherPlugin extends Plugin {
                     .putString(WorkCalendarWidgetProvider.KEY_TODAY_TITLE, todayTitle)
                     .putString(WorkCalendarWidgetProvider.KEY_TODAY_SITE, todaySite)
                     .putString(WorkCalendarWidgetProvider.KEY_TODAY_STATUS, todayStatus)
+                    .putString(WorkCalendarWidgetProvider.KEY_TODAY_LINE1, todayLine1)
+                    .putString(WorkCalendarWidgetProvider.KEY_TODAY_LINE2, todayLine2)
                     .apply();
 
             WorkCalendarWidgetProvider.updateAllWidgets(context);

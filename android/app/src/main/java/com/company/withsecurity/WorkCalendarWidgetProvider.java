@@ -29,6 +29,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     public static final String KEY_TODAY_TITLE = "widget_today_title";
     public static final String KEY_TODAY_SITE = "widget_today_site";
     public static final String KEY_TODAY_STATUS = "widget_today_status";
+    public static final String KEY_TODAY_LINE1 = "widget_today_line1";
+    public static final String KEY_TODAY_LINE2 = "widget_today_line2";
     public static final String KEY_SELECTED_DATE = "widget_selected_date";
 
     public static final String ACTION_PREV_MONTH = "com.company.withsecurity.ACTION_PREV_MONTH";
@@ -387,6 +389,10 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             views.setTextViewText(R.id.tv_today_date_label, dateLabel);
 
             String summaryText = "";
+            String line1 = "";
+            String line2 = "";
+            String tripText = "";
+            String internalText = "";
             String workTitle = "";
             String workSite = "";
             String workStatus = "";
@@ -399,6 +405,10 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 try {
                     JSONObject item = workDatesMap.getJSONObject(selectedDateStr);
                     summaryText = item.optString("summaryText", "");
+                    line1 = item.optString("line1", "");
+                    line2 = item.optString("line2", "");
+                    tripText = item.optString("tripText", "");
+                    internalText = item.optString("internalText", "");
                     workTitle = item.optString("title", "");
                     workSite = item.optString("site", "");
                     workStatus = item.optString("status", "업무 등록됨");
@@ -413,13 +423,40 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 workTitle = prefs.getString(KEY_TODAY_TITLE, "");
                 workSite = prefs.getString(KEY_TODAY_SITE, "");
                 workStatus = prefs.getString(KEY_TODAY_STATUS, "");
-                if (!workTitle.isEmpty() || !workSite.isEmpty()) {
+                line1 = prefs.getString(KEY_TODAY_LINE1, "");
+                line2 = prefs.getString(KEY_TODAY_LINE2, "");
+                if (!workTitle.isEmpty() || !workSite.isEmpty() || !line1.isEmpty() || !line2.isEmpty()) {
                     hasWork = true;
                     summaryText = workTitle;
                 }
             }
 
-            if (hasWork && (!summaryText.isEmpty() || !workTitle.isEmpty() || !workSite.isEmpty())) {
+            // If line1 and line2 are empty, try parsing from summaryText or tripText/internalText
+            if (line1.isEmpty() && line2.isEmpty()) {
+                if (!tripText.isEmpty() && !internalText.isEmpty()) {
+                    line1 = tripText;
+                    line2 = internalText;
+                } else if (!tripText.isEmpty()) {
+                    line1 = tripText;
+                } else if (!internalText.isEmpty()) {
+                    line1 = internalText;
+                } else if (!summaryText.isEmpty()) {
+                    if (summaryText.contains("\n")) {
+                        String[] parts = summaryText.split("\n", 2);
+                        line1 = parts[0].trim();
+                        line2 = parts[1].trim();
+                    } else {
+                        line1 = summaryText.trim();
+                    }
+                } else if (!workTitle.isEmpty()) {
+                    line1 = workTitle.trim();
+                } else if (!workSite.isEmpty()) {
+                    String sub = workSubCategory.isEmpty() ? "작업" : workSubCategory;
+                    line1 = "🚗 [출장] " + workSite.replace("출장", "").trim() + " [" + sub + "]";
+                }
+            }
+
+            if (hasWork && (!line1.isEmpty() || !line2.isEmpty() || !summaryText.isEmpty() || !workTitle.isEmpty() || !workSite.isEmpty())) {
                 if (workStatus == null || workStatus.isEmpty()) {
                     workStatus = "업무 등록됨";
                 }
@@ -429,6 +466,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#16A34A"));
                 } else if (workStatus.contains("진행중") || workStatus.contains("예정") || "납기 예정".equals(workStatus)) {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#D97706"));
+                } else if (workStatus.contains("출장") && workStatus.contains("사내")) {
+                    views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#7C3AED")); // Purple for hybrid
                 } else if ("출장업무".equals(workStatus) || "출장".equals(workCategory)) {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#0284C7"));
                 } else if ("사내업무".equals(workStatus) || "사내".equals(workCategory)) {
@@ -437,35 +476,60 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#0284C7"));
                 }
 
-                String combined = "";
-                if (!summaryText.isEmpty()) {
-                    combined = summaryText;
-                } else if ("출장".equals(workCategory) || "출장 업무".equals(workCategory)
-                        || (!workSite.isEmpty() && !workSite.contains("사내"))) {
-                    String site = workSite.isEmpty() ? "출장지" : workSite.replace("출장", "").trim();
-                    String sub = workSubCategory.isEmpty() ? "작업" : workSubCategory;
-                    combined = "출장업무[" + site + ", " + sub + "]";
-                    if (workCount > 1) {
-                        combined += " 외 " + (workCount - 1) + "건";
+                // Render 2 distinct lines (Line 1: 출장 업무, Line 2: 사내 업무 or fallback)
+                if (!line1.isEmpty() || !line2.isEmpty()) {
+                    views.setViewVisibility(R.id.tv_today_work_content, View.GONE);
+
+                    if (!line1.isEmpty()) {
+                        views.setViewVisibility(R.id.tv_today_work_line1, View.VISIBLE);
+                        String displayLine1 = line1;
+                        if (isSelHoliday && line2.isEmpty()) {
+                            displayLine1 += " (공휴일 근무)";
+                        }
+                        views.setTextViewText(R.id.tv_today_work_line1, displayLine1);
+                        if (line1.contains("출장")) {
+                            views.setTextColor(R.id.tv_today_work_line1, Color.parseColor("#0369A1"));
+                        } else {
+                            views.setTextColor(R.id.tv_today_work_line1, Color.parseColor("#1E293B"));
+                        }
+                    } else {
+                        views.setViewVisibility(R.id.tv_today_work_line1, View.GONE);
                     }
-                } else if ("사내".equals(workCategory) || "사내 업무".equals(workCategory)) {
-                    String sub = workSubCategory.isEmpty() ? "일반업무" : workSubCategory;
-                    combined = "사내업무 [" + sub + "]";
-                    if (workCount > 1) {
-                        combined += " 외 " + (workCount - 1) + "건";
+
+                    if (!line2.isEmpty()) {
+                        views.setViewVisibility(R.id.tv_today_work_line2, View.VISIBLE);
+                        String displayLine2 = line2;
+                        if (isSelHoliday) {
+                            displayLine2 += " (공휴일 근무)";
+                        }
+                        views.setTextViewText(R.id.tv_today_work_line2, displayLine2);
+                        if (line2.contains("사내")) {
+                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#1E293B"));
+                        } else if (line2.contains("납기")) {
+                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#B45309"));
+                        } else {
+                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#334155"));
+                        }
+                    } else {
+                        views.setViewVisibility(R.id.tv_today_work_line2, View.GONE);
                     }
-                } else if (!workTitle.isEmpty()) {
-                    combined = workTitle;
                 } else {
-                    combined = "등록된 일일 업무가 있습니다. (터치하여 앱에서 확인)";
+                    // Fallback to single content textview if line1 & line2 aren't present
+                    views.setViewVisibility(R.id.tv_today_work_line1, View.GONE);
+                    views.setViewVisibility(R.id.tv_today_work_line2, View.GONE);
+                    views.setViewVisibility(R.id.tv_today_work_content, View.VISIBLE);
+                    String fallbackText = !summaryText.isEmpty() ? summaryText : (!workTitle.isEmpty() ? workTitle : "등록된 일일 업무가 있습니다. (터치하여 앱에서 확인)");
+                    if (isSelHoliday) {
+                        fallbackText += " (공휴일 근무)";
+                    }
+                    views.setTextViewText(R.id.tv_today_work_content, fallbackText);
                 }
-
-                if (isSelHoliday) {
-                    combined = combined + " (공휴일 근무)";
-                }
-
-                views.setTextViewText(R.id.tv_today_work_content, combined);
             } else {
+                // No work scheduled
+                views.setViewVisibility(R.id.tv_today_work_line1, View.GONE);
+                views.setViewVisibility(R.id.tv_today_work_line2, View.GONE);
+                views.setViewVisibility(R.id.tv_today_work_content, View.VISIBLE);
+
                 if (isSelHoliday) {
                     views.setTextViewText(R.id.tv_today_status_badge, "공휴일 휴무");
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#DC2626"));
@@ -477,37 +541,44 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 }
             }
 
-            // Responsive sizing & scaling for bottom summary card based on widget
-            // dimensions
+            // Responsive sizing & scaling for bottom summary card based on widget dimensions
             try {
                 Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
                 int minHeight = options != null ? options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) : 0;
 
                 float dateLabelSize;
                 float statusBadgeSize;
-                float workContentSize;
+                float workLine1Size;
+                float workLine2Size;
 
                 if (minHeight >= 320) {
                     // Large / Expanded widget
-                    dateLabelSize = 16.5f;
-                    statusBadgeSize = 15.0f;
-                    workContentSize = 17.5f;
+                    dateLabelSize = 16.0f;
+                    statusBadgeSize = 14.5f;
+                    workLine1Size = 15.0f;
+                    workLine2Size = 14.0f;
                 } else if (minHeight >= 230) {
                     // Medium widget
-                    dateLabelSize = 15.5f;
-                    statusBadgeSize = 14.0f;
-                    workContentSize = 16.5f;
-                } else {
-                    // Compact widget / default fallback
                     dateLabelSize = 15.0f;
                     statusBadgeSize = 13.5f;
-                    workContentSize = 16.0f;
+                    workLine1Size = 14.0f;
+                    workLine2Size = 13.0f;
+                } else {
+                    // Compact widget / default fallback
+                    dateLabelSize = 14.0f;
+                    statusBadgeSize = 13.0f;
+                    workLine1Size = 13.5f;
+                    workLine2Size = 12.5f;
                 }
 
                 views.setTextViewTextSize(R.id.tv_today_date_label, TypedValue.COMPLEX_UNIT_SP, dateLabelSize);
                 views.setTextViewTextSize(R.id.tv_today_status_badge, TypedValue.COMPLEX_UNIT_SP, statusBadgeSize);
-                views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workContentSize);
-                views.setInt(R.id.tv_today_work_content, "setMaxLines", 1);
+                views.setTextViewTextSize(R.id.tv_today_work_line1, TypedValue.COMPLEX_UNIT_SP, workLine1Size);
+                views.setTextViewTextSize(R.id.tv_today_work_line2, TypedValue.COMPLEX_UNIT_SP, workLine2Size);
+                views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workLine1Size);
+                views.setInt(R.id.tv_today_work_line1, "setMaxLines", 1);
+                views.setInt(R.id.tv_today_work_line2, "setMaxLines", 1);
+                views.setInt(R.id.tv_today_work_content, "setMaxLines", 2);
 
                 float density = context.getResources().getDisplayMetrics().density;
                 int padH = (int) (10 * density);
