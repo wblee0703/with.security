@@ -543,9 +543,6 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
             // Responsive sizing & scaling for bottom summary card based on widget dimensions
             try {
-                Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
-                int minHeight = options != null ? options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) : 0;
-
                 float dateLabelSize;
                 float statusBadgeSize;
                 float workLineSize;
