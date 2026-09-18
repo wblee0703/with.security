@@ -52,12 +52,16 @@ export default function AppNoticeModal({ isOpen, onClose, initialNotice = null, 
 
   const handlePerformReload = async () => {
     setIsReloading(true);
+    // 새로고침 실행 시 현재 공지를 '업데이트 적용 완료'로 영구 등록하여 재노출 원천 방지
     if (selectedNotice) {
-      dbService.markNoticeAsRead(selectedNotice.id);
-      if (dontShowToday) {
-        dbService.dismissNoticeToday(selectedNotice.id);
-      }
+      dbService.markNoticeAsApplied(selectedNotice.id);
     }
+    if (Array.isArray(notices)) {
+      notices.forEach(n => {
+        if (n && n.id) dbService.markNoticeAsApplied(n.id);
+      });
+    }
+
     if (onReload) {
       onReload();
     } else {

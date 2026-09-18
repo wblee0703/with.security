@@ -14,7 +14,7 @@ export default function AppNoticeHeaderBtn({ compact = false }) {
       const activeList = list.filter(n => n.is_active !== false);
       setNotices(activeList);
 
-      const unread = activeList.filter(n => !dbService.isNoticeRead(n.id)).length;
+      const unread = activeList.filter(n => !dbService.isNoticeRead(n.id) && !dbService.isNoticeApplied(n.id)).length;
       setUnreadCount(unread);
     } catch (e) {
       console.warn('Failed to check notices:', e);

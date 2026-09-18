@@ -83,9 +83,10 @@ export default function App() {
         const activeList = notices.filter(n => n.is_active !== false);
         if (activeList.length > 0) {
           const latest = activeList[0];
+          const isApplied = dbService.isNoticeApplied(latest.id);
           const isDismissed = dbService.isNoticeDismissedToday(latest.id);
           const isRead = dbService.isNoticeRead(latest.id);
-          if (!isDismissed && !isRead) {
+          if (!isApplied && !isDismissed && !isRead) {
             setActiveNotice(latest);
             setIsNoticeAlertOpen(true);
           }

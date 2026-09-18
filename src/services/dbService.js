@@ -5413,6 +5413,39 @@ class SecurityDatabase {
   }
 
   /**
+   * 최신 버전 새로고침을 실행하여 업데이트를 적용 완료한 공지로 영구 등록
+   */
+  markNoticeAsApplied(noticeId) {
+    if (!noticeId) return;
+    try {
+      const raw = localStorage.getItem('with_security_applied_notices');
+      const appliedSet = new Set(raw ? JSON.parse(raw) : []);
+      appliedSet.add(String(noticeId));
+      localStorage.setItem('with_security_applied_notices', JSON.stringify(Array.from(appliedSet)));
+
+      // 함께 읽음 및 오늘 닫기 처리도 일괄 적용
+      this.markNoticeAsRead(noticeId);
+      this.dismissNoticeToday(noticeId);
+    } catch (e) { }
+    notifyDataChanged(true);
+  }
+
+  /**
+   * 이미 사용자가 최신 버전 새로고침을 통해 적용 완료한 공지인지 확인
+   */
+  isNoticeApplied(noticeId) {
+    if (!noticeId) return false;
+    try {
+      const raw = localStorage.getItem('with_security_applied_notices');
+      if (!raw) return false;
+      const list = JSON.parse(raw);
+      return Array.isArray(list) && list.includes(String(noticeId));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
    * 브라우저/Capacitor 웹뷰 캐시를 무력화하고 GitHub 최신 버전으로 즉시 새로고침
    */
   async reloadAppWithoutCache() {

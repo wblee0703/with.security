@@ -273,7 +273,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               educationExpiryDate: userTrainings[0]?.expiryDate || '',
               educationName: userTrainings[0]?.title || ''
             };
-            dbService.saveUserProfile(healedUser, false).catch(() => {});
+            dbService.saveUserProfile(healedUser, false).catch(() => { });
           }
         } catch (e) { }
         setTrainings(userTrainings);
@@ -361,8 +361,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     let updatedList = [];
     if (editingTrainingId) {
-      const existing = trainings.find(t => 
-        (t.id && t.id === editingTrainingId) || 
+      const existing = trainings.find(t =>
+        (t.id && t.id === editingTrainingId) ||
         (t.eduId && t.eduId === editingTrainingId) ||
         ((t.title || '').trim().toLowerCase() === trainingForm.title.trim().toLowerCase() && normalizeKstDate(t.completionDate) === cleanComp)
       );
@@ -383,7 +383,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         memo: trainingForm.memo.trim(),
         updatedAt: new Date().toISOString()
       };
-      updatedList = trainings.map(t => 
+      updatedList = trainings.map(t =>
         ((t.id && t.id === editingTrainingId) || (t.eduId && t.eduId === editingTrainingId)) ? targetItem : t
       );
       if (!updatedList.some(t => t.id === editingTrainingId || t.eduId === editingTrainingId)) {
@@ -409,8 +409,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         createdAt: new Date().toISOString()
       };
       // 중복 등록 방지: 동일한 과정명과 수료일이 이미 존재하면 덮어쓰기
-      const existingIdx = trainings.findIndex(t => 
-        (t.title || '').trim().toLowerCase() === newItem.title.toLowerCase() && 
+      const existingIdx = trainings.findIndex(t =>
+        (t.title || '').trim().toLowerCase() === newItem.title.toLowerCase() &&
         normalizeKstDate(t.completionDate) === cleanComp
       );
       if (existingIdx >= 0) {
@@ -3025,13 +3025,6 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               </div>
             )}
 
-            {/* Google Apps Script Quick Deployment Guide */}
-            <div style={{ fontSize: '11.5px', color: '#065f46', background: '#f0fdf4', padding: '10px 12px', borderRadius: '8px', border: '1px solid #bbf7d0', lineHeight: '1.6', marginBottom: '12px' }}>
-              💡 <strong>구글 시트 연동 안내:</strong><br />
-              - Withsharing_DB 스프레드시트의 <strong>[Apps Script]</strong>에 <code>google_apps_script.js</code> 코드를 적용하고, <strong>[새 배포] &gt; [웹 앱]</strong> (액세스: <em>모든 사용자</em>)으로 배포된 URL을 입력합니다.<br />
-              - 아래 <strong>[구글 시트 전체 동기화]</strong> 버튼을 누르면 구글 시트에 보관된 모든 업무일지, 서약서, 사업장 데이터가 앱으로 즉시 불러와집니다.
-            </div>
-
             {sheetsConnectionStatus && (
               <div style={{
                 padding: '9px 12px',
@@ -3078,7 +3071,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               <button
                 type="button"
                 onClick={handleSyncGoogleSheets}
-                disabled={isSyncingSheets || isTestingSheets || isCleaningSheets}
+                disabled={isSyncingSheets || isTestingSheets}
                 style={{
                   padding: '8px 14px',
                   borderRadius: '8px',
@@ -3087,62 +3080,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   color: '#ffffff',
                   fontSize: '12px',
                   fontWeight: '800',
-                  cursor: (isSyncingSheets || isTestingSheets || isCleaningSheets) ? 'not-allowed' : 'pointer',
+                  cursor: (isSyncingSheets || isTestingSheets) ? 'not-allowed' : 'pointer',
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: '6px',
                   boxShadow: '0 2px 6px rgba(16, 185, 129, 0.2)'
                 }}
-                title="스프레드시트에 있는 데이터만 남기고, 스프레드시트에 없는 로컬 임시 데이터는 영구 삭제합니다."
+                title="구글 스프레드시트에 저장된 최신 데이터를 불러와 현재 화면과 즉시 동기화합니다."
               >
                 <Download size={13} className={isSyncingSheets ? 'spin-anim' : ''} />
-                {isSyncingSheets ? '스프레드시트 데이터 완전 동기화 중...' : '📥 스프레드시트 기준 완전 동기화 (시트 외 로컬데이터 삭제)'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCleanupGoogleSheetsDuplicates}
-                disabled={isCleaningSheets || isSyncingSheets || isTestingSheets}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: '#6366f1',
-                  border: 'none',
-                  color: '#ffffff',
-                  fontSize: '12px',
-                  fontWeight: '800',
-                  cursor: (isCleaningSheets || isSyncingSheets || isTestingSheets) ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  boxShadow: '0 2px 6px rgba(99, 102, 241, 0.25)'
-                }}
-                title="스프레드시트 내에 중복 생성된 행들을 자동 검사하여 최신 1건만 남기고 이전 중복 행을 삭제합니다."
-              >
-                <Sparkles size={13} className={isCleaningSheets ? 'spin-anim' : ''} />
-                {isCleaningSheets ? '스프레드시트 중복 행 정리 중...' : '✨ 스프레드시트 중복 데이터 자동 정리 (중복 행 삭제)'}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleUploadLocalToGoogleSheet}
-                disabled={isUploadingToSheet || isSyncingSheets || isCleaningSheets}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: '8px',
-                  background: '#ffffff',
-                  border: '1.5px solid #64748b',
-                  color: '#334155',
-                  fontSize: '12px',
-                  fontWeight: '700',
-                  cursor: (isUploadingToSheet || isSyncingSheets || isCleaningSheets) ? 'not-allowed' : 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                <Upload size={13} className={isUploadingToSheet ? 'spin-anim' : ''} />
-                {isUploadingToSheet ? '구글 시트로 올리는 중...' : '📤 내 컴퓨터 데이터 → 구글 시트 일괄 올리기'}
+                {isSyncingSheets ? '구글 시트 데이터 동기화 중...' : '📥 구글 시트 최신 데이터 즉시 동기화'}
               </button>
             </div>
           </div>
