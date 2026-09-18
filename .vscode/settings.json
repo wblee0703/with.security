@@ -1,5 +1,10 @@
 {
   "java.errors.incompleteClasspath.severity": "ignore",
-  "java.import.gradle.enabled": true,
-  "java.configuration.updateBuildConfiguration": "interactive"
+  "java.import.gradle.enabled": false,
+  "java.import.maven.enabled": false,
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/dist/**"
+  ]
 }
