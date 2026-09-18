@@ -1309,23 +1309,13 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
     if (!log) return false;
-    const isMine = isLogVisibleToCurrentUser(log, currentUser);
-    const isShared = isSharedToMe(log, currentUser);
-
-    let matchesVisibility = false;
-    if (filterCategory === '공유받은 업무') {
-      matchesVisibility = isShared;
-    } else if (filterCategory === '전체') {
-      matchesVisibility = isMine || isShared;
-    } else {
-      // '사내 업무' | '출장 업무'
-      matchesVisibility = (isMine || isShared) && (log.category === filterCategory);
-    }
-    if (!matchesVisibility) return false;
+    const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
+    if (!matchesUser) return false;
 
     const logDate = normalizeKstDate(log.date || log.log_date) || (log.date || log.log_date);
     const selDate = normalizeKstDate(selectedDate) || selectedDate;
     const matchesDate = viewAllDates || logDate === selDate;
+    const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
 
     const q = (searchQuery || '').trim().toLowerCase();
     const titleStr = (log.title || '').toLowerCase();
@@ -1338,7 +1328,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       authorStr.includes(q) ||
       subCatStr.includes(q);
 
-    return matchesDate && matchesQuery;
+    return matchesDate && matchesCategory && matchesQuery;
   });
 
   // Group logs by Date (descending)
@@ -1709,31 +1699,27 @@ export default function WorkLogTab({ onTriggerToast }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', flexWrap: 'nowrap' }}>
             {/* Category Segmented Control */}
             <div style={{ display: 'flex', background: '#ffffff', padding: '3px', borderRadius: '6px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-              {['전체', '사내 업무', '출장 업무', '공유받은 업무'].map(cat => {
-                const isActive = filterCategory === cat;
-                const activeBg = cat === '공유받은 업무' ? '#059669' : '#1e3a8a';
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => setFilterCategory(cat)}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: '5px',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      border: isActive ? '1px solid #e2e8f0' : '1px solid transparent',
-                      background: isActive ? activeBg : 'transparent',
-                      color: isActive ? '#ffffff' : '#334155',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {cat}
-                  </button>
-                );
-              })}
+              {['전체', '사내 업무', '출장 업무'].map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFilterCategory(cat)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '5px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    border: filterCategory === cat ? '1px solid #e2e8f0' : '1px solid transparent',
+                    background: filterCategory === cat ? '#1e3a8a' : 'transparent',
+                    color: filterCategory === cat ? '#ffffff' : '#334155',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
             </div>
 
             {/* Search Bar (Auto-expanded to fill remaining right width in single row) */}
@@ -1859,7 +1845,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                         const logsForDate = groupedByDate[dateStr] || [];
                         const cardGroupsMap = logsForDate.reduce((acc, log) => {
                           const isInternal = log.category !== '출장 업무';
-                          const isSharedReceived = isSharedToMe(log, currentUser);
                           const sName = !isInternal ? (log.siteName || log.site_name || '').trim() : '';
                           const aName = log.authorName || log.name || '작성자';
                           const subCat = isInternal
@@ -1868,13 +1853,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                           const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
 
                           const key = isInternal
-                            ? `${isSharedReceived ? 'SHARED' : 'OWN'}___${log.category}___${subCat}___${dDate}___${aName}`
-                            : `${isSharedReceived ? 'SHARED' : 'OWN'}___${log.category}___${sName}___${subCat}___${aName}`;
+                            ? `${log.category}___${subCat}___${dDate}___${aName}`
+                            : `${log.category}___${sName}___${subCat}___${aName}`;
 
                           if (!acc[key]) {
                             acc[key] = {
                               key,
-                              isSharedReceived,
                               category: log.category,
                               subCategory: subCat,
                               dueDate: dDate,
@@ -2058,54 +2042,34 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       </span>
                                     )}
 
-                                    {/* 공유받은 업무인 경우: 공유자 뱃지 표기 */}
-                                    {group.isSharedReceived && (
-                                      <span style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        fontSize: '11px',
-                                        fontWeight: '800',
-                                        background: '#ecfdf5',
-                                        color: '#059669',
-                                        border: '1.5px solid #a7f3d0',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        <Users size={12} color="#059669" />
-                                        공유받음: {group.authorName} {group.authorRank || ''} ({group.authorTeam || ''})
-                                      </span>
-                                    )}
                                   </div>
 
-                                  {/* Action Buttons: Add Task to this Card Group (본인 작성 카드만 허용) */}
+                                  {/* Action Buttons: Add Task to this Card Group */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                    {!group.isSharedReceived && (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
-                                        style={{
-                                          background: '#eff6ff',
-                                          border: '1.5px solid #cbd5e1',
-                                          color: '#1e3a8a',
-                                          padding: '5px 10px',
-                                          borderRadius: '8px',
-                                          fontSize: '11.5px',
-                                          fontWeight: '700',
-                                          whiteSpace: 'nowrap',
-                                          flexShrink: 0,
-                                          cursor: 'pointer',
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: '4px',
-                                          transition: 'all 0.2s ease',
-                                          boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
-                                        }}
-                                        title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
-                                      >
-                                        <Plus size={13} /> 추가
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
+                                      style={{
+                                        background: '#eff6ff',
+                                        border: '1.5px solid #cbd5e1',
+                                        color: '#1e3a8a',
+                                        padding: '5px 10px',
+                                        borderRadius: '8px',
+                                        fontSize: '11.5px',
+                                        fontWeight: '700',
+                                        whiteSpace: 'nowrap',
+                                        flexShrink: 0,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '4px',
+                                        transition: 'all 0.2s ease',
+                                        boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
+                                      }}
+                                      title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
+                                    >
+                                      <Plus size={13} /> 추가
+                                    </button>
                                   </div>
                                 </div>
 
@@ -2706,7 +2670,7 @@ export default function WorkLogTab({ onTriggerToast }) {
         {/* Right Column: Desktop Calendar Widget */}
         <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
           <WorkLogCalendar
-            workLogs={workLogs.filter(log => isLogVisibleToCurrentUser(log, currentUser) || isSharedToMe(log, currentUser))}
+            workLogs={workLogs.filter(log => isLogVisibleToCurrentUser(log, currentUser))}
             selectedDate={selectedDate}
             onSelectDate={(date) => {
               setSelectedDate(date);
