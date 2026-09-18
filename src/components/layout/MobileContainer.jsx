@@ -10,7 +10,8 @@ import {
   FileSpreadsheet,
   RefreshCw,
   ArrowDown,
-  HardHat
+  HardHat,
+  WifiOff
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
@@ -34,6 +35,20 @@ export default function MobileContainer({
   const contentRef = useRef(null);
   const startYRef = useRef(0);
   const isPullingRef = useRef(false);
+
+  // Network Offline / Online live detection
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     async function loadUser() {
@@ -166,6 +181,31 @@ export default function MobileContainer({
             WITH Sharing
           </span>
         </div>
+
+        {/* Offline Red Indicator Banner in Header */}
+        {isOffline && (
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              background: '#fef2f2',
+              border: '1.5px solid #fecaca',
+              color: '#dc2626',
+              fontSize: '11px',
+              fontWeight: '900',
+              letterSpacing: '-0.3px',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 1px 3px rgba(220, 38, 38, 0.12)'
+            }}
+            title="현재 오프라인 상태입니다. 저장된 데이터는 정상 확인 가능합니다."
+          >
+            <WifiOff size={13} color="#dc2626" />
+            <span>인터넷 연결상태 확인</span>
+          </div>
+        )}
 
         {/* Top Right: User Profile Widget & Training Notice Icon */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

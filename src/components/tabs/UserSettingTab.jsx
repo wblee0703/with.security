@@ -1238,7 +1238,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   }}
                 >
                   <RefreshCw size={13} className={isReloadingApp ? 'spin' : ''} />
-                  <span>{isReloadingApp ? '불러오는 중...' : '최신 버전 즉시 불러오기'}</span>
+                  <span>{isReloadingApp ? '업데이트 중...' : '최신 버전 업데이트'}</span>
                 </button>
 
                 {/* Developer-Only Update Notice Management */}

@@ -521,54 +521,7 @@ export default function App() {
   return (
     <div style={{ position: 'relative', width: '100vw', minHeight: '100vh', background: '#f8fafc' }}>
       
-      {/* Offline Internet Connection Required Floating Banner */}
-      {isOffline && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)',
-          color: '#ffffff',
-          padding: '12px 16px',
-          zIndex: 99999,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '8px',
-          boxShadow: '0 4px 14px rgba(239, 68, 68, 0.35)',
-          paddingTop: 'max(env(safe-area-inset-top), 12px)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', fontWeight: '700' }}>
-            <span style={{ fontSize: '16px' }}>📶</span>
-            <span>인터넷 연결이 필요합니다. 실시간 동기화를 위해 Wi-Fi 또는 모바일 데이터를 켜주세요.</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (navigator.onLine) {
-                setIsOffline(false);
-                window.location.reload();
-              } else {
-                showToast('❌ 아직 인터넷에 연결되지 않았습니다. 네트워크 설정을 확인해 주세요.');
-              }
-            }}
-            style={{
-              padding: '5px 12px',
-              borderRadius: '8px',
-              background: '#ffffff',
-              border: 'none',
-              color: '#b91c1c',
-              fontSize: '11.5px',
-              fontWeight: '800',
-              cursor: 'pointer'
-            }}
-          >
-            다시 시도
-          </button>
-        </div>
-      )}
+      {/* Offline status is now cleanly indicated in the top headers without blocking screen view */}
 
       {/* Toast Floating Alert Banner (Bottom-Center) */}
       {toastMessage && (

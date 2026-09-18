@@ -28,7 +28,7 @@ import UserSettingTab from '../tabs/UserSettingTab';
 import WorkLogTab from '../tabs/WorkLogTab';
 import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
-import { ClipboardList, FileSpreadsheet, HardHat } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet, HardHat, WifiOff } from 'lucide-react';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
 import AppNoticeHeaderBtn from '../common/AppNoticeHeaderBtn';
 
@@ -52,6 +52,20 @@ export default function WebDesktopLayout({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeUser, setActiveUser] = useState(null);
   const [sharedDate, setSharedDate] = useState(getTodayIsoDate());
+
+  // Network Offline / Online live detection
+  const [isOffline, setIsOffline] = useState(() => (typeof navigator !== 'undefined' ? !navigator.onLine : false));
+
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchUser() {
@@ -184,6 +198,30 @@ export default function WebDesktopLayout({
 
         {/* User Profile & Education Notice & Logout */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* Offline Red Warning Indicator */}
+          {isOffline && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '4px 10px',
+                borderRadius: '8px',
+                background: '#fef2f2',
+                border: '1.5px solid #fecaca',
+                color: '#dc2626',
+                fontSize: '11.5px',
+                fontWeight: '900',
+                letterSpacing: '-0.3px',
+                boxShadow: '0 1px 3px rgba(220, 38, 38, 0.15)'
+              }}
+              title="인터넷 연결이 오프라인 상태입니다. 로컬 데이터는 정상 확인 가능합니다."
+            >
+              <WifiOff size={14} color="#dc2626" />
+              <span>인터넷 연결상태 확인</span>
+            </div>
+          )}
+
           <div
             onClick={() => setActiveTab('userProfile')}
             style={{
