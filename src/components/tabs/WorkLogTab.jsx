@@ -29,13 +29,14 @@ import {
 import { dbService, normalizeKstDate } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
-import { isSamePerson } from '../../services/userMatcher';
+import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
 import WorkLogCalendar from '../common/WorkLogCalendar';
 
 export default function WorkLogTab({ onTriggerToast }) {
   const [workLogs, setWorkLogs] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [filterCategory, setFilterCategory] = useState('전체'); // '전체' | '사내 업무' | '출장 업무'
+  const [filterCategory, setFilterCategory] = useState('전체'); // '전체' | '사내 업무' | '출장 업무' | '공유받은 업무'
+  const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -816,6 +817,26 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
+  const handleSyncRefresh = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await dbService.syncAllWithServer();
+      const freshLogs = await dbService.getWorkLogs(true);
+      setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      if (onTriggerToast) {
+        onTriggerToast('구글 스프레드시트 최신 데이터 동기화 완료', 'success');
+      }
+    } catch (e) {
+      console.warn('Sync refresh failed:', e);
+      if (onTriggerToast) {
+        onTriggerToast('동기화 중 오류가 발생했습니다.', 'error');
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     const handleDataChange = () => {
@@ -1084,8 +1105,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (currentUser.role === '개발자' || currentUser.role === '관리자' || currentUser.username === 'admin') {
       return true;
     }
-    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
-    const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim();
+    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();
+    const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim().toLowerCase();
     if (logWriter && userAccount) {
       return logWriter === userAccount;
     }
@@ -1230,13 +1251,13 @@ export default function WorkLogTab({ onTriggerToast }) {
   };
 
   // Filter logs visibility for current user: strictly own authored logs (해당 계정 및 동일인 기준)
-  const isLogVisibleToCurrentUser = (log, user) => {
+  const isLogVisibleToCurrentUser = (log, user = currentUser) => {
     if (!user || !user.username) return false;
     if (!log) return false;
 
-    // 1. 해당 계정 아이디(username / writer_id) 일치 시 최우선 노출 (100% 확정)
-    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
-    const userAccount = String(user.username || user.userId || user.id || '').trim();
+    // 1. 해당 계정 아이디(username / writer_id) 일치 시 최우선 노출 (대소문자 무시)
+    const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();
+    const userAccount = String(user.username || user.userId || user.id || '').trim().toLowerCase();
     if (logWriter && userAccount) {
       return logWriter === userAccount;
     }
@@ -1245,14 +1266,66 @@ export default function WorkLogTab({ onTriggerToast }) {
     return isSamePerson(log, user);
   };
 
+  // 타인으로부터 공유받은 업무인지 판정
+  const isSharedToMe = (log, user = currentUser) => {
+    if (!user || !log) return false;
+    // 본인이 직접 작성한 업무는 공유받은 목록이 아님
+    if (isLogVisibleToCurrentUser(log, user)) return false;
+
+    // sharedWith 목록 정제 (배열, 문자열, JSON 파싱 모두 지원)
+    let targets = [];
+    const rawSw = log.sharedWith || log.shared_with;
+    if (Array.isArray(rawSw)) {
+      targets = rawSw;
+    } else if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        targets = Array.isArray(p) ? p : rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        targets = rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    const rawIsSharedStr = String(log.isShared ?? log.is_shared ?? '').trim().toLowerCase();
+    const isSharedFlag = Boolean(
+      log.isShared === true ||
+      log.is_shared === true ||
+      log.is_shared === 1 ||
+      log.is_shared === '1' ||
+      rawIsSharedStr === 'true' ||
+      rawIsSharedStr === '1' ||
+      rawIsSharedStr === 'y' ||
+      rawIsSharedStr === 'yes' ||
+      rawIsSharedStr === '예' ||
+      rawIsSharedStr === 'o' ||
+      targets.length > 0
+    );
+
+    if (!isSharedFlag && targets.length === 0) return false;
+    return targets.some(t => isTargetMatchingUser(t, user));
+  };
+
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query
   const filteredLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
     if (!log) return false;
-    const matchesUser = isLogVisibleToCurrentUser(log, currentUser);
+    const isMine = isLogVisibleToCurrentUser(log, currentUser);
+    const isShared = isSharedToMe(log, currentUser);
+
+    let matchesVisibility = false;
+    if (filterCategory === '공유받은 업무') {
+      matchesVisibility = isShared;
+    } else if (filterCategory === '전체') {
+      matchesVisibility = isMine || isShared;
+    } else {
+      // '사내 업무' | '출장 업무'
+      matchesVisibility = (isMine || isShared) && (log.category === filterCategory);
+    }
+    if (!matchesVisibility) return false;
+
     const logDate = normalizeKstDate(log.date || log.log_date) || (log.date || log.log_date);
     const selDate = normalizeKstDate(selectedDate) || selectedDate;
     const matchesDate = viewAllDates || logDate === selDate;
-    const matchesCategory = filterCategory === '전체' || log.category === filterCategory;
+
     const q = (searchQuery || '').trim().toLowerCase();
     const titleStr = (log.title || '').toLowerCase();
     const detailsStr = (log.details || log.tasks_done || log.tasksDone || '').toLowerCase();
@@ -1263,7 +1336,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       detailsStr.includes(q) ||
       authorStr.includes(q) ||
       subCatStr.includes(q);
-    return matchesUser && matchesDate && matchesCategory && matchesQuery;
+
+    return matchesDate && matchesQuery;
   });
 
   // Group logs by Date (descending)
@@ -1631,32 +1705,34 @@ export default function WorkLogTab({ onTriggerToast }) {
           </div>
 
           {/* Filter Bar & Search (Single Row Matching Layout) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', flexWrap: 'nowrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', flexWrap: 'nowrap' }}>
             {/* Category Segmented Control */}
             <div style={{ display: 'flex', background: '#ffffff', padding: '3px', borderRadius: '6px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-              {['전체', '사내 업무', '출장 업무'].map(cat => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setFilterCategory(cat)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: '5px',
-                    fontSize: '12px',
-                    fontWeight: '800',
-                    border: filterCategory === cat ? '1px solid #e2e8f0' : '1px solid transparent',
-                    background: filterCategory === cat ? '#1e3a8a' : 'transparent',
-                    color: filterCategory === cat ? '#ffffff' : '#334155',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  {cat === '사내 업무'}
-                  {cat === '출장 업무'}
-                  {cat}
-                </button>
-              ))}
+              {['전체', '사내 업무', '출장 업무', '공유받은 업무'].map(cat => {
+                const isActive = filterCategory === cat;
+                const activeBg = cat === '공유받은 업무' ? '#059669' : '#1e3a8a';
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFilterCategory(cat)}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: '5px',
+                      fontSize: '12px',
+                      fontWeight: '800',
+                      border: isActive ? '1px solid #e2e8f0' : '1px solid transparent',
+                      background: isActive ? activeBg : 'transparent',
+                      color: isActive ? '#ffffff' : '#334155',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Search Bar (Auto-expanded to fill remaining right width in single row) */}
@@ -1681,6 +1757,33 @@ export default function WorkLogTab({ onTriggerToast }) {
                 }}
               />
             </div>
+
+            {/* Direct Google Sheets Sync Refresh Button */}
+            <button
+              type="button"
+              onClick={handleSyncRefresh}
+              disabled={isSyncing}
+              style={{
+                background: isSyncing ? '#eff6ff' : '#ffffff',
+                border: '1.5px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '7.5px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '12px',
+                fontWeight: '800',
+                color: isSyncing ? '#1e3a8a' : '#475569',
+                cursor: isSyncing ? 'not-allowed' : 'pointer',
+                flexShrink: 0,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
+                whiteSpace: 'nowrap'
+              }}
+              title="구글 스프레드시트 최신 데이터 실시간 동기화"
+            >
+              <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
+              <span>{isSyncing ? '동기화 중' : '새로고침'}</span>
+            </button>
           </div>
 
           {/* Date-Grouped Work Logs List */}
@@ -1755,6 +1858,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                         const logsForDate = groupedByDate[dateStr] || [];
                         const cardGroupsMap = logsForDate.reduce((acc, log) => {
                           const isInternal = log.category !== '출장 업무';
+                          const isSharedReceived = isSharedToMe(log, currentUser);
                           const sName = !isInternal ? (log.siteName || log.site_name || '').trim() : '';
                           const aName = log.authorName || log.name || '작성자';
                           const subCat = isInternal
@@ -1763,12 +1867,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                           const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
 
                           const key = isInternal
-                            ? `${log.category}___${subCat}___${dDate}___${aName}`
-                            : `${log.category}___${sName}___${subCat}___${aName}`;
+                            ? `${isSharedReceived ? 'SHARED' : 'OWN'}___${log.category}___${subCat}___${dDate}___${aName}`
+                            : `${isSharedReceived ? 'SHARED' : 'OWN'}___${log.category}___${sName}___${subCat}___${aName}`;
 
                           if (!acc[key]) {
                             acc[key] = {
                               key,
+                              isSharedReceived,
                               category: log.category,
                               subCategory: subCat,
                               dueDate: dDate,
@@ -1951,34 +2056,55 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         납기: {group.dueDate}
                                       </span>
                                     )}
+
+                                    {/* 공유받은 업무인 경우: 공유자 뱃지 표기 */}
+                                    {group.isSharedReceived && (
+                                      <span style={{
+                                        padding: '4px 10px',
+                                        borderRadius: '6px',
+                                        fontSize: '11px',
+                                        fontWeight: '800',
+                                        background: '#ecfdf5',
+                                        color: '#059669',
+                                        border: '1.5px solid #a7f3d0',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '4px'
+                                      }}>
+                                        <Users size={12} color="#059669" />
+                                        공유받음: {group.authorName} {group.authorRank || ''} ({group.authorTeam || ''})
+                                      </span>
+                                    )}
                                   </div>
 
-                                  {/* Action Buttons: Add Task to this Card Group */}
+                                  {/* Action Buttons: Add Task to this Card Group (본인 작성 카드만 허용) */}
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
-                                      style={{
-                                        background: '#eff6ff',
-                                        border: '1.5px solid #cbd5e1',
-                                        color: '#1e3a8a',
-                                        padding: '5px 10px',
-                                        borderRadius: '8px',
-                                        fontSize: '11.5px',
-                                        fontWeight: '700',
-                                        whiteSpace: 'nowrap',
-                                        flexShrink: 0,
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        transition: 'all 0.2s ease',
-                                        boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
-                                      }}
-                                      title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
-                                    >
-                                      <Plus size={13} /> 추가
-                                    </button>
+                                    {!group.isSharedReceived && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartInlineAdd(group.primaryLog, group.key)}
+                                        style={{
+                                          background: '#eff6ff',
+                                          border: '1.5px solid #cbd5e1',
+                                          color: '#1e3a8a',
+                                          padding: '5px 10px',
+                                          borderRadius: '8px',
+                                          fontSize: '11.5px',
+                                          fontWeight: '700',
+                                          whiteSpace: 'nowrap',
+                                          flexShrink: 0,
+                                          cursor: 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px',
+                                          transition: 'all 0.2s ease',
+                                          boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)'
+                                        }}
+                                        title="이 카드의 업무 분류/날짜/사업장에 새 업무 바로 추가"
+                                      >
+                                        <Plus size={13} /> 추가
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
@@ -2579,7 +2705,7 @@ export default function WorkLogTab({ onTriggerToast }) {
         {/* Right Column: Desktop Calendar Widget */}
         <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
           <WorkLogCalendar
-            workLogs={workLogs.filter(log => isLogVisibleToCurrentUser(log, currentUser))}
+            workLogs={workLogs.filter(log => isLogVisibleToCurrentUser(log, currentUser) || isSharedToMe(log, currentUser))}
             selectedDate={selectedDate}
             onSelectDate={(date) => {
               setSelectedDate(date);

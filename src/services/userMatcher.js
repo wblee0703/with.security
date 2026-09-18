@@ -154,3 +154,82 @@ export function getPersonIdentityKey(person) {
 
   return `KEY::name=${name}|phone=${phone}|div=${division}|team=${team}|rank=${rank}|role=${role}|user=${username}`;
 }
+
+/**
+ * '이름 직급 (소속)' 문자열 또는 대상 객체/아이디/부서와 사용자(user)의 매칭 여부를 엄격 검사
+ */
+export function isTargetMatchingUser(target, user) {
+  if (!target || !user) return false;
+
+  // 1. 객체 형태인 경우
+  if (typeof target === 'object') {
+    const tUser = String(target.username || target.userId || target.user_id || target.writer_id || target.id || '').trim().toLowerCase();
+    const myUser = String(user.username || user.userId || user.user_id || user.id || '').trim().toLowerCase();
+    if (tUser && myUser && tUser === myUser) return true;
+    return isSamePerson(target, user);
+  }
+
+  // 2. 문자열 형태인 경우
+  const targetStr = String(target).trim();
+  if (!targetStr) return false;
+
+  const myName = (user.name || user.visitorName || '').trim();
+  const myRank = (user.rank || user.title || '').trim();
+  const myTeam = (user.team || user.department || user.belonging || '').trim();
+  const myUser = String(user.username || user.userId || user.id || '').trim().toLowerCase();
+
+  // 팀 축약형 (예: "운영1팀(본사)" -> "운영1팀")
+  const formatShortTeam = (raw) => {
+    if (!raw) return '';
+    const trimmed = raw.trim();
+    if (trimmed.includes(' ')) {
+      const parts = trimmed.split(/\s+/);
+      return parts[parts.length - 1];
+    }
+    return trimmed;
+  };
+  const myShortTeam = formatShortTeam(myTeam);
+
+  // 2-1. 전체 공유 키워드 (전체, ALL, 회사전체, 임직원 등)
+  const lowerTarget = targetStr.toLowerCase();
+  if (lowerTarget === '전체' || lowerTarget === 'all' || lowerTarget === '임직원' || lowerTarget === '회사전체') {
+    return true;
+  }
+
+  // 2-2. 고유 계정 ID(username) 완전 일치 (예: 'wblee0703')
+  if (myUser && lowerTarget === myUser) {
+    return true;
+  }
+
+  // 2-3. '이름 직급 (소속)' 전체 문자열 완전 일치 검사
+  let expectedFull = myName;
+  if (myRank && !expectedFull.includes(myRank)) expectedFull += ` ${myRank}`;
+  if (myShortTeam && !expectedFull.includes(myShortTeam)) expectedFull += ` (${myShortTeam})`;
+  if (targetStr === expectedFull) return true;
+
+  // 2-4. 이름 매칭 + 동명이인 검증
+  if (myName && targetStr.includes(myName)) {
+    // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (품질경영팀)")
+    const teamMatch = targetStr.match(/\(([^)]+)\)/);
+    if (teamMatch && teamMatch[1]) {
+      const targetTeam = teamMatch[1].trim().toLowerCase();
+      const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
+      const cleanTargetTeam = targetTeam.replace(/\s+/g, '').toLowerCase();
+      if (cleanMyTeam && cleanTargetTeam && !cleanMyTeam.includes(cleanTargetTeam) && !cleanTargetTeam.includes(cleanMyTeam)) {
+        return false; // 다른 팀의 동명이인이므로 제외
+      }
+    }
+    return true;
+  }
+
+  // 2-5. 소속팀 일치 검사 (팀 전체 공유: 예: "인프라보안운영팀" 또는 "운영1팀")
+  if (myTeam) {
+    const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
+    const cleanTarget = targetStr.replace(/\s+/g, '').toLowerCase();
+    if (cleanMyTeam === cleanTarget || (cleanMyTeam.length >= 3 && cleanTarget.includes(cleanMyTeam))) {
+      return true;
+    }
+  }
+
+  return false;
+}

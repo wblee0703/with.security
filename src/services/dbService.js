@@ -2854,6 +2854,10 @@ class SecurityDatabase {
           return pureLogs;
         }
       } catch (e) { }
+    } else {
+      // 강제 원격 요청 시 메모리 응답 캐시 클리어 및 재검증 스로틀 초기화
+      recentResponseCache.clear();
+      this._lastWorkLogsRevalidate = 0;
     }
 
     return await this._fetchWorkLogsRemote();
@@ -2893,10 +2897,19 @@ class SecurityDatabase {
     const now = Date.now();
     const mergedMap = new Map();
 
-    // Collect recently edited local items and their original dates
+    // 1. ⭐ 원격 로그(구글 스프레드시트/API) 전수 정규화 (ID가 없는 수기 시트 행도 결정적 고유 ID 부여 및 sharedWith 정제)
+    const normalizedRemote = remoteLogs
+      .map(r => this._normalizeWorkLog(r))
+      .filter(r => r && !this._isWorkLogDeleted(r, deletedSet));
+
+    // 2. 로컬 로그 전수 정규화
+    const normalizedLocal = currentLocal
+      .map(l => this._normalizeWorkLog(l))
+      .filter(l => l && !this._isWorkLogDeleted(l, deletedSet));
+
+    // 최근 로컬에서 날짜 이동 등 수정된 항목 수집
     const recentLocalMoves = [];
-    for (const loc of currentLocal) {
-      if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
+    for (const loc of normalizedLocal) {
       if (this._isWorkLogRecentlyEdited(loc, now)) {
         const origDate = normalizeKstDate(loc._originalDate || loc.originalDate);
         const curDate = normalizeKstDate(loc.date || loc.log_date);
@@ -2909,15 +2922,14 @@ class SecurityDatabase {
       }
     }
 
-    // 1. Populate with remote logs, discarding stale pre-move ghosts
-    for (const r of remoteLogs) {
-      if (!r || this._isWorkLogDeleted(r, deletedSet)) continue;
+    // 1. 원격 로그 병합 맵에 적재 (날짜 이동 전 잔존 고스트 데이터 배제)
+    for (const r of normalizedRemote) {
       const rId = String(r.id || r.log_id || '').trim();
       const rDate = normalizeKstDate(r.date || r.log_date);
       const rWriter = String(r.authorUsername || r.writerId || r.writer_id || r.name || '').trim().toLowerCase();
       const rTitle = String(r.title || '').trim().toLowerCase();
 
-      // Check if this remote item is a stale pre-move ghost of an item recently moved to a new date
+      // 날짜가 최근 변경된 이전 원격 잔존 데이터인지 확인
       const isStaleGhost = recentLocalMoves.some(m =>
         (m.id && rId && m.id === rId && m.origDate === rDate) ||
         (m.origDate === rDate && m.writer === rWriter && m.title === rTitle)
@@ -2927,9 +2939,8 @@ class SecurityDatabase {
       if (rId) mergedMap.set(rId, r);
     }
 
-    // 2. Authoritative local overlay: protect recent local saves from being reverted by stale remote data
-    for (const loc of currentLocal) {
-      if (!loc || this._isWorkLogDeleted(loc, deletedSet)) continue;
+    // 2. 권한 있는 로컬 오버레이: 최근 편집된 로컬 데이터 보호 및 원격 미반영 새 로그 보존
+    for (const loc of normalizedLocal) {
       const locId = String(loc.id || loc.log_id || '').trim();
       if (!locId) continue;
 
@@ -2937,11 +2948,9 @@ class SecurityDatabase {
 
       if (mergedMap.has(locId)) {
         if (isRecentlyEdited) {
-          // Local version is newer / recently edited -> keep local version
           mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
         }
       } else {
-        // Local item not yet reflected on remote (e.g. pending Google Sheets append)
         mergedMap.set(locId, loc);
       }
     }

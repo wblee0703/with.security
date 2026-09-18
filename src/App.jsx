@@ -173,13 +173,14 @@ export default function App() {
       if (!force && now - lastSyncTimeRef.current < 60000) return; // 60초 이내 중복 동기화 방지
       if (isSyncingRef.current) return; // 이미 동기화 진행 중이면 스킵
 
+      const hasSheet = Boolean(dbService.getGoogleSheetsUrl());
       const serverUrl = dbService.getServerUrl();
-      if (!serverUrl) return;
+      if (!hasSheet && !serverUrl) return;
 
       isSyncingRef.current = true;
       lastSyncTimeRef.current = now;
       try {
-        await dbService.syncAllWithServer(serverUrl);
+        await dbService.syncAllWithServer();
       } catch (e) {
         console.warn('Auto sync error:', e);
       } finally {

@@ -34,12 +34,13 @@ import {
 import { dbService } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
-import { isSamePerson } from '../../services/userMatcher';
+import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
 
 export default function WorkSummaryTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
   const containerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -365,6 +366,34 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }
   };
 
+  const handleManualSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await dbService.syncAllWithServer();
+      const freshLogs = await dbService.getWorkLogs(true);
+      setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      const [u, users, weeklyReps] = await Promise.all([
+        dbService.getUserProfile(),
+        dbService.getAllUsers(),
+        dbService.getWeeklyReports()
+      ]);
+      setCurrentUser(u);
+      setAllUsers(users || []);
+      setSharedWeeklyReports(weeklyReps || []);
+      if (onTriggerToast) {
+        onTriggerToast('구글 스프레드시트 최신 데이터 동기화 완료', 'success');
+      }
+    } catch (err) {
+      console.warn('Manual sync error:', err);
+      if (onTriggerToast) {
+        onTriggerToast('동기화 중 오류가 발생했습니다.', 'error');
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
     loadData(true);
     const handleDataChange = () => loadData(false);
@@ -583,70 +612,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   // '이름 직급 (소속)' 문자열 또는 사용자 객체, 아이디, 부서 등과 현재 사용자 매칭 검사기
-  const isTargetMatchingMe = (target, my) => {
-    if (!target || !my) return false;
-
-    // 1. 객체인 경우
-    if (typeof target === 'object') {
-      const tUser = String(target.username || target.userId || target.user_id || target.writer_id || target.id || '').trim().toLowerCase();
-      const myUser = String(my.username || my.userId || my.user_id || my.id || '').trim().toLowerCase();
-      if (tUser && myUser && tUser === myUser) return true;
-      return isSamePerson(target, my);
-    }
-
-    // 2. 문자열인 경우
-    const targetStr = String(target).trim();
-    if (!targetStr) return false;
-
-    const myName = (my.name || '').trim();
-    const myRank = (my.rank || '').trim();
-    const myTeam = (my.team || my.department || '').trim();
-    const myShortTeam = formatOnlyTeam(myTeam);
-    const myUser = String(my.username || my.userId || my.user_id || my.id || '').trim().toLowerCase();
-
-    // 2-1. 전체 공유 키워드 (전체, ALL, all, 회사전체, 임직원 등)
-    const lowerTarget = targetStr.toLowerCase();
-    if (lowerTarget === '전체' || lowerTarget === 'all' || lowerTarget === '임직원' || lowerTarget === '회사전체') {
-      return true;
-    }
-
-    // 2-2. 고유 계정 ID(username) 완전 일치 (예: target이 'wblee0703'으로 저장된 경우)
-    if (myUser && lowerTarget === myUser) {
-      return true;
-    }
-
-    // 2-3. '이름 직급 (소속)' 전체 문자열 완전 일치 검사
-    let expectedFull = myName;
-    if (myRank && !expectedFull.includes(myRank)) expectedFull += ` ${myRank}`;
-    if (myShortTeam && !expectedFull.includes(myShortTeam)) expectedFull += ` (${myShortTeam})`;
-    if (targetStr === expectedFull) return true;
-
-    // 2-4. 이름 매칭 + 동명이인 검증
-    if (myName && targetStr.includes(myName)) {
-      // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (품질경영팀)")
-      // 현재 사용자의 소속팀과 비교하여 다른 팀(상충)이면 동명이인 타인이므로 제외
-      const teamMatch = targetStr.match(/\(([^)]+)\)/);
-      if (teamMatch && teamMatch[1]) {
-        const targetTeam = teamMatch[1].trim().toLowerCase();
-        const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
-        const cleanTargetTeam = targetTeam.replace(/\s+/g, '').toLowerCase();
-        if (cleanMyTeam && cleanTargetTeam && !cleanMyTeam.includes(cleanTargetTeam) && !cleanTargetTeam.includes(cleanMyTeam)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    // 2-5. 소속팀 일치 검사 (팀 전체 공유: 예: "인프라보안운영팀" 또는 "운영1팀")
-    if (myTeam) {
-      const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
-      const cleanTarget = targetStr.replace(/\s+/g, '').toLowerCase();
-      if (cleanMyTeam === cleanTarget || (cleanMyTeam.length >= 3 && cleanTarget.includes(cleanMyTeam))) {
-        return true;
-      }
-    }
-
-    return false;
+  const isTargetMatchingMe = (target, my = currentUser) => {
+    return isTargetMatchingUser(target, my);
   };
 
   // --- Helpers for User Filtering & Shared Task Detection ---
@@ -1644,7 +1611,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </button>
                 </div>
 
-                {/* Action Buttons: Copy (placed directly right of 오늘 button) & Share */}
+                {/* Action Buttons: Copy (placed directly right of 오늘 button), Share & Sync */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <button
                     type="button"
@@ -1692,6 +1659,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <Share2 size={13} />
                     </button>
                   )}
+                  {/* 구글 스프레드시트 최신 데이터 실시간 동기화 버튼 */}
+                  <button
+                    type="button"
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    style={{
+                      background: isSyncing ? '#eff6ff' : '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      color: isSyncing ? '#1e3a8a' : '#475569',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: isSyncing ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)'
+                    }}
+                    title="구글 스프레드시트 최신 데이터 실시간 동기화"
+                  >
+                    <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
+                  </button>
                 </div>
               </div>
             </div>

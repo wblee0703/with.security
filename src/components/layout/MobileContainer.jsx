@@ -113,29 +113,34 @@ export default function MobileContainer({
     }
   };
 
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setPullDistance(50);
+
+    try {
+      // 1. 구글 스프레드시트 / 서버 전체 최신 데이터 실시간 동기화
+      await dbService.syncAllWithServer();
+      // 2. 업무일지 원격 최신 데이터 강제 로드 (캐시 무효화)
+      await dbService.getWorkLogs(true);
+      // 3. 모든 화면 컴포넌트에 최신 데이터 반영 브로드캐스트
+      window.dispatchEvent(new CustomEvent('with_security_data_changed'));
+    } catch (err) {
+      console.warn('Sync refresh error:', err);
+    } finally {
+      setTimeout(() => {
+        setIsRefreshing(false);
+        setPullDistance(0);
+      }, 600);
+    }
+  };
+
   const handleTouchEnd = async () => {
     if (!isPullingRef.current) return;
     isPullingRef.current = false;
 
     if (pullDistance >= 50 && !isRefreshing) {
-      setIsRefreshing(true);
-      setPullDistance(50);
-
-      try {
-        // Trigger global data refresh & server sync
-        window.dispatchEvent(new CustomEvent('with_security_data_changed'));
-        const serverUrl = dbService.getServerUrl();
-        if (serverUrl) {
-          await dbService.syncAllWithServer(serverUrl);
-        }
-      } catch (err) {
-        console.warn('Pull-to-refresh error:', err);
-      } finally {
-        setTimeout(() => {
-          setIsRefreshing(false);
-          setPullDistance(0);
-        }, 600);
-      }
+      await handleManualRefresh();
     } else {
       setPullDistance(0);
     }
@@ -278,6 +283,33 @@ export default function MobileContainer({
               로그인
             </button>
           )}
+
+          {/* Manual Google Sheets Cloud Sync Refresh Button */}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            style={{
+              background: isRefreshing ? '#eff6ff' : '#f8fafc',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '7px',
+              padding: '4.5px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              color: isRefreshing ? '#1e3a8a' : '#64748b',
+              transition: 'all 0.2s ease',
+              marginLeft: '2px'
+            }}
+            title="구글 스프레드시트 최신 데이터 실시간 동기화"
+          >
+            <RefreshCw
+              size={14}
+              style={{
+                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none'
+              }}
+            />
+          </button>
         </div>
       </div>
 
