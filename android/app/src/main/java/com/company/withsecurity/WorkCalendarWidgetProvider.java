@@ -138,7 +138,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 appIntent.putExtra("targetDate", targetDate);
             }
             appIntent.putExtra("fromWidget", true);
-            appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             context.startActivity(appIntent);
         }
     }
@@ -433,40 +433,33 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 float dateLabelSize;
                 float statusBadgeSize;
                 float workContentSize;
-                int maxLines;
-                int padDp;
 
                 if (minHeight >= 320) {
-                    // Large / Expanded widget (e.g. 4x4, 4x5, full screen)
+                    // Large / Expanded widget
                     dateLabelSize = 16.5f;
-                    statusBadgeSize = 14.5f;
-                    workContentSize = 16.0f;
-                    maxLines = 4;
-                    padDp = 14;
+                    statusBadgeSize = 15.0f;
+                    workContentSize = 17.5f;
                 } else if (minHeight >= 230) {
-                    // Medium widget (e.g. 4x3 to 4x4)
-                    dateLabelSize = 15.0f;
-                    statusBadgeSize = 13.5f;
-                    workContentSize = 14.5f;
-                    maxLines = 3;
-                    padDp = 12;
+                    // Medium widget
+                    dateLabelSize = 15.5f;
+                    statusBadgeSize = 14.0f;
+                    workContentSize = 16.5f;
                 } else {
                     // Compact widget / default fallback
-                    dateLabelSize = 14.0f;
-                    statusBadgeSize = 13.0f;
-                    workContentSize = 13.5f;
-                    maxLines = 2;
-                    padDp = 10;
+                    dateLabelSize = 15.0f;
+                    statusBadgeSize = 13.5f;
+                    workContentSize = 16.0f;
                 }
 
                 views.setTextViewTextSize(R.id.tv_today_date_label, TypedValue.COMPLEX_UNIT_SP, dateLabelSize);
                 views.setTextViewTextSize(R.id.tv_today_status_badge, TypedValue.COMPLEX_UNIT_SP, statusBadgeSize);
                 views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workContentSize);
-                views.setInt(R.id.tv_today_work_content, "setMaxLines", maxLines);
+                views.setInt(R.id.tv_today_work_content, "setMaxLines", 1);
 
                 float density = context.getResources().getDisplayMetrics().density;
-                int padPx = (int) (padDp * density);
-                views.setViewPadding(R.id.layout_today_summary, padPx, padPx, padPx, padPx);
+                int padH = (int) (10 * density);
+                int padV = (int) (6 * density);
+                views.setViewPadding(R.id.layout_today_summary, padH, padV, padH, padV);
             } catch (Throwable t) {
                 Log.w(TAG, "Error applying responsive sizing to widget card", t);
             }

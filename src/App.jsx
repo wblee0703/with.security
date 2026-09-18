@@ -266,13 +266,23 @@ export default function App() {
       try {
         const launchData = await checkWidgetLaunchIntent();
         if (launchData && launchData.fromWidget) {
+          if (launchData.targetDate) {
+            try {
+              localStorage.setItem('with_security_widget_target_date', launchData.targetDate);
+            } catch (e) { }
+          }
           if (launchData.targetTab) {
             setActiveTab(launchData.targetTab);
           }
           if (launchData.targetDate) {
-            window.dispatchEvent(new CustomEvent('with_security_widget_select_date', {
-              detail: { targetDate: launchData.targetDate }
-            }));
+            const dispatch = () => {
+              window.dispatchEvent(new CustomEvent('with_security_widget_select_date', {
+                detail: { targetDate: launchData.targetDate }
+              }));
+            };
+            dispatch();
+            setTimeout(dispatch, 150);
+            setTimeout(dispatch, 400);
           }
         }
       } catch (err) {

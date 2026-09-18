@@ -33,6 +33,12 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+    }
+
+    @Override
     public void onBackPressed() {
         // Check if there is an open modal/popup in JavaScript layer
         if (getBridge() != null && getBridge().getWebView() != null) {

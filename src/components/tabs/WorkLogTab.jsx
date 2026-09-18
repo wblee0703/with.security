@@ -747,7 +747,16 @@ export default function WorkLogTab({ onTriggerToast }) {
     return trimmed;
   };
 
-  const [selectedDate, setSelectedDate] = useState(getTodayIsoDate());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    try {
+      const widgetTarget = localStorage.getItem('with_security_widget_target_date');
+      if (widgetTarget) {
+        localStorage.removeItem('with_security_widget_target_date');
+        return widgetTarget;
+      }
+    } catch (e) { }
+    return getTodayIsoDate();
+  });
   const [viewAllDates, setViewAllDates] = useState(false); // false = filter by selectedDate, true = show all dates
   const [siteOptions, setSiteOptions] = useState([]);
   const datePickerRef = useRef(null);
@@ -805,6 +814,16 @@ export default function WorkLogTab({ onTriggerToast }) {
         setViewAllDates(false);
       }
     };
+
+    // Check if there is a pending widget target date saved from intent
+    try {
+      const pendingTarget = localStorage.getItem('with_security_widget_target_date');
+      if (pendingTarget) {
+        localStorage.removeItem('with_security_widget_target_date');
+        setSelectedDate(pendingTarget);
+        setViewAllDates(false);
+      }
+    } catch (e) { }
     window.addEventListener('with_security_data_changed', handleDataChange);
     window.addEventListener('with_security_widget_select_date', handleWidgetDate);
     return () => {

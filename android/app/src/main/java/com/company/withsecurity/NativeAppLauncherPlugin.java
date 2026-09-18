@@ -149,6 +149,8 @@ public class NativeAppLauncherPlugin extends Plugin {
 
                 // Clear extra once consumed
                 intent.removeExtra("fromWidget");
+                intent.removeExtra("targetTab");
+                intent.removeExtra("targetDate");
             } else {
                 ret.put("fromWidget", false);
                 ret.put("targetTab", "");
