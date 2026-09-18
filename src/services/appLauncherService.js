@@ -246,7 +246,9 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         cellWorkText = '[납기]';
       } else if (hasInternalWork || dateLogs.length > 0) {
         category = '사내';
-        cellWorkText = '사내업무';
+        const internalLogs = dateLogs.filter(l => !(l.category === '출장 업무' || Boolean(l.siteName || l.site_name)));
+        const count = internalLogs.length > 0 ? internalLogs.length : dateLogs.length;
+        cellWorkText = `사내업무 ${count}건`;
       }
 
       let title = '';

@@ -8,7 +8,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Bundle;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -84,6 +86,12 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
+    }
+
+    @Override
+    public void onAppWidgetOptionsChanged(Context context, AppWidgetManager appWidgetManager, int appWidgetId, Bundle newOptions) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions);
+        updateAppWidget(context, appWidgetManager, appWidgetId);
     }
 
     @Override
@@ -417,6 +425,52 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 }
             }
 
+            // Responsive sizing & scaling for bottom summary card based on widget dimensions
+            try {
+                Bundle options = appWidgetManager.getAppWidgetOptions(appWidgetId);
+                int minHeight = options != null ? options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) : 0;
+
+                float dateLabelSize;
+                float statusBadgeSize;
+                float workContentSize;
+                int maxLines;
+                int padDp;
+
+                if (minHeight >= 320) {
+                    // Large / Expanded widget (e.g. 4x4, 4x5, full screen)
+                    dateLabelSize = 16.5f;
+                    statusBadgeSize = 14.5f;
+                    workContentSize = 16.0f;
+                    maxLines = 4;
+                    padDp = 14;
+                } else if (minHeight >= 230) {
+                    // Medium widget (e.g. 4x3 to 4x4)
+                    dateLabelSize = 15.0f;
+                    statusBadgeSize = 13.5f;
+                    workContentSize = 14.5f;
+                    maxLines = 3;
+                    padDp = 12;
+                } else {
+                    // Compact widget / default fallback
+                    dateLabelSize = 14.0f;
+                    statusBadgeSize = 13.0f;
+                    workContentSize = 13.5f;
+                    maxLines = 2;
+                    padDp = 10;
+                }
+
+                views.setTextViewTextSize(R.id.tv_today_date_label, TypedValue.COMPLEX_UNIT_SP, dateLabelSize);
+                views.setTextViewTextSize(R.id.tv_today_status_badge, TypedValue.COMPLEX_UNIT_SP, statusBadgeSize);
+                views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workContentSize);
+                views.setInt(R.id.tv_today_work_content, "setMaxLines", maxLines);
+
+                float density = context.getResources().getDisplayMetrics().density;
+                int padPx = (int) (padDp * density);
+                views.setViewPadding(R.id.layout_today_summary, padPx, padPx, padPx, padPx);
+            } catch (Throwable t) {
+                Log.w(TAG, "Error applying responsive sizing to widget card", t);
+            }
+
             // 7. Navigation Buttons PendingIntents
             setBroadcastPendingIntent(context, views, R.id.btn_prev_month, ACTION_PREV_MONTH, 101);
             setBroadcastPendingIntent(context, views, R.id.btn_next_month, ACTION_NEXT_MONTH, 102);
@@ -472,7 +526,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         cellWorkText = "출장지";
                         cellCategory = "출장";
                     } else {
-                        cellWorkText = "사내업무";
+                        int count = item.optInt("count", 1);
+                        cellWorkText = count > 0 ? "사내업무 " + count + "건" : "사내업무";
                         cellCategory = "사내";
                     }
                 }

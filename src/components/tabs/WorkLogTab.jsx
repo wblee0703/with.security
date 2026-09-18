@@ -1765,7 +1765,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               if (a.siteName !== b.siteName) {
                                 return (a.siteName || '').localeCompare(b.siteName || '');
                               }
-                              const tripOrder = { '작업': 1, '미팅': 2, '점검': 3 };
+                              const tripOrder = { '작업': 1, '미팅': 2, '점검': 3, '납품': 4 };
                               const oA = tripOrder[a.subCategory] || 9;
                               const oB = tripOrder[b.subCategory] || 9;
                               if (oA !== oB) return oA - oB;
@@ -1845,16 +1845,19 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         background: (() => {
                                           if (group.subCategory === '미팅') return '#f5f3ff';
                                           if (group.subCategory === '점검') return '#fffbeb';
+                                          if (group.subCategory === '납품') return '#ecfdf5';
                                           return '#eff6ff';
                                         })(),
                                         color: (() => {
                                           if (group.subCategory === '미팅') return '#7c3aed';
                                           if (group.subCategory === '점검') return '#d97706';
+                                          if (group.subCategory === '납품') return '#059669';
                                           return '#1e40af';
                                         })(),
                                         border: (() => {
                                           if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
                                           if (group.subCategory === '점검') return '1.5px solid #fde68a';
+                                          if (group.subCategory === '납품') return '1.5px solid #a7f3d0';
                                           return '1.5px solid #bfdbfe';
                                         })(),
                                         display: 'inline-flex',
@@ -2046,6 +2049,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                       <option value="작업">작업</option>
                                                       <option value="미팅">미팅</option>
                                                       <option value="점검">점검</option>
+                                                      <option value="납품">납품</option>
                                                     </select>
                                                   </div>
                                                 </div>
@@ -2390,6 +2394,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               <option value="작업">작업</option>
                                               <option value="미팅">미팅</option>
                                               <option value="점검">점검</option>
+                                              <option value="납품">납품</option>
                                             </select>
                                           </div>
                                         </div>
@@ -2635,7 +2640,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                         category: newCat,
                         subCategory: newCat === '사내 업무'
                           ? (['일반업무', '고객대응', '미팅', '교육'].includes(form.subCategory) ? form.subCategory : '일반업무')
-                          : (['작업', '미팅', '점검'].includes(form.subCategory) ? form.subCategory : '작업'),
+                          : (['작업', '미팅', '점검', '납품'].includes(form.subCategory) ? form.subCategory : '작업'),
                         dueDate: newCat === '사내 업무' ? form.dueDate : ''
                       });
                     }}
@@ -2829,6 +2834,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       <option value="작업">작업</option>
                       <option value="미팅">미팅</option>
                       <option value="점검">점검</option>
+                      <option value="납품">납품</option>
                     </select>
                   </div>
                 </div>
