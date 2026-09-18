@@ -189,6 +189,11 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             int realDay = realTodayCal.get(Calendar.DAY_OF_MONTH);
             String realTodayDateStr = String.format(Locale.KOREA, "%04d-%02d-%02d", realYear, realMonth + 1, realDay);
 
+            // 1-1. Detect Widget Size (e.g. 5x4 Large Widget has minHeight >= 230)
+            Bundle widgetOptions = appWidgetManager.getAppWidgetOptions(appWidgetId);
+            int minHeight = widgetOptions != null ? widgetOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0) : 0;
+            boolean is5x4 = (minHeight >= 230);
+
             // 2. Currently Selected Date (Defaults to Real Today)
             String selectedDateStr = prefs.getString(KEY_SELECTED_DATE, "");
             if (selectedDateStr.isEmpty()) {
@@ -274,7 +279,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else if (i < startCellIndex + daysInCurrentMonth) {
                     // Current Month Days
@@ -314,7 +319,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else {
                     // Next Month Days
@@ -337,7 +342,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap);
+                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 }
             }
@@ -436,10 +441,11 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 if (!tripText.isEmpty() && !internalText.isEmpty()) {
                     line1 = tripText;
                     line2 = internalText;
+                } else if (!internalText.isEmpty()) {
+                    // 사내업무만 있을 때는 항상 line1에 표기되도록 보장
+                    line1 = internalText;
                 } else if (!tripText.isEmpty()) {
                     line1 = tripText;
-                } else if (!internalText.isEmpty()) {
-                    line1 = internalText;
                 } else if (!summaryText.isEmpty()) {
                     if (summaryText.contains("\n")) {
                         String[] parts = summaryText.split("\n", 2);
@@ -448,11 +454,15 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     } else {
                         line1 = summaryText.trim();
                     }
-                } else if (!workTitle.isEmpty()) {
-                    line1 = workTitle.trim();
+                } else if ("사내".equals(workCategory) || "사내 업무".equals(workCategory)) {
+                    String sub = workSubCategory.isEmpty() ? "일반업무" : workSubCategory;
+                    line1 = "🏢 [사내] " + sub;
+                    if (!workTitle.isEmpty()) line1 += " - " + workTitle;
                 } else if (!workSite.isEmpty()) {
                     String sub = workSubCategory.isEmpty() ? "작업" : workSubCategory;
                     line1 = "🚗 [출장] " + workSite.replace("출장", "").trim() + " [" + sub + "]";
+                } else if (!workTitle.isEmpty()) {
+                    line1 = workTitle.trim();
                 }
             }
 
@@ -476,7 +486,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#0284C7"));
                 }
 
-                // Render 2 distinct lines (Line 1: 출장 업무, Line 2: 사내 업무 or fallback)
+                // Render 2 distinct lines (Line 1과 Line 2의 디자인을 Line 2와 동일하게 통일: #1E293B)
                 if (!line1.isEmpty() || !line2.isEmpty()) {
                     views.setViewVisibility(R.id.tv_today_work_content, View.GONE);
 
@@ -487,11 +497,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                             displayLine1 += " (공휴일 근무)";
                         }
                         views.setTextViewText(R.id.tv_today_work_line1, displayLine1);
-                        if (line1.contains("출장")) {
-                            views.setTextColor(R.id.tv_today_work_line1, Color.parseColor("#0369A1"));
-                        } else {
-                            views.setTextColor(R.id.tv_today_work_line1, Color.parseColor("#1E293B"));
-                        }
+                        views.setTextColor(R.id.tv_today_work_line1, Color.parseColor("#1E293B"));
                     } else {
                         views.setViewVisibility(R.id.tv_today_work_line1, View.GONE);
                     }
@@ -503,13 +509,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                             displayLine2 += " (공휴일 근무)";
                         }
                         views.setTextViewText(R.id.tv_today_work_line2, displayLine2);
-                        if (line2.contains("사내")) {
-                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#1E293B"));
-                        } else if (line2.contains("납기")) {
-                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#B45309"));
-                        } else {
-                            views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#334155"));
-                        }
+                        views.setTextColor(R.id.tv_today_work_line2, Color.parseColor("#1E293B"));
                     } else {
                         views.setViewVisibility(R.id.tv_today_work_line2, View.GONE);
                     }
@@ -548,41 +548,37 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
                 float dateLabelSize;
                 float statusBadgeSize;
-                float workLine1Size;
-                float workLine2Size;
+                float workLineSize;
 
                 if (minHeight >= 320) {
                     // Large / Expanded widget
-                    dateLabelSize = 16.0f;
-                    statusBadgeSize = 14.5f;
-                    workLine1Size = 15.0f;
-                    workLine2Size = 14.0f;
+                    dateLabelSize = 17.0f;
+                    statusBadgeSize = 15.0f;
+                    workLineSize = 16.0f;
                 } else if (minHeight >= 230) {
                     // Medium widget
-                    dateLabelSize = 15.0f;
-                    statusBadgeSize = 13.5f;
-                    workLine1Size = 14.0f;
-                    workLine2Size = 13.0f;
+                    dateLabelSize = 16.0f;
+                    statusBadgeSize = 14.5f;
+                    workLineSize = 15.0f;
                 } else {
                     // Compact widget / default fallback
-                    dateLabelSize = 14.0f;
-                    statusBadgeSize = 13.0f;
-                    workLine1Size = 13.5f;
-                    workLine2Size = 12.5f;
+                    dateLabelSize = 15.0f;
+                    statusBadgeSize = 13.5f;
+                    workLineSize = 14.5f;
                 }
 
                 views.setTextViewTextSize(R.id.tv_today_date_label, TypedValue.COMPLEX_UNIT_SP, dateLabelSize);
                 views.setTextViewTextSize(R.id.tv_today_status_badge, TypedValue.COMPLEX_UNIT_SP, statusBadgeSize);
-                views.setTextViewTextSize(R.id.tv_today_work_line1, TypedValue.COMPLEX_UNIT_SP, workLine1Size);
-                views.setTextViewTextSize(R.id.tv_today_work_line2, TypedValue.COMPLEX_UNIT_SP, workLine2Size);
-                views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workLine1Size);
+                views.setTextViewTextSize(R.id.tv_today_work_line1, TypedValue.COMPLEX_UNIT_SP, workLineSize);
+                views.setTextViewTextSize(R.id.tv_today_work_line2, TypedValue.COMPLEX_UNIT_SP, workLineSize);
+                views.setTextViewTextSize(R.id.tv_today_work_content, TypedValue.COMPLEX_UNIT_SP, workLineSize);
                 views.setInt(R.id.tv_today_work_line1, "setMaxLines", 1);
                 views.setInt(R.id.tv_today_work_line2, "setMaxLines", 1);
                 views.setInt(R.id.tv_today_work_content, "setMaxLines", 2);
 
                 float density = context.getResources().getDisplayMetrics().density;
-                int padH = (int) (10 * density);
-                int padV = (int) (6 * density);
+                int padH = (int) (12 * density);
+                int padV = (int) (9 * density);
                 views.setViewPadding(R.id.layout_today_summary, padH, padV, padH, padV);
             } catch (Throwable t) {
                 Log.w(TAG, "Error applying responsive sizing to widget card", t);
@@ -623,15 +619,41 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     }
 
     private static void bindCellWork(RemoteViews views, int tvWorkId, int ivDotId, String cellDateStr,
-            JSONObject workDatesMap) {
+            JSONObject workDatesMap, boolean is5x4) {
         String cellWorkText = "";
         String cellCategory = "";
+        boolean isHybrid = false;
 
         if (workDatesMap != null && workDatesMap.has(cellDateStr)) {
             JSONObject item = workDatesMap.optJSONObject(cellDateStr);
             if (item != null) {
-                cellWorkText = item.optString("cellWorkText", "");
+                String singleLine = item.optString("cellWorkText", "");
+                String multiLine = item.optString("cellMultiLineText", "");
+                String tripSite = item.optString("cellTripSite", "");
+                boolean hasBoth = item.optBoolean("hasBoth", false) || singleLine.contains("+사내");
                 cellCategory = item.optString("category", "");
+
+                if (hasBoth || singleLine.contains("+사내")) {
+                    isHybrid = true;
+                    if (is5x4) {
+                        // 5*4 위젯: 캘린더 날짜 셀 안에 출장지 사업장과 사내업무를 다른 줄로 2줄 나눠서 표기
+                        if (!multiLine.isEmpty()) {
+                            cellWorkText = multiLine;
+                        } else {
+                            String site = tripSite;
+                            if (site.isEmpty()) {
+                                site = singleLine.replace("+사내", "").trim();
+                            }
+                            site = site.replace("출장", "").trim();
+                            cellWorkText = site + "\n사내업무";
+                        }
+                    } else {
+                        // 컴팩트 위젯: 1줄 축약 표기
+                        cellWorkText = singleLine;
+                    }
+                } else {
+                    cellWorkText = singleLine;
+                }
 
                 if (cellWorkText.isEmpty()) {
                     String site = item.optString("site", "");
@@ -649,7 +671,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 }
 
                 // Strip redundant "출장" suffix so only site name is shown (e.g. "SKH 이천사업장")
-                if ("출장".equals(cellCategory)) {
+                if ("출장".equals(cellCategory) && !isHybrid) {
                     if (cellWorkText.endsWith(" 출장")) {
                         cellWorkText = cellWorkText.substring(0, cellWorkText.length() - 3).trim();
                     } else if (cellWorkText.endsWith("출장") && cellWorkText.length() > 2) {
@@ -662,13 +684,25 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         if (!cellWorkText.isEmpty()) {
             views.setTextViewText(tvWorkId, cellWorkText);
             views.setViewVisibility(tvWorkId, View.VISIBLE);
-            if ("출장".equals(cellCategory)) {
+
+            if (isHybrid && is5x4) {
+                // 5*4 위젯에서 출장지 사업장 / 사내업무 2줄 분리 표시
+                views.setInt(tvWorkId, "setMaxLines", 2);
+                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+                views.setTextColor(tvWorkId, Color.parseColor("#6D28D9")); // Elegant deep purple
+                views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
+            } else if ("출장".equals(cellCategory) || isHybrid) {
+                views.setInt(tvWorkId, "setMaxLines", 1);
+                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 8.0f);
                 views.setTextColor(tvWorkId, Color.parseColor("#7C3AED")); // Purple for 출장
                 views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
             } else {
+                views.setInt(tvWorkId, "setMaxLines", 1);
+                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 8.0f);
                 views.setTextColor(tvWorkId, Color.parseColor("#0284C7")); // Blue for 사내
                 views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_internal);
             }
+
             if (ivDotId != 0)
                 views.setViewVisibility(ivDotId, View.GONE);
         } else {

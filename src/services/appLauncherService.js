@@ -207,11 +207,12 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       const hasDueTask = dueLogs.length > 0;
 
       dateLogs.forEach(l => {
-        const isTrip = l.category === '출장 업무' || Boolean(l.siteName || l.site_name);
+        const cat = (l.category || '').trim();
+        const site = (l.siteName || l.site_name || '').trim();
+        const isTrip = cat === '출장 업무' || (cat !== '사내 업무' && Boolean(site) && !site.includes('사내'));
         if (isTrip) {
           hasBusinessTrip = true;
-          const s = (l.siteName || l.site_name || '').trim();
-          if (!tripSiteName && s) tripSiteName = s;
+          if (!tripSiteName && site) tripSiteName = site;
         } else {
           hasInternalWork = true;
         }
@@ -220,8 +221,16 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       let cellWorkText = '';
       let category = '';
 
-      const tripLogs = dateLogs.filter(l => l.category === '출장 업무' || Boolean(l.siteName || l.site_name));
-      const internalLogs = dateLogs.filter(l => !(l.category === '출장 업무' || Boolean(l.siteName || l.site_name)));
+      const tripLogs = dateLogs.filter(l => {
+        const cat = (l.category || '').trim();
+        const site = (l.siteName || l.site_name || '').trim();
+        return cat === '출장 업무' || (cat !== '사내 업무' && Boolean(site) && !site.includes('사내'));
+      });
+      const internalLogs = dateLogs.filter(l => {
+        const cat = (l.category || '').trim();
+        const site = (l.siteName || l.site_name || '').trim();
+        return cat === '사내 업무' || (!cat && (!site || site.includes('사내')));
+      });
 
       let tripSubCat = '';
       if (tripLogs.length > 0) {
@@ -233,11 +242,18 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         internalSubCat = (internalLogs[0].subCategory || internalLogs[0].sub_category || '일반업무').trim();
       }
 
+      let cellTripSite = '';
+      let cellMultiLineText = '';
+      let hasBoth = false;
+
       if (hasBusinessTrip && hasInternalWork) {
         category = '출장';
+        hasBoth = true;
         const cleanedSite = tripSiteName.replace(/\s*출장$/g, '').trim();
         const baseSite = cleanedSite || tripSiteName || '출장지';
+        cellTripSite = baseSite;
         cellWorkText = `${baseSite}+사내`;
+        cellMultiLineText = `${baseSite}\n사내업무`;
       } else if (hasBusinessTrip) {
         category = '출장';
         if (tripSiteName) {
@@ -358,6 +374,9 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         status,
         category,
         cellWorkText,
+        cellTripSite,
+        cellMultiLineText,
+        hasBoth,
         holidayName: getHolidayName(dateStr) || '',
         count: dateLogs.length
       };
