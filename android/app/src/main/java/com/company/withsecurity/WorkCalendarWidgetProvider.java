@@ -80,6 +80,21 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             R.id.tv_work_41
     };
 
+    private static final int[] TV_SUB_IDS = {
+            R.id.tv_sub_0, R.id.tv_sub_1, R.id.tv_sub_2, R.id.tv_sub_3, R.id.tv_sub_4, R.id.tv_sub_5,
+            R.id.tv_sub_6,
+            R.id.tv_sub_7, R.id.tv_sub_8, R.id.tv_sub_9, R.id.tv_sub_10, R.id.tv_sub_11, R.id.tv_sub_12,
+            R.id.tv_sub_13,
+            R.id.tv_sub_14, R.id.tv_sub_15, R.id.tv_sub_16, R.id.tv_sub_17, R.id.tv_sub_18, R.id.tv_sub_19,
+            R.id.tv_sub_20,
+            R.id.tv_sub_21, R.id.tv_sub_22, R.id.tv_sub_23, R.id.tv_sub_24, R.id.tv_sub_25, R.id.tv_sub_26,
+            R.id.tv_sub_27,
+            R.id.tv_sub_28, R.id.tv_sub_29, R.id.tv_sub_30, R.id.tv_sub_31, R.id.tv_sub_32, R.id.tv_sub_33,
+            R.id.tv_sub_34,
+            R.id.tv_sub_35, R.id.tv_sub_36, R.id.tv_sub_37, R.id.tv_sub_38, R.id.tv_sub_39, R.id.tv_sub_40,
+            R.id.tv_sub_41
+    };
+
     private static final int[] IV_DOT_IDS = {
             R.id.iv_dot_0, R.id.iv_dot_1, R.id.iv_dot_2, R.id.iv_dot_3, R.id.iv_dot_4, R.id.iv_dot_5, R.id.iv_dot_6,
             R.id.iv_dot_7, R.id.iv_dot_8, R.id.iv_dot_9, R.id.iv_dot_10, R.id.iv_dot_11, R.id.iv_dot_12, R.id.iv_dot_13,
@@ -255,6 +270,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             for (int i = 0; i < 42; i++) {
                 int tvDayId = TV_DAY_IDS[i];
                 int tvWorkId = TV_WORK_IDS[i];
+                int tvSubId = TV_SUB_IDS[i];
                 int ivDotId = IV_DOT_IDS[i];
                 int cellId = CELL_IDS[i];
 
@@ -279,7 +295,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
+                    bindCellWork(views, tvWorkId, tvSubId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else if (i < startCellIndex + daysInCurrentMonth) {
                     // Current Month Days
@@ -319,7 +335,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
+                    bindCellWork(views, tvWorkId, tvSubId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 } else {
                     // Next Month Days
@@ -342,7 +358,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                         }
                     }
 
-                    bindCellWork(views, tvWorkId, ivDotId, cellDateStr, workDatesMap, is5x4);
+                    bindCellWork(views, tvWorkId, tvSubId, ivDotId, cellDateStr, workDatesMap, is5x4);
                     setCellSelectIntent(context, views, cellId, cellDateStr);
                 }
             }
@@ -549,17 +565,17 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
                 if (minHeight >= 320) {
                     // Large / Expanded widget
-                    dateLabelSize = 17.0f;
+                    dateLabelSize = 16.0f;
                     statusBadgeSize = 15.0f;
                     workLineSize = 16.0f;
                 } else if (minHeight >= 230) {
                     // Medium widget
-                    dateLabelSize = 16.0f;
+                    dateLabelSize = 15.0f;
                     statusBadgeSize = 14.5f;
                     workLineSize = 15.0f;
                 } else {
                     // Compact widget / default fallback
-                    dateLabelSize = 15.0f;
+                    dateLabelSize = 14.0f;
                     statusBadgeSize = 13.5f;
                     workLineSize = 14.5f;
                 }
@@ -615,97 +631,103 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
         }
     }
 
-    private static void bindCellWork(RemoteViews views, int tvWorkId, int ivDotId, String cellDateStr,
+    private static void bindCellWork(RemoteViews views, int tvWorkId, int tvSubId, int ivDotId, String cellDateStr,
             JSONObject workDatesMap, boolean is5x4) {
-        String cellWorkText = "";
+        String tripBadge = "";
+        String internalBadge = "";
+        String singleLine = "";
         String cellCategory = "";
-        boolean isHybrid = false;
+        boolean hasBoth = false;
 
         if (workDatesMap != null && workDatesMap.has(cellDateStr)) {
             JSONObject item = workDatesMap.optJSONObject(cellDateStr);
             if (item != null) {
-                String singleLine = item.optString("cellWorkText", "");
-                String multiLine = item.optString("cellMultiLineText", "");
-                String tripSite = item.optString("cellTripSite", "");
-                boolean hasBoth = item.optBoolean("hasBoth", false) || singleLine.contains("+사내");
-                cellCategory = item.optString("category", "");
+                tripBadge = item.optString("tripBadgeText", "").trim();
+                internalBadge = item.optString("internalBadgeText", "").trim();
+                singleLine = item.optString("cellWorkText", "").trim();
+                cellCategory = item.optString("category", "").trim();
+                hasBoth = item.optBoolean("hasBoth", false);
 
-                if (hasBoth || singleLine.contains("+사내")) {
-                    isHybrid = true;
-                    if (is5x4) {
-                        // 5*4 위젯: 캘린더 날짜 셀 안에 출장지 사업장과 사내업무를 다른 줄로 2줄 나눠서 표기
-                        if (!multiLine.isEmpty()) {
-                            cellWorkText = multiLine;
-                        } else {
-                            String site = tripSite;
-                            if (site.isEmpty()) {
-                                site = singleLine.replace("+사내", "").trim();
-                            }
-                            site = site.replace("출장", "").trim();
-                            cellWorkText = site + "\n사내업무";
-                        }
-                    } else {
-                        // 컴팩트 위젯: 1줄 축약 표기
-                        cellWorkText = singleLine;
-                    }
-                } else {
-                    cellWorkText = singleLine;
-                }
-
-                if (cellWorkText.isEmpty()) {
-                    String site = item.optString("site", "");
-                    if (!site.isEmpty()) {
-                        cellWorkText = site;
-                        cellCategory = "출장";
-                    } else if ("출장 업무".equals(cellCategory) || "출장".equals(cellCategory)) {
-                        cellWorkText = "출장지";
-                        cellCategory = "출장";
-                    } else {
-                        int count = item.optInt("count", 1);
-                        cellWorkText = count > 0 ? "사내업무 " + count + "건" : "사내업무";
-                        cellCategory = "사내";
-                    }
-                }
-
-                // Strip redundant "출장" suffix so only site name is shown (e.g. "SKH 이천사업장")
-                if ("출장".equals(cellCategory) && !isHybrid) {
-                    if (cellWorkText.endsWith(" 출장")) {
-                        cellWorkText = cellWorkText.substring(0, cellWorkText.length() - 3).trim();
-                    } else if (cellWorkText.endsWith("출장") && cellWorkText.length() > 2) {
-                        cellWorkText = cellWorkText.substring(0, cellWorkText.length() - 2).trim();
+                // Fallback if tripBadge/internalBadge are not set
+                if (tripBadge.isEmpty() && internalBadge.isEmpty()) {
+                    if ("출장".equals(cellCategory)) {
+                        tripBadge = singleLine;
+                    } else if ("사내".equals(cellCategory)) {
+                        internalBadge = singleLine;
+                    } else if (singleLine.contains("+사내")) {
+                        hasBoth = true;
+                        tripBadge = singleLine.replace("+사내", "").trim();
+                        internalBadge = "사내업무";
                     }
                 }
             }
         }
 
-        if (!cellWorkText.isEmpty()) {
-            views.setTextViewText(tvWorkId, cellWorkText);
-            views.setViewVisibility(tvWorkId, View.VISIBLE);
+        // Clean up redundant "출장" suffix if present in tripBadge
+        if (!tripBadge.isEmpty()) {
+            if (tripBadge.endsWith(" 출장")) {
+                tripBadge = tripBadge.substring(0, tripBadge.length() - 3).trim();
+            }
+        }
 
-            if (isHybrid && is5x4) {
-                // 5*4 위젯에서 출장지 사업장 / 사내업무 2줄 분리 표시
-                views.setInt(tvWorkId, "setMaxLines", 2);
-                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
-                views.setTextColor(tvWorkId, Color.parseColor("#6D28D9")); // Elegant deep purple
-                views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
-            } else if ("출장".equals(cellCategory) || isHybrid) {
-                views.setInt(tvWorkId, "setMaxLines", 1);
-                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 8.0f);
-                views.setTextColor(tvWorkId, Color.parseColor("#7C3AED")); // Purple for 출장
+        if (hasBoth || (!tripBadge.isEmpty() && !internalBadge.isEmpty())) {
+            // 출장 업무 + 사내 업무 둘 다 있는 경우:
+            // 1) 출장 업무 (상단): 보라색 배지
+            views.setTextViewText(tvWorkId, tripBadge);
+            views.setViewVisibility(tvWorkId, View.VISIBLE);
+            views.setInt(tvWorkId, "setMaxLines", 1);
+            views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+            views.setTextColor(tvWorkId, Color.parseColor("#7C3AED")); // Purple for trip
+            views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
+
+            // 2) 사내 업무 (하단): 파란색 배지
+            views.setTextViewText(tvSubId, internalBadge);
+            views.setViewVisibility(tvSubId, View.VISIBLE);
+            views.setInt(tvSubId, "setMaxLines", 1);
+            views.setTextViewTextSize(tvSubId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+            views.setTextColor(tvSubId, Color.parseColor("#0284C7")); // Blue for internal
+            views.setInt(tvSubId, "setBackgroundResource", R.drawable.widget_work_badge_internal);
+        } else if (!tripBadge.isEmpty()) {
+            // 출장 업무만 있는 경우: 상단 tvWorkId에 보라색 배지 표기
+            views.setTextViewText(tvWorkId, tripBadge);
+            views.setViewVisibility(tvWorkId, View.VISIBLE);
+            views.setInt(tvWorkId, "setMaxLines", 1);
+            views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+            views.setTextColor(tvWorkId, Color.parseColor("#7C3AED")); // Purple for trip
+            views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
+
+            views.setViewVisibility(tvSubId, View.GONE);
+        } else if (!internalBadge.isEmpty()) {
+            // 사내 업무만 있는 경우: 상단 tvWorkId에 파란색 배지 표기
+            views.setTextViewText(tvWorkId, internalBadge);
+            views.setViewVisibility(tvWorkId, View.VISIBLE);
+            views.setInt(tvWorkId, "setMaxLines", 1);
+            views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+            views.setTextColor(tvWorkId, Color.parseColor("#0284C7")); // Blue for internal
+            views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_internal);
+
+            views.setViewVisibility(tvSubId, View.GONE);
+        } else if (!singleLine.isEmpty()) {
+            // 기타/폴백 텍스트
+            views.setTextViewText(tvWorkId, singleLine);
+            views.setViewVisibility(tvWorkId, View.VISIBLE);
+            views.setInt(tvWorkId, "setMaxLines", 1);
+            views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 7.5f);
+            if ("출장".equals(cellCategory)) {
+                views.setTextColor(tvWorkId, Color.parseColor("#7C3AED"));
                 views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_trip);
             } else {
-                views.setInt(tvWorkId, "setMaxLines", 1);
-                views.setTextViewTextSize(tvWorkId, TypedValue.COMPLEX_UNIT_SP, 8.0f);
-                views.setTextColor(tvWorkId, Color.parseColor("#0284C7")); // Blue for 사내
+                views.setTextColor(tvWorkId, Color.parseColor("#0284C7"));
                 views.setInt(tvWorkId, "setBackgroundResource", R.drawable.widget_work_badge_internal);
             }
-
-            if (ivDotId != 0)
-                views.setViewVisibility(ivDotId, View.GONE);
+            views.setViewVisibility(tvSubId, View.GONE);
         } else {
             views.setViewVisibility(tvWorkId, View.GONE);
-            if (ivDotId != 0)
-                views.setViewVisibility(ivDotId, View.GONE);
+            views.setViewVisibility(tvSubId, View.GONE);
+        }
+
+        if (ivDotId != 0) {
+            views.setViewVisibility(ivDotId, View.GONE);
         }
     }
 

@@ -242,40 +242,46 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         internalSubCat = (internalLogs[0].subCategory || internalLogs[0].sub_category || '일반업무').trim();
       }
 
-      let cellTripSite = '';
-      let cellMultiLineText = '';
-      let hasBoth = false;
-
-      if (hasBusinessTrip && hasInternalWork) {
-        category = '출장';
-        hasBoth = true;
-        const cleanedSite = tripSiteName.replace(/\s*출장$/g, '').trim();
-        const baseSite = cleanedSite || tripSiteName || '출장지';
-        cellTripSite = baseSite;
-        cellWorkText = `${baseSite}+사내`;
-        cellMultiLineText = `${baseSite}\n사내업무`;
-      } else if (hasBusinessTrip) {
-        category = '출장';
-        if (tripSiteName) {
-          // Remove redundant '출장' suffix if present; just display site name (e.g. 'SKH 이천사업장')
-          const cleanedSite = tripSiteName.replace(/\s*출장$/g, '').trim();
-          const baseSite = cleanedSite || tripSiteName;
-          const subText = tripSubCat ? ` ${tripSubCat}` : '';
-          if (tripLogs.length > 1) {
-            cellWorkText = `${baseSite}${subText} ${tripLogs.length}건`;
-          } else {
-            cellWorkText = `${baseSite}${subText}`;
-          }
+      // 출장 업무 배지 텍스트: 1건이면 업무구분 표기, 2건 이상이면 업무구분 빼고 '외 N건'
+      let tripBadgeText = '';
+      if (tripLogs.length > 0) {
+        const cleanedSite = (tripSiteName || '출장지').replace(/\s*출장$/g, '').trim() || '출장지';
+        const sub = tripSubCat || '작업';
+        if (tripLogs.length === 1) {
+          tripBadgeText = `${cleanedSite} [${sub}]`;
         } else {
-          cellWorkText = tripSubCat ? `출장 ${tripSubCat}` : '출장지';
+          tripBadgeText = `${cleanedSite} 외 ${tripLogs.length - 1}건`;
         }
+      }
+
+      // 사내 업무 배지 텍스트: 1건이면 업무구분 표기, 2건 이상이면 업무구분 빼고 '외 N건'
+      let internalBadgeText = '';
+      if (internalLogs.length > 0) {
+        const sub = internalSubCat || '일반업무';
+        if (internalLogs.length === 1) {
+          internalBadgeText = `사내 [${sub}]`;
+        } else {
+          internalBadgeText = `사내 외 ${internalLogs.length - 1}건`;
+        }
+      }
+
+      const hasBoth = tripLogs.length > 0 && internalLogs.length > 0;
+      let cellTripSite = tripBadgeText;
+      let cellMultiLineText = '';
+
+      if (hasBoth) {
+        category = '출장';
+        cellWorkText = tripBadgeText;
+        cellMultiLineText = `${tripBadgeText}\n${internalBadgeText}`;
+      } else if (tripLogs.length > 0) {
+        category = '출장';
+        cellWorkText = tripBadgeText;
       } else if (hasDueTask && dateLogs.length === 0) {
         category = '납기';
         cellWorkText = '[납기]';
-      } else if (hasInternalWork || dateLogs.length > 0) {
+      } else if (internalLogs.length > 0 || dateLogs.length > 0) {
         category = '사내';
-        const count = internalLogs.length > 0 ? internalLogs.length : dateLogs.length;
-        cellWorkText = `사내업무 ${count}건`;
+        cellWorkText = internalBadgeText || `사내 ${internalLogs.length}건`;
       }
 
       // 1) 출장 업무 텍스트 생성
@@ -376,6 +382,10 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         cellWorkText,
         cellTripSite,
         cellMultiLineText,
+        tripBadgeText,
+        internalBadgeText,
+        tripCount: tripLogs.length,
+        internalCount: internalLogs.length,
         hasBoth,
         holidayName: getHolidayName(dateStr) || '',
         count: dateLogs.length
