@@ -72,6 +72,10 @@ const SCHEMAS = {
   ],
   incidents: [
     'id', 'reportedAt', 'title', 'severity', 'description'
+  ],
+  // 8. 시스템 업데이트 공지사항 (notices)
+  notices: [
+    'id', 'title', 'version', 'content', 'author_name', 'author_username', 'is_active', 'created_at', 'updated_at'
   ]
 };
 
@@ -246,11 +250,18 @@ function formatHeaderRow(sheet, numCols) {
  * 구글 스프레드시트 상단 메뉴 자동 등록
  */
 function onOpen() {
+  try {
+    enforcePasswordHashingInSheet();
+    enforceNumericUserIds();
+  } catch (e) {}
+
   SpreadsheetApp.getUi()
     .createMenu('🛡️ Withsharing DB 관리')
     .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
     .addItem('🔄 MySQL 스키마 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
+    .addItem('🔢 사용자 ID 번호(1, 2, 3...) 자동 정리 (enforceNumericUserIds)', 'enforceNumericUserIds')
+    .addItem('🔒 비밀번호 전체 SHA-256 일괄 암호화 (enforcePasswordHashingInSheet)', 'enforcePasswordHashingInSheet')
     .addToUi();
 }
 
@@ -292,6 +303,8 @@ function doGet(e) {
 
     // 4. 전체 데이터베이스 일괄 동기화 (sync/all)
     if (action === 'getAll') {
+      try { enforcePasswordHashingInSheet(); } catch (e) {}
+      try { enforceNumericUserIds(); } catch (e) {}
       const allData = {};
       for (const key of Object.keys(SCHEMAS)) {
         allData[key] = readSheetData(key);
@@ -304,6 +317,10 @@ function doGet(e) {
     }
     
     // 5. 개별 시트 데이터 조회
+    if (sheetName === 'users') {
+      try { enforcePasswordHashingInSheet(); } catch (e) {}
+      try { enforceNumericUserIds(); } catch (e) {}
+    }
     const data = readSheetData(sheetName);
     return jsonResponse({
       success: true,
@@ -527,6 +544,12 @@ function doPost(e) {
           if (isMatch) {
             const rowNum = i + 1;
             const currentRow = rows[i];
+            if (sheetName === 'users') {
+              const idCol = headers.indexOf('id');
+              if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
+                item.id = parseInt(currentRow[idCol], 10);
+              }
+            }
             const updatedRow = headers.map((h, colIdx) => {
               // TBM 구분 컬럼은 무조건 '업무 전' / '업무 후' / '추가 TBM' 한글로 완벽 보장
               if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
@@ -640,8 +663,21 @@ function doPost(e) {
         }
       }
 
+      if (sheetName === 'users') {
+        const numId = parseInt(item.id, 10);
+        if (isNaN(numId) || numId <= 0 || String(item.id).trim() !== String(numId)) {
+          item.id = getNextUserId(sheet);
+        } else {
+          item.id = numId;
+        }
+      }
+
       appendObjectRow(sheet, headers, item);
       SpreadsheetApp.flush();
+      if (sheetName === 'users') {
+        try { enforcePasswordHashingInSheet(); } catch (e) {}
+        try { enforceNumericUserIds(); } catch (e) {}
+      }
       return jsonResponse({ success: true, message: 'Row created', data: item });
     }
     
@@ -674,6 +710,13 @@ function doPost(e) {
 
         if (isMatch) {
           const rowNum = i + 1;
+          const currentRow = rows[i];
+          if (sheetName === 'users') {
+            const idCol = headers.indexOf('id');
+            if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
+              patch.id = parseInt(currentRow[idCol], 10);
+            }
+          }
           const updatedRow = [...rows[i]];
           for (const [k, val] of Object.entries(patch)) {
             const colIdx = headers.indexOf(k);
@@ -684,13 +727,29 @@ function doPost(e) {
           }
           sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
           SpreadsheetApp.flush();
+          if (sheetName === 'users') {
+            try { enforcePasswordHashingInSheet(); } catch (e) {}
+            try { enforceNumericUserIds(); } catch (e) {}
+          }
           return jsonResponse({ success: true, message: 'Row updated', id: id });
         }
       }
       
       // 대상이 없으면 새로 추가
+      if (sheetName === 'users') {
+        const numId = parseInt(patch.id, 10);
+        if (isNaN(numId) || numId <= 0 || String(patch.id).trim() !== String(numId)) {
+          patch.id = getNextUserId(sheet);
+        } else {
+          patch.id = numId;
+        }
+      }
       appendObjectRow(sheet, headers, { ...patch, [keyField]: id });
       SpreadsheetApp.flush();
+      if (sheetName === 'users') {
+        try { enforcePasswordHashingInSheet(); } catch (e) {}
+        try { enforceNumericUserIds(); } catch (e) {}
+      }
       return jsonResponse({ success: true, message: 'Row inserted (upsert)', id: id });
     }
     
@@ -834,6 +893,9 @@ function doPost(e) {
         results[tableKey] = { added, updated, total: rawItems.length };
       }
       
+      try { enforcePasswordHashingInSheet(); } catch (e) {}
+      try { enforceNumericUserIds(); } catch (e) {}
+      
       return jsonResponse({
         success: true,
         message: '로컬 데이터 구글 시트 일괄 업로드 완료 (MySQL 스키마 정규화 적용)',
@@ -933,18 +995,200 @@ function getOrCreateDriveFolder(folderName) {
 // -------------------------------------------------------------
 
 /**
+ * 비밀번호 SHA-256 단방향 솔트 해시 변환 (스프레드시트 내 비밀번호 원본 노출 원천 차단)
+ */
+function hashPasswordInGas(plain) {
+  if (!plain) return '';
+  const str = String(plain).trim();
+  if (/^[a-f0-9]{64}$/i.test(str)) {
+    return str.toLowerCase();
+  }
+  const salted = "WithSecurity_SALT_2026_" + str;
+  const rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salted, Utilities.Charset.UTF_8);
+  let hex = '';
+  for (let i = 0; i < rawHash.length; i++) {
+    let byteVal = rawHash[i];
+    if (byteVal < 0) byteVal += 256;
+    let byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) byteHex = '0' + byteHex;
+    hex += byteHex;
+  }
+  return hex;
+}
+
+/**
+ * 🔢 users 시트에서 사용 가능한 다음 순차 숫자 ID 번호 반환
+ */
+function getNextUserId(sheet) {
+  try {
+    if (!sheet || sheet.getLastRow() <= 1) return 1;
+    const range = sheet.getDataRange();
+    const rows = range.getValues();
+    const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+    const idIdx = headers.indexOf('id');
+    if (idIdx === -1) return sheet.getLastRow();
+    let maxId = 0;
+    for (let i = 1; i < rows.length; i++) {
+      const val = parseInt(rows[i][idIdx], 10);
+      if (!isNaN(val) && val > maxId) {
+        maxId = val;
+      }
+    }
+    return maxId > 0 ? maxId + 1 : (sheet.getLastRow() > 1 ? sheet.getLastRow() : 1);
+  } catch (e) {
+    return 1;
+  }
+}
+
+/**
+ * 🔢 users 시트 내 모든 사용자의 id를 순차적인 숫자(1, 2, 3...)로 자동 정규화
+ */
+function enforceNumericUserIds() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('users');
+    if (!sheet || sheet.getLastRow() <= 1) return { success: true, count: 0 };
+
+    const range = sheet.getDataRange();
+    const rows = range.getValues();
+    const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+    const idIdx = headers.indexOf('id');
+    if (idIdx === -1) return { success: true, count: 0 };
+
+    let modified = false;
+    const seenIds = new Set();
+    const invalidRowIndices = [];
+
+    // 1단계: 유효한 양의 정수 ID 수집
+    for (let r = 1; r < rows.length; r++) {
+      const raw = rows[r][idIdx];
+      const num = parseInt(raw, 10);
+      if (!isNaN(num) && num > 0 && String(raw).trim() === String(num) && !seenIds.has(num)) {
+        seenIds.add(num);
+      } else {
+        invalidRowIndices.push(r);
+      }
+    }
+
+    // 2단계: 숫자가 아니거나 비어있거나 중복된 id 행에 1부터 순차적인 고유 번호 자동 할당
+    let nextNum = 1;
+    for (const r of invalidRowIndices) {
+      while (seenIds.has(nextNum)) {
+        nextNum++;
+      }
+      rows[r][idIdx] = nextNum;
+      seenIds.add(nextNum);
+      modified = true;
+      nextNum++;
+    }
+
+    if (modified) {
+      range.setValues(rows);
+      SpreadsheetApp.flush();
+      Logger.log('🔢 사용자 id 숫자(1, 2, 3...) 자동 정리 완료: ' + invalidRowIndices.length + '건 교정');
+    }
+    return { success: true, count: invalidRowIndices.length };
+  } catch (err) {
+    Logger.log('enforceNumericUserIds error: ' + err.toString());
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * 🔒 스프레드시트 users 시트 내 모든 행의 비밀번호를 즉시 SHA-256 해시값으로 변환
+ * (password, passward, passwordHash, 비밀번호 컬럼 등 모든 별칭 컬럼 자동 검출 및 일괄 암호화)
+ */
+function enforcePasswordHashingInSheet() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('users');
+    if (!sheet || sheet.getLastRow() <= 1) return { success: true, count: 0 };
+
+    const range = sheet.getDataRange();
+    const rows = range.getValues();
+    const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+
+    const passIndices = [];
+    headers.forEach((h, idx) => {
+      if (h === 'password' || h === 'passward' || h === 'passwordhash' || h === 'password_hash' || h === '비밀번호' || h === '패스워드') {
+        passIndices.push(idx);
+      }
+    });
+
+    if (passIndices.length === 0) return { success: true, count: 0 };
+
+    let convertedCount = 0;
+    for (let r = 1; r < rows.length; r++) {
+      for (const pIdx of passIndices) {
+        const cellVal = String(rows[r][pIdx] || '').trim();
+        if (cellVal && !/^[a-f0-9]{64}$/i.test(cellVal)) {
+          rows[r][pIdx] = hashPasswordInGas(cellVal);
+          convertedCount++;
+        }
+      }
+    }
+
+    if (convertedCount > 0) {
+      range.setValues(rows);
+      SpreadsheetApp.flush();
+      Logger.log('🔒 사용자 비밀번호 ' + convertedCount + '건 SHA-256 해시값으로 즉시 암호화 완료');
+    }
+    return { success: true, count: convertedCount };
+  } catch (err) {
+    Logger.log('enforcePasswordHashingInSheet error: ' + err.toString());
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
+ * ⚡ 사용자가 스프레드시트에서 직접 비밀번호를 입력하거나 수정할 때 실시간 SHA-256 자동 암호화
+ */
+function onEdit(e) {
+  try {
+    if (!e || !e.range) return;
+    const sheet = e.range.getSheet();
+    if (sheet.getName() !== 'users') return;
+    const row = e.range.getRow();
+    if (row <= 1) return;
+
+    const col = e.range.getColumn();
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim().toLowerCase());
+    const headerName = headers[col - 1] || '';
+
+    if (headerName === 'password' || headerName === 'passward' || headerName === 'passwordhash' || headerName === 'password_hash' || headerName === '비밀번호' || headerName === '패스워드') {
+      const val = String(e.value || e.range.getValue() || '').trim();
+      if (val && !/^[a-f0-9]{64}$/i.test(val)) {
+        e.range.setValue(hashPasswordInGas(val));
+      }
+    }
+  } catch (err) {
+    Logger.log('onEdit password hash error: ' + err.toString());
+  }
+}
+
+/**
  * 객체를 MySQL 테이블 표준 컬럼 형식으로 100% 매핑 및 정규화
  */
 function normalizeObjectForSheet(sheetName, rawObj) {
   if (!rawObj || typeof rawObj !== 'object') return {};
   const obj = { ...rawObj };
 
-  // 1. 사용자 계정 (security_user)
+  // 1. 사용자 계정 (security_user) - id는 순차 숫자, 비밀번호는 무조건 SHA-256 해시로만 기록
   if (sheetName === 'users') {
+    let passVal = String(obj.password || obj.passwordHash || obj.passward || obj.password_hash || obj['비밀번호'] || '').trim();
+    if (passVal) {
+      passVal = hashPasswordInGas(passVal);
+    }
+    const rawId = obj.id;
+    const numId = parseInt(rawId, 10);
+    const validId = (!isNaN(numId) && numId > 0 && String(rawId).trim() === String(numId)) ? numId : '';
+
     return {
-      id: obj.id || '',
-      username: String(obj.username || obj.id || '').trim().toLowerCase(),
-      password: obj.password || '',
+      id: validId,
+      username: String(obj.username || '').trim().toLowerCase(),
+      password: passVal,
+      passward: passVal,
+      passwordHash: passVal,
       name: obj.name || obj.authorName || obj.userName || '',
       role: obj.role || '일반',
       division: obj.division || '',
@@ -1392,6 +1636,22 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     };
   }
 
+  // 8. 시스템 업데이트 공지사항 (notices)
+  if (sheetName === 'notices') {
+    const idVal = obj.id || `NOTICE-${Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMddHHmmss')}`;
+    return {
+      id: idVal,
+      title: obj.title || '시스템 업데이트 공지',
+      version: obj.version || 'v1.0.0',
+      content: obj.content || '',
+      author_name: obj.author_name || obj.authorName || obj.name || '관리자',
+      author_username: obj.author_username || obj.authorUsername || obj.username || 'admin',
+      is_active: (obj.is_active !== undefined ? (obj.is_active ? 1 : 0) : (obj.isActive !== undefined ? (obj.isActive ? 1 : 0) : 1)),
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      updated_at: obj.updated_at || obj.updatedAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
+    };
+  }
+
   return obj;
 }
 
@@ -1652,7 +1912,9 @@ function readSheetData(sheetName) {
             siteId: obj.siteId || prev.siteId || '',
             phone: obj.phone || prev.phone || '',
             email: obj.email || prev.email || '',
-            password: prev.password || obj.password || ''
+            password: obj.password || prev.password || '',
+            passward: obj.password || prev.password || '',
+            passwordHash: obj.password || prev.password || ''
           });
         } else {
           keyMap.set(key, obj);
@@ -1820,6 +2082,16 @@ function cleanupDuplicates() {
         rowsToDelete.push(r + 1); // 1-indexed row number
       } else {
         seen.add(key);
+        // 시트에 이미 평문으로 적혀있는 비밀번호가 있다면 안전하게 SHA-256 해시값으로 즉시 치환
+        if (sheetName === 'users') {
+          const passIdx = headers.indexOf('password');
+          if (passIdx !== -1) {
+            const curPass = String(row[passIdx] || '').trim();
+            if (curPass && !/^[a-f0-9]{64}$/i.test(curPass)) {
+              sheet.getRange(r + 1, passIdx + 1).setValue(hashPasswordInGas(curPass));
+            }
+          }
+        }
       }
     }
 
@@ -1848,6 +2120,14 @@ function cleanupDuplicates() {
 function appendObjectRow(sheet, headers, rawObj) {
   const sheetName = sheet.getName();
   const obj = normalizeObjectForSheet(sheetName, rawObj);
+  if (sheetName === 'users') {
+    const numId = parseInt(obj.id, 10);
+    if (isNaN(numId) || numId <= 0 || String(obj.id).trim() !== String(numId)) {
+      obj.id = getNextUserId(sheet);
+    } else {
+      obj.id = numId;
+    }
+  }
   const row = headers.map(h => {
     if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
       const rawT = String(obj[h] || '').trim().toLowerCase();

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
+import AppNoticeHeaderBtn from '../common/AppNoticeHeaderBtn';
 
 export default function MobileContainer({
   children,
@@ -215,6 +216,9 @@ export default function MobileContainer({
                 onNavigateToUserProfile={(tab) => setActiveTab(tab || 'userProfile')}
                 compact={true}
               />
+
+              {/* System Update Notice Header Button */}
+              <AppNoticeHeaderBtn compact={true} />
             </>
           ) : (
             <button

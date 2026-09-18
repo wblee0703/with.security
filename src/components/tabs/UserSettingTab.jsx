@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Capacitor } from '@capacitor/core';
-import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter, Sparkles } from 'lucide-react';
+import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Upload, Download, Table, Edit3, Key, X, Lock, Users, Trash2, Search, Globe, Link, Server, CheckCircle2, AlertCircle, RefreshCw, GraduationCap, Calendar, Clock, AlertTriangle, Plus, Filter, Sparkles, Megaphone } from 'lucide-react';
 import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL, normalizeKstDate } from '../../services/dbService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
 import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
+import AppNoticeAdminModal from '../common/AppNoticeAdminModal';
 
 const TRAINING_CATEGORIES = ['SKHynix', 'Samsung', 'LGD', '법정', '기타 (직접입력)'];
 
@@ -122,9 +123,27 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     remainingSec: 0
   });
 
+  // App Update Notice & Cache Reload States
+  const [isNoticeAdminModalOpen, setIsNoticeAdminModalOpen] = useState(false);
+  const [isReloadingApp, setIsReloadingApp] = useState(false);
+
+  const isDeveloper = Boolean(
+    currentUser && (
+      currentUser.role === '개발자' ||
+      currentUser.username === 'admin'
+    )
+  );
+
+  const handleReloadAppWithoutCache = async () => {
+    if (!window.confirm('브라우저 및 앱 캐시를 초기화하고 GitHub 최신 배포 버전을 즉시 불러오시겠습니까?\n작성 중이던 내용은 저장 후 진행해 주세요.')) return;
+    setIsReloadingApp(true);
+    await dbService.reloadAppWithoutCache();
+  };
+
   // Back button hooks
   useModalBack(isVerifyModalOpen, () => setIsVerifyModalOpen(false), 'user-verify-modal');
   useModalBack(isAccountMgmtModalOpen, () => setIsAccountMgmtModalOpen(false), 'user-account-mgmt-modal');
+  useModalBack(isNoticeAdminModalOpen, () => setIsNoticeAdminModalOpen(false), 'app-notice-admin-modal');
   useModalBack(loginAlertModal.isOpen, () => setLoginAlertModal(prev => ({ ...prev, isOpen: false })), 'login-alert-modal');
 
   // Keyboard trap & auto-focus for Login Alert Modal
@@ -262,8 +281,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         setCurrentUser(null);
         setEditForm(null);
         setTrainings([]);
-        setAuthMode('login');
-        // Do not clear loginForm here: preserves user keystrokes if background sync/event triggers while typing
+        // Do not reset authMode or form state here: preserves signup/login tab and user keystrokes if background sync/event triggers while typing
       }
       const hUrl = dbService.getHostedServerUrl();
       setActiveHostedServerUrl(hUrl);
@@ -775,13 +793,24 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       return;
     }
 
-    const passwordHash = await hashPassword(signupForm.password);
+    const rawPass = signupForm.password.trim();
+    const isAlreadyHash = /^[a-f0-9]{64}$/i.test(rawPass);
+    const passwordHash = isAlreadyHash ? rawPass.toLowerCase() : await hashPassword(rawPass);
+
+    let maxId = 0;
+    (users || []).forEach(u => {
+      const num = parseInt(u.id, 10);
+      if (!isNaN(num) && num > maxId) maxId = num;
+    });
+    const nextNumericId = maxId > 0 ? maxId + 1 : ((users || []).length + 1);
 
     // Initial signups are strictly created as regular user ('일반')
     const newUser = {
+      id: nextNumericId,
       username: signupForm.username.trim(),
-      password: signupForm.password.trim(),
+      password: passwordHash,
       passwordHash: passwordHash,
+      passward: passwordHash,
       role: '일반',
       division: signupForm.division.trim() || '일반사업부',
       team: signupForm.team.trim() || '운영팀',
@@ -887,7 +916,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
 
     // New Password Validation if entered
-    let updatedPasswordHash = currentUser?.passwordHash;
+    let updatedPasswordHash = null;
     if (passwordForm.newPassword || passwordForm.confirmPassword) {
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
         if (onTriggerToast) onTriggerToast('변경할 비밀번호와 비밀번호 확인이 일치하지 않습니다.', 'warning');
@@ -897,16 +926,26 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         if (onTriggerToast) onTriggerToast('비밀번호는 최소 4자리 이상 입력해 주세요.', 'warning');
         return;
       }
-      updatedPasswordHash = await hashPassword(passwordForm.newPassword);
+      const rawNewPass = passwordForm.newPassword.trim();
+      const isAlreadyHash = /^[a-f0-9]{64}$/i.test(rawNewPass);
+      updatedPasswordHash = isAlreadyHash ? rawNewPass.toLowerCase() : await hashPassword(rawNewPass);
+    }
+
+    let finalPasswordHash = updatedPasswordHash;
+    if (!finalPasswordHash) {
+      const existing = String(currentUser?.passwordHash || currentUser?.password || editForm?.passwordHash || editForm?.password || '').trim();
+      if (existing) {
+        finalPasswordHash = /^[a-f0-9]{64}$/i.test(existing) ? existing.toLowerCase() : await hashPassword(existing);
+      }
     }
 
     const isAdmin = currentUser?.role === '관리자' || currentUser?.username === 'admin';
-    const newPass = passwordForm.newPassword ? passwordForm.newPassword.trim() : '';
     const updatedUser = {
       ...editForm,
       role: isAdmin ? (editForm.role || '일반') : (currentUser?.role || '일반'),
-      password: newPass || currentUser?.password || editForm?.password || '',
-      passwordHash: updatedPasswordHash
+      password: finalPasswordHash || '',
+      passwordHash: finalPasswordHash || '',
+      passward: finalPasswordHash || ''
     };
 
     await dbService.saveUserProfile(updatedUser);
@@ -1172,6 +1211,62 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     <span style={{ color: '#1e3a8a', fontWeight: '700' }}>{currentUser.division}</span> • {currentUser.team} • ID: <strong style={{ color: '#1e3a8a' }}>{currentUser.username}</strong>
                   </div>
                 </div>
+              </div>
+
+              {/* Top Banner Action Buttons */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                {/* Manual Cache Refresh / Live GitHub Version Pull */}
+                <button
+                  type="button"
+                  onClick={handleReloadAppWithoutCache}
+                  disabled={isReloadingApp}
+                  title="브라우저/앱 캐시를 초기화하고 GitHub 최신 배포 버전을 즉시 불러옵니다."
+                  style={{
+                    padding: '7px 13px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #bfdbfe',
+                    background: '#eff6ff',
+                    color: '#1d4ed8',
+                    fontSize: '11.5px',
+                    fontWeight: '800',
+                    cursor: isReloadingApp ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    boxShadow: '0 2px 5px rgba(29, 78, 216, 0.08)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <RefreshCw size={13} className={isReloadingApp ? 'spin' : ''} />
+                  <span>{isReloadingApp ? '불러오는 중...' : '최신 버전 즉시 불러오기'}</span>
+                </button>
+
+                {/* Developer-Only Update Notice Management */}
+                {isDeveloper && (
+                  <button
+                    type="button"
+                    onClick={() => setIsNoticeAdminModalOpen(true)}
+                    title="개발자 전용: 전체 사용자 대상 업데이트 공지사항 배포 및 관리"
+                    style={{
+                      padding: '7px 13px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
+                      color: '#ffffff',
+                      fontSize: '11.5px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.2)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <Megaphone size={13} color="#38bdf8" />
+                    <span>업데이트 공지 관리</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2484,6 +2579,28 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   {isLoggingIn ? <RefreshCw size={16} className="animate-spin" /> : <LogIn size={16} />}
                   {isLoggingIn ? '로그인 처리 중...' : '로그인하기'}
                 </button>
+
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '6px', borderTop: '1px dashed #e2e8f0', paddingTop: '10px' }}>
+                  <button
+                    type="button"
+                    onClick={handleReloadAppWithoutCache}
+                    disabled={isReloadingApp}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#2563eb',
+                      fontSize: '11.5px',
+                      fontWeight: '700',
+                      cursor: isReloadingApp ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px'
+                    }}
+                  >
+                    <RefreshCw size={12} className={isReloadingApp ? 'spin' : ''} />
+                    <span>{isReloadingApp ? '새로고침 중...' : '최신 앱 버전으로 즉시 새로고침'}</span>
+                  </button>
+                </div>
               </form>
             )}
 
@@ -3603,6 +3720,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* Developer-Only App Notice Administration Modal */}
+      {isNoticeAdminModalOpen && (
+        <AppNoticeAdminModal
+          isOpen={isNoticeAdminModalOpen}
+          onClose={() => setIsNoticeAdminModalOpen(false)}
+          currentUser={currentUser}
+          onTriggerToast={onTriggerToast}
+        />
       )}
 
     </div>

@@ -9,6 +9,7 @@ import UserSettingTab from './components/tabs/UserSettingTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import TrainingExpiryModal from './components/common/TrainingExpiryModal';
+import AppNoticeModal from './components/common/AppNoticeModal';
 import ExitConfirmModal from './components/common/ExitConfirmModal';
 import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw, LogOut } from 'lucide-react';
 import { dbService, normalizeKstDate } from './services/dbService';
@@ -69,6 +70,37 @@ export default function App() {
   // Training Expiry Alert Modal State
   const [isTrainingAlertOpen, setIsTrainingAlertOpen] = useState(false);
   const [trainingAlertUser, setTrainingAlertUser] = useState(null);
+
+  // App Update Notice Modal State
+  const [isNoticeAlertOpen, setIsNoticeAlertOpen] = useState(false);
+  const [activeNotice, setActiveNotice] = useState(null);
+
+  // Evaluate App Update Notices (Auto-popup for active unread notice)
+  useEffect(() => {
+    async function evaluateAppNotice() {
+      try {
+        const notices = await dbService.getAppNotices();
+        const activeList = notices.filter(n => n.is_active !== false);
+        if (activeList.length > 0) {
+          const latest = activeList[0];
+          const isDismissed = dbService.isNoticeDismissedToday(latest.id);
+          const isRead = dbService.isNoticeRead(latest.id);
+          if (!isDismissed && !isRead) {
+            setActiveNotice(latest);
+            setIsNoticeAlertOpen(true);
+          }
+        }
+      } catch (err) {
+        console.warn('App notice evaluation error:', err);
+      }
+    }
+
+    evaluateAppNotice();
+    window.addEventListener('with_security_data_changed', evaluateAppNotice);
+    return () => {
+      window.removeEventListener('with_security_data_changed', evaluateAppNotice);
+    };
+  }, []);
 
   // Network Offline / Online live detection
   useEffect(() => {
@@ -199,16 +231,22 @@ export default function App() {
           return;
         }
 
-        const [workLogs, tbms] = await Promise.all([
-          dbService.getWorkLogs ? dbService.getWorkLogs() : [],
-          dbService.getTbms ? dbService.getTbms() : []
-        ]);
-
+        const workLogs = dbService.getWorkLogs ? await dbService.getWorkLogs() : [];
         const uName = String(currentUser.username || '').trim();
 
-        // 위젯 캘린더에는 해당 계정의 작업만 엄격 필터링하여 반영
+        // 위젯 캘린더에는 해당 계정의 실제 업무 일지만 반영 (TBM 및 보안서약 제외)
         const myLogs = (workLogs || []).filter(log => {
           if (!log) return false;
+
+          // TBM 및 보안서약 항목 배제
+          const title = String(log.workTitle || log.title || log.content || '').toLowerCase();
+          const category = String(log.category || '').toLowerCase();
+          const subCat = String(log.subCategory || log.sub_category || '').toLowerCase();
+
+          if (title.includes('보안서약') || title.includes('서약') || title.includes('tbm')) return false;
+          if (category.includes('보안서약') || category.includes('tbm')) return false;
+          if (subCat.includes('보안서약') || subCat.includes('서약') || subCat.includes('tbm')) return false;
+
           const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim();
           if (logWriter && uName) {
             return logWriter === uName;
@@ -216,22 +254,7 @@ export default function App() {
           return isSamePerson(log, currentUser);
         });
 
-        const myTbms = (tbms || []).filter(tbm => {
-          if (!tbm) return false;
-          const leader = String(tbm.writer_id || tbm.writerId || tbm.authorUsername || tbm.username || tbm.leader || '').trim();
-          if (leader && uName && leader === uName) return true;
-          if (Array.isArray(tbm.attendees)) {
-            const isAtt = tbm.attendees.some(a => {
-              const aUser = String(typeof a === 'object' ? (a.username || a.userId || '') : '').trim();
-              if (aUser && uName && aUser === uName) return true;
-              return isSamePerson(a, currentUser);
-            });
-            if (isAtt) return true;
-          }
-          return isSamePerson(tbm, currentUser);
-        });
-
-        await syncCalendarWidget({ workLogs: myLogs, tbms: myTbms });
+        await syncCalendarWidget({ workLogs: myLogs });
       } catch (err) {
         console.warn('Widget sync error:', err);
       }
@@ -833,6 +856,13 @@ export default function App() {
       <ExitConfirmModal
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
+      />
+
+      {/* Global System Update Notice Modal */}
+      <AppNoticeModal
+        isOpen={isNoticeAlertOpen}
+        onClose={() => setIsNoticeAlertOpen(false)}
+        initialNotice={activeNotice}
       />
     </div>
   );

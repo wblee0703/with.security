@@ -161,10 +161,10 @@ export async function shareReportText({ title, text }) {
 }
 
 /**
- * Synchronize current work logs and TBM data to Android Native Home Screen Calendar Widget
- * @param {{ workLogs?: Array<any>, tbms?: Array<any> }} options
+ * Synchronize current work logs to Android Native Home Screen Calendar Widget (Excluding TBM & Security Pledges)
+ * @param {{ workLogs?: Array<any> }} options
  */
-export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
+export async function syncCalendarWidget({ workLogs = [] } = {}) {
   if (!Capacitor.isNativePlatform()) return;
 
   try {
@@ -176,23 +176,30 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
 
     const workDatesMap = {};
 
-    // Collect all distinct dates from workLogs and tbms (including due dates)
+    // TBM 및 보안서약 항목 배제 (순수 업무 일지만 위젯에 반영)
+    const validLogs = (workLogs || []).filter(log => {
+      if (!log) return false;
+      const title = String(log.workTitle || log.title || log.content || '').toLowerCase();
+      const cat = String(log.category || '').toLowerCase();
+      const sub = String(log.subCategory || log.sub_category || '').toLowerCase();
+      if (title.includes('보안서약') || title.includes('서약') || title.includes('tbm')) return false;
+      if (cat.includes('보안서약') || cat.includes('tbm')) return false;
+      if (sub.includes('보안서약') || sub.includes('서약') || sub.includes('tbm')) return false;
+      return true;
+    });
+
+    // Collect all distinct dates from valid workLogs (including due dates)
     const allDates = new Set();
-    (workLogs || []).forEach(log => {
+    validLogs.forEach(log => {
       const date = log.date || (log.createdAt ? log.createdAt.split('T')[0] : null);
       if (date) allDates.add(date);
       const due = log.dueDate || log.due_date;
       if (due) allDates.add(due);
     });
-    (tbms || []).forEach(tbm => {
-      const date = tbm.date || (tbm.createdAt ? tbm.createdAt.split('T')[0] : null);
-      if (date) allDates.add(date);
-    });
 
     allDates.forEach(dateStr => {
-      const dateLogs = (workLogs || []).filter(l => (l.date || '').startsWith(dateStr));
-      const dueLogs = (workLogs || []).filter(l => (l.dueDate || l.due_date || '').startsWith(dateStr));
-      const dateTbms = (tbms || []).filter(t => (t.date || '').startsWith(dateStr));
+      const dateLogs = validLogs.filter(l => (l.date || '').startsWith(dateStr));
+      const dueLogs = validLogs.filter(l => (l.dueDate || l.due_date || '').startsWith(dateStr));
 
       let hasBusinessTrip = false;
       let tripSiteName = '';
@@ -205,16 +212,6 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
           hasBusinessTrip = true;
           const s = (l.siteName || l.site_name || '').trim();
           if (!tripSiteName && s) tripSiteName = s;
-        } else {
-          hasInternalWork = true;
-        }
-      });
-
-      dateTbms.forEach(t => {
-        const s = (t.site || '').trim();
-        if (s) {
-          hasBusinessTrip = true;
-          if (!tripSiteName) tripSiteName = s;
         } else {
           hasInternalWork = true;
         }
@@ -244,17 +241,17 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         } else {
           cellWorkText = tripSubCat ? `출장 ${tripSubCat}` : '출장지';
         }
-      } else if (hasDueTask && dateLogs.length === 0 && dateTbms.length === 0) {
+      } else if (hasDueTask && dateLogs.length === 0) {
         category = '납기';
         cellWorkText = '[납기]';
-      } else if (hasInternalWork || dateLogs.length > 0 || dateTbms.length > 0) {
+      } else if (hasInternalWork || dateLogs.length > 0) {
         category = '사내';
         cellWorkText = '사내업무';
       }
 
       let title = '';
       let site = tripSiteName;
-      let status = '점검 대기';
+      let status = '업무 등록됨';
 
       if (dateLogs.length > 0) {
         const first = dateLogs[0];
@@ -263,6 +260,7 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         if (dateLogs.length > 1) {
           title = `${title} 외 ${dateLogs.length - 1}건`;
         }
+        status = '업무 등록됨';
       } else if (dueLogs.length > 0) {
         const firstDue = dueLogs[0];
         title = `[납기] ${firstDue.workTitle || firstDue.title || '업무 납기일'}`;
@@ -270,20 +268,6 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         if (dueLogs.length > 1) {
           title = `${title} 외 ${dueLogs.length - 1}건`;
         }
-      } else if (dateTbms.length > 0) {
-        const firstTbm = dateTbms[0];
-        title = firstTbm.workTitle || 'TBM 진행';
-        if (!site) site = firstTbm.site || '';
-        if (dateTbms.length > 1) {
-          title = `${title} 외 ${dateTbms.length - 1}건`;
-        }
-      }
-
-      if (dateTbms.length > 0) {
-        const isCompleted = dateTbms.some(t => t.postCheck?.isCompleted || t.status === 'completed');
-        status = isCompleted ? 'TBM 완료' : 'TBM 진행중';
-      } else if (dateLogs.length > 0) {
-        status = '업무 등록됨';
       }
 
       workDatesMap[dateStr] = {
@@ -294,7 +278,7 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
         category,
         cellWorkText,
         holidayName: getHolidayName(dateStr) || '',
-        count: dateLogs.length + dateTbms.length
+        count: dateLogs.length
       };
     });
 
@@ -302,7 +286,7 @@ export async function syncCalendarWidget({ workLogs = [], tbms = [] }) {
     const todayInfo = workDatesMap[todayStr];
     let todayTitle = todayInfo ? todayInfo.title : '';
     let todaySite = todayInfo ? todayInfo.site : '';
-    let todayStatus = todayInfo ? todayInfo.status : '점검 대기';
+    let todayStatus = todayInfo ? todayInfo.status : '일정 없음';
 
     await NativeAppLauncher.updateWidgetData({
       workDatesJson: JSON.stringify(workDatesMap),

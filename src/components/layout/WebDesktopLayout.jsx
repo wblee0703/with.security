@@ -30,6 +30,7 @@ import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
 import { ClipboardList, FileSpreadsheet, HardHat } from 'lucide-react';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
+import AppNoticeHeaderBtn from '../common/AppNoticeHeaderBtn';
 
 const getTodayIsoDate = () => {
   const d = new Date();
@@ -232,6 +233,9 @@ export default function WebDesktopLayout({
               compact={false}
             />
           )}
+
+          {/* System Update Notice Header Button */}
+          <AppNoticeHeaderBtn compact={false} />
 
           {/* Logout Button */}
           {activeUser && (

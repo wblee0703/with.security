@@ -606,8 +606,8 @@ export default function WorkLogCalendar({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flexWrap: 'wrap' }}>
                   <span
                     style={{
-                      fontSize: '12px',
-                      fontWeight: isToday || isSelected || isRedDay ? '800' : '600',
+                      fontSize: '13.5px',
+                      fontWeight: isToday || isSelected || isRedDay ? '800' : '700',
                       color: isToday
                         ? '#ffffff'
                         : isRedDay

@@ -226,6 +226,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   else if (endpoint.includes('tbms')) sheetName = 'tbms';
   else if (endpoint.includes('vault')) sheetName = 'vault';
   else if (endpoint.includes('incidents')) sheetName = 'incidents';
+  else if (endpoint.includes('notices') || endpoint.includes('app-notices')) sheetName = 'notices';
 
   // ⭐ 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장되지 않고 오직 security_logs에만 저장되도록 강제
   const isSecurityPledgeData = Boolean(
@@ -332,6 +333,24 @@ async function safeFetchApi(endpoint, options = {}) {
   const baseUrl = getApiServerUrl();
   if (baseUrl === null) return null;
 
+  // 스프레드시트 및 원격 서버 전송 시 비밀번호 평문 유출 방지 (항상 SHA-256 해시값으로 강제 변환)
+  if ((endpoint.includes('security-users') || endpoint.includes('users')) && (method === 'POST' || method === 'PUT') && options.body) {
+    try {
+      const parsedBody = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+      if (parsedBody && typeof parsedBody === 'object') {
+        const rawPass = String(parsedBody.password || parsedBody.passwordHash || parsedBody.passward || '').trim();
+        if (rawPass) {
+          const isHash = /^[a-f0-9]{64}$/i.test(rawPass);
+          const hashVal = isHash ? rawPass.toLowerCase() : await hashPassword(rawPass);
+          parsedBody.password = hashVal;
+          parsedBody.passwordHash = hashVal;
+          parsedBody.passward = hashVal;
+          options.body = JSON.stringify(parsedBody);
+        }
+      }
+    } catch (e) { }
+  }
+
   const isGoogleSheet = Boolean(baseUrl && baseUrl.includes('script.google.com'));
   let fullUrl = baseUrl ? `${baseUrl}${endpoint}` : endpoint;
   let finalOptions = { ...options };
@@ -419,7 +438,7 @@ async function safeFetchApi(endpoint, options = {}) {
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
 const DB_NAME = 'WithSecurity_DB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 class SecurityDatabase {
   constructor() {
@@ -537,6 +556,14 @@ class SecurityDatabase {
             tbmStore.createIndex('site', 'site', { unique: false });
             tbmStore.createIndex('status', 'status', { unique: false });
             tbmStore.createIndex('createdAt', 'createdAt', { unique: false });
+          }
+
+          // 9. System Update Notices Store (notices)
+          if (!db.objectStoreNames.contains('notices')) {
+            const noticeStore = db.createObjectStore('notices', { keyPath: 'id' });
+            noticeStore.createIndex('version', 'version', { unique: false });
+            noticeStore.createIndex('is_active', 'is_active', { unique: false });
+            noticeStore.createIndex('created_at', 'created_at', { unique: false });
           }
         };
 
@@ -1479,10 +1506,10 @@ class SecurityDatabase {
         }
         // 2) Password Field Hash / Plain Verification
         if (!isPasswordCorrect && dbPass) {
-          isPasswordCorrect = (await verifyPasswordHash(pass, dbPass)) || (pass === dbPass);
+          isPasswordCorrect = await verifyPasswordHash(pass, dbPass);
         }
-        // 3) Direct Exact String Match
-        if (!isPasswordCorrect && (pass === dbPass || pass === dbHash)) {
+        // 3) Direct Exact String Match (평문 레거시 계정 전용 - 64자리 해시값 직접 입력 로그인은 원천 차단)
+        if (!isPasswordCorrect && dbPass && !/^[a-f0-9]{64}$/i.test(dbPass) && pass === dbPass) {
           isPasswordCorrect = true;
         }
         // 4) Special master password fallback for initial accounts
@@ -1512,9 +1539,9 @@ class SecurityDatabase {
                 isPasswordCorrect = await verifyPasswordHash(pass, dbHash);
               }
               if (!isPasswordCorrect && dbPass) {
-                isPasswordCorrect = (await verifyPasswordHash(pass, dbPass)) || (pass === dbPass);
+                isPasswordCorrect = await verifyPasswordHash(pass, dbPass);
               }
-              if (!isPasswordCorrect && (pass === dbPass || pass === dbHash)) {
+              if (!isPasswordCorrect && dbPass && !/^[a-f0-9]{64}$/i.test(dbPass) && pass === dbPass) {
                 isPasswordCorrect = true;
               }
               if (!isPasswordCorrect && isMasterUser && isMasterPass) {
@@ -1684,8 +1711,13 @@ class SecurityDatabase {
 
   async registerUser(newUser) {
     let safeUser = { ...newUser };
-    if (safeUser.password && !safeUser.passwordHash) {
-      safeUser.passwordHash = await hashPassword(safeUser.password);
+    if (safeUser.password || safeUser.passwordHash || safeUser.passward) {
+      const raw = String(safeUser.password || safeUser.passwordHash || safeUser.passward || '').trim();
+      const isHash = /^[a-f0-9]{64}$/i.test(raw);
+      const hash = isHash ? raw.toLowerCase() : await hashPassword(raw);
+      safeUser.password = hash;
+      safeUser.passwordHash = hash;
+      safeUser.passward = hash;
     }
 
     // 0. Remove from deleted blacklist if re-registering
@@ -1738,8 +1770,13 @@ class SecurityDatabase {
 
   async updateUserAccount(targetUser) {
     let safeUser = { ...targetUser };
-    if (safeUser.password && !safeUser.passwordHash) {
-      safeUser.passwordHash = await hashPassword(safeUser.password);
+    if (safeUser.password || safeUser.passwordHash || safeUser.passward) {
+      const raw = String(safeUser.password || safeUser.passwordHash || safeUser.passward || '').trim();
+      const isHash = /^[a-f0-9]{64}$/i.test(raw);
+      const hash = isHash ? raw.toLowerCase() : await hashPassword(raw);
+      safeUser.password = hash;
+      safeUser.passwordHash = hash;
+      safeUser.passward = hash;
     }
 
     // 1. Save to IndexedDB
@@ -1791,12 +1828,13 @@ class SecurityDatabase {
 
   async saveUserProfile(userProfile, syncRemote = true) {
     let safeUser = { ...userProfile };
-    if (safeUser.password && !safeUser.passwordHash) {
-      if (/^[a-f0-9]{64}$/i.test(String(safeUser.password).trim())) {
-        safeUser.passwordHash = String(safeUser.password).trim();
-      } else {
-        safeUser.passwordHash = await hashPassword(safeUser.password);
-      }
+    if (safeUser.password || safeUser.passwordHash || safeUser.passward) {
+      const raw = String(safeUser.password || safeUser.passwordHash || safeUser.passward || '').trim();
+      const isHash = /^[a-f0-9]{64}$/i.test(raw);
+      const hash = isHash ? raw.toLowerCase() : await hashPassword(raw);
+      safeUser.password = hash;
+      safeUser.passwordHash = hash;
+      safeUser.passward = hash;
     }
 
     const previousCached = localStorage.getItem('with_security_active_user');
@@ -2476,6 +2514,7 @@ class SecurityDatabase {
     const adminIdx = usersList.findIndex(u => String(u.username || '').trim() === 'admin');
     if (adminIdx === -1) {
       const defaultAdmin = {
+        id: 1,
         username: 'admin',
         password: defaultAdminPass,
         passwordHash: defaultAdminHash,
@@ -2497,7 +2536,10 @@ class SecurityDatabase {
         await this.putItem('users', defaultAdmin);
       } catch (e) { }
     } else {
-      // Ensure admin has valid password hashes
+      // Ensure admin has valid password hashes and numeric id
+      if (!usersList[adminIdx].id || isNaN(parseInt(usersList[adminIdx].id, 10))) {
+        usersList[adminIdx].id = 1;
+      }
       if (!usersList[adminIdx].passwordHash) {
         usersList[adminIdx].password = defaultAdminPass;
         usersList[adminIdx].passwordHash = defaultAdminHash;
@@ -2509,6 +2551,7 @@ class SecurityDatabase {
     const wbleeIdx = usersList.findIndex(u => String(u.username || '').trim() === 'wblee');
     if (wbleeIdx === -1) {
       const defaultWblee = {
+        id: 2,
         username: 'wblee',
         password: defaultAdminPass,
         passwordHash: defaultAdminHash,
@@ -2530,6 +2573,9 @@ class SecurityDatabase {
         await this.putItem('users', defaultWblee);
       } catch (e) { }
     } else {
+      if (!usersList[wbleeIdx].id || isNaN(parseInt(usersList[wbleeIdx].id, 10))) {
+        usersList[wbleeIdx].id = 2;
+      }
       if (!usersList[wbleeIdx].passwordHash) {
         usersList[wbleeIdx].password = defaultAdminPass;
         usersList[wbleeIdx].passwordHash = defaultAdminHash;
@@ -5063,6 +5109,19 @@ class SecurityDatabase {
 
     try {
       const users = await this.getRegisteredUsers();
+      // 구글 스프레드시트 일괄 업로드 시 모든 계정의 비밀번호를 안전한 SHA-256 해시값으로 변환
+      const sanitizedUsers = await Promise.all((users || []).map(async (u) => {
+        const safe = { ...u };
+        const rawPass = String(safe.password || safe.passwordHash || '').trim();
+        if (rawPass) {
+          const isHash = /^[a-f0-9]{64}$/i.test(rawPass);
+          const hashVal = isHash ? rawPass.toLowerCase() : await hashPassword(rawPass);
+          safe.password = hashVal;
+          safe.passwordHash = hashVal;
+        }
+        return safe;
+      }));
+
       const sites = await this.getSites();
       const workLogs = await this.getWorkLogs();
       const checklists = await this.getChecklists();
@@ -5075,7 +5134,7 @@ class SecurityDatabase {
       const payload = {
         action: 'upload_all',
         data: {
-          users: users || [],
+          users: sanitizedUsers || [],
           sites: sites || [],
           work_logs: workLogs || [],
           security_logs: checklists || [],
@@ -5127,6 +5186,259 @@ class SecurityDatabase {
   normalizeKstDate(val) {
     return normalizeKstDate(val);
   }
+
+  // ============================================================================
+  // 시스템 업데이트 공지사항 서비스 (App Notices)
+  // ============================================================================
+
+  /**
+   * 등록된 시스템 업데이트 공지 목록 조회
+   * @param {boolean} forceRemote - 클라우드 강제 재동기화 여부
+   */
+  async getAppNotices(forceRemote = false) {
+    let notices = [];
+
+    // 1. LocalStorage 캐시 및 IndexedDB 조회
+    try {
+      const cached = localStorage.getItem('with_security_app_notices');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) notices = parsed;
+      }
+    } catch (e) { }
+
+    if (notices.length === 0) {
+      try {
+        const dbItems = await this.getAll('notices');
+        if (Array.isArray(dbItems) && dbItems.length > 0) {
+          notices = dbItems;
+        }
+      } catch (e) { }
+    }
+
+    // 2. 클라우드(Google Apps Script / 서버)에서 최신 공지 로드
+    try {
+      const res = await safeFetchApi('/api/notices', { method: 'GET' }, forceRemote ? 0 : 30000);
+      if (res && res.success && Array.isArray(res.data)) {
+        const remoteList = res.data.map(item => ({
+          id: String(item.id || item.notice_id || `NOTICE-${Date.now()}`),
+          title: String(item.title || '업데이트 공지'),
+          version: String(item.version || 'v1.0.0'),
+          content: String(item.content || ''),
+          author_name: String(item.author_name || item.authorName || '관리자'),
+          author_username: String(item.author_username || item.authorUsername || 'admin'),
+          is_active: (item.is_active !== undefined ? (Number(item.is_active) === 1 || item.is_active === true) : true),
+          created_at: item.created_at || item.createdAt || new Date().toISOString(),
+          updated_at: item.updated_at || item.updatedAt || new Date().toISOString()
+        }));
+
+        // 병합 (ID 기준 맵핑)
+        const map = new Map();
+        remoteList.forEach(n => map.set(n.id, n));
+        // 로컬에만 있는 미동기화 공지 보존
+        notices.forEach(n => {
+          if (!map.has(n.id)) map.set(n.id, n);
+        });
+
+        notices = Array.from(map.values());
+
+        // 캐시 업데이트
+        localStorage.setItem('with_security_app_notices', JSON.stringify(notices));
+        for (const item of notices) {
+          try { await this.putItem('notices', item); } catch (e) { }
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to fetch remote app notices:', err);
+    }
+
+    // 최신순 정렬 (created_at 역순)
+    notices.sort((a, b) => {
+      const tA = new Date(a.created_at || a.createdAt || 0).getTime();
+      const tB = new Date(b.created_at || b.createdAt || 0).getTime();
+      return tB - tA;
+    });
+
+    return notices;
+  }
+
+  /**
+   * 시스템 업데이트 공지사항 등록 / 수정
+   */
+  async saveAppNotice(noticeData) {
+    if (!noticeData) return null;
+    const nowStr = UtilitiesSafeDate();
+    const id = noticeData.id || `NOTICE-${Date.now()}`;
+    const notice = {
+      id: String(id),
+      title: String(noticeData.title || '').trim() || '시스템 업데이트 공지',
+      version: String(noticeData.version || 'v1.0.0').trim(),
+      content: String(noticeData.content || '').trim(),
+      author_name: String(noticeData.author_name || noticeData.authorName || '관리자'),
+      author_username: String(noticeData.author_username || noticeData.authorUsername || 'admin'),
+      is_active: noticeData.is_active !== undefined ? Boolean(noticeData.is_active) : true,
+      created_at: noticeData.created_at || noticeData.createdAt || nowStr,
+      updated_at: nowStr
+    };
+
+    // 1. IndexedDB 저장
+    try {
+      await this.putItem('notices', notice);
+    } catch (e) { }
+
+    // 2. LocalStorage 캐시 저장
+    try {
+      const cached = localStorage.getItem('with_security_app_notices');
+      let list = cached ? JSON.parse(cached) : [];
+      if (!Array.isArray(list)) list = [];
+      const idx = list.findIndex(n => String(n.id) === String(notice.id));
+      if (idx !== -1) {
+        list[idx] = notice;
+      } else {
+        list.unshift(notice);
+      }
+      localStorage.setItem('with_security_app_notices', JSON.stringify(list));
+    } catch (e) { }
+
+    // 3. 클라우드 전송
+    try {
+      await safeFetchApi('/api/notices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(notice)
+      });
+    } catch (err) {
+      console.warn('Failed to sync notice to cloud:', err);
+    }
+
+    notifyDataChanged(true);
+    return notice;
+  }
+
+  /**
+   * 시스템 업데이트 공지사항 삭제
+   */
+  async deleteAppNotice(id) {
+    if (!id) return false;
+    const targetId = String(id);
+
+    // 1. IndexedDB 삭제
+    try {
+      await this.deleteItem('notices', targetId);
+    } catch (e) { }
+
+    // 2. LocalStorage 캐시 삭제
+    try {
+      const cached = localStorage.getItem('with_security_app_notices');
+      if (cached) {
+        const list = JSON.parse(cached);
+        if (Array.isArray(list)) {
+          const filtered = list.filter(n => String(n.id) !== targetId);
+          localStorage.setItem('with_security_app_notices', JSON.stringify(filtered));
+        }
+      }
+    } catch (e) { }
+
+    // 3. 클라우드 삭제 요청
+    try {
+      await safeFetchApi(`/api/notices/${targetId}`, {
+        method: 'DELETE'
+      });
+    } catch (err) {
+      console.warn('Failed to delete notice from cloud:', err);
+    }
+
+    notifyDataChanged(true);
+    return true;
+  }
+
+  /**
+   * 공지 읽음 처리 (로컬)
+   */
+  markNoticeAsRead(noticeId) {
+    if (!noticeId) return;
+    try {
+      const raw = localStorage.getItem('with_security_read_notices');
+      const readSet = new Set(raw ? JSON.parse(raw) : []);
+      readSet.add(String(noticeId));
+      localStorage.setItem('with_security_read_notices', JSON.stringify(Array.from(readSet)));
+    } catch (e) { }
+    notifyDataChanged();
+  }
+
+  /**
+   * 공지 읽음 여부 확인
+   */
+  isNoticeRead(noticeId) {
+    if (!noticeId) return false;
+    try {
+      const raw = localStorage.getItem('with_security_read_notices');
+      if (!raw) return false;
+      const readList = JSON.parse(raw);
+      return Array.isArray(readList) && readList.includes(String(noticeId));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * 오늘 하루 이 공지 팝업 보지 않기
+   */
+  dismissNoticeToday(noticeId) {
+    if (!noticeId) return;
+    try {
+      const today = normalizeKstDate(new Date());
+      const raw = localStorage.getItem('with_security_dismissed_notices');
+      const obj = raw ? JSON.parse(raw) : {};
+      obj[String(noticeId)] = today;
+      localStorage.setItem('with_security_dismissed_notices', JSON.stringify(obj));
+    } catch (e) { }
+  }
+
+  /**
+   * 오늘 하루 보지 않기가 설정되어 있는지 여부
+   */
+  isNoticeDismissedToday(noticeId) {
+    if (!noticeId) return false;
+    try {
+      const raw = localStorage.getItem('with_security_dismissed_notices');
+      if (!raw) return false;
+      const obj = JSON.parse(raw);
+      const dismissedDate = obj[String(noticeId)];
+      const today = normalizeKstDate(new Date());
+      return Boolean(dismissedDate && dismissedDate === today);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * 브라우저/Capacitor 웹뷰 캐시를 무력화하고 GitHub 최신 버전으로 즉시 새로고침
+   */
+  async reloadAppWithoutCache() {
+    try {
+      if (typeof caches !== 'undefined') {
+        const keys = await caches.keys();
+        await Promise.all(keys.map(k => caches.delete(k)));
+      }
+    } catch (e) { }
+
+    try {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.clear();
+      }
+    } catch (e) { }
+
+    const baseUrl = window.location.origin + window.location.pathname;
+    const cleanUrl = baseUrl.split('?')[0].split('#')[0];
+    window.location.replace(`${cleanUrl}?v=${Date.now()}`);
+  }
+}
+
+function UtilitiesSafeDate() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export const dbService = new SecurityDatabase();

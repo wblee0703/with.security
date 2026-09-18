@@ -381,9 +381,9 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                 }
                 views.setTextViewText(R.id.tv_today_status_badge, workStatus);
 
-                if ("TBM 완료".equals(workStatus) || "완료".equals(workStatus)) {
+                if ("완료".equals(workStatus) || workStatus.contains("완료")) {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#16A34A"));
-                } else if (workStatus.contains("진행중")) {
+                } else if (workStatus.contains("진행중") || workStatus.contains("예정")) {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#D97706"));
                 } else {
                     views.setTextColor(R.id.tv_today_status_badge, Color.parseColor("#0284C7"));
