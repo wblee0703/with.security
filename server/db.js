@@ -431,8 +431,7 @@ const server = http.createServer(async (req, res) => {
         let isPassValid = false;
         if (user) {
           isPassValid = verifyUserPasswordServer(creds.password, user.password || user.passwordHash) ||
-            jsonVerifyPassword(creds.password, user.password || user.passwordHash) ||
-            (['admin', 'wblee', 'wblee0703'].includes(reqUsername) && (creds.password === defaultAdminPass || creds.password === 'withtech123!' || creds.password === 'admin'));
+            jsonVerifyPassword(creds.password, user.password || user.passwordHash);
         }
 
         if (user && isPassValid) {

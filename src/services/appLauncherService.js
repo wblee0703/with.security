@@ -221,9 +221,16 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       let category = '';
 
       const tripLogs = dateLogs.filter(l => l.category === '출장 업무' || Boolean(l.siteName || l.site_name));
+      const internalLogs = dateLogs.filter(l => !(l.category === '출장 업무' || Boolean(l.siteName || l.site_name)));
+
       let tripSubCat = '';
       if (tripLogs.length > 0) {
         tripSubCat = (tripLogs[0].subCategory || tripLogs[0].sub_category || '작업').trim();
+      }
+
+      let internalSubCat = '';
+      if (internalLogs.length > 0) {
+        internalSubCat = (internalLogs[0].subCategory || internalLogs[0].sub_category || '일반업무').trim();
       }
 
       if (hasBusinessTrip) {
@@ -246,36 +253,49 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         cellWorkText = '[납기]';
       } else if (hasInternalWork || dateLogs.length > 0) {
         category = '사내';
-        const internalLogs = dateLogs.filter(l => !(l.category === '출장 업무' || Boolean(l.siteName || l.site_name)));
         const count = internalLogs.length > 0 ? internalLogs.length : dateLogs.length;
         cellWorkText = `사내업무 ${count}건`;
       }
 
-      let title = '';
-      let site = tripSiteName;
+      let summaryText = '';
       let status = '업무 등록됨';
 
-      if (dateLogs.length > 0) {
-        const first = dateLogs[0];
-        title = first.workTitle || first.title || first.content || '일일 업무';
-        if (!site) site = first.site || first.siteName || '';
+      if (hasBusinessTrip) {
+        status = '출장업무';
+        const cleanedSite = tripSiteName ? tripSiteName.replace(/\s*출장$/g, '').trim() : '출장지';
+        const subCat = tripSubCat || '작업';
         if (dateLogs.length > 1) {
-          title = `${title} 외 ${dateLogs.length - 1}건`;
+          summaryText = `출장업무[${cleanedSite}, ${subCat}] 외 ${dateLogs.length - 1}건`;
+        } else {
+          summaryText = `출장업무[${cleanedSite}, ${subCat}]`;
         }
-        status = '업무 등록됨';
-      } else if (dueLogs.length > 0) {
-        const firstDue = dueLogs[0];
-        title = `[납기] ${firstDue.workTitle || firstDue.title || '업무 납기일'}`;
+      } else if (hasInternalWork || dateLogs.length > 0) {
+        status = '사내업무';
+        const subCat = internalSubCat || '일반업무';
+        if (dateLogs.length > 1) {
+          summaryText = `사내업무 [${subCat}] 외 ${dateLogs.length - 1}건`;
+        } else {
+          summaryText = `사내업무 [${subCat}]`;
+        }
+      } else if (hasDueTask) {
         status = '납기 예정';
+        const dueTitle = (dueLogs[0].workTitle || dueLogs[0].title || '업무 납기일').trim();
         if (dueLogs.length > 1) {
-          title = `${title} 외 ${dueLogs.length - 1}건`;
+          summaryText = `[납기] ${dueTitle} 외 ${dueLogs.length - 1}건`;
+        } else {
+          summaryText = `[납기] ${dueTitle}`;
         }
       }
 
+      let title = summaryText || (dateLogs.length > 0 ? (dateLogs[0].workTitle || dateLogs[0].title || '일일 업무') : '');
+      let site = tripSiteName;
+
       workDatesMap[dateStr] = {
-        hasWork: true,
+        hasWork: Boolean(summaryText || dateLogs.length > 0 || hasDueTask),
+        summaryText,
         title,
         site,
+        subCategory: hasBusinessTrip ? (tripSubCat || '작업') : (internalSubCat || '일반업무'),
         status,
         category,
         cellWorkText,
@@ -286,7 +306,7 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
 
     // Find today's specific info
     const todayInfo = workDatesMap[todayStr];
-    let todayTitle = todayInfo ? todayInfo.title : '';
+    let todayTitle = todayInfo ? (todayInfo.summaryText || todayInfo.title) : '';
     let todaySite = todayInfo ? todayInfo.site : '';
     let todayStatus = todayInfo ? todayInfo.status : '일정 없음';
 

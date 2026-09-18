@@ -1485,17 +1485,13 @@ class SecurityDatabase {
     const uName = username.trim();
     const pass = password.trim();
 
-    const defaultAdminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-    const isMasterUser = ['admin', 'wblee', 'wblee0703'].includes(uName);
-    const isMasterPass = [defaultAdminPass, 'withtech123!', 'admin', 'lwb920703!', '1234'].includes(pass);
-
     // 1. Local-first verification (0.1ms)
     let users = await this.getRegisteredUsers();
     let foundUser = null;
     let isPasswordCorrect = false;
 
     for (const u of users) {
-      if (String(u?.username || '').trim() === uName) {
+      if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
         foundUser = u;
         const dbPass = String(u?.password || '').trim();
         const dbHash = String(u?.passwordHash || '').trim();
@@ -1512,25 +1508,18 @@ class SecurityDatabase {
         if (!isPasswordCorrect && dbPass && !/^[a-f0-9]{64}$/i.test(dbPass) && pass === dbPass) {
           isPasswordCorrect = true;
         }
-        // 4) Special master password fallback for initial accounts
-        if (!isPasswordCorrect && isMasterUser && isMasterPass) {
-          isPasswordCorrect = true;
-        }
-        // 5) If stored password was stripped from remote sync, allow default master password
-        if (!isPasswordCorrect && !dbPass && !dbHash && isMasterPass) {
-          isPasswordCorrect = true;
-        }
         break;
       }
     }
 
-    // 2. If user is not found in local cache, quickly check remote cloud DB (Google Sheets / API)
-    if (!foundUser) {
+    // 2. If password verification failed or user was not found locally, fetch fresh users from remote cloud DB (Google Sheets / API)
+    //    -> 구글 스프레드시트에 저장된 최신 사용자 정보와 비밀번호를 실시간으로 조회하여 검증 및 로컬 동기화
+    if (!isPasswordCorrect) {
       try {
         const freshUsers = await this._fetchUsersRemote();
         if (Array.isArray(freshUsers)) {
           for (const u of freshUsers) {
-            if (String(u?.username || '').trim() === uName) {
+            if (String(u?.username || '').trim().toLowerCase() === uName.toLowerCase()) {
               foundUser = u;
               const dbPass = String(u?.password || '').trim();
               const dbHash = String(u?.passwordHash || '').trim();
@@ -1544,9 +1533,6 @@ class SecurityDatabase {
               if (!isPasswordCorrect && dbPass && !/^[a-f0-9]{64}$/i.test(dbPass) && pass === dbPass) {
                 isPasswordCorrect = true;
               }
-              if (!isPasswordCorrect && isMasterUser && isMasterPass) {
-                isPasswordCorrect = true;
-              }
               break;
             }
           }
@@ -1556,55 +1542,19 @@ class SecurityDatabase {
       }
     }
 
-    // 3. Admin / Developer emergency failsafe fallback
-    if (!foundUser && (uName === 'admin' || uName === 'wblee0703')) {
-      if (isMasterPass) {
-        foundUser = {
-          username: uName === 'admin' ? 'admin' : 'wblee0703',
-          name: '이원배',
-          role: '개발자',
-          division: '영업/운영사업부',
-          team: '운영1팀',
-          rank: '대리',
-          siteId: 'ALL',
-          phone: '010-9885-0393',
-          email: 'wblee@withtech.co.kr'
-        };
-        isPasswordCorrect = true;
-      }
-    }
-
-    // 4. Wblee emergency failsafe fallback
-    if (!foundUser && uName === 'wblee') {
-      if (isMasterPass) {
-        foundUser = {
-          username: 'wblee',
-          name: '이원배',
-          role: '일반',
-          division: '영업/운영사업부',
-          team: '운영1팀',
-          rank: '대리',
-          siteId: 'site-001',
-          phone: '010-9885-0393',
-          email: 'wblee@withtech.co.kr'
-        };
-        isPasswordCorrect = true;
-      }
-    }
-
-    // 5. If correct password provided, unlock and login successfully
+    // 3. If correct password provided, unlock and login successfully
     if (foundUser && isPasswordCorrect) {
       this.recordLocalLoginAttempt(uName, true);
       await this.saveUserProfile(foundUser, false);
       return { success: true, user: foundUser };
     }
 
-    // 6. If user does NOT exist anywhere in system, report clear non-existent user notice
+    // 4. If user does NOT exist anywhere in system, report clear non-existent user notice
     if (!foundUser) {
       return {
         success: false,
         notFound: true,
-        message: `'${uName}' 아이디를 찾을 수 없습니다. 아이디를 확인하시거나 신규 회원가입을 진행해 주세요.`,
+        message: `'${uName}' 아이디를 찾을 수 없습니다. 아이디를 확인하시거나 구글 스프레드시트의 계정 등록 상태를 확인해 주세요.`,
         failCount: 0,
         remainingAttempts: 5
       };
@@ -2363,7 +2313,7 @@ class SecurityDatabase {
         trainings: []
       });
     } else {
-      if (!list[adminIdx].passwordHash) {
+      if (!list[adminIdx].password && !list[adminIdx].passwordHash) {
         list[adminIdx].password = defaultAdminPass;
         list[adminIdx].passwordHash = defaultAdminHash;
       }
@@ -2390,7 +2340,7 @@ class SecurityDatabase {
         trainings: []
       });
     } else {
-      if (!list[wbleeIdx].passwordHash) {
+      if (!list[wbleeIdx].password && !list[wbleeIdx].passwordHash) {
         list[wbleeIdx].password = defaultAdminPass;
         list[wbleeIdx].passwordHash = defaultAdminHash;
       }
@@ -2481,9 +2431,9 @@ class SecurityDatabase {
               return {
                 ...existingLocal,
                 ...u,
-                // Crucial: preserve local password and passwordHash when server strips it
-                password: existingLocal?.password || u.password || '',
-                passwordHash: existingLocal?.passwordHash || u.passwordHash || existingLocal?.password || u.password || '',
+                // Crucial: Google Sheet remote password takes precedence if present!
+                password: u.password || existingLocal?.password || '',
+                passwordHash: u.passwordHash || (u.password ? u.password : '') || existingLocal?.passwordHash || existingLocal?.password || '',
                 trainings: parsedTrainings,
                 educationDate: (u.educationDate && u.educationDate !== '2025-08-20') ? u.educationDate : (existingLocal?.educationDate && existingLocal.educationDate !== '2025-08-20' ? existingLocal.educationDate : ''),
                 educationExpiryDate: (u.educationExpiryDate && u.educationExpiryDate !== '2026-08-19') ? u.educationExpiryDate : (existingLocal?.educationExpiryDate && existingLocal.educationExpiryDate !== '2026-08-19' ? existingLocal.educationExpiryDate : ''),
@@ -2540,7 +2490,7 @@ class SecurityDatabase {
       if (!usersList[adminIdx].id || isNaN(parseInt(usersList[adminIdx].id, 10))) {
         usersList[adminIdx].id = 1;
       }
-      if (!usersList[adminIdx].passwordHash) {
+      if (!usersList[adminIdx].password && !usersList[adminIdx].passwordHash) {
         usersList[adminIdx].password = defaultAdminPass;
         usersList[adminIdx].passwordHash = defaultAdminHash;
         try { await this.putItem('users', usersList[adminIdx]); } catch (e) { }
@@ -2576,7 +2526,7 @@ class SecurityDatabase {
       if (!usersList[wbleeIdx].id || isNaN(parseInt(usersList[wbleeIdx].id, 10))) {
         usersList[wbleeIdx].id = 2;
       }
-      if (!usersList[wbleeIdx].passwordHash) {
+      if (!usersList[wbleeIdx].password && !usersList[wbleeIdx].passwordHash) {
         usersList[wbleeIdx].password = defaultAdminPass;
         usersList[wbleeIdx].passwordHash = defaultAdminHash;
         try { await this.putItem('users', usersList[wbleeIdx]); } catch (e) { }

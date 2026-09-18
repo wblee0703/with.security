@@ -700,9 +700,37 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       if (onTriggerToast) onTriggerToast('비밀번호를 입력해 주세요.', 'warning');
       return;
     }
-    const hashedInput = await hashPassword(serverUnlockPassword);
-    const adminPass = import.meta.env?.VITE_ADMIN_DEFAULT_PASSWORD || 'withtech123!';
-    let isValid = (serverUnlockPassword === adminPass || serverUnlockPassword === 'withtech123!' || (currentUser?.passwordHash && hashedInput === currentUser.passwordHash));
+    const inputPass = serverUnlockPassword.trim();
+    let isValid = false;
+
+    // 1. Check logged-in user if developer / admin
+    if (currentUser?.role === '개발자' || currentUser?.username === 'admin') {
+      if (currentUser?.passwordHash && (await verifyPasswordHash(inputPass, currentUser.passwordHash))) {
+        isValid = true;
+      } else if (currentUser?.password && (inputPass === currentUser.password || (await verifyPasswordHash(inputPass, currentUser.password)))) {
+        isValid = true;
+      }
+    }
+
+    // 2. Check registered users list (developer or admin account)
+    if (!isValid) {
+      try {
+        const allUsers = await dbService.getRegisteredUsers();
+        const devUsers = allUsers.filter(u => u.role === '개발자' || u.username === 'admin');
+        for (const dev of devUsers) {
+          if (dev.passwordHash && (await verifyPasswordHash(inputPass, dev.passwordHash))) {
+            isValid = true;
+            break;
+          }
+          if (dev.password && (inputPass === dev.password || (await verifyPasswordHash(inputPass, dev.password)))) {
+            isValid = true;
+            break;
+          }
+        }
+      } catch (err) {
+        console.error('Server unlock verification error:', err);
+      }
+    }
 
     if (isValid) {
       localStorage.removeItem('with_security_server_locked');
@@ -3427,7 +3455,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             </div>
 
             <p style={{ fontSize: '12.5px', color: '#475569', lineHeight: '1.5', marginBottom: '16px' }}>
-              서버 연동 도메인을 재설정하거나 변경하려면 <strong>개발자 비밀번호(withtech123!)</strong>를 입력해 주세요.
+              서버 연동 도메인을 재설정하거나 변경하려면 <strong>개발자 비밀번호</strong>를 입력해 주세요.
             </p>
 
             <form onSubmit={handleConfirmServerUnlock} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
