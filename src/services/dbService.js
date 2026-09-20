@@ -223,6 +223,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   else if (endpoint.includes('security-logs') || endpoint.includes('security_logs') || endpoint.includes('checklists') || endpoint.includes('security-checklists') || endpoint.includes('pledges')) sheetName = 'security_logs';
   else if (endpoint.includes('edu-logs') || endpoint.includes('edu_logs')) sheetName = 'edu_logs';
   else if (endpoint.includes('weekly-reports') || endpoint.includes('weekly_reports')) sheetName = 'weekly_reports';
+  else if (endpoint.includes('daily-reports') || endpoint.includes('daily_reports')) sheetName = 'daily_reports';
   else if (endpoint.includes('tbms')) sheetName = 'tbms';
   else if (endpoint.includes('vault')) sheetName = 'vault';
   else if (endpoint.includes('incidents')) sheetName = 'incidents';
@@ -438,7 +439,7 @@ async function safeFetchApi(endpoint, options = {}) {
 
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
 const DB_NAME = 'WithSecurity_DB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 class SecurityDatabase {
   constructor() {
@@ -564,6 +565,18 @@ class SecurityDatabase {
             noticeStore.createIndex('version', 'version', { unique: false });
             noticeStore.createIndex('is_active', 'is_active', { unique: false });
             noticeStore.createIndex('created_at', 'created_at', { unique: false });
+          }
+
+          // 10. Weekly Reports Store (weekly_reports)
+          if (!db.objectStoreNames.contains('weekly_reports')) {
+            db.createObjectStore('weekly_reports', { keyPath: 'id' });
+          }
+
+          // 11. Daily Reports Store (daily_reports)
+          if (!db.objectStoreNames.contains('daily_reports')) {
+            const dailyStore = db.createObjectStore('daily_reports', { keyPath: 'id' });
+            dailyStore.createIndex('dailyDate', 'dailyDate', { unique: false });
+            dailyStore.createIndex('authorUsername', 'authorUsername', { unique: false });
           }
         };
 
@@ -3577,6 +3590,213 @@ class SecurityDatabase {
     return updated;
   }
 
+  // -------------------------------------------------------------
+  // Daily Reports Persistence (일일 직접 입력 보고서: 특이사항, 금일 진행 내역, 익일 예정 업무 개별 컬럼 관리)
+  // -------------------------------------------------------------
+  async getDailyReports(searchParams = {}, forceRemote = false) {
+    const localOverrides = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_daily_reports_list');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+
+    if (!forceRemote && localOverrides.length > 0) {
+      this._revalidateDailyReportsInBackground(searchParams).catch(() => {});
+      return localOverrides;
+    }
+
+    return await this._fetchDailyReportsRemote(searchParams, localOverrides);
+  }
+
+  async _revalidateDailyReportsInBackground(searchParams) {
+    const now = Date.now();
+    if (this._lastDailyRevalidate && (now - this._lastDailyRevalidate < 30000)) return;
+    this._lastDailyRevalidate = now;
+    const local = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_daily_reports_list');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+    const remote = await this._fetchDailyReportsRemote(searchParams, local);
+    if (Array.isArray(remote) && remote.length > 0) {
+      notifyDataChanged();
+    }
+  }
+
+  async _fetchDailyReportsRemote(searchParams = {}, localOverrides = []) {
+    const localMap = new Map(localOverrides.map(r => [(r.id || r.reportId), r]));
+
+    try {
+      let queryStr = '';
+      if (searchParams.dailyDate) queryStr += `?dailyDate=${encodeURIComponent(searchParams.dailyDate)}`;
+      if (searchParams.authorUsername) queryStr += `${queryStr ? '&' : '?'}authorUsername=${encodeURIComponent(searchParams.authorUsername)}`;
+
+      const res = await safeFetchApi(`/api/daily-reports${queryStr}`);
+      if (res && res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped = json.data.map(item => {
+            const itemId = item.id || item.reportId || item.report_id || `daily-rep-${item.author_username || item.authorUsername || 'user'}-${item.daily_date || item.dailyDate}`;
+            const localItem = localMap.get(itemId);
+
+            return {
+              id: itemId,
+              reportId: itemId,
+              dailyDate: normalizeKstDate(item.dailyDate || item.daily_date || localItem?.dailyDate || ''),
+              authorName: item.authorName || item.author_name || item.name || localItem?.authorName || '작성자',
+              authorUsername: item.authorUsername || item.author_username || item.writerId || localItem?.authorUsername || '',
+              authorTeam: item.authorTeam || item.author_team || item.team || localItem?.authorTeam || '',
+              authorRank: item.authorRank || item.author_rank || item.rank || localItem?.authorRank || '대리',
+              authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
+              authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
+              // ⭐ 특이사항, 금일 진행 내역, 익일 예정 업무 컬럼별 분리
+              issues: item.issues || item.special_notes || item.specialNotes || localItem?.issues || '',
+              todayTasks: item.todayTasks || item.today_tasks || localItem?.todayTasks || '',
+              tomorrowPlan: item.tomorrowPlan || item.tomorrow_plan || localItem?.tomorrowPlan || '',
+              createdAt: item.createdAt || item.created_at || localItem?.createdAt || '',
+              updatedAt: item.updatedAt || item.updated_at || localItem?.updatedAt || ''
+            };
+          });
+
+          // Prepend local items if unsynced
+          const serverIds = new Set(mapped.map(m => m.id));
+          localOverrides.forEach(lo => {
+            const lId = lo.id || lo.reportId;
+            if (lId && !serverIds.has(lId)) {
+              mapped.push(lo);
+            }
+          });
+
+          localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(mapped));
+          return mapped;
+        }
+      }
+    } catch (e) { }
+
+    return localOverrides;
+  }
+
+  async saveDailyReport(report) {
+    if (!report) return null;
+    const current = (() => {
+      try {
+        const raw = localStorage.getItem('with_sec_daily_reports_list');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    })();
+    const targetDate = normalizeKstDate(report.dailyDate || report.daily_date || report.date || '');
+    const targetId = report.id || report.reportId || `daily-rep-${report.authorUsername || report.authorName || 'user'}-${targetDate || Date.now()}`;
+
+    // ⭐ 특이사항, 금일 진행 내역, 익일 예정 업무 컬럼별 정규화
+    const nowStr = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const normalized = {
+      ...report,
+      id: targetId,
+      reportId: targetId,
+      dailyDate: targetDate,
+      authorName: report.authorName || report.name || '작성자',
+      authorUsername: report.authorUsername || report.writerId || '',
+      authorTeam: report.authorTeam || report.team || '',
+      authorRank: report.authorRank || report.rank || '대리',
+      authorDivision: report.authorDivision || report.division || '',
+      authorRole: report.authorRole || report.role || '일반',
+      issues: report.issues || '',
+      todayTasks: report.todayTasks || '',
+      tomorrowPlan: report.tomorrowPlan || '',
+      createdAt: report.createdAt || nowStr,
+      updatedAt: nowStr
+    };
+
+    const idx = current.findIndex(r => (r.id || r.reportId) === targetId || (r.dailyDate === normalized.dailyDate && (r.authorUsername || r.authorName) === (normalized.authorUsername || normalized.authorName)));
+    let updated;
+    if (idx >= 0) {
+      updated = [...current];
+      updated[idx] = { ...updated[idx], ...normalized };
+    } else {
+      updated = [normalized, ...current];
+    }
+
+    // Instant local save (0.1ms)
+    localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(updated));
+
+    // Also update with_sec_daily_custom_reports keyed by dailyDate for immediate UI display
+    try {
+      const customReports = (() => {
+        try {
+          const raw = localStorage.getItem('with_sec_daily_custom_reports');
+          return raw ? JSON.parse(raw) : {};
+        } catch (e) { return {}; }
+      })();
+      customReports[normalized.dailyDate] = {
+        issues: normalized.issues,
+        todayTasks: normalized.todayTasks,
+        tomorrowPlan: normalized.tomorrowPlan
+      };
+      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(customReports));
+    } catch (e) { }
+
+    // Background IndexedDB write
+    this.replaceCollection('daily_reports', updated).catch(() => {});
+
+    // Non-blocking background API sync to Google Spreadsheet (sheet: 'daily_reports')
+    safeFetchApi('/api/daily-reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: targetId,
+        reportId: targetId,
+        report_id: targetId,
+        dailyDate: normalized.dailyDate,
+        daily_date: normalized.dailyDate,
+        authorName: normalized.authorName,
+        author_name: normalized.authorName,
+        authorUsername: normalized.authorUsername,
+        author_username: normalized.authorUsername,
+        authorTeam: normalized.authorTeam,
+        author_team: normalized.authorTeam,
+        authorRank: normalized.authorRank,
+        author_rank: normalized.authorRank,
+        authorDivision: normalized.authorDivision,
+        author_division: normalized.authorDivision,
+        authorRole: normalized.authorRole,
+        author_role: normalized.authorRole,
+        issues: normalized.issues,
+        todayTasks: normalized.todayTasks,
+        today_tasks: normalized.todayTasks,
+        tomorrowPlan: normalized.tomorrowPlan,
+        tomorrow_plan: normalized.tomorrowPlan,
+        createdAt: normalized.createdAt,
+        created_at: normalized.createdAt,
+        updatedAt: normalized.updatedAt,
+        updated_at: normalized.updatedAt
+      })
+    }).catch(e => console.warn('Background daily report save warning:', e));
+
+    notifyDataChanged();
+    return updated;
+  }
+
+  async deleteDailyReport(reportId) {
+    try {
+      await safeFetchApi(`/api/daily-reports/${reportId}`, { method: 'DELETE' });
+    } catch (e) { }
+
+    const reports = await this.getDailyReports();
+    const updated = reports.filter(r => (r.id !== reportId && r.reportId !== reportId));
+    localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(updated));
+    this.replaceCollection('daily_reports', updated).catch(() => {});
+    notifyDataChanged();
+    return updated;
+  }
+
   // ========================================================
   // Education & Training Logs Service (edu_log / edu_logs)
   // ========================================================
@@ -4868,6 +5088,32 @@ class SecurityDatabase {
       await this.replaceCollection('weekly_reports', syncData.weekly_reports);
     }
 
+    // 6-1. daily_reports (일일 업무 기록 및 특이사항/금일/익일 분리 컬럼 동기화)
+    if (syncData.daily_reports && Array.isArray(syncData.daily_reports)) {
+      try {
+        const customMap = {};
+        syncData.daily_reports.forEach(r => {
+          const u = r.author_username || r.authorUsername;
+          const d = r.daily_date || r.dailyDate;
+          if (u && d) {
+            const k = `${u}_${d}`;
+            customMap[k] = {
+              issues: r.issues || '',
+              todayTasks: r.today_tasks || r.todayTasks || '',
+              tomorrowPlan: r.tomorrow_plan || r.tomorrowPlan || '',
+              updatedAt: r.updated_at || r.updatedAt || new Date().toISOString()
+            };
+          }
+        });
+        const currentCustom = JSON.parse(localStorage.getItem('with_sec_daily_custom_reports') || '{}');
+        const mergedCustom = { ...currentCustom, ...customMap };
+        localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(mergedCustom));
+      } catch (e) {
+        console.warn('Failed to merge daily_reports into localStorage', e);
+      }
+      await this.replaceCollection('daily_reports', syncData.daily_reports);
+    }
+
     // 7. edu_logs
     if (syncData.edu_logs && Array.isArray(syncData.edu_logs)) {
       await this.replaceCollection('edu_logs', syncData.edu_logs);
@@ -5108,6 +5354,7 @@ class SecurityDatabase {
       const checklists = await this.getChecklists();
       const eduLogs = await this.getAll('edu_logs').catch(() => []);
       const weeklyReports = await this.getAll('weekly_reports').catch(() => []);
+      const dailyReports = await this.getDailyReports().catch(() => []);
       const tbms = await this.getTbms().catch(() => []);
       const vault = await this.getAll('vault').catch(() => []);
       const incidents = await this.getAll('incidents').catch(() => []);
@@ -5121,6 +5368,7 @@ class SecurityDatabase {
           security_logs: checklists || [],
           edu_logs: eduLogs || [],
           weekly_reports: weeklyReports || [],
+          daily_reports: dailyReports || [],
           tbms: tbms || [],
           vault: vault || [],
           incidents: incidents || []

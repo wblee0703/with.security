@@ -76,6 +76,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [workLogs, setWorkLogs] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [sharedWeeklyReports, setSharedWeeklyReports] = useState([]);
+  const [sharedDailyReports, setSharedDailyReports] = useState([]);
   const [collapsedSharedCards, setCollapsedSharedCards] = useState({});
   const [collapsedDailySharedCards, setCollapsedDailySharedCards] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -342,13 +343,51 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     })();
   };
 
-  // 일일 업무 보고(특이사항, 금일 진행 내역, 익일 예정 업무) 명시적 저장 핸들러
-  const handleSaveDailyCustomReport = () => {
+  // 일일 업무 보고(특이사항, 금일 진행 내역, 익일 예정 업무) 명시적 저장 핸들러 및 구글 스프레드시트 비동기 동기화
+  async function handleSaveDailyCustomReport() {
     try {
-      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(dailyCustomReports));
+      const existing = dailyCustomReports[dailyDate] || {};
+      const prefilled = (typeof getPrefilledDailyReport === 'function') ? getPrefilledDailyReport() : { todayTasks: '', tomorrowPlan: '' };
+      const dataToSave = {
+        issues: existing.issues !== undefined ? existing.issues : '',
+        todayTasks: existing.todayTasks !== undefined ? existing.todayTasks : (prefilled?.todayTasks || ''),
+        tomorrowPlan: existing.tomorrowPlan !== undefined ? existing.tomorrowPlan : (prefilled?.tomorrowPlan || ''),
+        updatedAt: new Date().toISOString()
+      };
+      const updatedReports = {
+        ...dailyCustomReports,
+        [dailyDate]: dataToSave
+      };
+      setDailyCustomReports(updatedReports);
+      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(updatedReports));
       setIsDailyDirty(false);
+
+      // 구글 스프레드시트 daily_reports 시트 비동기 백그라운드 전송
+      const author = currentUser || {};
+      const username = author.username || 'user';
+      const payload = {
+        id: `daily-rep-${username}-${dailyDate}`,
+        reportId: `daily-rep-${username}-${dailyDate}`,
+        dailyDate: dailyDate,
+        authorName: author.name || '미지정',
+        authorUsername: username,
+        authorTeam: author.team || '',
+        authorRank: author.rank || '',
+        authorDivision: author.division || '',
+        authorRole: author.role || '일반',
+        issues: dataToSave.issues,
+        todayTasks: dataToSave.todayTasks,
+        tomorrowPlan: dataToSave.tomorrowPlan,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      dbService.saveDailyReport(payload).catch(err => {
+        console.warn('Background daily report save warning:', err);
+      });
+
       if (onTriggerToast) {
-        onTriggerToast('일일 업무 보고가 성공적으로 저장되었습니다.', 'success');
+        onTriggerToast('일일 업무 보고가 성공적으로 저장되었습니다. (구글 시트 동기화)', 'success');
       }
     } catch (e) {
       console.error('Failed to save daily custom report', e);
@@ -356,7 +395,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         onTriggerToast('일일 업무 보고 저장 중 오류가 발생했습니다.', 'error');
       }
     }
-  };
+  }
 
   // 미저장 팝업 - 저장 후 이동
   const handleConfirmSaveAndNavigate = async () => {
@@ -364,7 +403,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       await handleSaveWeeklyCustomReport();
     }
     if (isDailyDirty) {
-      handleSaveDailyCustomReport();
+      await handleSaveDailyCustomReport();
     }
     setIsUnsavedPromptOpen(false);
     if (typeof pendingAction === 'function') {
@@ -400,16 +439,39 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const loadData = async (isInitial = false) => {
     if (isInitial) setIsLoading(true);
     try {
-      const [u, logs, users, weeklyReps] = await Promise.all([
+      const [u, logs, users, weeklyReps, dailyReps] = await Promise.all([
         dbService.getUserProfile(),
         dbService.getWorkLogs(),
         dbService.getAllUsers(),
-        dbService.getWeeklyReports()
+        dbService.getWeeklyReports(),
+        dbService.getDailyReports()
       ]);
       setCurrentUser(u);
       setWorkLogs(logs || []);
       setAllUsers(users || []);
       setSharedWeeklyReports(weeklyReps || []);
+      setSharedDailyReports(dailyReps || []);
+
+      if (Array.isArray(dailyReps) && dailyReps.length > 0 && u?.username) {
+        setDailyCustomReports(prev => {
+          const updated = { ...prev };
+          dailyReps.forEach(rep => {
+            const authorUser = rep.author_username || rep.authorUsername;
+            const dDate = rep.daily_date || rep.dailyDate;
+            if (authorUser === u.username && dDate) {
+              if (!updated[dDate] || !isDailyDirty) {
+                updated[dDate] = {
+                  issues: rep.issues || '',
+                  todayTasks: rep.today_tasks || rep.todayTasks || '',
+                  tomorrowPlan: rep.tomorrow_plan || rep.tomorrowPlan || '',
+                  updatedAt: rep.updated_at || rep.updatedAt || new Date().toISOString()
+                };
+              }
+            }
+          });
+          return updated;
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -424,14 +486,38 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       await dbService.syncAllWithServer();
       const freshLogs = await dbService.getWorkLogs(true);
       setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
-      const [u, users, weeklyReps] = await Promise.all([
+      const [u, users, weeklyReps, dailyReps] = await Promise.all([
         dbService.getUserProfile(),
         dbService.getAllUsers(),
-        dbService.getWeeklyReports()
+        dbService.getWeeklyReports(),
+        dbService.getDailyReports()
       ]);
       setCurrentUser(u);
       setAllUsers(users || []);
       setSharedWeeklyReports(weeklyReps || []);
+      setSharedDailyReports(dailyReps || []);
+
+      if (Array.isArray(dailyReps) && dailyReps.length > 0 && u?.username) {
+        setDailyCustomReports(prev => {
+          const updated = { ...prev };
+          dailyReps.forEach(rep => {
+            const authorUser = rep.author_username || rep.authorUsername;
+            const dDate = rep.daily_date || rep.dailyDate;
+            if (authorUser === u.username && dDate) {
+              if (!updated[dDate] || !isDailyDirty) {
+                updated[dDate] = {
+                  issues: rep.issues || '',
+                  todayTasks: rep.today_tasks || rep.todayTasks || '',
+                  tomorrowPlan: rep.tomorrow_plan || rep.tomorrowPlan || '',
+                  updatedAt: rep.updated_at || rep.updatedAt || new Date().toISOString()
+                };
+              }
+            }
+          });
+          return updated;
+        });
+      }
+
       if (onTriggerToast) {
         onTriggerToast('구글 스프레드시트 최신 데이터 동기화 완료', 'success');
       }

@@ -52,6 +52,12 @@ const SCHEMAS = {
     'author_team', 'author_rank', 'author_division', 'author_role', 'main_tasks',
     'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at'
   ],
+  // 5-1. 일일 업무 보고서 (daily_reports) - 특이사항, 금일 진행 내역, 익일 예정 업무 개별 컬럼 관리
+  daily_reports: [
+    'id', 'report_id', 'daily_date', 'author_name', 'author_username',
+    'author_team', 'author_rank', 'author_division', 'author_role',
+    'issues', 'today_tasks', 'tomorrow_plan', 'created_at', 'updated_at'
+  ],
   // 6. 교육 수료 관리 (MySQL: edu_log)
   edu_logs: [
     'id', 'edu_id', 'user_id', 'name', 'division', 'team', 'rank', 'category',
@@ -534,6 +540,21 @@ function doPost(e) {
 
               isMatch = idMatched || compositeMatched;
             }
+          } else if (sheetName === 'daily_reports') {
+            const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
+            const rowReportId = headers.indexOf('report_id') !== -1 ? String(rows[i][headers.indexOf('report_id')] || '').trim() : '';
+            const targetId = String(item.id || item.report_id || keyValue).trim();
+            const idMatched = Boolean(targetId && (rowId === targetId || rowReportId === targetId));
+
+            const dateColIdx = headers.indexOf('daily_date');
+            const authorColIdx = headers.indexOf('author_username');
+            const rDate = dateColIdx !== -1 ? formatKstDate(rows[i][dateColIdx], true) : '';
+            const rAuthor = authorColIdx !== -1 ? String(rows[i][authorColIdx] || '').trim().toLowerCase() : '';
+            const iDate = formatKstDate(item.daily_date, true);
+            const iAuthor = String(item.author_username || item.authorUsername || '').trim().toLowerCase();
+            const compositeMatched = Boolean(iDate && iAuthor && rDate === iDate && rAuthor === iAuthor);
+
+            isMatch = idMatched || compositeMatched;
           } else {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
             const rowLogId = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
@@ -1306,6 +1327,30 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     };
   }
 
+  // 5-1. 일일 업무 보고서 (daily_reports) - 특이사항, 금일 진행 내역, 익일 예정 업무 개별 컬럼
+  if (sheetName === 'daily_reports') {
+    const dDate = formatKstDate(obj.daily_date || obj.dailyDate || obj.date, true) || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+    const uName = obj.author_username || obj.authorUsername || obj.writerId || obj.username || 'user';
+    const dId = obj.report_id || obj.reportId || obj.id || `daily-rep-${uName}-${dDate}`;
+    const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+    return {
+      id: dId,
+      report_id: dId,
+      daily_date: dDate,
+      author_name: obj.author_name || obj.authorName || obj.name || '',
+      author_username: uName,
+      author_team: obj.author_team || obj.authorTeam || obj.team || '',
+      author_rank: obj.author_rank || obj.authorRank || obj.rank || '',
+      author_division: obj.author_division || obj.authorDivision || obj.division || '',
+      author_role: obj.author_role || obj.authorRole || obj.role || '일반',
+      issues: obj.issues || obj.special_notes || obj.specialNotes || '',
+      today_tasks: obj.today_tasks || obj.todayTasks || '',
+      tomorrow_plan: obj.tomorrow_plan || obj.tomorrowPlan || '',
+      created_at: obj.created_at || obj.createdAt || nowStr,
+      updated_at: obj.updated_at || obj.updatedAt || nowStr
+    };
+  }
+
   // 6. 교육 수료 일지 (edu_log)
   if (sheetName === 'edu_logs') {
     const eId = obj.edu_id || obj.eduId || obj.id || `EDU-${Date.now()}`;
@@ -1703,7 +1748,7 @@ function readSheetData(sheetName) {
   const keyMap = new Map();
 
   const DATE_ONLY_COLS = [
-    'log_date', 'due_date', 'date', 'weekly_monday',
+    'log_date', 'due_date', 'date', 'weekly_monday', 'daily_date',
     'completion_date', 'expiry_date', 'education_date', 'education_expiry_date'
   ];
   
