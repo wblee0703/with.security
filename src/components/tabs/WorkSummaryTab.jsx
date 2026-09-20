@@ -1230,7 +1230,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     let text = `• ${item.title}${siteTag}`;
     if (item.details && item.details.trim()) {
-      text += `\n  - ${item.details.trim()}`;
+      text += `\n  ${item.details.trim()}`;
     }
     handleCopyText(text, '업무 내용');
   };
@@ -1299,7 +1299,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         let s = `• [사내] ${l.title}`;
         if (l.details && l.details.trim()) {
           const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
+          s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
         }
         tasks.push(s);
       });
@@ -1314,7 +1314,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           let s = `• [출장: ${siteKey}${siteLoc ? ` (${siteLoc})` : ''}] ${l.title}`;
           if (l.details && l.details.trim()) {
             const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-            s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
+            s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
           }
           tasks.push(s);
         });
@@ -1331,7 +1331,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         let s = `• ${siteTag} ${tl.title}`;
         if (tl.details && tl.details.trim()) {
           const dLines = tl.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
+          s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
         }
         tomorrowTasks.push(s);
       });
