@@ -29,7 +29,8 @@ import {
   Search,
   X,
   Check,
-  Save
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
@@ -135,6 +136,18 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   });
   const [isWeeklyDirty, setIsWeeklyDirty] = useState(false);
 
+  // Daily Custom Section State (일자별 1. 특이사항, 2. 금일 진행 내역, 3. 익일 예정 업무)
+  const [dailyCustomReports, setDailyCustomReports] = useState(() => {
+    try {
+      const saved = localStorage.getItem('with_sec_daily_custom_reports');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [isDailyDirty, setIsDailyDirty] = useState(false);
+  const [isDailyOwnCollapsed, setIsDailyOwnCollapsed] = useState(false);
+
   // 미저장 변경사항 이동 안내 모달 상태
   const [isUnsavedPromptOpen, setIsUnsavedPromptOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -161,10 +174,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   // 새로고침 및 창 닫기 시 저장되지 않은 수정사항 브라우저 경고 & 전역 탭 이동 감지
   useEffect(() => {
-    window.__WITH_SECURITY_UNSAVED_CHANGES__ = isWeeklyDirty;
+    const isAnyDirty = isWeeklyDirty || isDailyDirty;
+    window.__WITH_SECURITY_UNSAVED_CHANGES__ = isAnyDirty;
 
     const handleBeforeUnload = (e) => {
-      if (isWeeklyDirty) {
+      if (isAnyDirty) {
         e.preventDefault();
         e.returnValue = '';
         return '';
@@ -174,7 +188,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const handleTabChangePrompt = (e) => {
       const targetTab = e.detail?.targetTab;
       const performTabSwitch = e.detail?.performTabSwitch;
-      if (isWeeklyDirty && (targetTab || performTabSwitch)) {
+      if (isAnyDirty && (targetTab || performTabSwitch)) {
         setPendingAction(() => () => {
           if (typeof performTabSwitch === 'function') performTabSwitch();
         });
@@ -190,13 +204,18 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('with_security_prompt_unsaved_tab', handleTabChangePrompt);
     };
-  }, [isWeeklyDirty]);
+  }, [isWeeklyDirty, isDailyDirty]);
 
   // Weekly Textarea Auto-Resize Refs & Helpers
   const mainTasksRef = useRef(null);
   const infoSharingRef = useRef(null);
   const teamCoopRef = useRef(null);
   const etcTasksRef = useRef(null);
+
+  // Daily Textarea Auto-Resize Refs
+  const dailyIssuesRef = useRef(null);
+  const dailyTodayTasksRef = useRef(null);
+  const dailyTomorrowPlanRef = useRef(null);
 
   const autoResizeTextarea = (element) => {
     if (!element) return;
@@ -211,6 +230,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       }
     });
   }, [weeklyMonday, currentWeeklyCustom]);
+
+  useEffect(() => {
+    [dailyIssuesRef, dailyTodayTasksRef, dailyTomorrowPlanRef].forEach(ref => {
+      if (ref.current) {
+        autoResizeTextarea(ref.current);
+      }
+    });
+  }, [dailyDate, dailyCustomReports, workLogs]);
 
   // 주간 업무 보고(1~4번) 명시적 저장 핸들러 (저장 버튼 누를 때 사내공유 대상자에게도 즉시 자동 공유)
   const handleSaveWeeklyCustomReport = async () => {
@@ -315,9 +342,30 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     })();
   };
 
+  // 일일 업무 보고(특이사항, 금일 진행 내역, 익일 예정 업무) 명시적 저장 핸들러
+  const handleSaveDailyCustomReport = () => {
+    try {
+      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(dailyCustomReports));
+      setIsDailyDirty(false);
+      if (onTriggerToast) {
+        onTriggerToast('일일 업무 보고가 성공적으로 저장되었습니다.', 'success');
+      }
+    } catch (e) {
+      console.error('Failed to save daily custom report', e);
+      if (onTriggerToast) {
+        onTriggerToast('일일 업무 보고 저장 중 오류가 발생했습니다.', 'error');
+      }
+    }
+  };
+
   // 미저장 팝업 - 저장 후 이동
   const handleConfirmSaveAndNavigate = async () => {
-    await handleSaveWeeklyCustomReport();
+    if (isWeeklyDirty) {
+      await handleSaveWeeklyCustomReport();
+    }
+    if (isDailyDirty) {
+      handleSaveDailyCustomReport();
+    }
     setIsUnsavedPromptOpen(false);
     if (typeof pendingAction === 'function') {
       pendingAction();
@@ -328,10 +376,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 미저장 팝업 - 저장하지 않고 그냥 이동 (원래 저장본으로 롤백)
   const handleDiscardAndNavigate = () => {
     try {
-      const saved = localStorage.getItem('with_sec_weekly_custom_reports');
-      setWeeklyCustomReports(saved ? JSON.parse(saved) : {});
+      const savedWeekly = localStorage.getItem('with_sec_weekly_custom_reports');
+      setWeeklyCustomReports(savedWeekly ? JSON.parse(savedWeekly) : {});
+      const savedDaily = localStorage.getItem('with_sec_daily_custom_reports');
+      setDailyCustomReports(savedDaily ? JSON.parse(savedDaily) : {});
     } catch (e) { }
     setIsWeeklyDirty(false);
+    setIsDailyDirty(false);
     setIsUnsavedPromptOpen(false);
     if (typeof pendingAction === 'function') {
       pendingAction();
@@ -645,17 +696,35 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const handlePrevDay = () => {
     const d = new Date(dailyDate);
     d.setDate(d.getDate() - 1);
-    setDailyDate(formatIso(d));
+    const targetIso = formatIso(d);
+    if (isDailyDirty) {
+      setPendingAction(() => () => setDailyDate(targetIso));
+      setIsUnsavedPromptOpen(true);
+    } else {
+      setDailyDate(targetIso);
+    }
   };
 
   const handleNextDay = () => {
     const d = new Date(dailyDate);
     d.setDate(d.getDate() + 1);
-    setDailyDate(formatIso(d));
+    const targetIso = formatIso(d);
+    if (isDailyDirty) {
+      setPendingAction(() => () => setDailyDate(targetIso));
+      setIsUnsavedPromptOpen(true);
+    } else {
+      setDailyDate(targetIso);
+    }
   };
 
   const handleToday = () => {
-    setDailyDate(getTodayIso());
+    const targetIso = getTodayIso();
+    if (isDailyDirty) {
+      setPendingAction(() => () => setDailyDate(targetIso));
+      setIsUnsavedPromptOpen(true);
+    } else {
+      setDailyDate(targetIso);
+    }
   };
 
   const getFormattedKoreanDate = (isoStr) => {
@@ -1131,72 +1200,117 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     dailyInternalAuthorsText = nameLabel || '담당자 미지정';
   }
 
-  const generateDailyReportText = () => {
-    let t = `• ${isFuture ? '예정 일자' : '보고 일자'}: ${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}\n`;
+  // 본인 표시 라벨 (우측 내 업무 카드 헤더용)
+  let myAuthorLabel = currentUser?.name || '작성자';
+  if (currentUser?.rank && !myAuthorLabel.includes(currentUser.rank)) myAuthorLabel += ` ${currentUser.rank}`;
+  if (currentUser?.team && !myAuthorLabel.includes(currentUser.team)) myAuthorLabel += ` (${formatOnlyTeam(currentUser.team)})`;
 
-    t += `\n<사내 업무>${isFuture ? ' (예정)' : ''}\n`;
-    if (dailyInternalLogs.length === 0) {
-      t += `  - 사내 ${isFuture ? '예정 ' : ''}업무 기록 없음\n`;
-    } else {
-      dailyInternalLogs.forEach((l, i) => {
-        const shareTag = l.isShared ? ` [공유중${l.sharedWith?.length ? `: ${l.sharedWith.length}명` : ''}]` : '';
-        t += ` ${i + 1}. ${l.title}${shareTag}\n`;
+  // Helper to generate prefilled text from daily and tomorrow's logs
+  const getPrefilledDailyReport = () => {
+    const tasks = [];
+    if (dailyInternalLogs.length > 0) {
+      dailyInternalLogs.forEach(l => {
+        let s = `• [사내] ${l.title}`;
         if (l.details && l.details.trim()) {
-          const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          lines.forEach(line => {
-            t += `    ${line.trim()}\n`;
-          });
+          const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+          s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
         }
+        tasks.push(s);
       });
     }
 
-    t += `\n<출장 및 현장 지원>${isFuture ? ' (예정)' : ''}\n`;
     const siteKeys = Object.keys(dailyTripGroupedBySite);
-    if (siteKeys.length === 0) {
-      t += `  - 출장 ${isFuture ? '예정 ' : ''}업무 기록 없음\n`;
-    } else {
-      siteKeys.forEach((siteKey, siteIdx) => {
+    if (siteKeys.length > 0) {
+      siteKeys.forEach(siteKey => {
         const siteLogs = dailyTripGroupedBySite[siteKey];
-        t += `  > 출장지: ${siteKey}\n`;
-        siteLogs.forEach((l, taskIdx) => {
-          const shareTag = l.isShared ? ` [공유중${l.sharedWith?.length ? `: ${l.sharedWith.length}명` : ''}]` : '';
-          t += ` ${taskIdx + 1}. ${l.title}${shareTag}\n`;
+        siteLogs.forEach(l => {
+          const siteLoc = l.siteLocation || l.siteAddress || l.location || '';
+          let s = `• [출장: ${siteKey}${siteLoc ? ` (${siteLoc})` : ''}] ${l.title}`;
           if (l.details && l.details.trim()) {
-            const lines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-            lines.forEach(line => {
-              t += `    ${line.trim()}\n`;
-            });
+            const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+            s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
           }
+          tasks.push(s);
         });
-        if (siteIdx < siteKeys.length - 1) t += `\n`;
       });
     }
 
-    // 내일(익일) 예정 업무 (당일 및 과거/현재 보고서 작성 시 항상 포함)
-    if (!isFuture) {
-      const targetTomorrowLogs = isToday ? tomorrowOwnLogs : nextDayOwnLogs;
-      const targetTomorrowDate = isToday ? tomorrowIso : nextDailyIso;
-      const tomorrowLabel = isToday ? '내일' : `${getFormattedKoreanDate(targetTomorrowDate)}`;
+    const targetTomorrowLogs = isToday ? tomorrowOwnLogs : nextDayOwnLogs;
+    const tomorrowTasks = [];
+    if (targetTomorrowLogs.length > 0) {
+      targetTomorrowLogs.forEach(tl => {
+        const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
+        const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
+        const siteTag = isTrip ? `[출장: ${tl.siteName || '출장지'}${siteLoc ? ` (${siteLoc})` : ''}]` : '[사내]';
+        let s = `• ${siteTag} ${tl.title}`;
+        if (tl.details && tl.details.trim()) {
+          const dLines = tl.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+          s += '\n' + dLines.map(dl => `   - ${dl.trim()}`).join('\n');
+        }
+        tomorrowTasks.push(s);
+      });
+    }
 
-      t += `\n----------------------------------------\n`;
-      t += `📌 [ ${tomorrowLabel} 예정 업무${targetTomorrowLogs.length > 0 ? ` (${targetTomorrowLogs.length}건)` : ''} ]\n`;
+    return {
+      issues: '',
+      todayTasks: tasks.join('\n'),
+      tomorrowPlan: tomorrowTasks.join('\n')
+    };
+  };
 
-      if (targetTomorrowLogs.length === 0) {
-        t += `  - ${tomorrowLabel} 예정 업무 기록 없음\n`;
-      } else {
-        targetTomorrowLogs.forEach((tl, ti) => {
-          const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
-          const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
-          const siteTag = isTrip ? ` [출장: ${tl.siteName || '출장지'}${siteLoc ? ` (${siteLoc})` : ''}]` : ' [사내]';
-          t += `  ${ti + 1}. ${tl.title}${siteTag}\n`;
-          if (tl.details && tl.details.trim()) {
-            const lines = tl.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-            lines.forEach(line => {
-              t += `     ${line.trim()}\n`;
-            });
-          }
-        });
+  const hasCustomDaily = Boolean(dailyCustomReports[dailyDate]);
+  const currentDailyCustom = hasCustomDaily
+    ? {
+        issues: dailyCustomReports[dailyDate].issues || '',
+        todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
+        tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
       }
+    : getPrefilledDailyReport();
+
+  const handleDailyCustomChange = (field, value) => {
+    setIsDailyDirty(true);
+    setDailyCustomReports(prev => ({
+      ...prev,
+      [dailyDate]: {
+        ...(prev[dailyDate] || currentDailyCustom),
+        [field]: value
+      }
+    }));
+  };
+
+  const handleLoadDailyFromLogs = () => {
+    const prefilled = getPrefilledDailyReport();
+    setIsDailyDirty(true);
+    setDailyCustomReports(prev => ({
+      ...prev,
+      [dailyDate]: {
+        issues: (prev[dailyDate]?.issues || currentDailyCustom.issues || ''),
+        todayTasks: prefilled.todayTasks,
+        tomorrowPlan: prefilled.tomorrowPlan
+      }
+    }));
+    if (onTriggerToast) {
+      onTriggerToast('등록된 업무 일지에서 금일 진행 내역과 익일 예정 업무를 불러왔습니다.', 'info');
+    }
+  };
+
+  const generateDailyReportText = () => {
+    let t = `• ${isFuture ? '예정 일자' : '보고 일자'}: ${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}\n\n`;
+
+    const issues = (currentDailyCustom.issues || '').trim();
+    const todayTasks = (currentDailyCustom.todayTasks || '').trim();
+    const tomorrowPlan = (currentDailyCustom.tomorrowPlan || '').trim();
+
+    t += `1. 특이사항\n`;
+    t += issues ? `${issues}\n\n` : `  - 해당 내역 없음\n\n`;
+
+    t += `2. 금일 진행 내역\n`;
+    t += todayTasks ? `${todayTasks}\n\n` : `  - 해당 내역 없음\n\n`;
+
+    if (!isFuture) {
+      const tomorrowLabel = isToday ? '내일' : '익일';
+      t += `3. ${tomorrowLabel} 예정 업무\n`;
+      t += tomorrowPlan ? `${tomorrowPlan}\n` : `  - 해당 내역 없음\n`;
     }
 
     return t;
@@ -1470,7 +1584,17 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       ref={dailyDateInputRef}
                       type="date"
                       value={dailyDate}
-                      onChange={(e) => e.target.value && setDailyDate(e.target.value)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const val = e.target.value;
+                          if (isDailyDirty) {
+                            setPendingAction(() => () => setDailyDate(val));
+                            setIsUnsavedPromptOpen(true);
+                          } else {
+                            setDailyDate(val);
+                          }
+                        }
+                      }}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -1563,7 +1687,17 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       ref={dailyDateInputRef}
                       type="date"
                       value={dailyDate}
-                      onChange={(e) => e.target.value && setDailyDate(e.target.value)}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const val = e.target.value;
+                          if (isDailyDirty) {
+                            setPendingAction(() => () => setDailyDate(val));
+                            setIsUnsavedPromptOpen(true);
+                          } else {
+                            setDailyDate(val);
+                          }
+                        }
+                      }}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -1697,50 +1831,402 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             flexDirection: 'column',
             gap: '10px'
           }}>
-            {dailyOwnLogs.length === 0 && dailySharedReceivedLogs.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', color: '#0f172a' }}>
-                <Clock size={32} color="#0f172a" style={{ marginBottom: '8px' }} />
-                <div style={{ fontSize: '13px', fontWeight: '700' }}>
-                  {isFuture ? '선택일자에 등록된 예정 업무가 없습니다.' : '선택일자에 등록된 업무 기록이 없습니다.'}
+            {/* Daily Content Grid: Split into Left (Direct Daily Report Input) & Right (My Tasks & Shared Tasks) */}
+            <div
+              className="work-summary-responsive-grid"
+              style={{
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap: '14px',
+                alignItems: 'start',
+                width: '100%'
+              }}
+            >
+              {/* LEFT: 직접 입력 일일 업무 보고 (1. 특이사항, 2. 금일 진행 내역, 3. 익일 예정 업무) */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+                {/* 일일 업무 보고 헤더 바 (일지 불러오기, 저장, 복사, 공유) */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '8px',
+                  paddingBottom: '2px',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                    <FileText size={17} color="#0f172a" />
+                    <span>일일 업무 보고</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {/* 일지 불러오기 버튼 */}
+                    <button
+                      type="button"
+                      onClick={handleLoadDailyFromLogs}
+                      style={{
+                        background: '#f8fafc',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#334155',
+                        padding: '6px 9px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)'
+                      }}
+                      title="등록된 업무 일지에서 금일 및 익일 내역 새로 불러오기"
+                    >
+                      <RotateCcw size={12} color="#475569" />
+                      <span>일지 불러오기</span>
+                    </button>
+
+                    {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
+                    <button
+                      type="button"
+                      disabled={!isDailyDirty}
+                      onClick={handleSaveDailyCustomReport}
+                      style={{
+                        background: isDailyDirty ? '#ecfdf5' : '#f1f5f9',
+                        border: isDailyDirty ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
+                        color: isDailyDirty ? '#047857' : '#94a3b8',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: isDailyDirty ? 'pointer' : 'not-allowed',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        opacity: isDailyDirty ? 1 : 0.7,
+                        transition: 'all 0.2s ease',
+                        boxShadow: isDailyDirty ? '0 2px 6px rgba(5, 150, 105, 0.15)' : 'none'
+                      }}
+                      title={isDailyDirty ? '일일 업무 보고 내용 저장' : '수정된 내용이 없습니다'}
+                    >
+                      <Save size={13} color={isDailyDirty ? '#059669' : '#94a3b8'} />
+                      <span>저장</span>
+                    </button>
+
+                    {/* 텍스트 복사 버튼 */}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 보고서')}
+                      style={{
+                        background: '#eff6ff',
+                        border: '1.5px solid #cbd5e1',
+                        color: '#0f172a',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
+                      }}
+                      title="일일 업무 보고서 텍스트 복사"
+                    >
+                      <Copy size={13} />
+                    </button>
+
+                    {/* 다른 앱 공유 버튼 (네이티브 모바일 환경) */}
+                    {isNative && (
+                      <button
+                        type="button"
+                        onClick={() => handleShareText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 보고서')}
+                        style={{
+                          background: '#1e3a8a',
+                          border: '1.5px solid #1e3a8a',
+                          color: '#ffffff',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '700',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          transition: 'all 0.2s ease',
+                          boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                        }}
+                        title="일일 업무 보고서 공유 (카카오톡, 메신저 등)"
+                      >
+                        <Share2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 1. 특이사항 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                    <span>1. 특이사항</span>
+                  </div>
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
+                    <textarea
+                      ref={dailyIssuesRef}
+                      className="borderless-textarea"
+                      value={currentDailyCustom.issues}
+                      onInput={(e) => autoResizeTextarea(e.target)}
+                      onChange={(e) => {
+                        handleDailyCustomChange('issues', e.target.value);
+                        autoResizeTextarea(e.target);
+                      }}
+                      placeholder="금일 특이사항 및 이슈를 직접 입력하세요."
+                      rows={2}
+                      style={{
+                        width: '100%',
+                        minHeight: '48px',
+                        border: 'none',
+                        outline: 'none',
+                        boxShadow: 'none',
+                        background: 'transparent',
+                        resize: 'none',
+                        overflow: 'hidden',
+                        fontSize: '13.5px',
+                        color: '#0f172a',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 2. 금일 진행 내역 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                    <span>2. 금일 진행 내역</span>
+                  </div>
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
+                    <textarea
+                      ref={dailyTodayTasksRef}
+                      className="borderless-textarea"
+                      value={currentDailyCustom.todayTasks}
+                      onInput={(e) => autoResizeTextarea(e.target)}
+                      onChange={(e) => {
+                        handleDailyCustomChange('todayTasks', e.target.value);
+                        autoResizeTextarea(e.target);
+                      }}
+                      placeholder="금일 진행한 업무 내역을 직접 입력하세요. ('일지 불러오기'로 자동 채우기 가능)"
+                      rows={5}
+                      style={{
+                        width: '100%',
+                        minHeight: '85px',
+                        border: 'none',
+                        outline: 'none',
+                        boxShadow: 'none',
+                        background: 'transparent',
+                        resize: 'none',
+                        overflow: 'hidden',
+                        fontSize: '13.5px',
+                        color: '#0f172a',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. 익일 예정 업무 */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                    <span>3. {isToday ? '내일 예정 업무' : '익일 예정 업무'}</span>
+                  </div>
+                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
+                    <textarea
+                      ref={dailyTomorrowPlanRef}
+                      className="borderless-textarea"
+                      value={currentDailyCustom.tomorrowPlan}
+                      onInput={(e) => autoResizeTextarea(e.target)}
+                      onChange={(e) => {
+                        handleDailyCustomChange('tomorrowPlan', e.target.value);
+                        autoResizeTextarea(e.target);
+                      }}
+                      placeholder="익일 진행할 예정 업무를 직접 입력하세요. ('일지 불러오기'로 자동 채우기 가능)"
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        minHeight: '55px',
+                        border: 'none',
+                        outline: 'none',
+                        boxShadow: 'none',
+                        background: 'transparent',
+                        resize: 'none',
+                        overflow: 'hidden',
+                        fontSize: '13.5px',
+                        color: '#0f172a',
+                        lineHeight: '1.6',
+                        fontFamily: 'inherit',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
-            ) : (
-              <>
-                {/* Daily Content Grid: Split into Left (Own Internal/Trip Tasks) & Right (Shared Tasks) */}
-                <div
-                  className="work-summary-responsive-grid"
-                  style={{
-                    gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-                    gap: '14px',
-                    alignItems: 'start',
-                    width: '100%'
-                  }}
-                >
-                  {/* LEFT: 사내 업무 & 출장 및 현장 지원 */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
-                    {/* Section 1: 사내 업무 보고 */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
-                          사내 업무
-                        </div>
+
+              {/* RIGHT: 내 업무 & 공유받은 업무 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+                {/* SECTION 1: 내 업무 (공유받은 업무처럼 카드 형태로 따로 표시) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderLeft: '3px solid #0f172a',
+                    paddingLeft: '8px'
+                  }}>
+                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <User size={16} color="#0f172a" />
+                      <span>내 업무 ({dailyOwnLogs.length}건)</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
+                      style={{
+                        background: '#f8fafc',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '5px',
+                        padding: '3px 8px',
+                        fontSize: '11px',
+                        fontWeight: '700',
+                        color: '#0f172a',
+                        cursor: 'pointer'
+                      }}
+                      title={isDailyOwnCollapsed ? '내 업무 펼치기' : '내 업무 접기'}
+                    >
+                      {isDailyOwnCollapsed ? '펼치기' : '접기'}
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: isDailyOwnCollapsed ? '0px' : '10px',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    {/* Header (클릭 시 접기/펼치기 토글) */}
+                    <div
+                      onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '8px',
+                        borderBottom: isDailyOwnCollapsed ? 'none' : '1.5px solid #e2e8f0',
+                        paddingBottom: isDailyOwnCollapsed ? '0px' : '8px',
+                        cursor: 'pointer',
+                        userSelect: 'none'
+                      }}
+                      title={isDailyOwnCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                          👤 작성자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{myAuthorLabel}</strong>
+                        </span>
                       </div>
 
-                      {dailyInternalLogs.length === 0 ? (
-                        <div style={{ paddingLeft: '6px' }}>
-                          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                            - 해당 내역 없음
-                          </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{
+                          fontSize: '11px',
+                          fontWeight: '800',
+                          background: '#eff6ff',
+                          color: '#1e40af',
+                          padding: '2px 6px',
+                          borderRadius: '4px'
+                        }}>
+                          총 {dailyOwnLogs.length}건
+                        </span>
+                        <span style={{
+                          fontSize: '11.5px',
+                          fontWeight: '800',
+                          background: isDailyOwnCollapsed ? '#ffffff' : '#f1f5f9',
+                          color: '#0f172a',
+                          border: '1px solid #cbd5e1',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          {isDailyOwnCollapsed ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronUp size={14} />
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Items under 내 업무 (펼쳐졌을 때만 렌더링) */}
+                    {!isDailyOwnCollapsed && (
+                      dailyOwnLogs.length === 0 ? (
+                        <div style={{ fontSize: '13px', color: '#64748b', padding: '6px 2px', fontWeight: '600' }}>
+                          - 선택일자에 등록된 내 업무가 없습니다.
                         </div>
                       ) : (
-                        <div style={{ paddingLeft: '6px' }}>
-                          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              {dailyInternalLogs.map((item, idx) => (
-                                <div key={item.id || idx} style={{ paddingLeft: '4px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', paddingLeft: '2px' }}>
+                          {[...dailyOwnLogs]
+                            .sort((a, b) => {
+                              const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
+                              const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
+                              if (isATrip && !isBTrip) return -1;
+                              if (!isATrip && isBTrip) return 1;
+                              return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+                            })
+                            .map((item, idx) => {
+                              const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+                              const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
+                              return (
+                                <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
                                   <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
                                     <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
                                     <span>{item.title}</span>
+                                    {isTrip ? (
+                                      <>
+                                        <span style={{
+                                          padding: '1px 6px',
+                                          borderRadius: '4px',
+                                          fontSize: '10.5px',
+                                          fontWeight: '800',
+                                          background: '#ede9fe',
+                                          color: '#6d28d9',
+                                          border: '1px solid #ddd6fe'
+                                        }}>
+                                          출장
+                                        </span>
+                                        <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                                          {item.siteName || ''}
+                                          {siteLoc ? ` (${siteLoc})` : ''}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span style={{
+                                        padding: '1px 6px',
+                                        borderRadius: '4px',
+                                        fontSize: '10.5px',
+                                        fontWeight: '800',
+                                        background: '#e0f2fe',
+                                        color: '#0369a1',
+                                        border: '1px solid #bae6fd'
+                                      }}>
+                                        사내
+                                      </span>
+                                    )}
                                     {item.isShared && (
                                       <span style={{
                                         display: 'inline-flex',
@@ -1760,154 +2246,41 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                     )}
                                   </div>
                                   {item.details && (
-                                    <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '5px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                    <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                       {item.details}
                                     </div>
                                   )}
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                              );
+                            })}
 
-                    {/* Section 2: 출장 업무 보고 (사업장별 그룹화 & 출장자 통합) */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '4px' }}>
-                      <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
-                        출장 및 현장 지원
-                      </div>
-
-                      {dailyTripLogs.length === 0 ? (
-                        <div style={{ paddingLeft: '6px' }}>
-                          <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                            - 해당 내역 없음
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '6px' }}>
-                          {Object.keys(dailyTripGroupedBySite).map((siteKey, sIdx) => {
-                            const siteLogs = dailyTripGroupedBySite[siteKey];
-
-                            return (
-                              <div key={siteKey || sIdx} style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '13px 15px' }}>
-                                {/* Site Header */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px', marginBottom: '8px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ color: '#0f172a', fontSize: '12px', fontWeight: '800', background: '#f1f5f9', border: '1.5px solid #cbd5e1', padding: '3px 8px', borderRadius: '6px' }}>
-                                      {siteKey}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {/* Task Items under this Site */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                  {siteLogs.map((item, tIdx) => (
-                                    <div key={item.id || tIdx} style={{ paddingLeft: '4px' }}>
-                                      <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
-                                        <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{tIdx + 1}.</span>
-                                        <span>{item.title}</span>
-                                        {item.isShared && (
-                                          <span style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '3px',
-                                            padding: '2px 7px',
-                                            borderRadius: '4px',
-                                            fontSize: '11px',
-                                            fontWeight: '800',
-                                            background: '#ecfdf5',
-                                            color: '#047857',
-                                            border: '1.5px solid #6ee7b7'
-                                          }}>
-                                            <Share2 size={11} color="#059669" />
-                                            공유중
-                                          </span>
-                                        )}
-                                      </div>
-                                      {item.details && (
-                                        <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '5px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                          {item.details}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Section: 내일(익일) 예정 업무 박스 (상시 노출) */}
-                    {!isFuture && (
-                      <div style={{ paddingLeft: '6px', marginTop: '6px' }}>
-                        <div style={{
-                          padding: '13px 15px',
-                          borderRadius: '10px',
-                          background: '#f8fafc',
-                          border: '1.5px solid #cbd5e1',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '10px'
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: '800', color: '#0f172a' }}>
-                              <span>📅 {isToday ? `내일 예정 업무` : `익일 예정 업무`}</span>
-                              {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length > 0 && (
-                                <span style={{
-                                  background: '#1e3a8a',
-                                  color: '#ffffff',
-                                  padding: '1px 7px',
-                                  borderRadius: '10px',
-                                  fontSize: '11px',
-                                  fontWeight: '800'
-                                }}>
+                          {/* 익일 예정 업무 미리보기 안내 */}
+                          {!isFuture && (isToday ? tomorrowOwnLogs : nextDayOwnLogs).length > 0 && (
+                            <div style={{
+                              marginTop: '6px',
+                              paddingTop: '9px',
+                              borderTop: '1.5px dashed #cbd5e1',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '6px'
+                            }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#475569', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <span>📅 {isToday ? '내일' : '익일'} 예정 업무</span>
+                                <span style={{ background: '#1e3a8a', color: '#ffffff', padding: '0 6px', borderRadius: '8px', fontSize: '10px' }}>
                                   {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length}건
                                 </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).length === 0 ? (
-                            <div style={{ fontSize: '13px', color: '#64748b', padding: '4px 2px', fontWeight: '600' }}>
-                              - {isToday ? '내일' : '익일'} 등록된 예정 업무가 없습니다.
-                            </div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              </div>
                               {(isToday ? tomorrowOwnLogs : nextDayOwnLogs).map((tl, ti) => {
                                 const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
                                 const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
                                 return (
-                                  <div key={tl.id || ti} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                    <div style={{ fontSize: '13.5px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                      <span style={{ color: '#0f172a', fontWeight: '800' }}>{ti + 1}.</span>
-                                      <span style={{ fontWeight: '800' }}>{tl.title}</span>
-                                      {isTrip && (
-                                        <>
-                                          <span style={{
-                                            padding: '1px 6px',
-                                            borderRadius: '4px',
-                                            fontSize: '10.5px',
-                                            fontWeight: '800',
-                                            background: '#ede9fe',
-                                            color: '#6d28d9',
-                                            border: '1px solid #ddd6fe'
-                                          }}>
-                                            출장
-                                          </span>
-                                          <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                                            {tl.siteName || ''}
-                                            {siteLoc ? ` (${siteLoc})` : ''}
-                                          </span>
-                                        </>
-                                      )}
-                                    </div>
-                                    {tl.details && tl.details.trim() && (
-                                      <div style={{ fontSize: '12.5px', color: '#334155', paddingLeft: '18px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
-                                        {tl.details}
-                                      </div>
+                                  <div key={tl.id || ti} style={{ fontSize: '12.5px', color: '#334155', paddingLeft: '6px', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: '800' }}>•</span>
+                                    <span style={{ fontWeight: '700' }}>{tl.title}</span>
+                                    {isTrip && (
+                                      <span style={{ fontSize: '11px', color: '#6d28d9', fontWeight: '700' }}>
+                                        [{tl.siteName || '출장'}]
+                                      </span>
                                     )}
                                   </div>
                                 );
@@ -1915,191 +2288,191 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* RIGHT: 공유받은 업무 */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      gap: '8px',
-                      borderLeft: '3px solid #2563eb',
-                      paddingLeft: '8px'
-                    }}>
-                      <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <Share2 size={16} color="#2563eb" />
-                        <span>공유받은 업무 ({Object.keys(dailySharedGroupedByAuthor).length}건)</span>
-                      </div>
-                      {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleAllDailySharedCards(true)}
-                            style={{
-                              background: '#f8fafc',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '5px',
-                              padding: '3px 7px',
-                              fontSize: '11px',
-                              fontWeight: '700',
-                              color: '#475569',
-                              cursor: 'pointer'
-                            }}
-                            title="모든 공유 카드 접기"
-                          >
-                            모두 접기
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleToggleAllDailySharedCards(false)}
-                            style={{
-                              background: '#f8fafc',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '5px',
-                              padding: '3px 7px',
-                              fontSize: '11px',
-                              fontWeight: '700',
-                              color: '#0f172a',
-                              cursor: 'pointer'
-                            }}
-                            title="모든 공유 카드 펼치기"
-                          >
-                            모두 펼치기
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {dailySharedReceivedLogs.length === 0 ? (
-                      <div style={{ paddingLeft: '4px' }}>
-                        <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                          - 공유받은 내역 없음
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px' }}>
-                        {Object.keys(dailySharedGroupedByAuthor).map((authorKey, gIdx) => {
-                          const group = dailySharedGroupedByAuthor[authorKey];
-                          const cardKey = authorKey || `daily-shared-${gIdx}`;
-                          const isCollapsed = collapsedDailySharedCards[cardKey] !== false;
-
-                          return (
-                            <div
-                              key={cardKey}
-                              style={{
-                                background: '#f8fafc',
-                                border: '1.5px solid #cbd5e1',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: isCollapsed ? '0px' : '10px',
-                                transition: 'all 0.2s ease'
-                              }}
-                            >
-                              {/* Author Header (클릭 시 접기/펼치기 토글) */}
-                              <div
-                                onClick={() => toggleDailySharedCard(cardKey)}
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                  gap: '8px',
-                                  borderBottom: isCollapsed ? 'none' : '1.5px solid #e2e8f0',
-                                  paddingBottom: isCollapsed ? '0px' : '8px',
-                                  cursor: 'pointer',
-                                  userSelect: 'none'
-                                }}
-                                title={isCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                  <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                    👤 공유자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{group.authorLabel}</strong>
-                                  </span>
-                                </div>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{
-                                    fontSize: '11.5px',
-                                    fontWeight: '800',
-                                    background: isCollapsed ? '#ffffff' : '#f1f5f9',
-                                    color: '#0f172a',
-                                    border: '1px solid #cbd5e1',
-                                    padding: '3px 8px',
-                                    borderRadius: '6px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                  }}>
-                                    {isCollapsed ? (
-                                      <><ChevronDown size={14} /></>
-                                    ) : (
-                                      <><ChevronUp size={14} /></>
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Items under this Author (펼쳐졌을 때만 렌더링) */}
-                              {!isCollapsed && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '4px' }}>
-                                  {[...group.items]
-                                    .sort((a, b) => {
-                                      const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
-                                      const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
-                                      if (isATrip && !isBTrip) return -1; // 출장 업무 최상단 정렬
-                                      if (!isATrip && isBTrip) return 1;
-                                      return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
-                                    })
-                                    .map((item, idx) => {
-                                      const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
-                                      return (
-                                        <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
-                                          <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
-                                            <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
-                                            <span>{item.title}</span>
-                                            {(item.category === '출장 업무' || item.siteName || siteLoc) && (
-                                              <>
-                                                <span style={{
-                                                  padding: '1px 6px',
-                                                  borderRadius: '4px',
-                                                  fontSize: '10.5px',
-                                                  fontWeight: '800',
-                                                  background: '#ede9fe',
-                                                  color: '#6d28d9',
-                                                  border: '1px solid #ddd6fe'
-                                                }}>
-                                                  출장
-                                                </span>
-                                                <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                                                  {item.siteName || ''}
-                                                  {siteLoc ? ` (${siteLoc})` : ''}
-                                                </span>
-                                              </>
-                                            )}
-                                          </div>
-                                          {item.details && (
-                                            <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                              {item.details}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      )
                     )}
                   </div>
                 </div>
-              </>
-            )}
+
+                {/* SECTION 2: 공유받은 업무 (기존 공유자별 카드 묶음) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '8px',
+                    borderLeft: '3px solid #2563eb',
+                    paddingLeft: '8px'
+                  }}>
+                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Share2 size={16} color="#2563eb" />
+                      <span>공유받은 업무 ({Object.keys(dailySharedGroupedByAuthor).length}건)</span>
+                    </div>
+                    {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAllDailySharedCards(true)}
+                          style={{
+                            background: '#f8fafc',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '5px',
+                            padding: '3px 7px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: '#475569',
+                            cursor: 'pointer'
+                          }}
+                          title="모든 공유 카드 접기"
+                        >
+                          모두 접기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAllDailySharedCards(false)}
+                          style={{
+                            background: '#f8fafc',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '5px',
+                            padding: '3px 7px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: '#0f172a',
+                            cursor: 'pointer'
+                          }}
+                          title="모든 공유 카드 펼치기"
+                        >
+                          모두 펼치기
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {dailySharedReceivedLogs.length === 0 ? (
+                    <div style={{ paddingLeft: '4px' }}>
+                      <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                        - 공유받은 내역 없음
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px' }}>
+                      {Object.keys(dailySharedGroupedByAuthor).map((authorKey, gIdx) => {
+                        const group = dailySharedGroupedByAuthor[authorKey];
+                        const cardKey = authorKey || `daily-shared-${gIdx}`;
+                        const isCollapsed = collapsedDailySharedCards[cardKey] !== false;
+
+                        return (
+                          <div
+                            key={cardKey}
+                            style={{
+                              background: '#f8fafc',
+                              border: '1.5px solid #cbd5e1',
+                              borderRadius: '10px',
+                              padding: '12px 14px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: isCollapsed ? '0px' : '10px',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            {/* Author Header (클릭 시 접기/펼치기 토글) */}
+                            <div
+                              onClick={() => toggleDailySharedCard(cardKey)}
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '8px',
+                                borderBottom: isCollapsed ? 'none' : '1.5px solid #e2e8f0',
+                                paddingBottom: isCollapsed ? '0px' : '8px',
+                                cursor: 'pointer',
+                                userSelect: 'none'
+                              }}
+                              title={isCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                  👤 공유자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{group.authorLabel}</strong>
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{
+                                  fontSize: '11.5px',
+                                  fontWeight: '800',
+                                  background: isCollapsed ? '#ffffff' : '#f1f5f9',
+                                  color: '#0f172a',
+                                  border: '1px solid #cbd5e1',
+                                  padding: '3px 8px',
+                                  borderRadius: '6px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  {isCollapsed ? (
+                                    <><ChevronDown size={14} /></>
+                                  ) : (
+                                    <><ChevronUp size={14} /></>
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Items under this Author (펼쳐졌을 때만 렌더링) */}
+                            {!isCollapsed && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '4px' }}>
+                                {[...group.items]
+                                  .sort((a, b) => {
+                                    const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
+                                    const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
+                                    if (isATrip && !isBTrip) return -1; // 출장 업무 최상단 정렬
+                                    if (!isATrip && isBTrip) return 1;
+                                    return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+                                  })
+                                  .map((item, idx) => {
+                                    const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+                                    return (
+                                      <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
+                                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
+                                          <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
+                                          <span>{item.title}</span>
+                                          {(item.category === '출장 업무' || item.siteName || siteLoc) && (
+                                            <>
+                                              <span style={{
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                fontSize: '10.5px',
+                                                fontWeight: '800',
+                                                background: '#ede9fe',
+                                                color: '#6d28d9',
+                                                border: '1px solid #ddd6fe'
+                                              }}>
+                                                출장
+                                              </span>
+                                              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
+                                                {item.siteName || ''}
+                                                {siteLoc ? ` (${siteLoc})` : ''}
+                                              </span>
+                                            </>
+                                          )}
+                                        </div>
+                                        {item.details && (
+                                          <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                            {item.details}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
