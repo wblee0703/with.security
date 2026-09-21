@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS edu_log (
   category VARCHAR(100) DEFAULT '법정' COMMENT '교육 구분 (SKHynix, Samsung, LGD, 법정, 기타 등)',
   title VARCHAR(200) NOT NULL COMMENT '교육 과정명',
   completion_date DATE NOT NULL COMMENT '교육 수료일 (이수일)',
+  validity_period VARCHAR(50) DEFAULT '12' COMMENT '유효기간 (6, 12, 24, 36, none)',
   expiry_date DATE NOT NULL COMMENT '교육 만료일',
   memo VARCHAR(255) DEFAULT '' COMMENT '비고 / 수료증 번호 / 메모',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

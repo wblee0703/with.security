@@ -3870,11 +3870,14 @@ class SecurityDatabase {
       if (String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
 
       const expDate = normalizeKstDate(item.expiryDate || item.expiry_date || '');
+      const vPeriod = item.validityPeriod || item.validity_period || '12';
       const normalizedItem = {
         ...item,
         title,
         completionDate: compDate,
-        expiryDate: expDate
+        expiryDate: expDate,
+        validityPeriod: vPeriod,
+        validity_period: vPeriod
       };
 
       const uKey = String(item.userId || item.name || '').trim().toLowerCase();
@@ -3950,6 +3953,7 @@ class SecurityDatabase {
             }
             const normComp = normalizeKstDate(item.completion_date || item.completionDate || '');
             const normExp = normalizeKstDate(item.expiry_date || item.expiryDate || '');
+            const vPeriod = item.validity_period || item.validityPeriod || '12';
             const normalized = {
               id: targetId,
               eduId: targetId,
@@ -3962,6 +3966,8 @@ class SecurityDatabase {
               title: item.title || '',
               completionDate: normComp,
               expiryDate: normExp,
+              validityPeriod: vPeriod,
+              validity_period: vPeriod,
               memo: item.memo || ''
             };
             await this.putItem('edu_logs', normalized).catch(() => { });
@@ -3984,6 +3990,7 @@ class SecurityDatabase {
     }
     const normComp = normalizeKstDate(eduItem.completionDate || eduItem.completion_date || '');
     const normExp = normalizeKstDate(eduItem.expiryDate || eduItem.expiry_date || '');
+    const vPeriod = eduItem.validityPeriod || eduItem.validity_period || '12';
     const normalized = {
       id: targetId,
       eduId: targetId,
@@ -3996,6 +4003,8 @@ class SecurityDatabase {
       title: eduItem.title || '',
       completionDate: normComp,
       expiryDate: normExp,
+      validityPeriod: vPeriod,
+      validity_period: vPeriod,
       memo: eduItem.memo || ''
     };
 

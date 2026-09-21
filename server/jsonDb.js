@@ -573,6 +573,7 @@ class JsonDatabaseManager {
       const comp = formatJsonDbKstDate(e.completion_date || e.completionDate);
       const exp = formatJsonDbKstDate(e.expiry_date || e.expiryDate);
       if (!tit || !comp) return;
+      const vPeriod = e.validity_period || e.validityPeriod || '12';
       const key = `${u}__${tit}__${comp}`;
       if (!dedupMap.has(key)) {
         dedupMap.set(key, {
@@ -580,7 +581,9 @@ class JsonDatabaseManager {
           completion_date: comp,
           completionDate: comp,
           expiry_date: exp,
-          expiryDate: exp
+          expiryDate: exp,
+          validityPeriod: vPeriod,
+          validity_period: vPeriod
         });
       }
     });
@@ -598,12 +601,15 @@ class JsonDatabaseManager {
     const list = this.cache.edu_logs || [];
     const item = list.find(e => String(e.edu_id || e.id) === String(id)) || null;
     if (!item) return null;
+    const vPeriod = item.validity_period || item.validityPeriod || '12';
     return {
       ...item,
       completion_date: formatJsonDbKstDate(item.completion_date || item.completionDate),
       completionDate: formatJsonDbKstDate(item.completion_date || item.completionDate),
       expiry_date: formatJsonDbKstDate(item.expiry_date || item.expiryDate),
-      expiryDate: formatJsonDbKstDate(item.expiry_date || item.expiryDate)
+      expiryDate: formatJsonDbKstDate(item.expiry_date || item.expiryDate),
+      validityPeriod: vPeriod,
+      validity_period: vPeriod
     };
   }
 
@@ -613,6 +619,7 @@ class JsonDatabaseManager {
     const now = new Date().toISOString();
     const comp = formatJsonDbKstDate(data.completion_date || data.completionDate);
     const exp = formatJsonDbKstDate(data.expiry_date || data.expiryDate);
+    const vPeriod = String(data.validity_period || data.validityPeriod || '12');
 
     const eduObj = {
       ...data,
@@ -622,6 +629,8 @@ class JsonDatabaseManager {
       completionDate: comp,
       expiry_date: exp,
       expiryDate: exp,
+      validity_period: vPeriod,
+      validityPeriod: vPeriod,
       created_at: data.created_at || now,
       updated_at: now
     };

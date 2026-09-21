@@ -61,7 +61,7 @@ const SCHEMAS = {
   // 6. 교육 수료 관리 (MySQL: edu_log)
   edu_logs: [
     'id', 'edu_id', 'user_id', 'name', 'division', 'team', 'rank', 'category',
-    'title', 'completion_date', 'expiry_date', 'memo', 'created_at'
+    'title', 'completion_date', 'validity_period', 'expiry_date', 'memo', 'created_at'
   ],
   // 7. 부가 테이블 (선택 관리)
   checklists: [
@@ -1387,6 +1387,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       category: obj.category || '법정',
       title: obj.title || '',
       completion_date: formatKstDate(obj.completion_date || obj.completionDate || obj.date, true) || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd'),
+      validity_period: String(obj.validity_period || obj.validityPeriod || '12'),
       expiry_date: formatKstDate(obj.expiry_date || obj.expiryDate, true),
       memo: obj.memo || obj.notes || '',
       created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')

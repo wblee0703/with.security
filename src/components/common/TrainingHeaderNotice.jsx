@@ -19,16 +19,24 @@ const getCategoryBadgeStyle = (category) => {
   }
 };
 
-const getTrainingStatus = (rawExpiryStr) => {
+const getTrainingStatus = (rawExpiryStr, validityPeriod) => {
+  if (validityPeriod === 'none' || rawExpiryStr === 'none') {
+    return { text: '유효기간 없음', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', diffDays: 99999, isPermanent: true };
+  }
   const expiryStr = normalizeKstDate(rawExpiryStr);
-  if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
+  if (!expiryStr) {
+    if (validityPeriod === 'none') {
+      return { text: '유효기간 없음', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', diffDays: 99999, isPermanent: true };
+    }
+    return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 99999 };
+  }
   const parts = expiryStr.split('-');
-  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
+  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 99999 };
   const exp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
   exp.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
+  if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 99999 };
   const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) {
     return { text: `만료됨 (D+${Math.abs(diffDays)}일)`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true, diffDays };
@@ -78,8 +86,12 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
   // Calculate statuses and sort by closest expiry date first
   const evaluatedTrainings = allTrainings.map(item => ({
     ...item,
-    status: getTrainingStatus(item.expiryDate)
+    status: getTrainingStatus(item.expiryDate, item.validityPeriod || item.validity_period)
   })).sort((a, b) => {
+    const isNoneA = a.validityPeriod === 'none' || a.validity_period === 'none' || (!a.expiryDate && !a.expiry_date);
+    const isNoneB = b.validityPeriod === 'none' || b.validity_period === 'none' || (!b.expiryDate && !b.expiry_date);
+    if (!isNoneA && isNoneB) return -1;
+    if (isNoneA && !isNoneB) return 1;
     const diffA = typeof a.status?.diffDays === 'number' ? a.status.diffDays : 99999;
     const diffB = typeof b.status?.diffDays === 'number' ? b.status.diffDays : 99999;
     if (diffA !== diffB) return diffA - diffB;
@@ -425,7 +437,7 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
                           <Calendar size={11} /> 수료: {normalizeKstDate(item.completionDate) || '-'}
                         </span>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: st.color, fontWeight: '700' }}>
-                          <Clock size={11} /> 만료: {normalizeKstDate(item.expiryDate) || '-'}
+                          <Clock size={11} /> 만료: {item.validityPeriod === 'none' || item.validity_period === 'none' || !item.expiryDate ? '유효기간 없음' : (normalizeKstDate(item.expiryDate) || '-')}
                         </span>
                       </div>
                     </div>

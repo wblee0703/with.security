@@ -25,28 +25,68 @@ const getCategoryBadgeStyle = (category) => {
   }
 };
 
-export const calculateOneYearLater = (dateStr) => {
-  if (!dateStr) return '';
-  const clean = normalizeKstDate(dateStr) || String(dateStr).trim();
+export const calculateExpiryByMonths = (completionDateStr, months) => {
+  if (!completionDateStr) return '';
+  if (!months || months === 'none' || months === 0 || months === '0') return '';
+  const clean = normalizeKstDate(completionDateStr) || String(completionDateStr).trim();
   const parts = clean.split('-');
   if (parts.length !== 3) return '';
   const y = parseInt(parts[0], 10);
   const m = parseInt(parts[1], 10);
   const d = parseInt(parts[2], 10);
   if (isNaN(y) || isNaN(m) || isNaN(d)) return '';
-  // 이수일 기준 1년 뒤 전날 (안전교육 표준 유효기간: 1년)
-  const target = new Date(y + 1, m - 1, d - 1);
+  const mCount = parseInt(months, 10);
+  if (isNaN(mCount) || mCount <= 0) return '';
+  // 수료일 기준 N개월 뒤 전날 (안전교육 유효기간 표준: 만 N개월 되는 날의 전날)
+  const target = new Date(y, m - 1 + mCount, d - 1);
   const resY = target.getFullYear();
   const resM = String(target.getMonth() + 1).padStart(2, '0');
   const resD = String(target.getDate()).padStart(2, '0');
   return `${resY}-${resM}-${resD}`;
 };
 
-const getTrainingStatus = (rawExpiryStr) => {
+export const calculateOneYearLater = (dateStr) => {
+  return calculateExpiryByMonths(dateStr, 12);
+};
+
+export const inferValidityPeriod = (compStr, expStr) => {
+  if (!expStr || expStr === 'none') return 'none';
+  if (!compStr) return '12';
+  const c = normalizeKstDate(compStr);
+  const e = normalizeKstDate(expStr);
+  if (!c || !e) return '12';
+  const cParts = c.split('-').map(Number);
+  const eParts = e.split('-').map(Number);
+  if (cParts.length !== 3 || eParts.length !== 3) return '12';
+  const approxMonths = (eParts[0] - cParts[0]) * 12 + (eParts[1] - cParts[1]);
+  if (approxMonths >= 30) return '36';
+  if (approxMonths >= 18) return '24';
+  if (approxMonths >= 9) return '12';
+  if (approxMonths >= 4) return '6';
+  return '12';
+};
+
+export const VALIDITY_PERIOD_OPTIONS = [
+  { value: '6', label: '6개월' },
+  { value: '12', label: '12개월' },
+  { value: '24', label: '24개월' },
+  { value: '36', label: '36개월' },
+  { value: 'none', label: '없음' }
+];
+
+const getTrainingStatus = (rawExpiryStr, validityPeriod) => {
+  if (validityPeriod === 'none' || rawExpiryStr === 'none') {
+    return { text: '유효기간 없음', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', isPermanent: true, diffDays: 99999 };
+  }
   const expiryStr = normalizeKstDate(rawExpiryStr);
-  if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  if (!expiryStr) {
+    if (validityPeriod === 'none') {
+      return { text: '유효기간 없음', color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', isPermanent: true, diffDays: 99999 };
+    }
+    return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 99999 };
+  }
   const parts = expiryStr.split('-');
-  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 99999 };
   const exp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
   exp.setHours(0, 0, 0, 0);
   const today = new Date();
@@ -67,6 +107,10 @@ const getTrainingStatus = (rawExpiryStr) => {
 
 export const sortTrainingsByExpiry = (list = []) => {
   return [...list].sort((a, b) => {
+    const isNoneA = a.validityPeriod === 'none' || a.validity_period === 'none' || (!a.expiryDate && !a.expiry_date);
+    const isNoneB = b.validityPeriod === 'none' || b.validity_period === 'none' || (!b.expiryDate && !b.expiry_date);
+    if (!isNoneA && isNoneB) return -1;
+    if (isNoneA && !isNoneB) return 1;
     const expA = normalizeKstDate(a.expiryDate || a.expiry_date || '');
     const expB = normalizeKstDate(b.expiryDate || b.expiry_date || '');
     if (expA && !expB) return -1;
@@ -133,6 +177,31 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   // App Update Notice & Cache Reload States
   const [isNoticeAdminModalOpen, setIsNoticeAdminModalOpen] = useState(false);
   const [isReloadingApp, setIsReloadingApp] = useState(false);
+
+  // Platform & Mobile/App Mode Detection
+  const [isMobileMode, setIsMobileMode] = useState(() => {
+    if (Capacitor.isNativePlatform()) return true;
+    if (typeof window !== 'undefined') {
+      return window.innerWidth <= 768 || Boolean(document.querySelector('.mobile-shell-wrapper'));
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleCheckMobile = () => {
+      if (Capacitor.isNativePlatform()) {
+        setIsMobileMode(true);
+        return;
+      }
+      const isShell = Boolean(document.querySelector('.mobile-shell-wrapper'));
+      const isNarrow = typeof window !== 'undefined' && window.innerWidth <= 768;
+      setIsMobileMode(isShell || isNarrow);
+    };
+
+    handleCheckMobile();
+    window.addEventListener('resize', handleCheckMobile);
+    return () => window.removeEventListener('resize', handleCheckMobile);
+  }, []);
 
   const isDeveloper = Boolean(
     currentUser && (
@@ -214,9 +283,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     customCategory: '',
     title: '',
     completionDate: '',
+    validityPeriod: '12',
     expiryDate: '',
     memo: ''
   });
+
+  // Multi-Training Renewal Modal State
+  const [renewTargetItem, setRenewTargetItem] = useState(null);
+  const [renewForm, setRenewForm] = useState({
+    renewalDate: '',
+    validityPeriod: '12',
+    expiryDate: '',
+    memo: ''
+  });
+  useModalBack(Boolean(renewTargetItem), () => setRenewTargetItem(null), 'training-renew-modal');
 
   // Load active user profile & server URL on mount
   useEffect(() => {
@@ -241,7 +321,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             const comp = normalizeKstDate(item.completionDate || item.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
             if (String(item.id || item.eduId || '').startsWith('EDU-INIT-') || String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
-            const exp = normalizeKstDate(item.expiryDate || item.expiry_date || '') || calculateOneYearLater(comp);
+            const rawExp = item.expiryDate || item.expiry_date || '';
+            const exp = normalizeKstDate(rawExp);
+            const vPeriod = item.validityPeriod || item.validity_period || (rawExp === 'none' || item.validityPeriod === 'none' ? 'none' : inferValidityPeriod(comp, exp));
+            const finalExp = vPeriod === 'none' ? '' : (exp || calculateExpiryByMonths(comp, vPeriod));
             const key = tit.toLowerCase();
             const existing = mergedMap.get(key);
 
@@ -250,7 +333,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 ...item,
                 title: tit,
                 completionDate: comp,
-                expiryDate: exp,
+                validityPeriod: vPeriod,
+                validity_period: vPeriod,
+                expiryDate: finalExp,
                 id: item.id || item.eduId || `EDU-${Date.now()}`,
                 eduId: item.eduId || item.id || `EDU-${Date.now()}`
               });
@@ -258,14 +343,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
               // 동일 과정명인 경우: 더 최신 수료일(comp) 또는 더 늦은 만료일(exp)을 가진 항목으로 최신화
               const existingComp = existing.completionDate || '';
               const existingExp = existing.expiryDate || '';
-              const isNewer = comp > existingComp || (comp === existingComp && exp >= existingExp);
+              const isNewer = comp > existingComp || (comp === existingComp && finalExp >= existingExp);
               if (isNewer) {
                 mergedMap.set(key, {
                   ...existing,
                   ...item,
                   title: tit,
                   completionDate: comp,
-                  expiryDate: exp,
+                  validityPeriod: vPeriod,
+                  validity_period: vPeriod,
+                  expiryDate: finalExp,
                   id: item.id || existing.id,
                   eduId: item.eduId || existing.eduId
                 });
@@ -314,12 +401,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const handleOpenAddTraining = () => {
     const today = new Date();
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const expStr = calculateOneYearLater(todayStr);
+    const expStr = calculateExpiryByMonths(todayStr, 12);
     setTrainingForm({
       category: '법정',
       customCategory: '',
       title: '',
       completionDate: todayStr,
+      validityPeriod: '12',
       expiryDate: expStr,
       memo: ''
     });
@@ -337,12 +425,18 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     const targetId = item.id || item.eduId || item.edu_id || `EDU-${Date.now()}`;
     item.id = targetId;
     setEditingTrainingOriginal({ ...item });
+    const compDate = item.completionDate || '';
+    const expDate = normalizeKstDate(item.expiryDate || item.expiry_date || '');
+    const vPeriod = item.validityPeriod || item.validity_period || (item.validityPeriod === 'none' ? 'none' : inferValidityPeriod(compDate, expDate));
+    const calculatedExp = vPeriod === 'none' ? '' : (expDate || calculateExpiryByMonths(compDate, vPeriod));
+
     setTrainingForm({
       category: isCustom ? '기타 (직접입력)' : item.category,
       customCategory: isCustom ? (item.customCategory || item.category) : '',
       title: item.title || '',
-      completionDate: item.completionDate || '',
-      expiryDate: item.expiryDate || calculateOneYearLater(item.completionDate),
+      completionDate: compDate,
+      validityPeriod: vPeriod,
+      expiryDate: calculatedExp,
       memo: item.memo || ''
     });
     setEditingTrainingId(targetId);
@@ -372,8 +466,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       ? (trainingForm.customCategory.trim() || '기타')
       : trainingForm.category;
 
+    const isNonePeriod = trainingForm.validityPeriod === 'none';
     const cleanComp = normalizeKstDate(trainingForm.completionDate);
-    const cleanExp = normalizeKstDate(trainingForm.expiryDate) || calculateOneYearLater(cleanComp);
+    const cleanExp = isNonePeriod ? '' : (normalizeKstDate(trainingForm.expiryDate) || calculateExpiryByMonths(cleanComp, trainingForm.validityPeriod || 12));
     const normalizedTitle = trainingForm.title.trim();
 
     let updatedList = [];
@@ -396,7 +491,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         customCategory: trainingForm.customCategory,
         title: normalizedTitle,
         completionDate: cleanComp,
+        validityPeriod: trainingForm.validityPeriod || '12',
+        validity_period: trainingForm.validityPeriod || '12',
         expiryDate: cleanExp,
+        expiry_date: cleanExp,
         memo: trainingForm.memo.trim(),
         updatedAt: new Date().toISOString()
       };
@@ -444,7 +542,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         customCategory: trainingForm.customCategory,
         title: normalizedTitle,
         completionDate: cleanComp,
+        validityPeriod: trainingForm.validityPeriod || '12',
+        validity_period: trainingForm.validityPeriod || '12',
         expiryDate: cleanExp,
+        expiry_date: cleanExp,
         memo: trainingForm.memo.trim(),
         createdAt: new Date().toISOString()
       };
@@ -491,6 +592,102 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     if (onTriggerToast) {
       onTriggerToast(editingTrainingId ? '교육 이수 정보가 수정되었습니다.' : '교육 이수가 성공적으로 등록되었습니다.', 'success');
+    }
+  };
+
+  // --- Education Renewal Handlers ---
+  const handleOpenRenewTraining = (item) => {
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const vPeriod = item.validityPeriod || item.validity_period || (item.validityPeriod === 'none' ? 'none' : inferValidityPeriod(item.completionDate, item.expiryDate)) || '12';
+    const newExp = vPeriod === 'none' ? '' : calculateExpiryByMonths(todayStr, vPeriod);
+
+    setRenewTargetItem(item);
+    setRenewForm({
+      renewalDate: todayStr,
+      validityPeriod: vPeriod,
+      expiryDate: newExp,
+      memo: item.memo || ''
+    });
+  };
+
+  const handleRenewDateChange = (newDate) => {
+    const exp = renewForm.validityPeriod === 'none' ? '' : calculateExpiryByMonths(newDate, renewForm.validityPeriod || '12');
+    setRenewForm(prev => ({
+      ...prev,
+      renewalDate: newDate,
+      expiryDate: exp
+    }));
+  };
+
+  const handleRenewValidityPeriodChange = (val) => {
+    const exp = val === 'none' ? '' : calculateExpiryByMonths(renewForm.renewalDate, val);
+    setRenewForm(prev => ({
+      ...prev,
+      validityPeriod: val,
+      expiryDate: exp
+    }));
+  };
+
+  const handleSaveRenewTraining = async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!renewTargetItem) return;
+    if (!renewForm.renewalDate) {
+      if (onTriggerToast) onTriggerToast('갱신일(재 수료일)을 선택해 주세요.', 'warning');
+      return;
+    }
+
+    const cleanRenewComp = normalizeKstDate(renewForm.renewalDate);
+    const cleanRenewExp = renewForm.validityPeriod === 'none' ? '' : (normalizeKstDate(renewForm.expiryDate) || calculateExpiryByMonths(cleanRenewComp, renewForm.validityPeriod || '12'));
+
+    const targetId = renewTargetItem.id || renewTargetItem.eduId;
+    const targetTitle = (renewTargetItem.title || '').trim().toLowerCase();
+
+    const updatedItem = {
+      ...renewTargetItem,
+      id: targetId,
+      eduId: targetId,
+      completionDate: cleanRenewComp,
+      completion_date: cleanRenewComp,
+      validityPeriod: renewForm.validityPeriod,
+      validity_period: renewForm.validityPeriod,
+      expiryDate: cleanRenewExp,
+      expiry_date: cleanRenewExp,
+      memo: (renewForm.memo || '').trim(),
+      updatedAt: new Date().toISOString()
+    };
+
+    let updatedList = trainings.map(t => {
+      const tId = t.id || t.eduId;
+      const tTitle = (t.title || '').trim().toLowerCase();
+      if ((targetId && tId === targetId) || (targetTitle && tTitle === targetTitle)) {
+        return updatedItem;
+      }
+      return t;
+    });
+
+    updatedList = sortTrainingsByExpiry(updatedList);
+    setTrainings(updatedList);
+    setRenewTargetItem(null);
+
+    await dbService.saveEduLog(updatedItem);
+
+    const updatedUser = {
+      ...currentUser,
+      trainings: updatedList,
+      educationDate: updatedList[0]?.completionDate || '',
+      educationExpiryDate: updatedList[0]?.expiryDate || '',
+      educationName: updatedList[0]?.title || ''
+    };
+    await dbService.saveUserProfile(updatedUser);
+    setCurrentUser(updatedUser);
+    setEditForm(updatedUser);
+
+    if (onTriggerToast) {
+      onTriggerToast(`'${renewTargetItem.title}' 교육이 [${cleanRenewComp}] 일자로 성공적으로 갱신되었습니다.`, 'success');
     }
   };
 
@@ -1992,82 +2189,127 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                        교육 수료일 (이수일) *
-                      </label>
-                      <input
-                        type="date"
-                        value={trainingForm.completionDate}
-                        onChange={(e) => {
-                          const newDate = e.target.value;
-                          const exp = calculateOneYearLater(newDate);
-                          setTrainingForm({
-                            ...trainingForm,
-                            completionDate: newDate,
-                            expiryDate: exp || trainingForm.expiryDate
-                          });
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '9px 12px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '12.5px',
-                          fontWeight: '700',
-                          outline: 'none',
-                          cursor: 'pointer'
-                        }}
-                      />
-                    </div>
-
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                          만료일 *
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          교육 수료일 (이수일) *
                         </label>
-                        {trainingForm.completionDate && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const exp = calculateOneYearLater(trainingForm.completionDate);
-                              if (exp) setTrainingForm({ ...trainingForm, expiryDate: exp });
-                            }}
+                        <input
+                          type="date"
+                          value={trainingForm.completionDate}
+                          onChange={(e) => {
+                            const newDate = e.target.value;
+                            const exp = trainingForm.validityPeriod === 'none' ? '' : calculateExpiryByMonths(newDate, trainingForm.validityPeriod || '12');
+                            setTrainingForm({
+                              ...trainingForm,
+                              completionDate: newDate,
+                              expiryDate: exp
+                            });
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#ffffff',
+                            border: '1.5px solid #cbd5e1',
+                            color: '#0f172a',
+                            fontSize: '12.5px',
+                            fontWeight: '700',
+                            outline: 'none',
+                            cursor: 'pointer'
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                          만료일 {trainingForm.validityPeriod !== 'none' && '*'}
+                        </label>
+                        {trainingForm.validityPeriod === 'none' ? (
+                          <div style={{
+                            padding: '9px 12px',
+                            borderRadius: '8px',
+                            background: '#ecfdf5',
+                            border: '1.5px solid #a7f3d0',
+                            color: '#047857',
+                            fontSize: '12.5px',
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            height: '38px',
+                            boxSizing: 'border-box'
+                          }}>
+                            <CheckCircle2 size={14} /> 유효기간 없음 (무기한)
+                          </div>
+                        ) : (
+                          <input
+                            type="date"
+                            value={trainingForm.expiryDate}
+                            onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
                             style={{
-                              fontSize: '11px',
+                              width: '100%',
+                              padding: '9px 12px',
+                              borderRadius: '8px',
+                              background: '#ffffff',
+                              border: '1.5px solid #cbd5e1',
+                              color: '#0f172a',
+                              fontSize: '12.5px',
                               fontWeight: '700',
-                              color: '#1e3a8a',
-                              background: '#eff6ff',
-                              border: '1px solid #bfdbfe',
-                              borderRadius: '4px',
-                              padding: '1px 6px',
+                              outline: 'none',
                               cursor: 'pointer'
                             }}
-                          >
-                            +1년
-                          </button>
+                          />
                         )}
                       </div>
-                      <input
-                        type="date"
-                        value={trainingForm.expiryDate}
-                        onChange={(e) => setTrainingForm({ ...trainingForm, expiryDate: e.target.value })}
-                        style={{
-                          width: '100%',
-                          padding: '9px 12px',
-                          borderRadius: '8px',
-                          background: '#ffffff',
-                          border: '1.5px solid #cbd5e1',
-                          color: '#0f172a',
-                          fontSize: '12.5px',
-                          fontWeight: '700',
-                          outline: 'none',
-                          cursor: 'pointer'
-                        }}
-                      />
+                    </div>
+
+                    {/* Validity Period Selector Pills */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                        유효기간 선택
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                        {[
+                          { value: '6', label: '6개월' },
+                          { value: '12', label: '12개월' },
+                          { value: '24', label: '24개월' },
+                          { value: '36', label: '36개월' },
+                          { value: 'none', label: '없음' }
+                        ].map(opt => {
+                          const isSelected = (trainingForm.validityPeriod || '12') === opt.value;
+                          return (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => {
+                                const exp = opt.value === 'none' ? '' : calculateExpiryByMonths(trainingForm.completionDate, opt.value);
+                                setTrainingForm({
+                                  ...trainingForm,
+                                  validityPeriod: opt.value,
+                                  expiryDate: exp
+                                });
+                              }}
+                              style={{
+                                padding: '7px 4px',
+                                borderRadius: '7px',
+                                border: isSelected ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
+                                background: isSelected ? '#1e3a8a' : '#ffffff',
+                                color: isSelected ? '#ffffff' : '#334155',
+                                fontSize: '11.5px',
+                                fontWeight: '800',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                textAlign: 'center',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
 
@@ -2198,7 +2440,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       const catStyle = getCategoryBadgeStyle(item.category);
                       const normExp = normalizeKstDate(item.expiryDate);
                       const normComp = normalizeKstDate(item.completionDate);
-                      const status = getTrainingStatus(normExp);
+                      const status = getTrainingStatus(normExp, item.validityPeriod || item.validity_period);
                       const isEditingThisItem = Boolean(editingTrainingId && (editingTrainingId === item.id || editingTrainingId === item.eduId));
 
                       return (
@@ -2295,7 +2537,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               </span>
                               <span style={{ color: '#475569', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                 <Clock size={12} color={status.color} />
-                                만료일: <strong style={{ color: status.color }}>{normExp || '-'}</strong>
+                                만료일: <strong style={{ color: status.color }}>
+                                  {item.validityPeriod === 'none' || item.validity_period === 'none' || !normExp ? '유효기간 없음' : normExp}
+                                </strong>
                               </span>
                             </div>
 
@@ -2322,10 +2566,11 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                 )}
                               </div>
 
-                              {/* Right: Fixed Edit & Delete Action Buttons */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: 'auto' }}>
+                              {/* Right: Fixed Edit, Renew & Delete Action Buttons (Icon-only on Mobile & Native App Mode) */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: isMobileMode ? '4px' : '6px', flexShrink: 0, marginLeft: 'auto' }}>
                                 <button
                                   type="button"
+                                  className="edu-action-btn"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -2335,29 +2580,69 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                     background: isEditingThisItem ? '#1e3a8a' : '#ffffff',
                                     border: isEditingThisItem ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
                                     color: isEditingThisItem ? '#ffffff' : '#1e3a8a',
-                                    padding: '5px 10px',
+                                    padding: isMobileMode ? '6px' : '5px 10px',
                                     minHeight: '30px',
-                                    minWidth: '54px',
-                                    borderRadius: '5px',
+                                    minWidth: isMobileMode ? '30px' : '54px',
+                                    height: isMobileMode ? '30px' : 'auto',
+                                    borderRadius: '6px',
                                     fontSize: '11.5px',
                                     fontWeight: '800',
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '4px',
+                                    gap: isMobileMode ? '0px' : '4px',
                                     touchAction: 'manipulation',
                                     userSelect: 'none',
                                     WebkitTapHighlightColor: 'transparent',
                                     boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
                                     transition: 'all 0.15s ease'
                                   }}
-                                  title="교육 이수 정보 수정"
+                                  title={isEditingThisItem ? '수정 중' : '교육 이수 정보 수정'}
+                                  aria-label={isEditingThisItem ? '수정 중' : '수정'}
                                 >
-                                  <Edit3 size={12} /> {isEditingThisItem ? '수정 중' : '수정'}
+                                  <Edit3 size={isMobileMode ? 14 : 12} />
+                                  {!isMobileMode && <span className="edu-action-btn-text">{isEditingThisItem ? '수정 중' : '수정'}</span>}
                                 </button>
                                 <button
                                   type="button"
+                                  className="edu-action-btn"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleOpenRenewTraining(item);
+                                  }}
+                                  style={{
+                                    background: '#eff6ff',
+                                    border: '1px solid #bfdbfe',
+                                    color: '#1d4ed8',
+                                    padding: isMobileMode ? '6px' : '5px 10px',
+                                    minHeight: '30px',
+                                    minWidth: isMobileMode ? '30px' : '54px',
+                                    height: isMobileMode ? '30px' : 'auto',
+                                    borderRadius: '6px',
+                                    fontSize: '11.5px',
+                                    fontWeight: '800',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: isMobileMode ? '0px' : '4px',
+                                    touchAction: 'manipulation',
+                                    userSelect: 'none',
+                                    WebkitTapHighlightColor: 'transparent',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                    transition: 'all 0.15s ease'
+                                  }}
+                                  title="교육 갱신 (재수료일 등록 및 만료일 갱신)"
+                                  aria-label="갱신"
+                                >
+                                  <RefreshCw size={isMobileMode ? 14 : 12} />
+                                  {!isMobileMode && <span className="edu-action-btn-text">갱신</span>}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="edu-action-btn"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -2367,17 +2652,18 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                     background: '#ffffff',
                                     border: '1px solid #fecaca',
                                     color: '#dc2626',
-                                    padding: '5px 10px',
+                                    padding: isMobileMode ? '6px' : '5px 10px',
                                     minHeight: '30px',
-                                    minWidth: '54px',
-                                    borderRadius: '5px',
+                                    minWidth: isMobileMode ? '30px' : '54px',
+                                    height: isMobileMode ? '30px' : 'auto',
+                                    borderRadius: '6px',
                                     fontSize: '11.5px',
                                     fontWeight: '800',
                                     cursor: 'pointer',
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    gap: '4px',
+                                    gap: isMobileMode ? '0px' : '4px',
                                     touchAction: 'manipulation',
                                     userSelect: 'none',
                                     WebkitTapHighlightColor: 'transparent',
@@ -2385,8 +2671,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                     transition: 'all 0.15s ease'
                                   }}
                                   title="교육 이수 내역 삭제"
+                                  aria-label="삭제"
                                 >
-                                  <Trash2 size={12} /> 삭제
+                                  <Trash2 size={isMobileMode ? 14 : 12} />
+                                  {!isMobileMode && <span className="edu-action-btn-text">삭제</span>}
                                 </button>
                               </div>
                             </div>
@@ -3741,6 +4029,281 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
             >
               확인
             </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Education Renewal Modal (createPortal) */}
+      {renewTargetItem && createPortal(
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1300,
+          padding: '16px'
+        }}>
+          <div className="glass-panel" style={{
+            width: '100%',
+            maxWidth: '430px',
+            borderRadius: '20px',
+            overflow: 'hidden',
+            border: '1.5px solid #3b82f6',
+            background: '#ffffff',
+            boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)',
+            padding: '22px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '10px',
+                  background: '#eff6ff',
+                  border: '1.5px solid #bfdbfe',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <RefreshCw size={19} color="#1d4ed8" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', margin: 0 }}>
+                    교육 갱신 (재수료일 등록)
+                  </h3>
+                  <p style={{ fontSize: '11.5px', color: '#64748b', margin: '3px 0 0 0' }}>
+                    재수료일과 유효기간을 설정하여 만료일을 갱신합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRenewTargetItem(null)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Target Education Summary Box */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1.5px solid #e2e8f0',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  padding: '2px 7px',
+                  borderRadius: '5px',
+                  background: getCategoryBadgeStyle(renewTargetItem.category).bg,
+                  border: `1px solid ${getCategoryBadgeStyle(renewTargetItem.category).border}`,
+                  color: getCategoryBadgeStyle(renewTargetItem.category).color
+                }}>
+                  {getCategoryBadgeStyle(renewTargetItem.category).label}
+                </span>
+                <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
+                  {renewTargetItem.title}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11.5px', color: '#64748b', flexWrap: 'wrap' }}>
+                <span>이전 수료: <strong>{normalizeKstDate(renewTargetItem.completionDate) || '-'}</strong></span>
+                <span>이전 만료: <strong>{renewTargetItem.validityPeriod === 'none' || renewTargetItem.validity_period === 'none' || !renewTargetItem.expiryDate ? '유효기간 없음' : (normalizeKstDate(renewTargetItem.expiryDate) || '-')}</strong></span>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSaveRenewTraining} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* 1. Renewal Date */}
+              <div>
+                <label style={{ fontSize: '12px', color: '#334155', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  갱신일 (재 수료일) *
+                </label>
+                <input
+                  type="date"
+                  autoFocus
+                  value={renewForm.renewalDate}
+                  onChange={(e) => handleRenewDateChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1.5px solid #3b82f6',
+                    color: '#0f172a',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    outline: 'none',
+                    cursor: 'pointer'
+                  }}
+                />
+              </div>
+
+              {/* 2. Validity Period Buttons */}
+              <div>
+                <label style={{ fontSize: '12px', color: '#334155', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  유효기간 선택 *
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                  {[
+                    { value: '6', label: '6개월' },
+                    { value: '12', label: '12개월' },
+                    { value: '24', label: '24개월' },
+                    { value: '36', label: '36개월' },
+                    { value: 'none', label: '없음' }
+                  ].map(opt => {
+                    const isSelected = (renewForm.validityPeriod || '12') === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => handleRenewValidityPeriodChange(opt.value)}
+                        style={{
+                          padding: '7px 4px',
+                          borderRadius: '7px',
+                          border: isSelected ? '1.5px solid #1e3a8a' : '1px solid #cbd5e1',
+                          background: isSelected ? '#1e3a8a' : '#ffffff',
+                          color: isSelected ? '#ffffff' : '#334155',
+                          fontSize: '11.5px',
+                          fontWeight: '800',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                          textAlign: 'center',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. New Calculated Expiry Date */}
+              <div>
+                <label style={{ fontSize: '12px', color: '#334155', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  갱신 후 새로운 만료일 *
+                </label>
+                {renewForm.validityPeriod === 'none' ? (
+                  <div style={{
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    background: '#ecfdf5',
+                    border: '1.5px solid #a7f3d0',
+                    color: '#047857',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    height: '38px',
+                    boxSizing: 'border-box'
+                  }}>
+                    <CheckCircle2 size={15} /> 유효기간 없음 (무기한)
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    value={renewForm.expiryDate}
+                    onChange={(e) => setRenewForm(prev => ({ ...prev, expiryDate: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      borderRadius: '8px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* 4. Memo */}
+              <div>
+                <label style={{ fontSize: '12px', color: '#334155', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
+                  갱신 메모 (선택 사항)
+                </label>
+                <input
+                  type="text"
+                  placeholder="예: 정기 보수교육 수료, 수료증 번호 등"
+                  value={renewForm.memo}
+                  onChange={(e) => setRenewForm(prev => ({ ...prev, memo: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
+                    fontSize: '12.5px',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setRenewTargetItem(null)}
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    color: '#475569',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    flex: 1.3,
+                    padding: '10px',
+                    borderRadius: '8px',
+                    background: '#1e3a8a',
+                    border: 'none',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    boxShadow: '0 3px 10px rgba(30, 58, 138, 0.25)'
+                  }}
+                >
+                  <CheckCircle2 size={16} /> 갱신 완료
+                </button>
+              </div>
+            </form>
           </div>
         </div>,
         document.body

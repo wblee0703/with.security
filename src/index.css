@@ -762,3 +762,30 @@ div[style*="position: 'fixed'"] {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+/* 교육 수료 관리 리스트 액션 버튼: 모바일 쉘 및 모바일 뷰포트(<=768px)에서 아이콘만 표기 */
+.mobile-shell-wrapper .edu-action-btn-text {
+  display: none !important;
+}
+
+.mobile-shell-wrapper .edu-action-btn {
+  padding: 6px !important;
+  min-width: 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+  gap: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .edu-action-btn-text {
+    display: none !important;
+  }
+
+  .edu-action-btn {
+    padding: 6px !important;
+    min-width: 30px !important;
+    width: 30px !important;
+    height: 30px !important;
+    gap: 0 !important;
+  }
+}

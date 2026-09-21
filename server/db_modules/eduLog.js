@@ -16,6 +16,7 @@ async function ensureEduLogTable() {
         category VARCHAR(100) DEFAULT '법정' COMMENT '교육 구분 (SKHynix, Samsung, LGD, 법정, 기타 등)',
         title VARCHAR(200) NOT NULL COMMENT '교육 과정명',
         completion_date DATE NOT NULL COMMENT '교육 수료일 (이수일)',
+        validity_period VARCHAR(50) DEFAULT '12' COMMENT '유효기간 (6, 12, 24, 36, none)',
         expiry_date DATE NOT NULL COMMENT '교육 만료일',
         memo VARCHAR(255) DEFAULT '' COMMENT '비고 / 수료증 번호 / 메모',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -23,6 +24,15 @@ async function ensureEduLogTable() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `;
     await query(sql);
+
+    // validity_period 컬럼 자동 마이그레이션
+    try {
+      const cols = await query("SHOW COLUMNS FROM edu_log LIKE 'validity_period'");
+      if (!cols || cols.length === 0) {
+        await query("ALTER TABLE edu_log ADD COLUMN validity_period VARCHAR(50) DEFAULT '12' COMMENT '유효기간' AFTER completion_date");
+      }
+    } catch (colErr) { }
+
     migrationDone = true;
   } catch (e) {
     // ignore
@@ -84,6 +94,7 @@ export async function createEduLog(data = {}) {
   const category = String(data.category || '법정');
   const title = String(data.title || '안전보건 교육');
   const completionDate = String(data.completionDate || data.completion_date || new Date().toISOString().split('T')[0]);
+  const validityPeriod = String(data.validity_period || data.validityPeriod || '12');
   const expiryDate = String(data.expiryDate || data.expiry_date || completionDate);
   const memo = String(data.memo || '');
 
@@ -113,18 +124,19 @@ export async function createEduLog(data = {}) {
           \`category\` = ?,
           \`title\` = ?,
           \`completion_date\` = ?,
+          \`validity_period\` = ?,
           \`expiry_date\` = ?,
           \`memo\` = ?,
           \`updated_at\` = CURRENT_TIMESTAMP
         WHERE \`id\` = ?
-      `, [eduId, userId, name, division, team, rank, category, title, completionDate, expiryDate, memo, existRows[0].id]);
-      return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, expiryDate, memo };
+      `, [eduId, userId, name, division, team, rank, category, title, completionDate, validityPeriod, expiryDate, memo, existRows[0].id]);
+      return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, validityPeriod, validity_period: validityPeriod, expiryDate, memo };
     }
 
     const sql = `
       INSERT INTO edu_log 
-      (\`edu_id\`, \`user_id\`, \`name\`, \`division\`, \`team\`, \`rank\`, \`category\`, \`title\`, \`completion_date\`, \`expiry_date\`, \`memo\`)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (\`edu_id\`, \`user_id\`, \`name\`, \`division\`, \`team\`, \`rank\`, \`category\`, \`title\`, \`completion_date\`, \`validity_period\`, \`expiry_date\`, \`memo\`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`user_id\` = VALUES(\`user_id\`),
         \`name\` = VALUES(\`name\`),
@@ -134,14 +146,15 @@ export async function createEduLog(data = {}) {
         \`category\` = VALUES(\`category\`),
         \`title\` = VALUES(\`title\`),
         \`completion_date\` = VALUES(\`completion_date\`),
+        \`validity_period\` = VALUES(\`validity_period\`),
         \`expiry_date\` = VALUES(\`expiry_date\`),
         \`memo\` = VALUES(\`memo\`),
         \`updated_at\` = CURRENT_TIMESTAMP
     `;
-    await query(sql, [eduId, userId, name, division, team, rank, category, title, completionDate, expiryDate, memo]);
-    return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, expiryDate, memo };
+    await query(sql, [eduId, userId, name, division, team, rank, category, title, completionDate, validityPeriod, expiryDate, memo]);
+    return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, validityPeriod, validity_period: validityPeriod, expiryDate, memo };
   } catch (e) {
-    return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, expiryDate, memo };
+    return { eduId, edu_id: eduId, id: eduId, userId, name, division, team, rank, category, title, completionDate, validityPeriod, validity_period: validityPeriod, expiryDate, memo };
   }
 }
 
@@ -183,6 +196,8 @@ export async function getEduLogs(filter = {}) {
       category: r.category,
       title: r.title,
       completionDate: formatNodeKstDate(r.completion_date),
+      validityPeriod: r.validity_period || '12',
+      validity_period: r.validity_period || '12',
       expiryDate: formatNodeKstDate(r.expiry_date),
       memo: r.memo || '',
       createdAt: r.created_at,
@@ -217,6 +232,8 @@ export async function getEduLogById(eduId) {
       category: r.category,
       title: r.title,
       completionDate: formatNodeKstDate(r.completion_date),
+      validityPeriod: r.validity_period || '12',
+      validity_period: r.validity_period || '12',
       expiryDate: formatNodeKstDate(r.expiry_date),
       memo: r.memo || '',
       createdAt: r.created_at,
