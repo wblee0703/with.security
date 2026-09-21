@@ -25,36 +25,43 @@ const getCategoryBadgeStyle = (category) => {
   }
 };
 
-const calculateOneYearLater = (dateStr) => {
+export const calculateOneYearLater = (dateStr) => {
   if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return '';
-  d.setFullYear(d.getFullYear() + 1);
-  d.setDate(d.getDate() - 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  const clean = normalizeKstDate(dateStr) || String(dateStr).trim();
+  const parts = clean.split('-');
+  if (parts.length !== 3) return '';
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  const d = parseInt(parts[2], 10);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return '';
+  // 이수일 기준 1년 뒤 전날 (안전교육 표준 유효기간: 1년)
+  const target = new Date(y + 1, m - 1, d - 1);
+  const resY = target.getFullYear();
+  const resM = String(target.getMonth() + 1).padStart(2, '0');
+  const resD = String(target.getDate()).padStart(2, '0');
+  return `${resY}-${resM}-${resD}`;
 };
 
-const getTrainingStatus = (expiryStr) => {
+const getTrainingStatus = (rawExpiryStr) => {
+  const expiryStr = normalizeKstDate(rawExpiryStr);
   if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  const parts = expiryStr.split('-');
+  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
+  const exp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  exp.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const exp = new Date(expiryStr);
-  exp.setHours(0, 0, 0, 0);
-  if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1' };
   const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) {
-    return { text: `만료됨`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true };
+    return { text: `만료됨`, color: '#dc2626', bg: '#fef2f2', border: '#fecaca', isExpired: true, diffDays };
   } else if (diffDays === 0) {
-    return { text: 'D-Day', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+    return { text: 'D-Day', color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true, diffDays };
   } else if (diffDays <= 7) {
-    return { text: `D-${diffDays}일`, color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true };
+    return { text: `D-${diffDays}일`, color: '#ef4444', bg: '#fef2f2', border: '#fecaca', isUrgent: true, diffDays };
   } else if (diffDays <= 30) {
-    return { text: `D-${diffDays}일`, color: '#d97706', bg: '#fffbeb', border: '#fde68a', isWarning: true };
+    return { text: `D-${diffDays}일`, color: '#d97706', bg: '#fffbeb', border: '#fde68a', isWarning: true, diffDays };
   } else {
-    return { text: `D-${diffDays}일`, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0' };
+    return { text: `D-${diffDays}일`, color: '#047857', bg: '#ecfdf5', border: '#a7f3d0', diffDays };
   }
 };
 
@@ -200,6 +207,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [selectedTrainingCategory, setSelectedTrainingCategory] = useState('전체');
   const [isAddingTraining, setIsAddingTraining] = useState(false);
   const [editingTrainingId, setEditingTrainingId] = useState(null);
+  const [editingTrainingOriginal, setEditingTrainingOriginal] = useState(null);
   const trainingFormRef = useRef(null);
   const [trainingForm, setTrainingForm] = useState({
     category: '법정',
@@ -226,40 +234,47 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         try {
           const eduLogs = await dbService.getEduLogs({ userId: active.username, name: active.name });
           const mergedMap = new Map();
-          userTrainings.forEach(t => {
-            if (!t) return;
-            const tit = String(t.title || '').trim();
-            const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
+
+          const processItem = (item) => {
+            if (!item) return;
+            const tit = String(item.title || '').trim();
+            const comp = normalizeKstDate(item.completionDate || item.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
-            if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
-            const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '') || calculateOneYearLater(comp);
-            const key = `${tit.toLowerCase()}__${comp}`;
-            mergedMap.set(key, {
-              ...t,
-              title: tit,
-              completionDate: comp,
-              expiryDate: exp
-            });
-          });
-          (eduLogs || []).forEach(e => {
-            if (!e) return;
-            const tit = String(e.title || '').trim();
-            const comp = normalizeKstDate(e.completionDate || e.completion_date || '');
-            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
-            if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
-            const exp = normalizeKstDate(e.expiryDate || e.expiry_date || '') || calculateOneYearLater(comp);
-            const key = `${tit.toLowerCase()}__${comp}`;
+            if (String(item.id || item.eduId || '').startsWith('EDU-INIT-') || String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(item.expiryDate || item.expiry_date || '') || calculateOneYearLater(comp);
+            const key = tit.toLowerCase();
             const existing = mergedMap.get(key);
-            mergedMap.set(key, {
-              ...(existing || {}),
-              ...e,
-              title: tit,
-              completionDate: comp,
-              expiryDate: exp,
-              id: existing?.id || e.id || e.eduId,
-              eduId: existing?.eduId || e.eduId || e.id
-            });
-          });
+
+            if (!existing) {
+              mergedMap.set(key, {
+                ...item,
+                title: tit,
+                completionDate: comp,
+                expiryDate: exp,
+                id: item.id || item.eduId || `EDU-${Date.now()}`,
+                eduId: item.eduId || item.id || `EDU-${Date.now()}`
+              });
+            } else {
+              // 동일 과정명인 경우: 더 최신 수료일(comp) 또는 더 늦은 만료일(exp)을 가진 항목으로 최신화
+              const existingComp = existing.completionDate || '';
+              const existingExp = existing.expiryDate || '';
+              const isNewer = comp > existingComp || (comp === existingComp && exp >= existingExp);
+              if (isNewer) {
+                mergedMap.set(key, {
+                  ...existing,
+                  ...item,
+                  title: tit,
+                  completionDate: comp,
+                  expiryDate: exp,
+                  id: item.id || existing.id,
+                  eduId: item.eduId || existing.eduId
+                });
+              }
+            }
+          };
+
+          userTrainings.forEach(processItem);
+          (eduLogs || []).forEach(processItem);
           userTrainings = sortTrainingsByExpiry(Array.from(mergedMap.values()));
 
           // 중복 정리가 발생했거나 날짜 형식이 교정된 경우, 로컬 프로필을 자동 치유하여 영구 보존
@@ -321,12 +336,13 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     const isCustom = !['SKHynix', 'Samsung', 'LGD', '법정'].includes(item.category);
     const targetId = item.id || item.eduId || item.edu_id || `EDU-${Date.now()}`;
     item.id = targetId;
+    setEditingTrainingOriginal({ ...item });
     setTrainingForm({
       category: isCustom ? '기타 (직접입력)' : item.category,
       customCategory: isCustom ? (item.customCategory || item.category) : '',
       title: item.title || '',
       completionDate: item.completionDate || '',
-      expiryDate: item.expiryDate || '',
+      expiryDate: item.expiryDate || calculateOneYearLater(item.completionDate),
       memo: item.memo || ''
     });
     setEditingTrainingId(targetId);
@@ -358,18 +374,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
     const cleanComp = normalizeKstDate(trainingForm.completionDate);
     const cleanExp = normalizeKstDate(trainingForm.expiryDate) || calculateOneYearLater(cleanComp);
+    const normalizedTitle = trainingForm.title.trim();
 
     let updatedList = [];
     if (editingTrainingId) {
-      const existing = trainings.find(t =>
-        (t.id && t.id === editingTrainingId) ||
-        (t.eduId && t.eduId === editingTrainingId) ||
-        ((t.title || '').trim().toLowerCase() === trainingForm.title.trim().toLowerCase() && normalizeKstDate(t.completionDate) === cleanComp)
-      );
+      const orig = editingTrainingOriginal || {};
+      const origId = orig.id || orig.eduId || editingTrainingId;
+      const origTitle = (orig.title || '').trim().toLowerCase();
+      const origComp = normalizeKstDate(orig.completionDate || '');
+
       const targetItem = {
-        ...(existing || {}),
-        id: editingTrainingId,
-        eduId: editingTrainingId,
+        ...orig,
+        id: origId,
+        eduId: origId,
         userId: currentUser?.username || '',
         name: currentUser?.name || '사용자',
         division: currentUser?.division || '',
@@ -377,18 +394,41 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         rank: currentUser?.rank || '',
         category: finalCategory,
         customCategory: trainingForm.customCategory,
-        title: trainingForm.title.trim(),
+        title: normalizedTitle,
         completionDate: cleanComp,
         expiryDate: cleanExp,
         memo: trainingForm.memo.trim(),
         updatedAt: new Date().toISOString()
       };
-      updatedList = trainings.map(t =>
-        ((t.id && t.id === editingTrainingId) || (t.eduId && t.eduId === editingTrainingId)) ? targetItem : t
-      );
-      if (!updatedList.some(t => t.id === editingTrainingId || t.eduId === editingTrainingId)) {
-        updatedList = [targetItem, ...trainings.filter(t => (t.title || '').trim().toLowerCase() !== targetItem.title.toLowerCase() || normalizeKstDate(t.completionDate) !== cleanComp)];
+
+      let replaced = false;
+      updatedList = trainings.map(t => {
+        const tId = t.id || t.eduId;
+        const tTitle = (t.title || '').trim().toLowerCase();
+        const tComp = normalizeKstDate(t.completionDate || '');
+        if ((tId && tId === origId) || (tTitle === origTitle && (!origComp || tComp === origComp))) {
+          replaced = true;
+          return targetItem;
+        }
+        return t;
+      });
+
+      if (!replaced) {
+        updatedList = [
+          targetItem,
+          ...trainings.filter(t => {
+            const tId = t.id || t.eduId;
+            const tTitle = (t.title || '').trim().toLowerCase();
+            return tId !== origId && tTitle !== origTitle;
+          })
+        ];
       }
+
+      // 이전 제목/수료일 변경 시 이전 eduLog 정리
+      if ((origTitle && origTitle !== normalizedTitle.toLowerCase()) || (origComp && origComp !== cleanComp)) {
+        dbService.deleteEduLog(origId, { title: orig.title, completionDate: orig.completionDate, userId: currentUser?.username }).catch(() => {});
+      }
+
       await dbService.saveEduLog(targetItem);
     } else {
       const newEduId = `EDU-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
@@ -402,19 +442,27 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         rank: currentUser?.rank || '',
         category: finalCategory,
         customCategory: trainingForm.customCategory,
-        title: trainingForm.title.trim(),
+        title: normalizedTitle,
         completionDate: cleanComp,
         expiryDate: cleanExp,
         memo: trainingForm.memo.trim(),
         createdAt: new Date().toISOString()
       };
-      // 중복 등록 방지: 동일한 과정명과 수료일이 이미 존재하면 덮어쓰기
+
+      // 동일 과정명이 이미 존재한다면: 기존 기록을 최신 수료일/만료일로 갱신 (과거 만료 기록 중복 방지)
       const existingIdx = trainings.findIndex(t =>
-        (t.title || '').trim().toLowerCase() === newItem.title.toLowerCase() &&
-        normalizeKstDate(t.completionDate) === cleanComp
+        (t.title || '').trim().toLowerCase() === normalizedTitle.toLowerCase()
       );
+
       if (existingIdx >= 0) {
-        const merged = { ...trainings[existingIdx], ...newItem, id: trainings[existingIdx].id || newItem.id, eduId: trainings[existingIdx].eduId || newItem.eduId };
+        const old = trainings[existingIdx];
+        const merged = {
+          ...old,
+          ...newItem,
+          id: old.id || newItem.id,
+          eduId: old.eduId || newItem.eduId,
+          updatedAt: new Date().toISOString()
+        };
         updatedList = [...trainings];
         updatedList[existingIdx] = merged;
       } else {
@@ -427,6 +475,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     setTrainings(updatedList);
     setIsAddingTraining(false);
     setEditingTrainingId(null);
+    setEditingTrainingOriginal(null);
 
     const updatedUser = {
       ...currentUser,
@@ -1857,7 +1906,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                     </span>
                     <button
                       type="button"
-                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
+                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); setEditingTrainingOriginal(null); }}
                       style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                     >
                       <X size={16} />
@@ -2047,7 +2096,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
                     <button
                       type="button"
-                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); }}
+                      onClick={() => { setIsAddingTraining(false); setEditingTrainingId(null); setEditingTrainingOriginal(null); }}
                       style={{
                         padding: '8px 14px',
                         borderRadius: '6px',

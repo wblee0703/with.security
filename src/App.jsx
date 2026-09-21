@@ -337,27 +337,31 @@ export default function App() {
         try {
           const dbEduLogs = await dbService.getEduLogs({ userId: user.username, name: user.name });
           const merged = new Map();
-          allTrainings.forEach(t => {
-            if (!t) return;
-            const tit = String(t.title || '').trim();
-            const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
+
+          const processItem = (item) => {
+            if (!item) return;
+            const tit = String(item.title || '').trim();
+            const comp = normalizeKstDate(item.completionDate || item.completion_date || '');
             if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
-            if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
-            const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '');
-            const key = `${tit.toLowerCase()}__${comp}`;
-            merged.set(key, { ...t, title: tit, completionDate: comp, expiryDate: exp });
-          });
-          (dbEduLogs || []).forEach(e => {
-            if (!e) return;
-            const tit = String(e.title || '').trim();
-            const comp = normalizeKstDate(e.completionDate || e.completion_date || '');
-            if (!tit || !comp || tit === '사내 정기 정보보안 및 안전 교육') return;
-            if (String(e.id || e.eduId || '').startsWith('EDU-INIT-') || String(e.id || e.eduId || '').startsWith('EDU-LEGACY-')) return;
-            const exp = normalizeKstDate(e.expiryDate || e.expiry_date || '');
-            const key = `${tit.toLowerCase()}__${comp}`;
+            if (String(item.id || item.eduId || '').startsWith('EDU-INIT-') || String(item.id || item.eduId || '').startsWith('EDU-LEGACY-')) return;
+            const exp = normalizeKstDate(item.expiryDate || item.expiry_date || '');
+            const key = tit.toLowerCase();
             const existing = merged.get(key);
-            merged.set(key, { ...(existing || {}), ...e, title: tit, completionDate: comp, expiryDate: exp });
-          });
+
+            if (!existing) {
+              merged.set(key, { ...item, title: tit, completionDate: comp, expiryDate: exp });
+            } else {
+              const existingComp = existing.completionDate || '';
+              const existingExp = existing.expiryDate || '';
+              const isNewer = comp > existingComp || (comp === existingComp && exp >= existingExp);
+              if (isNewer) {
+                merged.set(key, { ...existing, ...item, title: tit, completionDate: comp, expiryDate: exp });
+              }
+            }
+          };
+
+          allTrainings.forEach(processItem);
+          (dbEduLogs || []).forEach(processItem);
           allTrainings = Array.from(merged.values());
         } catch (e) {}
 
@@ -376,7 +380,11 @@ export default function App() {
 
         const hasExpiring = allTrainings.some(t => {
           if (!t.expiryDate) return false;
-          const exp = new Date(t.expiryDate);
+          const cleanExp = normalizeKstDate(t.expiryDate);
+          if (!cleanExp) return false;
+          const expParts = cleanExp.split('-');
+          if (expParts.length !== 3) return false;
+          const exp = new Date(Number(expParts[0]), Number(expParts[1]) - 1, Number(expParts[2]));
           exp.setHours(0, 0, 0, 0);
           if (isNaN(exp.getTime())) return false;
           const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));

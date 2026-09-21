@@ -22,10 +22,12 @@ const getCategoryBadgeStyle = (category) => {
 const getTrainingStatus = (rawExpiryStr) => {
   const expiryStr = normalizeKstDate(rawExpiryStr);
   if (!expiryStr) return { text: '미등록', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
+  const parts = expiryStr.split('-');
+  if (parts.length !== 3) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
+  const exp = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  exp.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const exp = new Date(expiryStr);
-  exp.setHours(0, 0, 0, 0);
   if (isNaN(exp.getTime())) return { text: '날짜 오류', color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', diffDays: 999 };
   const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) {
@@ -45,13 +47,33 @@ export default function TrainingHeaderNotice({ currentUser, onNavigateToUserProf
   const [isOpen, setIsOpen] = useState(false);
   useModalBack(isOpen, () => setIsOpen(false), 'training-header-notice-modal');
 
-  // Extract all trainings (multi-item support - only user-registered items)
-  let allTrainings = Array.isArray(currentUser?.trainings) ? currentUser.trainings : [];
-  allTrainings = allTrainings.filter(t => 
-    !String(t.id || t.eduId || '').startsWith('EDU-INIT-') && 
-    !String(t.id || t.eduId || '').startsWith('EDU-LEGACY-') &&
-    (t.title || '').trim() !== '사내 정기 정보보안 및 안전 교육'
-  );
+  // Extract all trainings (multi-item support - only user-registered items, deduplicated by title)
+  let rawTrainings = Array.isArray(currentUser?.trainings) ? currentUser.trainings : [];
+  const dedupMap = new Map();
+
+  rawTrainings.forEach(t => {
+    if (!t) return;
+    if (String(t.id || t.eduId || '').startsWith('EDU-INIT-') || String(t.id || t.eduId || '').startsWith('EDU-LEGACY-')) return;
+    const tit = String(t.title || '').trim();
+    if (!tit || tit === '사내 정기 정보보안 및 안전 교육') return;
+    const comp = normalizeKstDate(t.completionDate || t.completion_date || '');
+    const exp = normalizeKstDate(t.expiryDate || t.expiry_date || '');
+    const key = tit.toLowerCase();
+    const existing = dedupMap.get(key);
+
+    if (!existing) {
+      dedupMap.set(key, { ...t, title: tit, completionDate: comp, expiryDate: exp });
+    } else {
+      const existingComp = existing.completionDate || '';
+      const existingExp = existing.expiryDate || '';
+      const isNewer = comp > existingComp || (comp === existingComp && exp >= existingExp);
+      if (isNewer) {
+        dedupMap.set(key, { ...existing, ...t, title: tit, completionDate: comp, expiryDate: exp });
+      }
+    }
+  });
+
+  const allTrainings = Array.from(dedupMap.values());
 
   // Calculate statuses and sort by closest expiry date first
   const evaluatedTrainings = allTrainings.map(item => ({
