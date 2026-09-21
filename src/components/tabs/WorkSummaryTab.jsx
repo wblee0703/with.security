@@ -347,11 +347,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   async function handleSaveDailyCustomReport() {
     try {
       const existing = dailyCustomReports[dailyDate] || {};
-      const prefilled = (typeof getPrefilledDailyReport === 'function') ? getPrefilledDailyReport() : { todayTasks: '', tomorrowPlan: '' };
       const dataToSave = {
         issues: existing.issues !== undefined ? existing.issues : '',
-        todayTasks: existing.todayTasks !== undefined ? existing.todayTasks : (prefilled?.todayTasks || ''),
-        tomorrowPlan: existing.tomorrowPlan !== undefined ? existing.tomorrowPlan : (prefilled?.tomorrowPlan || ''),
+        todayTasks: existing.todayTasks !== undefined ? existing.todayTasks : '',
+        tomorrowPlan: existing.tomorrowPlan !== undefined ? existing.tomorrowPlan : '',
         updatedAt: new Date().toISOString()
       };
       const updatedReports = {
@@ -1260,6 +1259,103 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     handleCopyText(text.trim(), day.isWeekend ? '주말(토/일) 업무 전체' : `${day.dayLabel}요일 업무 전체`);
   };
 
+  // 일일 공유받은 업무 특정 공유자 카드 복사 헬퍼
+  const handleCopySharedGroupLogs = (e, group) => {
+    e.stopPropagation();
+    if (!group || !group.items || group.items.length === 0) {
+      if (onTriggerToast) onTriggerToast('공유받은 업무 내역이 없습니다.', 'warning');
+      return;
+    }
+
+    let text = `[공유 업무: ${group.authorLabel} (${getFormattedKoreanDate(dailyDate)})]\n`;
+    const sorted = [...group.items].sort((a, b) => {
+      const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
+      const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
+      if (isATrip && !isBTrip) return -1;
+      if (!isATrip && isBTrip) return 1;
+      return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+    });
+
+    sorted.forEach((item, idx) => {
+      const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+      const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
+      const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
+      text += `\n${idx + 1}. ${item.title}${tag}`;
+      if (item.details && item.details.trim()) {
+        const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+        text += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
+      }
+    });
+
+    handleCopyText(text.trim(), `${group.authorLabel} 공유 업무`);
+  };
+
+  // 일일 공유받은 업무 전체 복사 헬퍼
+  const handleCopyAllDailySharedLogs = (e) => {
+    e.stopPropagation();
+    const authorKeys = Object.keys(dailySharedGroupedByAuthor);
+    if (authorKeys.length === 0) {
+      if (onTriggerToast) onTriggerToast('공유받은 업무 내역이 없습니다.', 'warning');
+      return;
+    }
+
+    let text = `[공유받은 업무 전체 (${getFormattedKoreanDate(dailyDate)})]\n`;
+    authorKeys.forEach((key, kIdx) => {
+      const group = dailySharedGroupedByAuthor[key];
+      text += `\n👤 공유자: ${group.authorLabel}\n`;
+      const sorted = [...group.items].sort((a, b) => {
+        const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
+        const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
+        if (isATrip && !isBTrip) return -1;
+        if (!isATrip && isBTrip) return 1;
+        return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+      });
+      sorted.forEach((item, idx) => {
+        const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+        const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
+        const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
+        text += `${idx + 1}. ${item.title}${tag}\n`;
+        if (item.details && item.details.trim()) {
+          const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+          text += dLines.map(dl => `  ${dl.trim()}`).join('\n') + '\n';
+        }
+      });
+    });
+
+    handleCopyText(text.trim(), '공유받은 업무 전체');
+  };
+
+  // 일일 내 업무 전체 복사 헬퍼
+  const handleCopyMyDailyLogs = (e) => {
+    e.stopPropagation();
+    if (!dailyOwnLogs || dailyOwnLogs.length === 0) {
+      if (onTriggerToast) onTriggerToast('선택일자에 등록된 내 업무가 없습니다.', 'warning');
+      return;
+    }
+
+    let text = `[내 업무: ${myAuthorLabel} (${getFormattedKoreanDate(dailyDate)})]\n`;
+    const sorted = [...dailyOwnLogs].sort((a, b) => {
+      const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
+      const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
+      if (isATrip && !isBTrip) return -1;
+      if (!isATrip && isBTrip) return 1;
+      return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
+    });
+
+    sorted.forEach((item, idx) => {
+      const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
+      const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
+      const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
+      text += `\n${idx + 1}. ${item.title}${tag}`;
+      if (item.details && item.details.trim()) {
+        const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
+        text += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
+      }
+    });
+
+    handleCopyText(text.trim(), '내 업무 전체');
+  };
+
   // Group daily trip logs by site
   const dailyTripGroupedBySite = {};
   dailyTripLogs.forEach(log => {
@@ -1291,59 +1387,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   if (currentUser?.rank && !myAuthorLabel.includes(currentUser.rank)) myAuthorLabel += ` ${currentUser.rank}`;
   if (currentUser?.team && !myAuthorLabel.includes(currentUser.team)) myAuthorLabel += ` (${formatOnlyTeam(currentUser.team)})`;
 
-  // Helper to generate prefilled text from daily and tomorrow's logs
-  const getPrefilledDailyReport = () => {
-    const tasks = [];
-    if (dailyInternalLogs.length > 0) {
-      dailyInternalLogs.forEach(l => {
-        let s = `• [사내] ${l.title}`;
-        if (l.details && l.details.trim()) {
-          const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
-        }
-        tasks.push(s);
-      });
-    }
-
-    const siteKeys = Object.keys(dailyTripGroupedBySite);
-    if (siteKeys.length > 0) {
-      siteKeys.forEach(siteKey => {
-        const siteLogs = dailyTripGroupedBySite[siteKey];
-        siteLogs.forEach(l => {
-          const siteLoc = l.siteLocation || l.siteAddress || l.location || '';
-          let s = `• [출장: ${siteKey}${siteLoc ? ` (${siteLoc})` : ''}] ${l.title}`;
-          if (l.details && l.details.trim()) {
-            const dLines = l.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-            s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
-          }
-          tasks.push(s);
-        });
-      });
-    }
-
-    const targetTomorrowLogs = isToday ? tomorrowOwnLogs : nextDayOwnLogs;
-    const tomorrowTasks = [];
-    if (targetTomorrowLogs.length > 0) {
-      targetTomorrowLogs.forEach(tl => {
-        const siteLoc = tl.siteLocation || tl.siteAddress || tl.location || '';
-        const isTrip = tl.category === '출장 업무' || tl.siteName || siteLoc;
-        const siteTag = isTrip ? `[출장: ${tl.siteName || '출장지'}${siteLoc ? ` (${siteLoc})` : ''}]` : '[사내]';
-        let s = `• ${siteTag} ${tl.title}`;
-        if (tl.details && tl.details.trim()) {
-          const dLines = tl.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          s += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
-        }
-        tomorrowTasks.push(s);
-      });
-    }
-
-    return {
-      issues: '',
-      todayTasks: tasks.join('\n'),
-      tomorrowPlan: tomorrowTasks.join('\n')
-    };
-  };
-
   const hasCustomDaily = Boolean(dailyCustomReports[dailyDate]);
   const currentDailyCustom = hasCustomDaily
     ? {
@@ -1351,7 +1394,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
       tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
     }
-    : getPrefilledDailyReport();
+    : {
+      issues: '',
+      todayTasks: '',
+      tomorrowPlan: ''
+    };
 
   const handleDailyCustomChange = (field, value) => {
     setIsDailyDirty(true);
@@ -1362,22 +1409,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         [field]: value
       }
     }));
-  };
-
-  const handleLoadDailyFromLogs = () => {
-    const prefilled = getPrefilledDailyReport();
-    setIsDailyDirty(true);
-    setDailyCustomReports(prev => ({
-      ...prev,
-      [dailyDate]: {
-        issues: (prev[dailyDate]?.issues || currentDailyCustom.issues || ''),
-        todayTasks: prefilled.todayTasks,
-        tomorrowPlan: prefilled.tomorrowPlan
-      }
-    }));
-    if (onTriggerToast) {
-      onTriggerToast('등록된 업무 일지에서 금일 진행 내역과 익일 예정 업무를 불러왔습니다.', 'info');
-    }
   };
 
   const generateDailyReportText = () => {
@@ -1944,29 +1975,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    {/* 일지 불러오기 버튼 */}
-                    <button
-                      type="button"
-                      onClick={handleLoadDailyFromLogs}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1.5px solid #cbd5e1',
-                        color: '#334155',
-                        padding: '6px 9px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)'
-                      }}
-                      title="등록된 업무 일지에서 금일 및 익일 내역 새로 불러오기"
-                    >
-                      <span>일지 최신화</span>
-                    </button>
 
                     {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
                     <button
@@ -2173,23 +2181,48 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <span>내 업무 ({dailyOwnLogs.length}건)</span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1.5px solid #cbd5e1',
-                        borderRadius: '5px',
-                        padding: '3px 8px',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#0f172a',
-                        cursor: 'pointer'
-                      }}
-                      title={isDailyOwnCollapsed ? '내 업무 펼치기' : '내 업무 접기'}
-                    >
-                      {isDailyOwnCollapsed ? '펼치기' : '접기'}
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {dailyOwnLogs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleCopyMyDailyLogs}
+                          style={{
+                            background: '#f8fafc',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '5px',
+                            padding: '3px 8px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: '#0f172a',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                          title="내 업무 복사"
+                        >
+                          <Copy size={11} />
+                          <span>복사</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
+                        style={{
+                          background: '#f8fafc',
+                          border: '1.5px solid #cbd5e1',
+                          borderRadius: '5px',
+                          padding: '3px 8px',
+                          fontSize: '11px',
+                          fontWeight: '700',
+                          color: '#0f172a',
+                          cursor: 'pointer'
+                        }}
+                        title={isDailyOwnCollapsed ? '내 업무 펼치기' : '내 업무 접기'}
+                      >
+                        {isDailyOwnCollapsed ? '펼치기' : '접기'}
+                      </button>
+                    </div>
                   </div>
 
                   <div
@@ -2329,6 +2362,25 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                         공유중
                                       </span>
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleCopySingleItem(e, item)}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        padding: '2px 4px',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        color: '#94a3b8',
+                                        borderRadius: '4px'
+                                      }}
+                                      title="해당 업무 복사"
+                                      onMouseEnter={(e) => e.currentTarget.style.color = '#0f172a'}
+                                      onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                                    >
+                                      <Copy size={12} />
+                                    </button>
                                   </div>
                                   {item.details && (
                                     <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
@@ -2392,42 +2444,67 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <Share2 size={16} color="#2563eb" />
                       <span>공유받은 업무 ({Object.keys(dailySharedGroupedByAuthor).length}건)</span>
                     </div>
-                    {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
+                    {dailySharedReceivedLogs.length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <button
                           type="button"
-                          onClick={() => handleToggleAllDailySharedCards(true)}
+                          onClick={handleCopyAllDailySharedLogs}
                           style={{
-                            background: '#f8fafc',
-                            border: '1.5px solid #cbd5e1',
+                            background: '#eff6ff',
+                            border: '1.5px solid #bfdbfe',
                             borderRadius: '5px',
-                            padding: '3px 7px',
+                            padding: '3px 8px',
                             fontSize: '11px',
                             fontWeight: '700',
-                            color: '#475569',
-                            cursor: 'pointer'
+                            color: '#1d4ed8',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px'
                           }}
-                          title="모든 공유 카드 접기"
+                          title="공유받은 업무 전체 복사"
                         >
-                          모두 접기
+                          <Copy size={11} />
+                          <span>전체 복사</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleAllDailySharedCards(false)}
-                          style={{
-                            background: '#f8fafc',
-                            border: '1.5px solid #cbd5e1',
-                            borderRadius: '5px',
-                            padding: '3px 7px',
-                            fontSize: '11px',
-                            fontWeight: '700',
-                            color: '#0f172a',
-                            cursor: 'pointer'
-                          }}
-                          title="모든 공유 카드 펼치기"
-                        >
-                          모두 펼치기
-                        </button>
+                        {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAllDailySharedCards(true)}
+                              style={{
+                                background: '#f8fafc',
+                                border: '1.5px solid #cbd5e1',
+                                borderRadius: '5px',
+                                padding: '3px 7px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: '#475569',
+                                cursor: 'pointer'
+                              }}
+                              title="모든 공유 카드 접기"
+                            >
+                              모두 접기
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAllDailySharedCards(false)}
+                              style={{
+                                background: '#f8fafc',
+                                border: '1.5px solid #cbd5e1',
+                                borderRadius: '5px',
+                                padding: '3px 7px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                color: '#0f172a',
+                                cursor: 'pointer'
+                              }}
+                              title="모든 공유 카드 펼치기"
+                            >
+                              모두 펼치기
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2481,6 +2558,27 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                               </div>
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleCopySharedGroupLogs(e, group)}
+                                  style={{
+                                    background: '#eff6ff',
+                                    border: '1px solid #bfdbfe',
+                                    borderRadius: '5px',
+                                    padding: '2px 7px',
+                                    fontSize: '11px',
+                                    fontWeight: '700',
+                                    color: '#1d4ed8',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px'
+                                  }}
+                                  title={`${group.authorLabel}님의 공유 업무 복사`}
+                                >
+                                  <Copy size={11} />
+                                  <span>복사</span>
+                                </button>
                                 <span style={{
                                   fontSize: '11.5px',
                                   fontWeight: '800',
@@ -2539,6 +2637,25 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                               </span>
                                             </>
                                           )}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleCopySingleItem(e, item)}
+                                            style={{
+                                              background: 'transparent',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              padding: '2px 4px',
+                                              display: 'inline-flex',
+                                              alignItems: 'center',
+                                              color: '#94a3b8',
+                                              borderRadius: '4px'
+                                            }}
+                                            title="해당 공유 업무 복사"
+                                            onMouseEnter={(e) => e.currentTarget.style.color = '#2563eb'}
+                                            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+                                          >
+                                            <Copy size={12} />
+                                          </button>
                                         </div>
                                         {item.details && (
                                           <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
