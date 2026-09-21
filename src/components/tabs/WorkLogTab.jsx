@@ -72,7 +72,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Inline editing state for editing task directly inside list card
   const [inlineEditingId, setInlineEditingId] = useState(null);
-  const [inlineForm, setInlineForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+  const [inlineForm, setInlineForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
 
   // Inline adding state for adding new task directly inside list card without modal
   const [inlineAddingCardKey, setInlineAddingCardKey] = useState(null);
@@ -84,19 +84,18 @@ export default function WorkLogTab({ onTriggerToast }) {
     e.dataTransfer.effectAllowed = 'move';
     try {
       e.dataTransfer.setData('text/plain', item.id);
-    } catch (err) {}
+    } catch (err) { }
   };
 
-  const handleDragOver = (e, targetItem) => {
+  const handleDragOver = (e, item) => {
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    if (dragOverTaskId !== targetItem.id) {
-      setDragOverTaskId(targetItem.id);
+    if (draggedTaskId && draggedTaskId !== item.id) {
+      setDragOverTaskId(item.id);
     }
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
+  const handleDragLeave = () => {
+    setDragOverTaskId(null);
   };
 
   const handleDragEnd = () => {
@@ -106,47 +105,37 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleDropTask = async (e, targetItem, groupItems) => {
     e.preventDefault();
+    setDragOverTaskId(null);
     if (!draggedTaskId || draggedTaskId === targetItem.id) {
       setDraggedTaskId(null);
-      setDragOverTaskId(null);
       return;
     }
 
-    const currentList = [...groupItems];
-    const sourceIdx = currentList.findIndex(t => t.id === draggedTaskId);
-    const targetIdx = currentList.findIndex(t => t.id === targetItem.id);
-
-    if (sourceIdx === -1 || targetIdx === -1) {
-      setDraggedTaskId(null);
-      setDragOverTaskId(null);
-      return;
-    }
-
-    const [moved] = currentList.splice(sourceIdx, 1);
-    currentList.splice(targetIdx, 0, moved);
-
-    const baseDate = moved.date || getTodayIsoDate();
-    const updatedList = currentList.map((item, idx) => {
-      const secStr = String(idx).padStart(2, '0');
-      const timeStr = `${baseDate} 09:00:${secStr}`;
-      return {
-        ...item,
-        sortOrder: idx,
-        createdAt: item.createdAt ? `${item.createdAt.slice(0, 16)}:${secStr}` : timeStr
-      };
-    });
-
-    setWorkLogs(prev => {
-      const updatedMap = new Map(updatedList.map(u => [u.id, u]));
-      return prev.map(log => updatedMap.get(log.id) || log);
-    });
-
+    const fromIdx = groupItems.findIndex(t => t.id === draggedTaskId);
+    const toIdx = groupItems.findIndex(t => t.id === targetItem.id);
     setDraggedTaskId(null);
-    setDragOverTaskId(null);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
 
+    // Reorder items in current group
+    const reordered = [...groupItems];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    // Assign sequential sortOrder
+    const updatedWithOrder = reordered.map((task, idx) => ({
+      ...task,
+      sortOrder: idx + 1
+    }));
+
+    // Update state immediately
+    const updatedMap = new Map(updatedWithOrder.map(t => [t.id, t]));
+    const nextLogs = workLogs.map(l => updatedMap.get(l.id) || l);
+    setWorkLogs(nextLogs);
+
+    // Save to DB in background
     try {
-      for (const item of updatedList) {
-        await dbService.saveWorkLog(item);
+      for (const t of updatedWithOrder) {
+        await dbService.saveWorkLog(t);
       }
       if (onTriggerToast) onTriggerToast('업무 순서가 변경되었습니다.', 'success');
     } catch (err) {
@@ -160,14 +149,15 @@ export default function WorkLogTab({ onTriggerToast }) {
     setInlineForm({
       title: item.title || '',
       details: item.details || item.tasksDone || item.tasks_done || '',
-      subCategory: item.subCategory || item.sub_category || '일반업무',
-      dueDate: item.dueDate || item.due_date || ''
+      subCategory: item.subCategory || item.sub_category || ((item.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
+      dueDate: item.dueDate || item.due_date || '',
+      date: normalizeKstDate(item.date || item.log_date) || selectedDate || getTodayIsoDate()
     });
   };
 
   const handleCancelInlineEdit = () => {
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
   };
 
   const handleSaveInlineEdit = async (item) => {
@@ -176,8 +166,16 @@ export default function WorkLogTab({ onTriggerToast }) {
       return;
     }
 
+    const origDate = normalizeKstDate(item.date || item.log_date);
+    const newDate = normalizeKstDate(inlineForm.date) || origDate;
+
     const updatedLogItem = {
       ...item,
+      _originalDate: origDate,
+      original_date: origDate,
+      originalDate: origDate,
+      date: newDate,
+      log_date: newDate,
       title: inlineForm.title.trim(),
       details: inlineForm.details.trim(),
       tasks_done: inlineForm.details.trim(),
@@ -189,13 +187,21 @@ export default function WorkLogTab({ onTriggerToast }) {
       updatedAt: new Date().toISOString()
     };
 
-    const updatedLogs = await dbService.saveWorkLog(updatedLogItem);
+    const updatedLogs = await dbService.saveWorkLog(updatedLogItem, { syncImmediate: true });
     setWorkLogs(updatedLogs);
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
 
-    if (onTriggerToast) {
-      onTriggerToast(`'${updatedLogItem.title}' 업무가 수정되었습니다.`, 'success');
+    if (origDate && newDate && origDate !== newDate) {
+      setSelectedDate(newDate);
+      setViewAllDates(false);
+      if (onTriggerToast) {
+        onTriggerToast(`'${updatedLogItem.title}' 업무가 [${newDate}] 일자로 변경되어 저장되었습니다.`, 'success');
+      }
+    } else {
+      if (onTriggerToast) {
+        onTriggerToast(`'${updatedLogItem.title}' 업무가 수정되었습니다.`, 'success');
+      }
     }
   };
 
@@ -2156,6 +2162,29 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               {/* 출장 업무 구분 (인라인 수정 모드) */}
                                               {item.category === '출장 업무' && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f5f3ff', padding: '6px 10px', borderRadius: '4px' }}>
+                                                  {/* 업무 날짜 수정 */}
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#7c3aed', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                      <Calendar size={12} color="#7c3aed" /> 일자:
+                                                    </span>
+                                                    <input
+                                                      type="date"
+                                                      value={inlineForm.date || ''}
+                                                      onChange={(e) => setInlineForm({ ...inlineForm, date: e.target.value })}
+                                                      style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        border: '1.5px solid #cbd5e1',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: '700',
+                                                        background: '#ffffff',
+                                                        color: '#0f172a',
+                                                        outline: 'none',
+                                                        cursor: 'pointer'
+                                                      }}
+                                                    />
+                                                  </div>
+
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#7c3aed' }}>출장 구분:</span>
                                                     <select
@@ -2184,6 +2213,29 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               {/* 사내 업무 구분 & 납기일 선택 (인라인 수정 모드) */}
                                               {item.category !== '출장 업무' && (
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', background: '#f1f5f9', padding: '6px 10px', borderRadius: '4px' }}>
+                                                  {/* 업무 날짜 수정 */}
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                      <Calendar size={12} color="#1e3a8a" /> 일자:
+                                                    </span>
+                                                    <input
+                                                      type="date"
+                                                      value={inlineForm.date || ''}
+                                                      onChange={(e) => setInlineForm({ ...inlineForm, date: e.target.value })}
+                                                      style={{
+                                                        padding: '3px 8px',
+                                                        borderRadius: '4px',
+                                                        border: '1.5px solid #cbd5e1',
+                                                        fontSize: '11.5px',
+                                                        fontWeight: '700',
+                                                        background: '#ffffff',
+                                                        color: '#0f172a',
+                                                        outline: 'none',
+                                                        cursor: 'pointer'
+                                                      }}
+                                                    />
+                                                  </div>
+
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>구분:</span>
                                                     <select
