@@ -173,6 +173,14 @@ export default function App() {
       if (!force && now - lastSyncTimeRef.current < 60000) return; // 60초 이내 중복 동기화 방지
       if (isSyncingRef.current) return; // 이미 동기화 진행 중이면 스킵
 
+      // ⭐ Sync Guard: 사용자가 글을 작성 중이거나 미저장 변경사항이 있는 경우 백그라운드 자동 동기화 일시 중지
+      if (!force) {
+        if (window.__WITH_SECURITY_UNSAVED_CHANGES__) return;
+        const activeTag = document.activeElement?.tagName?.toUpperCase();
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+        if (document.querySelector('.modal, [role="dialog"]')) return;
+      }
+
       const hasSheet = Boolean(dbService.getGoogleSheetsUrl());
       const serverUrl = dbService.getServerUrl();
       if (!hasSheet && !serverUrl) return;

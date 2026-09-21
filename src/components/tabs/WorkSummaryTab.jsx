@@ -154,6 +154,16 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [isUnsavedPromptOpen, setIsUnsavedPromptOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
+  // Dirty State Refs to prevent stale closure in async sync listeners
+  const isDailyDirtyRef = useRef(false);
+  isDailyDirtyRef.current = isDailyDirty;
+  const isWeeklyDirtyRef = useRef(false);
+  isWeeklyDirtyRef.current = isWeeklyDirty;
+  const dailyDateRef = useRef(dailyDate);
+  dailyDateRef.current = dailyDate;
+  const weeklyMondayRef = useRef(weeklyMonday);
+  weeklyMondayRef.current = weeklyMonday;
+
   const currentWeeklyCustom = weeklyCustomReports[weeklyMonday] || {
     mainTasks: '',
     infoSharing: '',
@@ -162,16 +172,22 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     etcTasks: ''
   };
 
-  // 입력 시에는 오직 React State만 업데이트하고 자동 저장은 하지 않음 (저장 버튼 누를 때만 저장)
+  // 입력 시 React State 업데이트 및 즉시 로컬 스토리지 임시 드래프트 저장 (동기화 및 새로고침 유실 원천 방지)
   const handleWeeklyCustomChange = (field, value) => {
     setIsWeeklyDirty(true);
-    setWeeklyCustomReports(prev => ({
-      ...prev,
-      [weeklyMonday]: {
-        ...(prev[weeklyMonday] || { mainTasks: '', infoSharing: '', teamCoop: '', workSupport: '', etcTasks: '' }),
-        [field]: value
-      }
-    }));
+    setWeeklyCustomReports(prev => {
+      const updated = {
+        ...prev,
+        [weeklyMonday]: {
+          ...(prev[weeklyMonday] || { mainTasks: '', infoSharing: '', teamCoop: '', workSupport: '', etcTasks: '' }),
+          [field]: value
+        }
+      };
+      try {
+        localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(updated));
+      } catch (e) { }
+      return updated;
+    });
   };
 
   // 새로고침 및 창 닫기 시 저장되지 않은 수정사항 브라우저 경고 & 전역 탭 이동 감지
@@ -459,7 +475,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             const authorUser = rep.author_username || rep.authorUsername;
             const dDate = rep.daily_date || rep.dailyDate;
             if (authorUser === u.username && dDate) {
-              if (!updated[dDate] || !isDailyDirty) {
+              // 현재 사용자가 수정 중(isDailyDirty)인 활성 일자이면 서버 값으로 절대 덮어쓰지 않고 작성 내용 보호
+              if (isDailyDirtyRef.current && dDate === dailyDateRef.current) return;
+              if (!updated[dDate] || !isDailyDirtyRef.current) {
                 updated[dDate] = {
                   issues: rep.issues || '',
                   todayTasks: rep.today_tasks || rep.todayTasks || '',
@@ -533,7 +551,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   useEffect(() => {
     loadData(true);
-    const handleDataChange = () => loadData(false);
+    const handleDataChange = () => {
+      // 사용자가 현재 수정 중이면 백그라운드 데이터 변경 이벤트로 폼이 리셋되지 않도록 보호
+      if (isDailyDirtyRef.current || isWeeklyDirtyRef.current || window.__WITH_SECURITY_UNSAVED_CHANGES__) {
+        return;
+      }
+      loadData(false);
+    };
     window.addEventListener('with_security_data_changed', handleDataChange);
     return () => window.removeEventListener('with_security_data_changed', handleDataChange);
   }, []);
@@ -1352,7 +1376,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       return;
     }
 
-    let text = `[내 업무: ${myAuthorLabel} (${getFormattedKoreanDate(dailyDate)})]\n`;
+    let text = '';
     const sorted = [...dailyOwnLogs].sort((a, b) => {
       const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
       const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
@@ -1365,7 +1389,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
       const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
       const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
-      text += `\n${idx + 1}. ${item.title}${tag}`;
+      if (idx > 0) text += '\n';
+      text += `${idx + 1}. ${item.title}${tag}`;
       if (item.details && item.details.trim()) {
         const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
         text += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
@@ -1421,13 +1446,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const handleDailyCustomChange = (field, value) => {
     setIsDailyDirty(true);
-    setDailyCustomReports(prev => ({
-      ...prev,
-      [dailyDate]: {
-        ...(prev[dailyDate] || currentDailyCustom),
-        [field]: value
-      }
-    }));
+    setDailyCustomReports(prev => {
+      const updated = {
+        ...prev,
+        [dailyDate]: {
+          ...(prev[dailyDate] || currentDailyCustom),
+          [field]: value
+        }
+      };
+      // 실시간 로컬 드래프트 임시 보호 (동기화 및 새로고침 유실 원천 방지)
+      try {
+        localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(updated));
+      } catch (e) { }
+      return updated;
+    });
   };
 
   const generateDailyReportText = () => {

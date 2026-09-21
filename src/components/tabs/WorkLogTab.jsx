@@ -78,6 +78,12 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [inlineAddingCardKey, setInlineAddingCardKey] = useState(null);
   const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
 
+  // Refs to protect active editing/typing forms from background sync reloads
+  const isModalOpenRef = useRef(false);
+  isModalOpenRef.current = isModalOpen;
+  const inlineEditingIdRef = useRef(null);
+  inlineEditingIdRef.current = inlineEditingId;
+
   // Drag & Drop Task Reorder Handlers
   const handleDragStart = (e, item) => {
     setDraggedTaskId(item.id);
@@ -847,6 +853,8 @@ export default function WorkLogTab({ onTriggerToast }) {
   useEffect(() => {
     loadData();
     const handleDataChange = () => {
+      // 모달이 열려있거나 인라인 수정 중이면 작성 중인 폼 내용 보호를 위해 백그라운드 리로드 건너뜀
+      if (isModalOpenRef.current || inlineEditingIdRef.current) return;
       loadData();
     };
     const handleWidgetDate = (e) => {
