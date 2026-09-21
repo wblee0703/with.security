@@ -283,33 +283,6 @@ export default function MobileContainer({
               로그인
             </button>
           )}
-
-          {/* Manual Google Sheets Cloud Sync Refresh Button */}
-          <button
-            type="button"
-            onClick={handleManualRefresh}
-            style={{
-              background: isRefreshing ? '#eff6ff' : '#f8fafc',
-              border: '1.5px solid #cbd5e1',
-              borderRadius: '7px',
-              padding: '4.5px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              color: isRefreshing ? '#1e3a8a' : '#64748b',
-              transition: 'all 0.2s ease',
-              marginLeft: '2px'
-            }}
-            title="구글 스프레드시트 최신 데이터 실시간 동기화"
-          >
-            <RefreshCw
-              size={14}
-              style={{
-                animation: isRefreshing ? 'spin 0.8s linear infinite' : 'none'
-              }}
-            />
-          </button>
         </div>
       </div>
 

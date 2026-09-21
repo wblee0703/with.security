@@ -1762,32 +1762,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                 }}
               />
             </div>
-
-            {/* Direct Google Sheets Sync Refresh Button */}
-            <button
-              type="button"
-              onClick={handleSyncRefresh}
-              disabled={isSyncing}
-              style={{
-                background: isSyncing ? '#eff6ff' : '#ffffff',
-                border: '1.5px solid #cbd5e1',
-                borderRadius: '6px',
-                padding: '7.5px 9px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '12px',
-                fontWeight: '800',
-                color: isSyncing ? '#1e3a8a' : '#475569',
-                cursor: isSyncing ? 'not-allowed' : 'pointer',
-                flexShrink: 0,
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                whiteSpace: 'nowrap'
-              }}
-              title="구글 스프레드시트 최신 데이터 실시간 동기화"
-            >
-              <RefreshCw size={14} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
-            </button>
           </div>
 
           {/* Date-Grouped Work Logs List */}
