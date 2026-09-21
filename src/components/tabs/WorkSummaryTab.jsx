@@ -1347,10 +1347,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const hasCustomDaily = Boolean(dailyCustomReports[dailyDate]);
   const currentDailyCustom = hasCustomDaily
     ? {
-        issues: dailyCustomReports[dailyDate].issues || '',
-        todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
-        tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
-      }
+      issues: dailyCustomReports[dailyDate].issues || '',
+      todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
+      tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
+    }
     : getPrefilledDailyReport();
 
   const handleDailyCustomChange = (field, value) => {
@@ -1965,8 +1965,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       }}
                       title="등록된 업무 일지에서 금일 및 익일 내역 새로 불러오기"
                     >
-                      <RotateCcw size={12} color="#475569" />
-                      <span>일지 불러오기</span>
+                      <span>일지 최신화</span>
                     </button>
 
                     {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}

@@ -1754,10 +1754,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                 background: isSyncing ? '#eff6ff' : '#ffffff',
                 border: '1.5px solid #cbd5e1',
                 borderRadius: '6px',
-                padding: '7.5px 10px',
+                padding: '7.5px 9px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
+                justifyContent: 'center',
                 fontSize: '12px',
                 fontWeight: '800',
                 color: isSyncing ? '#1e3a8a' : '#475569',
@@ -1768,8 +1768,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               }}
               title="구글 스프레드시트 최신 데이터 실시간 동기화"
             >
-              <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
-              <span>{isSyncing ? '동기화 중' : '새로고침'}</span>
+              <RefreshCw size={14} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
             </button>
           </div>
 
