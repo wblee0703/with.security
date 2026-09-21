@@ -36,6 +36,7 @@ import { dbService } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
+import { getHolidayName } from '../../data/holidays.js';
 
 export default function WorkSummaryTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
@@ -817,7 +818,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const [y, m, d] = isoStr.split('-').map(Number);
     const dateObj = new Date(y, m - 1, d);
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    return `${y}년 ${m}월 ${d}일 (${dayNames[dateObj.getDay()]})`;
+    const hName = getHolidayName(isoStr);
+    return `${y}년 ${m}월 ${d}일 (${dayNames[dateObj.getDay()]})${hName ? ` [${hName}]` : ''}`;
   };
 
   // Grouping helper: calculates unique initial work cards (excludes extra tasks attached to the same card)
@@ -1126,10 +1128,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       const dayLogs = weeklyOwnLogs.filter(l => (l.date || '').startsWith(iso));
       const dayInitialGroups = getInitialWorkGroups(dayLogs);
 
+      const holidayName = getHolidayName(iso);
+      const isHoliday = Boolean(holidayName);
+
       days.push({
         iso,
         dayLabel: dayLabels[i],
         shortDate: `${month}/${date}`,
+        holidayName,
+        isHoliday,
         isWeekend: false,
         isToday: iso === todayIso,
         isFuture: iso > todayIso,
@@ -1164,6 +1171,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       ? `${satMonth}/${satDate}~${sunDate}`
       : `${satMonth}/${satDate}~${sunMonth}/${sunDate}`;
 
+    const satHoliday = getHolidayName(satIso);
+    const sunHoliday = getHolidayName(sunIso);
+    const weekendHolidays = [];
+    if (satHoliday) weekendHolidays.push(`토:${satHoliday}`);
+    if (sunHoliday) weekendHolidays.push(`일:${sunHoliday}`);
+    const holidayName = weekendHolidays.length > 0 ? weekendHolidays.join(', ') : null;
+    const isHoliday = Boolean(holidayName);
+
     days.push({
       iso: sunIso === todayIso ? sunIso : satIso,
       satIso,
@@ -1171,6 +1186,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       dayLabel: '주말',
       subLabel: '토·일',
       shortDate: shortDateRange,
+      holidayName,
+      isHoliday,
+      satHoliday,
+      sunHoliday,
       isWeekend: true,
       isToday: isWeekendToday,
       isFuture: satIso > todayIso,
@@ -1256,7 +1275,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         text += `   ${item.details.trim().replace(/\n/g, '\n   ')}\n`;
       }
     });
-    handleCopyText(text.trim(), day.isWeekend ? '주말(토/일) 업무 전체' : `${day.dayLabel}요일 업무 전체`);
+    handleCopyText(text.trim(), day.isWeekend ? (day.holidayName ? `주말(토/일 - ${day.holidayName}) 업무 전체` : '주말(토/일) 업무 전체') : `${day.dayLabel}요일${day.holidayName ? ` (${day.holidayName})` : ''} 업무 전체`);
   };
 
   // 일일 공유받은 업무 특정 공유자 카드 복사 헬퍼
@@ -2903,12 +2922,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     }
                   }}
                   style={{
-                    background: day.isToday
-                      ? '#eff6ff'
-                      : (day.isWeekend ? '#fffaf8' : '#f8fafc'),
+                    background: isCurrentSelected
+                      ? (day.isHoliday ? '#fef2f2' : (day.isWeekend ? '#fffaf8' : '#eff6ff'))
+                      : (day.isHoliday ? '#fff8f8' : (day.isToday ? '#eff6ff' : (day.isWeekend ? '#fffaf8' : '#f8fafc'))),
                     border: isCurrentSelected
-                      ? (day.isWeekend ? '2px solid #ea580c' : '2px solid #1e3a8a')
-                      : (day.isToday ? '1.5px solid #93c5fd' : (day.isWeekend ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1')),
+                      ? (day.isHoliday ? '2px solid #ef4444' : (day.isWeekend ? '2px solid #ea580c' : '2px solid #1e3a8a'))
+                      : (day.isHoliday ? '1.5px solid #fca5a5' : (day.isToday ? '1.5px solid #93c5fd' : (day.isWeekend ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1'))),
                     borderRadius: '8px',
                     padding: '10px 12px',
                     display: 'flex',
@@ -2917,24 +2936,40 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     cursor: 'pointer',
                     transition: 'all 0.2s ease',
                     boxShadow: isCurrentSelected
-                      ? (day.isWeekend ? '0 2px 10px rgba(234, 88, 12, 0.15)' : '0 2px 10px rgba(30, 58, 138, 0.15)')
+                      ? (day.isHoliday ? '0 2px 10px rgba(239, 68, 68, 0.18)' : (day.isWeekend ? '0 2px 10px rgba(234, 88, 12, 0.15)' : '0 2px 10px rgba(30, 58, 138, 0.15)'))
                       : 'none',
                     minHeight: '120px'
                   }}
-                  title={`${day.isWeekend ? '주말(토·일)' : `${day.dayLabel}요일`}(${day.shortDate}) 일일 업무로 이동`}
+                  title={`${day.isWeekend ? '주말(토·일)' : `${day.dayLabel}요일`}(${day.shortDate})${day.holidayName ? ` [${day.holidayName}]` : ''} 일일 업무로 이동`}
                 >
                   {/* Day Card Header */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(203, 213, 225, 0.8)', paddingBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
                       <span style={{
                         fontSize: '13px',
                         fontWeight: '800',
-                        color: day.isToday
-                          ? '#1e3a8a'
-                          : (day.isWeekend ? '#c2410c' : '#0f172a')
+                        color: day.isHoliday
+                          ? '#dc2626'
+                          : (day.isToday
+                            ? '#1e3a8a'
+                            : (day.isWeekend ? '#c2410c' : '#0f172a'))
                       }}>
                         {day.dayLabel} ({day.shortDate})
                       </span>
+                      {day.holidayName && (
+                        <span style={{
+                          fontSize: '9.5px',
+                          fontWeight: '800',
+                          background: '#fee2e2',
+                          color: '#dc2626',
+                          border: '1px solid #fca5a5',
+                          padding: '1px 5px',
+                          borderRadius: '4px',
+                          whiteSpace: 'nowrap'
+                        }} title={day.holidayName}>
+                          {day.holidayName}
+                        </span>
+                      )}
                       {day.isToday && (
                         <span style={{
                           fontSize: '9.5px',
@@ -3003,8 +3038,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                   fontWeight: '800',
                                   padding: '0 3px',
                                   borderRadius: '2px',
-                                  background: isSun ? '#fee2e2' : '#dbeafe',
-                                  color: isSun ? '#dc2626' : '#2563eb',
+                                  background: (isSun || (day.satHoliday && !isSun)) ? '#fee2e2' : '#dbeafe',
+                                  color: (isSun || (day.satHoliday && !isSun)) ? '#dc2626' : '#2563eb',
                                   flexShrink: 0
                                 }}>
                                   {isSun ? '일' : '토'}
