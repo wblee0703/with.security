@@ -822,6 +822,28 @@ function doPost(e) {
           }
         }
 
+        // work_logs의 경우 ID 불일치 시 (제목 + 일자 + 작성자) 복합 조건으로도 확실한 삭제 지원
+        if (!isMatch && sheetName === 'work_logs') {
+          const wTitle = String(meta.title || targetTitle || '').trim().toLowerCase();
+          const wDate = formatKstDate(meta.date || meta.log_date || '', true);
+          const wWriter = String(meta.writer_id || meta.writerId || meta.authorUsername || meta.name || targetUser || targetName || '').trim().toLowerCase();
+
+          const dateIdx = headers.indexOf('log_date') !== -1 ? headers.indexOf('log_date') : headers.indexOf('date');
+          const writerIdx = headers.indexOf('writer_id') !== -1 ? headers.indexOf('writer_id') : headers.indexOf('name');
+
+          const rowTitle = titleColIdx !== -1 ? String(rows[i][titleColIdx] || '').trim().toLowerCase() : '';
+          const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
+          const rowWriter = writerIdx !== -1 ? String(rows[i][writerIdx] || '').trim().toLowerCase() : '';
+
+          const titleMatched = Boolean(wTitle && rowTitle === wTitle);
+          const dateMatched = Boolean(!wDate || rowDate === wDate);
+          const writerMatched = Boolean(!wWriter || rowWriter === wWriter || rowWriter.includes(wWriter) || wWriter.includes(rowWriter));
+
+          if (titleMatched && dateMatched && writerMatched) {
+            isMatch = true;
+          }
+        }
+
         if (isMatch) {
           sheet.deleteRow(i + 1);
           deletedCount++;

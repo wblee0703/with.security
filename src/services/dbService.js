@@ -2879,17 +2879,9 @@ class SecurityDatabase {
   _isWorkLogRecentlyEdited(log, now = Date.now()) {
     if (!log) return false;
     const logId = String(log.id || log.log_id || '').trim();
-    if (this._recentLocalWorkLogEdits && this._recentLocalWorkLogEdits.has(logId)) {
+    if (this._recentLocalWorkLogEdits && logId && this._recentLocalWorkLogEdits.has(logId)) {
       const editTime = this._recentLocalWorkLogEdits.get(logId);
-      if (now - editTime < 120000) return true; // protected within 2 minutes
-    }
-    if (log.updatedAt) {
-      const t = new Date(log.updatedAt).getTime();
-      if (!isNaN(t) && now - t < 120000) return true;
-    }
-    if (log.createdAt && !String(log.id || '').match(/^\d+$/)) {
-      const t = new Date(log.createdAt).getTime();
-      if (!isNaN(t) && now - t < 120000) return true;
+      if (now - editTime < 15000) return true; // only protected within 15 seconds on THIS device
     }
     return false;
   }
@@ -2910,17 +2902,17 @@ class SecurityDatabase {
     const now = Date.now();
     const mergedMap = new Map();
 
-    // 1. ⭐ 원격 로그(구글 스프레드시트/API) 전수 정규화 (ID가 없는 수기 시트 행도 결정적 고유 ID 부여 및 sharedWith 정제)
+    // 1. Remote logs normalization & filtering against explicit deleted set
     const normalizedRemote = remoteLogs
       .map(r => this._normalizeWorkLog(r))
       .filter(r => r && !this._isWorkLogDeleted(r, deletedSet));
 
-    // 2. 로컬 로그 전수 정규화
+    // 2. Local logs normalization & filtering against explicit deleted set
     const normalizedLocal = currentLocal
       .map(l => this._normalizeWorkLog(l))
       .filter(l => l && !this._isWorkLogDeleted(l, deletedSet));
 
-    // 최근 로컬에서 날짜 이동 등 수정된 항목 수집
+    // Track tasks that were recently edited/moved on THIS device
     const recentLocalMoves = [];
     for (const loc of normalizedLocal) {
       if (this._isWorkLogRecentlyEdited(loc, now)) {
@@ -2935,14 +2927,13 @@ class SecurityDatabase {
       }
     }
 
-    // 1. 원격 로그 병합 맵에 적재 (날짜 이동 전 잔존 고스트 데이터 배제)
+    // 3. Load all remote logs into mergedMap (skipping stale ghost records superseded by in-flight local moves)
     for (const r of normalizedRemote) {
       const rId = String(r.id || r.log_id || '').trim();
       const rDate = normalizeKstDate(r.date || r.log_date);
       const rWriter = String(r.authorUsername || r.writerId || r.writer_id || r.name || '').trim().toLowerCase();
       const rTitle = String(r.title || '').trim().toLowerCase();
 
-      // 날짜가 최근 변경된 이전 원격 잔존 데이터인지 확인
       const isStaleGhost = recentLocalMoves.some(m =>
         (m.id && rId && m.id === rId && m.origDate === rDate) ||
         (m.origDate === rDate && m.writer === rWriter && m.title === rTitle)
@@ -2952,7 +2943,18 @@ class SecurityDatabase {
       if (rId) mergedMap.set(rId, r);
     }
 
-    // 2. 권한 있는 로컬 오버레이: 최근 편집된 로컬 데이터 보호 및 원격 미반영 새 로그 보존
+    // Map remote tasks to their current remote dates (to identify authoritative date of tasks on server)
+    const remoteTaskDates = new Map();
+    for (const r of normalizedRemote) {
+      const rWriter = String(r.authorUsername || r.writerId || r.writer_id || r.name || '').trim().toLowerCase();
+      const rTitle = String(r.title || '').trim().toLowerCase();
+      const rDate = normalizeKstDate(r.date || r.log_date);
+      if (rWriter && rTitle && rDate) {
+        remoteTaskDates.set(`TASK::${rWriter}::${rTitle}`, rDate);
+      }
+    }
+
+    // 4. Incorporate local logs ONLY if actively edited on THIS device within the last 15s
     for (const loc of normalizedLocal) {
       const locId = String(loc.id || loc.log_id || '').trim();
       if (!locId) continue;
@@ -2961,11 +2963,23 @@ class SecurityDatabase {
 
       if (mergedMap.has(locId)) {
         if (isRecentlyEdited) {
+          // Local in-flight edit takes precedence over remote until synced
           mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
         }
-      } else {
-        mergedMap.set(locId, loc);
+        // If not recently edited on this device, remote is authoritative! Do NOT overwrite remote with local!
+      } else if (isRecentlyEdited) {
+        // Newly created log on this device that is still in-flight
+        const locWriter = String(loc.authorUsername || loc.writerId || loc.writer_id || loc.name || '').trim().toLowerCase();
+        const locTitle = String(loc.title || '').trim().toLowerCase();
+        const locDate = normalizeKstDate(loc.date || loc.log_date);
+        const remoteDateForTask = remoteTaskDates.get(`TASK::${locWriter}::${locTitle}`);
+        // Only keep if not conflicting with an existing server task moved to a different date
+        if (!remoteDateForTask || remoteDateForTask === locDate) {
+          mergedMap.set(locId, loc);
+        }
       }
+      // If NOT in mergedMap and NOT isRecentlyEdited:
+      // It was deleted on the server or another device. NEVER resurrect it!
     }
 
     return this._deduplicateWorkLogs(Array.from(mergedMap.values()));
@@ -3105,7 +3119,10 @@ class SecurityDatabase {
     });
 
     const pWriter = String(preparedLog.authorUsername || preparedLog.writerId || preparedLog.writer_id || preparedLog.name || '').trim().toLowerCase();
-    const origDate = normalizeKstDate(logItem._originalDate || logItem.originalDate || logItem.prevDate);
+    const existingLog = existingIndex >= 0 ? currentLocal[existingIndex] : null;
+    const origDate = normalizeKstDate(
+      logItem._originalDate || logItem.originalDate || logItem.prevDate || (existingLog ? (existingLog.date || existingLog.log_date) : null)
+    );
     const pTitle = String(preparedLog.title || '').trim().toLowerCase();
 
     if (existingIndex < 0) {
@@ -3162,7 +3179,7 @@ class SecurityDatabase {
       id: targetId,
       log_id: targetId,
       logId: targetId,
-      original_date: logItem._originalDate || logItem.originalDate || logItem.prevDate || '',
+      original_date: origDate || '',
       name: preparedLog.authorName || preparedLog.name || preparedLog.writerName || '작성자',
       writer_id: preparedLog.authorUsername || preparedLog.writerId || '',
       writerId: preparedLog.authorUsername || preparedLog.writerId || '',
@@ -3373,8 +3390,23 @@ class SecurityDatabase {
     }
 
     // 6. Safe remote API delete (non-blocking, eliminates UI freeze/lag)
-    safeFetchApi(`/api/work-logs/${encodeURIComponent(targetId)}`, { method: 'DELETE' })
-      .catch(err => console.warn('Background work log delete sync warning:', err));
+    const qs = new URLSearchParams();
+    if (matchedLog) {
+      if (matchedLog.title) qs.set('title', matchedLog.title);
+      const mDate = normalizeKstDate(matchedLog.date || matchedLog.log_date || matchedLog.dueDate || matchedLog.due_date);
+      if (mDate) qs.set('date', mDate);
+      const mWriter = matchedLog.authorUsername || matchedLog.writer_id || matchedLog.writerId || matchedLog.name || matchedLog.authorName;
+      if (mWriter) qs.set('writer_id', mWriter);
+      const mName = matchedLog.authorName || matchedLog.name || matchedLog.writerName;
+      if (mName) qs.set('name', mName);
+      if (matchedLog.log_id || matchedLog.id) qs.set('log_id', matchedLog.log_id || matchedLog.id);
+    }
+    const deleteUrl = `/api/work-logs/${encodeURIComponent(targetId)}${qs.toString() ? '?' + qs.toString() : ''}`;
+    safeFetchApi(deleteUrl, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: matchedLog ? JSON.stringify(matchedLog) : undefined
+    }).catch(err => console.warn('Background work log delete sync warning:', err));
 
     notifyDataChanged();
     return updated;
@@ -5296,6 +5328,9 @@ class SecurityDatabase {
    * 통합 서버 및 구글 스프레드시트 전체 동기화 실행기
    */
   async syncAllWithServer(serverUrl = null) {
+    recentResponseCache.clear();
+    this._lastWorkLogsRevalidate = 0;
+
     const sheetUrl = (serverUrl && serverUrl.includes('script.google.com'))
       ? serverUrl
       : getGoogleSheetsUrl();

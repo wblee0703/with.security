@@ -1004,8 +1004,12 @@ export default function WorkLogTab({ onTriggerToast }) {
           })
         : null;
 
+      const origItemDate = existingLog ? normalizeKstDate(existingLog.date || existingLog.log_date) : null;
       const newLogItem = {
         ...(existingLog || {}),
+        _originalDate: origItemDate,
+        original_date: origItemDate,
+        originalDate: origItemDate,
         id: editingLogId || (existingLog ? (existingLog.id || existingLog.log_id) : `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`),
         log_id: (existingLog ? (existingLog.log_id || existingLog.id) : undefined) || (editingLogId ? String(editingLogId) : undefined),
         category: form.category,
@@ -1031,7 +1035,7 @@ export default function WorkLogTab({ onTriggerToast }) {
         updatedAt: new Date().toISOString()
       };
 
-      let updatedLogs = await dbService.saveWorkLog(newLogItem);
+      let updatedLogs = await dbService.saveWorkLog(newLogItem, { syncImmediate: Boolean(editingLogId) });
 
       // Save extra task items if added in multi-task mode
       if (!editingLogId && extraTasks.length > 0) {

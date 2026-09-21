@@ -489,8 +489,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       const [u, users, weeklyReps, dailyReps] = await Promise.all([
         dbService.getUserProfile(),
         dbService.getAllUsers(),
-        dbService.getWeeklyReports(),
-        dbService.getDailyReports()
+        dbService.getWeeklyReports({}, true),
+        dbService.getDailyReports({}, true)
       ]);
       setCurrentUser(u);
       setAllUsers(users || []);
