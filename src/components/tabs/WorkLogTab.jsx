@@ -2254,11 +2254,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               )}
 
                                               <textarea
-                                                rows={2}
+                                                rows={4}
                                                 value={inlineForm.details}
                                                 onChange={(e) => setInlineForm({ ...inlineForm, details: e.target.value })}
                                                 style={{
                                                   width: '100%',
+                                                  minHeight: '120px',
                                                   padding: '8px 10px',
                                                   borderRadius: '4px',
                                                   background: '#ffffff',
@@ -2599,7 +2600,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       )}
 
                                       <textarea
-                                        rows={2}
+                                        rows={4}
                                         value={inlineNewForm.details}
                                         onChange={(e) => setInlineNewForm({ ...inlineNewForm, details: e.target.value })}
                                         style={{
