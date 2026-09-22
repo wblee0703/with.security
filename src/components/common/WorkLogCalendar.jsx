@@ -20,7 +20,10 @@ export default function WorkLogCalendar({
   onSelectDate,
   onOpenAddModal,
   onMoveLogDate,
-  canModifyLog
+  canModifyLog,
+  showSharedInCalendar = true,
+  onToggleShowShared,
+  currentUser
 }) {
   // Current view year & month state (default to selectedDate or current date, parsed in local time)
   const parseYearMonth = (dateStr) => {
@@ -431,11 +434,41 @@ export default function WorkLogCalendar({
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#1d4ed8', fontWeight: '700', whiteSpace: 'nowrap' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563eb', boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.3)' }} /> 오늘
             </span>
+            {showSharedInCalendar && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6d28d9', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#7c3aed', boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.3)' }} /> 공유 업무
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Controls: Prev / Today / Next */}
+        {/* Controls: Prev / Today / Next / Toggle Shared */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {onToggleShowShared && (
+            <button
+              type="button"
+              onClick={onToggleShowShared}
+              style={{
+                padding: '6px 10px',
+                borderRadius: '6px',
+                border: showSharedInCalendar ? '1.5px solid #7c3aed' : '1.5px solid #cbd5e1',
+                background: showSharedInCalendar ? '#f5f3ff' : '#ffffff',
+                color: showSharedInCalendar ? '#6d28d9' : '#64748b',
+                fontSize: '11.5px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                transition: 'all 0.2s ease',
+                boxShadow: showSharedInCalendar ? '0 1px 4px rgba(124, 58, 237, 0.15)' : 'none'
+              }}
+              title={showSharedInCalendar ? '캘린더에서 공유받은 업무 숨기기' : '캘린더에 공유받은 업무 함께 표시'}
+            >
+              <Share2 size={12} color={showSharedInCalendar ? '#7c3aed' : '#94a3b8'} />
+              <span>공유 업무 {showSharedInCalendar ? '표시 ON' : '표시 OFF'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handlePrevMonth}
@@ -843,12 +876,26 @@ export default function WorkLogCalendar({
                     };
                     const isShared = item.isTripGroup ? (Array.isArray(item.logs) && item.logs.some(checkIsShared)) : checkIsShared(log);
 
+                    const isLogSharedToMe = (l) => {
+                      if (!l || !currentUser) return false;
+                      const logWriter = String(l.writer_id || l.writerId || l.authorUsername || l.author_username || l.username || l.userId || '').trim().toLowerCase();
+                      const userAccount = String(currentUser.username || currentUser.userId || currentUser.id || '').trim().toLowerCase();
+                      if (logWriter && userAccount && logWriter !== userAccount) return true;
+                      if (l.authorName && currentUser.name && l.authorName !== currentUser.name) return true;
+                      return false;
+                    };
+                    const isReceivedShared = item.isTripGroup ? (Array.isArray(item.logs) && item.logs.some(isLogSharedToMe)) : isLogSharedToMe(log);
+
                     // Styling based on category, due status, or subCategory
                     let bg = '#eff6ff';
                     let borderColor = '#cbd5e1';
                     let textColor = '#1e3a8a';
 
-                    if (isBusinessTrip) {
+                    if (isReceivedShared) {
+                      bg = '#f5f3ff';
+                      borderColor = '#c4b5fd';
+                      textColor = '#6d28d9';
+                    } else if (isBusinessTrip) {
                       bg = '#faf5ff';
                       borderColor = '#e9d5ff';
                       textColor = '#7c3aed';
@@ -871,8 +918,15 @@ export default function WorkLogCalendar({
                     }
 
                     // Format display text:
-                    // 출장 업무: 1건이면 "사업장 구분", 2건 이상이면 "사업장 구분 N건" (예: "SKH 이천 작업 2건")
                     const displayText = (() => {
+                      if (isReceivedShared) {
+                        const author = log.authorName || '동료';
+                        if (item.isTripGroup) {
+                          const base = `[공유] ${item.siteName} ${item.subCategory}`.trim();
+                          return item.count > 1 ? `${base} ${item.count}건` : base;
+                        }
+                        return `[공유:${author}] ${log.title}`;
+                      }
                       if (item.isTripGroup) {
                         const base = `${item.siteName} ${item.subCategory}`.trim();
                         if (item.count > 1) {
@@ -889,9 +943,11 @@ export default function WorkLogCalendar({
                       return log.title;
                     })();
 
-                    const tooltipText = item.isTripGroup
-                      ? `[출장 업무 - ${item.subCategory}] ${item.siteName} (${item.count}건 등록)\n${item.logs.map((l, i) => `${i + 1}. ${l.title}${l.details ? ` (${l.details})` : ''}`).join('\n')}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`
-                      : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`;
+                    const tooltipText = isReceivedShared
+                      ? `[🔗 공유받은 업무]\n작성자: ${log.authorName || ''} (${log.authorTeam || ''} ${log.authorRank || ''})\n내용: ${log.title}${log.details ? `\n세부내용: ${log.details}` : ''}`
+                      : (item.isTripGroup
+                          ? `[출장 업무 - ${item.subCategory}] ${item.siteName} (${item.count}건 등록)\n${item.logs.map((l, i) => `${i + 1}. ${l.title}${l.details ? ` (${l.details})` : ''}`).join('\n')}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`
+                          : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`);
 
                     const dragPayload = item.isTripGroup
                       ? { ...log, _allTripLogs: item.logs }

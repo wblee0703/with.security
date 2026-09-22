@@ -48,6 +48,7 @@
                 <action android:name="com.company.withsecurity.ACTION_REFRESH" />
                 <action android:name="com.company.withsecurity.ACTION_OPEN_DATE" />
                 <action android:name="com.company.withsecurity.ACTION_SELECT_DATE" />
+                <action android:name="com.company.withsecurity.ACTION_AUTO_RESET_TODAY" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

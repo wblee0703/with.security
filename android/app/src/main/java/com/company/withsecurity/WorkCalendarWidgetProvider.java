@@ -1,5 +1,6 @@
 package com.company.withsecurity;
 
+import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
@@ -8,7 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
@@ -39,7 +42,11 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_SELECT_DATE = "com.company.withsecurity.ACTION_SELECT_DATE";
     public static final String ACTION_OPEN_APP = "com.company.withsecurity.ACTION_OPEN_APP";
     public static final String ACTION_OPEN_DATE = "com.company.withsecurity.ACTION_OPEN_DATE";
+    public static final String ACTION_AUTO_RESET_TODAY = "com.company.withsecurity.ACTION_AUTO_RESET_TODAY";
     public static final String EXTRA_TARGET_DATE = "extra_target_date";
+
+    public static final long AUTO_RESET_DELAY_MILLIS = 2 * 60 * 1000L; // 2분 (120초)
+    private static final int RC_AUTO_RESET = 999;
 
     // Predefined static resource IDs for fast, crash-free RemoteViews mapping (42
     // cells)
@@ -138,12 +145,16 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
         if (ACTION_PREV_MONTH.equals(action)) {
             int offset = prefs.getInt(KEY_MONTH_OFFSET, 0);
-            prefs.edit().putInt(KEY_MONTH_OFFSET, offset - 1).apply();
+            int newOffset = offset - 1;
+            prefs.edit().putInt(KEY_MONTH_OFFSET, newOffset).apply();
             updateAllWidgets(context);
+            checkAndScheduleReset(context, prefs, newOffset, null);
         } else if (ACTION_NEXT_MONTH.equals(action)) {
             int offset = prefs.getInt(KEY_MONTH_OFFSET, 0);
-            prefs.edit().putInt(KEY_MONTH_OFFSET, offset + 1).apply();
+            int newOffset = offset + 1;
+            prefs.edit().putInt(KEY_MONTH_OFFSET, newOffset).apply();
             updateAllWidgets(context);
+            checkAndScheduleReset(context, prefs, newOffset, null);
         } else if (ACTION_REFRESH.equals(action)) {
             Calendar cal = Calendar.getInstance();
             String todayStr = String.format(Locale.KOREA, "%04d-%02d-%02d",
@@ -152,6 +163,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     .putInt(KEY_MONTH_OFFSET, 0)
                     .putString(KEY_SELECTED_DATE, todayStr)
                     .apply();
+            cancelAutoResetToToday(context);
             updateAllWidgets(context);
         } else if (ACTION_SELECT_DATE.equals(action)) {
             // Selecting a date purely updates the widget state without opening the app
@@ -159,10 +171,22 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             if (targetDate != null && !targetDate.isEmpty()) {
                 prefs.edit().putString(KEY_SELECTED_DATE, targetDate).apply();
                 updateAllWidgets(context);
+                int currentOffset = prefs.getInt(KEY_MONTH_OFFSET, 0);
+                checkAndScheduleReset(context, prefs, currentOffset, targetDate);
             }
+        } else if (ACTION_AUTO_RESET_TODAY.equals(action)) {
+            Log.d(TAG, "ACTION_AUTO_RESET_TODAY received - 2 minutes idle: resetting to today");
+            Calendar cal = Calendar.getInstance();
+            String todayStr = String.format(Locale.KOREA, "%04d-%02d-%02d",
+                    cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
+            prefs.edit()
+                    .putInt(KEY_MONTH_OFFSET, 0)
+                    .putString(KEY_SELECTED_DATE, todayStr)
+                    .apply();
+            updateAllWidgets(context);
         } else if (ACTION_OPEN_APP.equals(action) || ACTION_OPEN_DATE.equals(action)) {
-            // Explicit user action to launch app (from top "앱 열기" button or bottom summary
-            // card)
+            // Explicit user action to launch app (from top "앱 열기" button or bottom summary card)
+            cancelAutoResetToToday(context);
             String targetDate = intent.getStringExtra(EXTRA_TARGET_DATE);
             if (targetDate == null || targetDate.isEmpty()) {
                 targetDate = prefs.getString(KEY_SELECTED_DATE, "");
@@ -176,6 +200,87 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             appIntent.addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             context.startActivity(appIntent);
+        }
+    }
+
+    /**
+     * 2분 동안 아무런 위젯 조작이 없으면 자동으로 오늘 날짜 및 오늘 업무 일정으로 리셋
+     */
+    public static void scheduleAutoResetToToday(Context context) {
+        if (context == null) return;
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager == null) return;
+
+            Intent intent = new Intent(context, WorkCalendarWidgetProvider.class);
+            intent.setAction(ACTION_AUTO_RESET_TODAY);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    RC_AUTO_RESET,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+            long triggerAtMillis = SystemClock.elapsedRealtime() + AUTO_RESET_DELAY_MILLIS;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent);
+            } else {
+                alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAtMillis, pendingIntent);
+            }
+            Log.d(TAG, "Scheduled auto reset to today in 2 minutes");
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to schedule auto reset timer", t);
+        }
+    }
+
+    /**
+     * 오늘 날짜로 이미 돌아왔거나 조작 완료 시 자동 리셋 타이머 취소
+     */
+    public static void cancelAutoResetToToday(Context context) {
+        if (context == null) return;
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager == null) return;
+
+            Intent intent = new Intent(context, WorkCalendarWidgetProvider.class);
+            intent.setAction(ACTION_AUTO_RESET_TODAY);
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    RC_AUTO_RESET,
+                    intent,
+                    PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE);
+
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent);
+                pendingIntent.cancel();
+                Log.d(TAG, "Cancelled auto reset to today timer");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to cancel auto reset timer", t);
+        }
+    }
+
+    /**
+     * 현재 위젯 뷰 상태가 오늘(이번 달 & 오늘 날짜)인지 판별하여
+     * 오늘이 아니면 2분 후 자동 복귀 타이머를 등록하고, 오늘이면 기존 타이머를 해제함.
+     */
+    private static void checkAndScheduleReset(Context context, SharedPreferences prefs, int monthOffset, String targetDate) {
+        Calendar cal = Calendar.getInstance();
+        String todayStr = String.format(Locale.KOREA, "%04d-%02d-%02d",
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
+
+        String currentSelectedDate = (targetDate != null && !targetDate.isEmpty())
+                ? targetDate
+                : prefs.getString(KEY_SELECTED_DATE, "");
+
+        if (currentSelectedDate.isEmpty()) {
+            currentSelectedDate = todayStr;
+        }
+
+        if (monthOffset == 0 && todayStr.equals(currentSelectedDate)) {
+            cancelAutoResetToToday(context);
+        } else {
+            scheduleAutoResetToToday(context);
         }
     }
 

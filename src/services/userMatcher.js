@@ -102,9 +102,17 @@ export function isSamePerson(personA, personB) {
   const teamA = cleanTeam(personA.team || personA.department || personA.visitor_team || personA.belonging);
   const teamB = cleanTeam(personB.team || personB.department || personB.visitor_team || personB.belonging);
 
-  // 소속팀이 둘 다 존재하고 서로 상충되면(포함 관계도 아님) -> 다른 사람 (동명이인 판정)
-  if (teamA && teamB && teamA !== teamB && !teamA.includes(teamB) && !teamB.includes(teamA)) {
-    return false;
+  // 소속팀 비교: 괄호/숫자 차이(예: '운영1팀(본사)' vs '운영팀')가 있더라도 핵심 조직(앞 2글자) 일치 시 동일인 인정
+  if (teamA && teamB && teamA !== teamB) {
+    const cleanWordA = teamA.replace(/[^가-힣a-zA-Z]/g, '').toLowerCase();
+    const cleanWordB = teamB.replace(/[^가-힣a-zA-Z]/g, '').toLowerCase();
+    const isSubset = cleanWordA.includes(cleanWordB) || cleanWordB.includes(cleanWordA);
+    const coreA = cleanWordA.slice(0, 2);
+    const coreB = cleanWordB.slice(0, 2);
+    const isCoreMatch = (coreA.length >= 2 && coreB.length >= 2 && coreA === coreB);
+    if (!isSubset && !isCoreMatch) {
+      return false; // 완전히 다른 분야의 조직인 경우만 타인/동명이인으로 판정
+    }
   }
 
   const rankA = String(personA.rank || personA.authorRank || personA.writerRank || personA.title || personA.visitor_rank || personA.visitorRank || '').trim().toLowerCase();
@@ -209,14 +217,23 @@ export function isTargetMatchingUser(target, user) {
 
   // 2-4. 이름 매칭 + 동명이인 검증
   if (myName && targetStr.includes(myName)) {
-    // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (품질경영팀)")
+    // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (운영팀)" vs "운영1팀(본사)")
     const teamMatch = targetStr.match(/\(([^)]+)\)/);
     if (teamMatch && teamMatch[1]) {
       const targetTeam = teamMatch[1].trim().toLowerCase();
-      const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
-      const cleanTargetTeam = targetTeam.replace(/\s+/g, '').toLowerCase();
-      if (cleanMyTeam && cleanTargetTeam && !cleanMyTeam.includes(cleanTargetTeam) && !cleanTargetTeam.includes(cleanMyTeam)) {
-        return false; // 다른 팀의 동명이인이므로 제외
+      const cleanMyTeam = myTeam.replace(/[^가-힣a-zA-Z]/g, '').toLowerCase();
+      const cleanTargetTeam = targetTeam.replace(/[^가-힣a-zA-Z]/g, '').toLowerCase();
+
+      // 양방향 포함 검사
+      const isTeamSubset = cleanMyTeam.includes(cleanTargetTeam) || cleanTargetTeam.includes(cleanMyTeam);
+
+      // 팀 앞 2글자 핵심 키워드(운영, 개발, 품질, 기획, 영업 등) 동일성 검사
+      const coreMy = cleanMyTeam.slice(0, 2);
+      const coreTarget = cleanTargetTeam.slice(0, 2);
+      const isCoreMatching = (coreMy.length >= 2 && coreTarget.length >= 2 && coreMy === coreTarget);
+
+      if (!isTeamSubset && !isCoreMatching) {
+        return false; // 확실히 조직/분야가 다른 동명이인만 제외
       }
     }
     return true;

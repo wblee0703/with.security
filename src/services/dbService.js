@@ -3677,6 +3677,11 @@ class SecurityDatabase {
             const itemId = item.id || item.reportId || item.report_id || `daily-rep-${item.author_username || item.authorUsername || 'user'}-${item.daily_date || item.dailyDate}`;
             const localItem = localMap.get(itemId);
 
+            const rawSharedWith = item.sharedWith || item.shared_with || localItem?.sharedWith || [];
+            const parsedSharedWith = Array.isArray(rawSharedWith)
+              ? rawSharedWith
+              : (typeof rawSharedWith === 'string' && rawSharedWith ? rawSharedWith.split(',').map(s => s.trim()).filter(Boolean) : []);
+
             return {
               id: itemId,
               reportId: itemId,
@@ -3691,6 +3696,9 @@ class SecurityDatabase {
               issues: item.issues || item.special_notes || item.specialNotes || localItem?.issues || '',
               todayTasks: item.todayTasks || item.today_tasks || localItem?.todayTasks || '',
               tomorrowPlan: item.tomorrowPlan || item.tomorrow_plan || localItem?.tomorrowPlan || '',
+              sharedBy: item.sharedBy || item.shared_by || localItem?.sharedBy || '',
+              sharedWith: parsedSharedWith,
+              sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
               createdAt: item.createdAt || item.created_at || localItem?.createdAt || '',
               updatedAt: item.updatedAt || item.updated_at || localItem?.updatedAt || ''
             };
@@ -3743,6 +3751,13 @@ class SecurityDatabase {
       issues: report.issues || '',
       todayTasks: report.todayTasks || '',
       tomorrowPlan: report.tomorrowPlan || '',
+      sharedBy: report.sharedBy || report.shared_by || '',
+      sharedWith: Array.isArray(report.sharedWith || report.shared_with)
+        ? (report.sharedWith || report.shared_with)
+        : (typeof (report.sharedWith || report.shared_with) === 'string' && (report.sharedWith || report.shared_with)
+            ? (report.sharedWith || report.shared_with).split(',').map(s => s.trim()).filter(Boolean)
+            : []),
+      sharedAt: report.sharedAt || report.shared_at || '',
       createdAt: report.createdAt || nowStr,
       updatedAt: nowStr
     };
@@ -3779,35 +3794,26 @@ class SecurityDatabase {
     this.replaceCollection('daily_reports', updated).catch(() => {});
 
     // Non-blocking background API sync to Google Spreadsheet (sheet: 'daily_reports')
+    // ⭐ id 단일화 (report_id 중복 제거) 및 카멜케이스 중복 제거(O~Z열 중복 컬럼 방지), 공유자/공유대상 전송
     safeFetchApi('/api/daily-reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: targetId,
-        reportId: targetId,
-        report_id: targetId,
-        dailyDate: normalized.dailyDate,
         daily_date: normalized.dailyDate,
-        authorName: normalized.authorName,
         author_name: normalized.authorName,
-        authorUsername: normalized.authorUsername,
         author_username: normalized.authorUsername,
-        authorTeam: normalized.authorTeam,
         author_team: normalized.authorTeam,
-        authorRank: normalized.authorRank,
         author_rank: normalized.authorRank,
-        authorDivision: normalized.authorDivision,
         author_division: normalized.authorDivision,
-        authorRole: normalized.authorRole,
         author_role: normalized.authorRole,
         issues: normalized.issues,
-        todayTasks: normalized.todayTasks,
         today_tasks: normalized.todayTasks,
-        tomorrowPlan: normalized.tomorrowPlan,
         tomorrow_plan: normalized.tomorrowPlan,
-        createdAt: normalized.createdAt,
+        shared_by: normalized.sharedBy || '',
+        shared_with: Array.isArray(normalized.sharedWith) ? normalized.sharedWith.join(', ') : (normalized.sharedWith || ''),
+        shared_at: normalized.sharedAt || '',
         created_at: normalized.createdAt,
-        updatedAt: normalized.updatedAt,
         updated_at: normalized.updatedAt
       })
     }).catch(e => console.warn('Background daily report save warning:', e));

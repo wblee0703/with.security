@@ -88,6 +88,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [weeklyShareTargets, setWeeklyShareTargets] = useState([]);
   const [weeklyShareSearchQuery, setWeeklyShareSearchQuery] = useState('');
 
+  // Daily In-App Share Modal State (사내 사용자 일일 업무 공유 모달)
+  const [isDailyShareModalOpen, setIsDailyShareModalOpen] = useState(false);
+  const [dailyShareTargets, setDailyShareTargets] = useState([]);
+  const [dailyShareSearchQuery, setDailyShareSearchQuery] = useState('');
+
+
   // Today local ISO date (YYYY-MM-DD)
   const getTodayIso = () => {
     const d = new Date();
@@ -171,6 +177,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     workSupport: '',
     etcTasks: ''
   };
+
+  const currentDailyCustom = dailyCustomReports[dailyDate]
+    ? {
+      issues: dailyCustomReports[dailyDate].issues || '',
+      todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
+      tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
+    }
+    : {
+      issues: '',
+      todayTasks: '',
+      tomorrowPlan: ''
+    };
+
+
 
   // 입력 시 React State 업데이트 및 즉시 로컬 스토리지 임시 드래프트 저장 (동기화 및 새로고침 유실 원천 방지)
   const handleWeeklyCustomChange = (field, value) => {
@@ -381,9 +401,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       // 구글 스프레드시트 daily_reports 시트 비동기 백그라운드 전송
       const author = currentUser || {};
       const username = author.username || 'user';
+      const targetId = `daily-rep-${username}-${dailyDate}`;
+      const existingReport = (sharedDailyReports || []).find(r => (
+        (r.id === targetId) || (r.reportId === targetId) ||
+        ((r.dailyDate || r.daily_date) === dailyDate && (r.authorUsername || r.author_username || r.authorName || r.name) === username)
+      ));
+
       const payload = {
-        id: `daily-rep-${username}-${dailyDate}`,
-        reportId: `daily-rep-${username}-${dailyDate}`,
+        id: targetId,
         dailyDate: dailyDate,
         authorName: author.name || '미지정',
         authorUsername: username,
@@ -394,7 +419,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         issues: dataToSave.issues,
         todayTasks: dataToSave.todayTasks,
         tomorrowPlan: dataToSave.tomorrowPlan,
-        createdAt: new Date().toISOString(),
+        sharedBy: existingReport?.sharedBy || existingReport?.shared_by || '',
+        sharedWith: existingReport?.sharedWith || existingReport?.shared_with || [],
+        sharedAt: existingReport?.sharedAt || existingReport?.shared_at || '',
+        createdAt: existingReport?.createdAt || existingReport?.created_at || new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
@@ -924,35 +952,265 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const dailyInternalLogs = dailyOwnLogs.filter(l => l && l.category === '사내 업무');
   const dailyTripLogs = dailyOwnLogs.filter(l => l && l.category === '출장 업무');
 
-  // Group daily shared-received logs by author (동일 공유자별 카드 묶음)
-  const dailySharedGroupedByAuthor = dailySharedReceivedLogs.reduce((acc, log) => {
-    if (!log) return acc;
-    const aName = log.authorName || log.name || '작성자';
-    const aRank = log.authorRank || log.rank || '';
-    const aTeam = log.authorTeam || log.team || log.department || '';
-    const aDivision = log.authorDivision || log.division || '';
-    const aUser = log.authorUsername || log.username || '';
-    const key = `${aName}___${aRank}___${aTeam}___${aDivision}___${aUser}`;
+  // 오늘/선택일자에 다른 동료로부터 사내 공유받은 일일 업무 보고서(특이사항, 금일진행내역, 내일예정업무) 목록
+  const receivedDailyCustomReports = (sharedDailyReports || []).filter(rep => {
+    if (!currentUser || !rep) return false;
+    const repDate = rep.dailyDate || rep.daily_date || rep.date;
+    const normRepDate = normalizeKstDate(repDate) || (repDate ? String(repDate).slice(0, 10) : '');
+    const normDailyDate = normalizeKstDate(dailyDate) || dailyDate;
+    if (normRepDate !== normDailyDate) return false;
 
-    if (!acc[key]) {
-      let authorLabel = aName;
-      if (aRank && !authorLabel.includes(aRank)) authorLabel += ` ${aRank}`;
-      if (aTeam && !authorLabel.includes(aTeam)) authorLabel += ` (${formatOnlyTeam(aTeam)})`;
-
-      acc[key] = {
-        key,
-        authorName: aName,
-        authorRank: aRank,
-        authorTeam: aTeam,
-        authorDivision: aDivision,
-        authorUsername: aUser,
-        authorLabel,
-        items: []
-      };
+    let targets = [];
+    const rawSw = rep.sharedWith || rep.shared_with;
+    if (Array.isArray(rawSw)) {
+      targets = rawSw;
+    } else if (typeof rawSw === 'string' && rawSw.trim()) {
+      try {
+        const p = JSON.parse(rawSw);
+        targets = Array.isArray(p) ? p : rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      } catch (e) {
+        targets = rawSw.split(/[,;\n\r]+/).map(s => s.trim()).filter(Boolean);
+      }
     }
-    acc[key].items.push(log);
+
+    const matchesMe = targets.some(target => isTargetMatchingMe(target, currentUser));
+    const isOwn = isMyAuthoredLog(rep);
+
+    // 본인이 작성한 보고서: 공유 대상자에 내가 포함되어 있거나, 사내 공유 등록된 보고서(targets.length > 0)인 경우 공유 목록으로 확인 가능
+    if (isOwn) {
+      return matchesMe || targets.length > 0;
+    }
+
+    // 타인이 작성한 보고서: 공유 대상자에 내가 포함되어 있거나, 공유 대상자 미지정 전체 공유인 경우
+    return matchesMe || targets.length === 0;
+  });
+
+  // Group daily custom reports by author (일일 업무 보고 사내 공유받은 내역 - 동일 공유자별 카드 묶음)
+  const dailySharedGroupedByAuthor = (() => {
+    const acc = {};
+
+    receivedDailyCustomReports.forEach(rep => {
+      if (!rep) return;
+      const aName = rep.authorName || rep.name || '작성자';
+      const aRank = rep.authorRank || rep.rank || '';
+      const aTeam = rep.authorTeam || rep.team || rep.department || '';
+      const aDivision = rep.authorDivision || rep.division || '';
+      const aUser = rep.authorUsername || rep.author_username || rep.username || '';
+      const isOwn = isMyAuthoredLog(rep);
+
+      // 이미 acc에 등록된 동일 작성자 찾기
+      let foundKey = Object.keys(acc).find(k => {
+        const g = acc[k];
+        return isSamePerson(g, rep) || (g.authorUsername && aUser && g.authorUsername === aUser);
+      });
+
+      if (!foundKey) {
+        foundKey = `${aName}___${aRank}___${aTeam}___${aDivision}___${aUser}`;
+        let authorLabel = (rep.sharedBy || rep.shared_by || '').trim();
+        if (!authorLabel) {
+          authorLabel = aName;
+          if (aRank && !authorLabel.includes(aRank)) authorLabel += ` ${aRank}`;
+          if (aTeam && !authorLabel.includes(aTeam)) authorLabel += ` (${formatOnlyTeam(aTeam)})`;
+        }
+        if (isOwn) {
+          authorLabel += ' (내 공유 보고서)';
+        }
+
+        acc[foundKey] = {
+          key: foundKey,
+          authorName: aName,
+          authorRank: aRank,
+          authorTeam: aTeam,
+          authorDivision: aDivision,
+          authorUsername: aUser,
+          authorLabel,
+          isOwn,
+          dailyReport: rep
+        };
+      } else {
+        acc[foundKey].dailyReport = rep;
+      }
+    });
+
     return acc;
-  }, {});
+  })();
+
+
+  // --- Daily Share Modal Handlers (사내 사용자 일일 업무 공유) ---
+  const handleOpenDailyShareModal = () => {
+    // 1. 이미 이번 날짜의 일일 보고서에 sharedWith가 저장되어 있다면 우선 로드
+    const existingRep = (sharedDailyReports || []).find(r =>
+      r && ((r.dailyDate || r.daily_date) === dailyDate) && isMyAuthoredLog(r)
+    );
+    let initialTargets = [];
+    if (existingRep && existingRep.sharedWith && Array.isArray(existingRep.sharedWith) && existingRep.sharedWith.length > 0) {
+      initialTargets = existingRep.sharedWith.map(targetStr => {
+        const found = allUsers.find(u => isTargetMatchingUser(targetStr, u));
+        if (found) {
+          return {
+            username: found.username || found.id || '',
+            name: found.name || '',
+            team: found.team || found.department || '',
+            rank: found.rank || '',
+            division: found.division || ''
+          };
+        }
+        return { name: targetStr };
+      });
+    } else {
+      const userKey = getUserShareTargetsStorageKey(currentUser);
+      if (userKey) {
+        try {
+          const saved = localStorage.getItem(userKey);
+          if (saved) initialTargets = JSON.parse(saved);
+        } catch (e) { }
+      }
+    }
+    setDailyShareTargets(initialTargets);
+    setDailyShareSearchQuery('');
+    setIsDailyShareModalOpen(true);
+  };
+
+  const handleToggleDailyShareTarget = (user) => {
+    if (isSamePerson(currentUser, user)) return;
+    setDailyShareTargets(prev => {
+      const exists = prev.some(t => isSamePerson(t, user));
+      if (exists) {
+        return prev.filter(t => !isSamePerson(t, user));
+      } else {
+        return [...prev, {
+          username: user.username || user.id || '',
+          name: user.name || '',
+          team: user.team || user.department || '',
+          rank: user.rank || '',
+          division: user.division || ''
+        }];
+      }
+    });
+  };
+
+  const handleSelectAllDailyShareTargets = () => {
+    const targets = allUsers
+      .filter(u => !isSamePerson(currentUser, u) && isSameTeamUser(u, currentUser))
+      .map(u => ({
+        username: u.username || u.id || '',
+        name: u.name || '',
+        team: u.team || u.department || '',
+        rank: u.rank || '',
+        division: u.division || ''
+      }));
+    setDailyShareTargets(targets);
+  };
+
+  const handleDeselectAllDailyShareTargets = () => {
+    setDailyShareTargets([]);
+  };
+
+  const handleConfirmDailyShare = async () => {
+    const userKey = getUserShareTargetsStorageKey(currentUser);
+    if (userKey) {
+      localStorage.setItem(userKey, JSON.stringify(dailyShareTargets));
+    }
+
+    const hasCustomText = Boolean(
+      (currentDailyCustom.issues && currentDailyCustom.issues.trim()) ||
+      (currentDailyCustom.todayTasks && currentDailyCustom.todayTasks.trim()) ||
+      (currentDailyCustom.tomorrowPlan && currentDailyCustom.tomorrowPlan.trim())
+    );
+
+    if (!hasCustomText && dailyOwnLogs.length === 0) {
+      if (onTriggerToast) onTriggerToast('공유할 일일 업무 내용(특이사항/진행내역/예정업무) 또는 등록된 업무가 없습니다.', 'warning');
+      return;
+    }
+
+    const now = new Date();
+    const timeStr = `${formatIso(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const formattedTargets = (dailyShareTargets || []).map(t => {
+      const name = (t.name || t.authorName || '').trim();
+      const rank = (t.rank || t.authorRank || '').trim();
+      const team = formatOnlyTeam(t.team || t.department || '');
+      let label = name;
+      if (rank && !label.includes(rank)) label += ` ${rank}`;
+      if (team && !label.includes(team)) label += ` (${team})`;
+      return label;
+    }).filter(Boolean);
+
+    const isSharingActive = formattedTargets.length > 0;
+
+    const authorRank = currentUser?.rank || '대리';
+    const authorTeam = currentUser?.team || currentUser?.department || '';
+    const authorName = currentUser?.name || '작성자';
+    const sharedByStr = isSharingActive ? `${authorName} ${authorRank}${authorTeam ? ` (${authorTeam})` : ''}`.trim() : '';
+
+    const dailyReportPayload = {
+      id: `daily-rep-${currentUser?.username || currentUser?.id || currentUser?.name}-${dailyDate}`,
+      dailyDate: dailyDate,
+      authorUsername: currentUser?.username || currentUser?.id || '',
+      authorName: authorName,
+      authorTeam: authorTeam || '운영팀',
+      authorRank: authorRank,
+      authorDivision: currentUser?.division || '',
+      authorRole: currentUser?.role || '일반',
+      issues: currentDailyCustom.issues || '',
+      todayTasks: currentDailyCustom.todayTasks || '',
+      tomorrowPlan: currentDailyCustom.tomorrowPlan || '',
+      sharedBy: sharedByStr,
+      sharedWith: formattedTargets,
+      sharedAt: isSharingActive ? timeStr : '',
+      createdAt: timeStr,
+      updatedAt: timeStr
+    };
+
+    setIsDailyShareModalOpen(false);
+
+    setSharedDailyReports(prev => {
+      const idx = prev.findIndex(r => r.id === dailyReportPayload.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = dailyReportPayload;
+        return next;
+      }
+      return [dailyReportPayload, ...prev];
+    });
+
+    if (dailyOwnLogs.length > 0) {
+      const targetIds = new Set(dailyOwnLogs.map(l => String(l.id || l.log_id || '')));
+      setWorkLogs(prev => prev.map(log => {
+        const id = String(log.id || log.log_id || '');
+        if (targetIds.has(id)) {
+          return { ...log, isShared: isSharingActive, sharedWith: formattedTargets, sharedAt: isSharingActive ? timeStr : '' };
+        }
+        return log;
+      }));
+    }
+
+    if (onTriggerToast) {
+      if (isSharingActive) {
+        onTriggerToast(`선택하신 일일 업무 보고가 ${formattedTargets.length}명에게 공유 등록되었습니다.`, 'success');
+      } else {
+        onTriggerToast('일일 업무 공유 대상자가 0명으로 등록(공유 해제)되었습니다.', 'success');
+      }
+    }
+
+    (async () => {
+      try {
+        await dbService.saveDailyReport(dailyReportPayload);
+        if (dailyOwnLogs.length > 0) {
+          const logsToUpdate = dailyOwnLogs.map(logItem => ({
+            ...logItem,
+            isShared: isSharingActive,
+            sharedWith: formattedTargets,
+            sharedAt: isSharingActive ? timeStr : ''
+          }));
+          await dbService.saveWorkLogsBatch(logsToUpdate);
+        }
+      } catch (err) {
+        console.warn('Background daily share save warning:', err);
+      }
+    })();
+  };
+
 
   // Tomorrow's logs for quick reference / preview
   const tomorrowAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(tomorrowIso));
@@ -1305,30 +1563,31 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 일일 공유받은 업무 특정 공유자 카드 복사 헬퍼
   const handleCopySharedGroupLogs = (e, group) => {
     e.stopPropagation();
-    if (!group || !group.items || group.items.length === 0) {
+    const rep = group?.dailyReport;
+    const hasRep = Boolean(
+      rep && (
+        (rep.issues && rep.issues.trim()) ||
+        (rep.todayTasks && rep.todayTasks.trim()) ||
+        (rep.tomorrowPlan && rep.tomorrowPlan.trim())
+      )
+    );
+
+    if (!hasRep) {
       if (onTriggerToast) onTriggerToast('공유받은 업무 내역이 없습니다.', 'warning');
       return;
     }
 
     let text = `[공유 업무: ${group.authorLabel} (${getFormattedKoreanDate(dailyDate)})]\n`;
-    const sorted = [...group.items].sort((a, b) => {
-      const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
-      const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
-      if (isATrip && !isBTrip) return -1;
-      if (!isATrip && isBTrip) return 1;
-      return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
-    });
 
-    sorted.forEach((item, idx) => {
-      const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
-      const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
-      const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
-      text += `\n${idx + 1}. ${item.title}${tag}`;
-      if (item.details && item.details.trim()) {
-        const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-        text += '\n' + dLines.map(dl => `  ${dl.trim()}`).join('\n');
-      }
-    });
+    if (rep.issues && rep.issues.trim()) {
+      text += `\n[특이사항]\n${rep.issues.trim()}\n`;
+    }
+    if (rep.todayTasks && rep.todayTasks.trim()) {
+      text += `\n[금일 진행 내역]\n${rep.todayTasks.trim()}\n`;
+    }
+    if (rep.tomorrowPlan && rep.tomorrowPlan.trim()) {
+      text += `\n[내일 예정 업무]\n${rep.tomorrowPlan.trim()}\n`;
+    }
 
     handleCopyText(text.trim(), `${group.authorLabel} 공유 업무`);
   };
@@ -1343,30 +1602,27 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }
 
     let text = `[공유받은 업무 전체 (${getFormattedKoreanDate(dailyDate)})]\n`;
-    authorKeys.forEach((key, kIdx) => {
+    authorKeys.forEach((key) => {
       const group = dailySharedGroupedByAuthor[key];
       text += `\n👤 공유자: ${group.authorLabel}\n`;
-      const sorted = [...group.items].sort((a, b) => {
-        const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
-        const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
-        if (isATrip && !isBTrip) return -1;
-        if (!isATrip && isBTrip) return 1;
-        return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
-      });
-      sorted.forEach((item, idx) => {
-        const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
-        const isTrip = item.category === '출장 업무' || item.siteName || siteLoc;
-        const tag = isTrip ? ` [출장] ${item.siteName || ''}${siteLoc ? ` (${siteLoc})` : ''}` : '';
-        text += `${idx + 1}. ${item.title}${tag}\n`;
-        if (item.details && item.details.trim()) {
-          const dLines = item.details.split(/\r?\n/).filter(line => line.trim().length > 0);
-          text += dLines.map(dl => `  ${dl.trim()}`).join('\n') + '\n';
+
+      const rep = group?.dailyReport;
+      if (rep) {
+        if (rep.issues && rep.issues.trim()) {
+          text += `[특이사항]\n${rep.issues.trim()}\n`;
         }
-      });
+        if (rep.todayTasks && rep.todayTasks.trim()) {
+          text += `[금일 진행 내역]\n${rep.todayTasks.trim()}\n`;
+        }
+        if (rep.tomorrowPlan && rep.tomorrowPlan.trim()) {
+          text += `[내일 예정 업무]\n${rep.tomorrowPlan.trim()}\n`;
+        }
+      }
     });
 
     handleCopyText(text.trim(), '공유받은 업무 전체');
   };
+
 
   // 일일 내 업무 전체 복사 헬퍼
   const handleCopyMyDailyLogs = (e) => {
@@ -1432,17 +1688,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   if (currentUser?.team && !myAuthorLabel.includes(currentUser.team)) myAuthorLabel += ` (${formatOnlyTeam(currentUser.team)})`;
 
   const hasCustomDaily = Boolean(dailyCustomReports[dailyDate]);
-  const currentDailyCustom = hasCustomDaily
-    ? {
-      issues: dailyCustomReports[dailyDate].issues || '',
-      todayTasks: dailyCustomReports[dailyDate].todayTasks || '',
-      tomorrowPlan: dailyCustomReports[dailyDate].tomorrowPlan || ''
-    }
-    : {
-      issues: '',
-      todayTasks: '',
-      tomorrowPlan: ''
-    };
+
 
   const handleDailyCustomChange = (field, value) => {
     setIsDailyDirty(true);
@@ -2054,6 +2300,32 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <span>저장</span>
                     </button>
 
+                    {/* 사내 사용자 일일 업무 공유 버튼 (인앱 공유) */}
+                    <button
+                      type="button"
+                      onClick={handleOpenDailyShareModal}
+                      style={{
+                        background: '#ecfdf5',
+                        border: '1.5px solid #a7f3d0',
+                        color: '#047857',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '700',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
+                      }}
+                      title="일일 업무 보고를 사내 동료에게 공유하기"
+                    >
+                      <Users size={13} color="#059669" />
+                      <span>사내 공유</span>
+                    </button>
+
+
                     {/* 텍스트 복사 버튼 */}
                     <button
                       type="button"
@@ -2495,72 +2767,47 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       <Share2 size={16} color="#2563eb" />
                       <span>공유받은 업무 ({Object.keys(dailySharedGroupedByAuthor).length}건)</span>
                     </div>
-                    {dailySharedReceivedLogs.length > 0 && (
+                    {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <button
                           type="button"
-                          onClick={handleCopyAllDailySharedLogs}
+                          onClick={() => handleToggleAllDailySharedCards(true)}
                           style={{
-                            background: '#eff6ff',
-                            border: '1.5px solid #bfdbfe',
+                            background: '#f8fafc',
+                            border: '1.5px solid #cbd5e1',
                             borderRadius: '5px',
-                            padding: '3px 8px',
+                            padding: '3px 7px',
                             fontSize: '11px',
                             fontWeight: '700',
-                            color: '#1d4ed8',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px'
+                            color: '#475569',
+                            cursor: 'pointer'
                           }}
-                          title="공유받은 업무 전체 복사"
+                          title="모든 공유 카드 접기"
                         >
-                          <Copy size={11} />
-                          <span>전체 복사</span>
+                          모두 접기
                         </button>
-                        {Object.keys(dailySharedGroupedByAuthor).length > 1 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleAllDailySharedCards(true)}
-                              style={{
-                                background: '#f8fafc',
-                                border: '1.5px solid #cbd5e1',
-                                borderRadius: '5px',
-                                padding: '3px 7px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#475569',
-                                cursor: 'pointer'
-                              }}
-                              title="모든 공유 카드 접기"
-                            >
-                              모두 접기
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleToggleAllDailySharedCards(false)}
-                              style={{
-                                background: '#f8fafc',
-                                border: '1.5px solid #cbd5e1',
-                                borderRadius: '5px',
-                                padding: '3px 7px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#0f172a',
-                                cursor: 'pointer'
-                              }}
-                              title="모든 공유 카드 펼치기"
-                            >
-                              모두 펼치기
-                            </button>
-                          </>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAllDailySharedCards(false)}
+                          style={{
+                            background: '#f8fafc',
+                            border: '1.5px solid #cbd5e1',
+                            borderRadius: '5px',
+                            padding: '3px 7px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            color: '#0f172a',
+                            cursor: 'pointer'
+                          }}
+                          title="모든 공유 카드 펼치기"
+                        >
+                          모두 펼치기
+                        </button>
                       </div>
                     )}
                   </div>
 
-                  {dailySharedReceivedLogs.length === 0 ? (
+                  {Object.keys(dailySharedGroupedByAuthor).length === 0 ? (
                     <div style={{ paddingLeft: '4px' }}>
                       <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
                         - 공유받은 내역 없음
@@ -2572,6 +2819,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         const group = dailySharedGroupedByAuthor[authorKey];
                         const cardKey = authorKey || `daily-shared-${gIdx}`;
                         const isCollapsed = collapsedDailySharedCards[cardKey] !== false;
+
+                        const rep = group?.dailyReport;
+                        const hasIssues = Boolean(rep?.issues && rep.issues.trim());
+                        const hasTodayTasks = Boolean(rep?.todayTasks && rep.todayTasks.trim());
+                        const hasTomorrowPlan = Boolean(rep?.tomorrowPlan && rep.tomorrowPlan.trim());
+                        const hasDailyReportContent = hasIssues || hasTodayTasks || hasTomorrowPlan;
+
 
                         return (
                           <div
@@ -2592,6 +2846,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                               onClick={() => toggleDailySharedCard(cardKey)}
                               style={{
                                 display: 'flex',
+                                justifySelf: 'stretch',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
                                 gap: '8px',
@@ -2651,71 +2906,60 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                               </div>
                             </div>
 
-                            {/* Items under this Author (펼쳐졌을 때만 렌더링) */}
+                            {/* 공유받은 일일 업무 보고 내용 (펼쳐졌을 때만 렌더링) */}
                             {!isCollapsed && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '4px' }}>
-                                {[...group.items]
-                                  .sort((a, b) => {
-                                    const isATrip = a.category === '출장 업무' || Boolean(a.siteName || a.siteLocation || a.location);
-                                    const isBTrip = b.category === '출장 업무' || Boolean(b.siteName || b.siteLocation || b.location);
-                                    if (isATrip && !isBTrip) return -1; // 출장 업무 최상단 정렬
-                                    if (!isATrip && isBTrip) return 1;
-                                    return (a.createdAt || a.id || '').localeCompare(b.createdAt || b.id || '');
-                                  })
-                                  .map((item, idx) => {
-                                    const siteLoc = item.siteLocation || item.siteAddress || item.location || '';
-                                    return (
-                                      <div key={item.id || idx} style={{ paddingLeft: '2px' }}>
-                                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', lineHeight: '1.4', flexWrap: 'wrap' }}>
-                                          <span style={{ color: '#0f172a', fontWeight: '800', fontSize: '14px' }}>{idx + 1}.</span>
-                                          <span>{item.title}</span>
-                                          {(item.category === '출장 업무' || item.siteName || siteLoc) && (
-                                            <>
-                                              <span style={{
-                                                padding: '1px 6px',
-                                                borderRadius: '4px',
-                                                fontSize: '10.5px',
-                                                fontWeight: '800',
-                                                background: '#ede9fe',
-                                                color: '#6d28d9',
-                                                border: '1px solid #ddd6fe'
-                                              }}>
-                                                출장
-                                              </span>
-                                              <span style={{ fontSize: '12px', color: '#475569', fontWeight: '700' }}>
-                                                {item.siteName || ''}
-                                                {siteLoc ? ` (${siteLoc})` : ''}
-                                              </span>
-                                            </>
-                                          )}
-                                          <button
-                                            type="button"
-                                            onClick={(e) => handleCopySingleItem(e, item)}
-                                            style={{
-                                              background: 'transparent',
-                                              border: 'none',
-                                              cursor: 'pointer',
-                                              padding: '2px 4px',
-                                              display: 'inline-flex',
-                                              alignItems: 'center',
-                                              color: '#94a3b8',
-                                              borderRadius: '4px'
-                                            }}
-                                            title="해당 공유 업무 복사"
-                                            onMouseEnter={(e) => e.currentTarget.style.color = '#2563eb'}
-                                            onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
-                                          >
-                                            <Copy size={12} />
-                                          </button>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingLeft: '2px' }}>
+                                {hasDailyReportContent ? (
+                                  <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '8px',
+                                    background: '#ffffff',
+                                    border: '1.5px solid #e2e8f0',
+                                    borderRadius: '8px',
+                                    padding: '10px 12px'
+                                  }}>
+                                    {/* 1) 특이사항 */}
+                                    {hasIssues && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#dc2626', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <span>📌 특이사항</span>
                                         </div>
-                                        {item.details && (
-                                          <div style={{ fontSize: '13px', color: '#0f172a', marginTop: '4px', paddingLeft: '18px', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                            {item.details}
-                                          </div>
-                                        )}
+                                        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '7px 9px', fontSize: '12.5px', color: '#1e293b', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
+                                          {rep.issues}
+                                        </div>
                                       </div>
-                                    );
-                                  })}
+                                    )}
+
+                                    {/* 2) 금일 진행 내역 */}
+                                    {hasTodayTasks && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#2563eb', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <span>📋 금일 진행 내역</span>
+                                        </div>
+                                        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '7px 9px', fontSize: '12.5px', color: '#1e293b', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
+                                          {rep.todayTasks}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* 3) 내일 예정 업무 */}
+                                    {hasTomorrowPlan && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                        <div style={{ fontSize: '12px', fontWeight: '800', color: '#7c3aed', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                          <span>🚀 내일 예정 업무</span>
+                                        </div>
+                                        <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: '6px', padding: '7px 9px', fontSize: '12.5px', color: '#1e293b', lineHeight: '1.55', whiteSpace: 'pre-wrap' }}>
+                                          {rep.tomorrowPlan}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{ fontSize: '13px', color: '#94a3b8', padding: '6px 4px' }}>
+                                    - 등록된 공유 내용 없음
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -3897,6 +4141,324 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* 일일 업무 사내 공유 대상 지정 모달 (In-App Daily Share Modal) */}
+      {/* ========================================================================= */}
+      {isDailyShareModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px',
+          boxSizing: 'border-box'
+        }}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '520px',
+            maxHeight: '88vh',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.35), 0 10px 15px -3px rgba(15, 23, 42, 0.15)',
+            overflow: 'hidden',
+            border: '2px solid #94a3b8'
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              padding: '16px 20px',
+              borderBottom: '1.5px solid #cbd5e1',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: '#f8fafc'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '6px',
+                  background: '#ecfdf5',
+                  border: '1.5px solid #6ee7b7',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#059669'
+                }}>
+                  <Users size={18} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a' }}>
+                    일일 업무 보고 공유
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                    {dailyDate} ({getFormattedKoreanDate(dailyDate)})
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDailyShareModalOpen(false)}
+                style={{
+                  background: '#ffffff',
+                  border: '1.5px solid #94a3b8',
+                  borderRadius: '6px',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', flex: 1 }}>
+              {/* Search & Quick Controls */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  background: '#f8fafc',
+                  border: '1.5px solid #94a3b8',
+                  borderRadius: '8px',
+                  padding: '7px 10px',
+                  gap: '8px'
+                }}>
+                  <Search size={14} color="#64748b" />
+                  <input
+                    type="text"
+                    className="borderless-input"
+                    value={dailyShareSearchQuery}
+                    onChange={(e) => setDailyShareSearchQuery(e.target.value)}
+                    placeholder="이름, 소속팀, 직급으로 검색"
+                    style={{
+                      border: 'none',
+                      outline: 'none',
+                      background: 'transparent',
+                      fontSize: '12.5px',
+                      width: '100%',
+                      color: '#0f172a'
+                    }}
+                  />
+                  {dailyShareSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setDailyShareSearchQuery('')}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8' }}
+                    >
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSelectAllDailyShareTargets}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: '#eff6ff',
+                    border: '1.5px solid #60a5fa',
+                    color: '#1d4ed8',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  전체 선택
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeselectAllDailyShareTargets}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    border: '1.5px solid #94a3b8',
+                    color: '#475569',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  선택 해제
+                </button>
+              </div>
+
+              {/* Status Indicator */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '7px 12px',
+                background: '#f1f5f9',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                fontSize: '12px',
+                color: '#334155'
+              }}>
+                <span>선택된 대상자: <strong style={{ color: '#047857', fontWeight: '800' }}>{dailyShareTargets.length}명</strong></span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>내 소속: {currentUser?.division ? `${currentUser.division} ` : ''}{currentUser?.team || currentUser?.department || '미지정'}</span>
+              </div>
+
+              {/* User List (같은 소속 인원만 필터링) */}
+              {(() => {
+                const sameTeamFiltered = allUsers.filter(u => {
+                  if (isSamePerson(currentUser, u)) return false; // 본인 제외
+                  if (!isSameTeamUser(u, currentUser)) return false; // 같은 소속 인원만 필터링
+                  if (!dailyShareSearchQuery.trim()) return true;
+                  const q = dailyShareSearchQuery.toLowerCase();
+                  const n = (u.name || '').toLowerCase();
+                  const t = (u.team || u.department || '').toLowerCase();
+                  const r = (u.rank || '').toLowerCase();
+                  return n.includes(q) || t.includes(q) || r.includes(q);
+                });
+
+                if (sameTeamFiltered.length === 0) {
+                  return (
+                    <div style={{ padding: '30px 10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                      {dailyShareSearchQuery.trim() ? '검색 조건과 일치하는 같은 소속 인원이 없습니다.' : '등록된 같은 소속 동료가 없습니다.'}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                    {sameTeamFiltered.map((user) => {
+                      const isSelected = dailyShareTargets.some(t => isSamePerson(t, user));
+                      const uKey = user.username || user.id || `${user.name}_${user.rank}_${user.team}`;
+
+                      return (
+                        <div
+                          key={uKey}
+                          onClick={() => handleToggleDailyShareTarget(user)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '10px 12px',
+                            borderRadius: '8px',
+                            border: isSelected ? '2px solid #059669' : '1.5px solid #94a3b8',
+                            background: isSelected ? '#ecfdf5' : '#ffffff',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            boxShadow: isSelected ? '0 1px 3px rgba(5, 150, 105, 0.12)' : 'none'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '4px',
+                              border: isSelected ? '1.5px solid #059669' : '1.5px solid #cbd5e1',
+                              background: isSelected ? '#059669' : '#ffffff',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#ffffff'
+                            }}>
+                              {isSelected && <Check size={12} strokeWidth={3} />}
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
+                                {user.name}
+                              </span>
+                              {user.rank && (
+                                <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '4px', fontWeight: '700' }}>
+                                  {user.rank}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              color: '#475569',
+                              background: '#f1f5f9',
+                              padding: '2px 6px',
+                              borderRadius: '4px'
+                            }}>
+                              {user.division ? `${user.division} · ` : ''}{user.team || user.department || '소속 미지정'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{
+              padding: '14px 20px',
+              borderTop: '1.5px solid #cbd5e1',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '8px',
+              background: '#f8fafc'
+            }}>
+              <button
+                type="button"
+                onClick={() => setIsDailyShareModalOpen(false)}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '6px',
+                  border: '1.5px solid #94a3b8',
+                  background: '#ffffff',
+                  color: '#475569',
+                  fontSize: '13px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDailyShare}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 8px rgba(5, 150, 105, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                <Users size={14} />
+                <span>공유등록</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* ========================================================================= */}
       {/* 주간 업무 미저장 수정사항 안내 모달 (Unsaved Changes Confirmation Modal) */}

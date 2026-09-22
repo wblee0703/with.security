@@ -52,11 +52,13 @@ const SCHEMAS = {
     'author_team', 'author_rank', 'author_division', 'author_role', 'main_tasks',
     'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at'
   ],
-  // 5-1. 일일 업무 보고서 (daily_reports) - 특이사항, 금일 진행 내역, 익일 예정 업무 개별 컬럼 관리
+  // 5-1. 일일 업무 보고서 (daily_reports) - id 단일화 및 공유자/공유대상 분리 컬럼 관리
   daily_reports: [
-    'id', 'report_id', 'daily_date', 'author_name', 'author_username',
+    'id', 'daily_date', 'author_name', 'author_username',
     'author_team', 'author_rank', 'author_division', 'author_role',
-    'issues', 'today_tasks', 'tomorrow_plan', 'created_at', 'updated_at'
+    'issues', 'today_tasks', 'tomorrow_plan',
+    'shared_by', 'shared_with', 'shared_at',
+    'created_at', 'updated_at'
   ],
   // 6. 교육 수료 관리 (MySQL: edu_log)
   edu_logs: [
@@ -385,6 +387,12 @@ function doPost(e) {
     // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
     if (action === 'cleanup') {
       const result = cleanupDuplicates();
+      return jsonResponse(result);
+    }
+
+    // [0-1] 헤더 동기화 및 잉여 열 정리 (Sync Database Headers)
+    if (action === 'sync_headers' || action === 'init') {
+      const result = syncDatabaseHeaders();
       return jsonResponse(result);
     }
 
@@ -1349,15 +1357,22 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     };
   }
 
-  // 5-1. 일일 업무 보고서 (daily_reports) - 특이사항, 금일 진행 내역, 익일 예정 업무 개별 컬럼
+  // 5-1. 일일 업무 보고서 (daily_reports) - id 단일화 및 공유자/공유대상 분리 컬럼
   if (sheetName === 'daily_reports') {
     const dDate = formatKstDate(obj.daily_date || obj.dailyDate || obj.date, true) || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
     const uName = obj.author_username || obj.authorUsername || obj.writerId || obj.username || 'user';
-    const dId = obj.report_id || obj.reportId || obj.id || `daily-rep-${uName}-${dDate}`;
+    const dId = obj.id || obj.report_id || obj.reportId || `daily-rep-${uName}-${dDate}`;
     const nowStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+
+    let sharedWithStr = '';
+    if (Array.isArray(obj.shared_with || obj.sharedWith)) {
+      sharedWithStr = (obj.shared_with || obj.sharedWith).join(', ');
+    } else if (obj.shared_with || obj.sharedWith) {
+      sharedWithStr = String(obj.shared_with || obj.sharedWith);
+    }
+
     return {
       id: dId,
-      report_id: dId,
       daily_date: dDate,
       author_name: obj.author_name || obj.authorName || obj.name || '',
       author_username: uName,
@@ -1368,6 +1383,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       issues: obj.issues || obj.special_notes || obj.specialNotes || '',
       today_tasks: obj.today_tasks || obj.todayTasks || '',
       tomorrow_plan: obj.tomorrow_plan || obj.tomorrowPlan || '',
+      shared_by: obj.shared_by || obj.sharedBy || '',
+      shared_with: sharedWithStr,
+      shared_at: obj.shared_at || obj.sharedAt || '',
       created_at: obj.created_at || obj.createdAt || nowStr,
       updated_at: obj.updated_at || obj.updatedAt || nowStr
     };
@@ -1863,6 +1881,24 @@ function readSheetData(sheetName) {
         if (!obj.infoSharing && obj.info_sharing) obj.infoSharing = obj.info_sharing;
         if (!obj.workSupport && obj.work_support) obj.workSupport = obj.work_support;
         if (!obj.etcTasks && obj.etc_tasks) obj.etcTasks = obj.etc_tasks;
+      } else if (sheetName === 'daily_reports') {
+        if (!obj.reportId && obj.id) obj.reportId = obj.id;
+        if (!obj.id && obj.report_id) obj.id = obj.report_id;
+        if (!obj.dailyDate && obj.daily_date) obj.dailyDate = obj.daily_date;
+        if (!obj.authorName && obj.author_name) obj.authorName = obj.author_name;
+        if (!obj.authorUsername && obj.author_username) obj.authorUsername = obj.author_username;
+        if (!obj.authorTeam && obj.author_team) obj.authorTeam = obj.author_team;
+        if (!obj.authorRank && obj.author_rank) obj.authorRank = obj.author_rank;
+        if (!obj.authorDivision && obj.author_division) obj.authorDivision = obj.author_division;
+        if (!obj.authorRole && obj.author_role) obj.authorRole = obj.author_role;
+        if (!obj.issues && (obj.special_notes || obj.specialNotes)) obj.issues = obj.special_notes || obj.specialNotes;
+        if (!obj.todayTasks && obj.today_tasks) obj.todayTasks = obj.today_tasks;
+        if (!obj.tomorrowPlan && obj.tomorrow_plan) obj.tomorrowPlan = obj.tomorrow_plan;
+        if (!obj.sharedBy && obj.shared_by) obj.sharedBy = obj.shared_by;
+        if (!obj.sharedWith && obj.shared_with) obj.sharedWith = obj.shared_with;
+        if (!obj.sharedAt && obj.shared_at) obj.sharedAt = obj.shared_at;
+        if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
+        if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       } else if (sheetName === 'edu_logs') {
         if (!obj.eduId && obj.edu_id) obj.eduId = obj.edu_id;
         if (!obj.userId && obj.user_id) obj.userId = obj.user_id;
