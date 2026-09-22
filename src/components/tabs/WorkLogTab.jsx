@@ -1304,11 +1304,14 @@ export default function WorkLogTab({ onTriggerToast }) {
     return isSamePerson(log, user);
   };
 
-  // 타인으로부터 공유받은 업무 또는 사내 공유 업무인지 판정
+  // 타인으로부터 공유받은 업무인지 판정 (내가 작성한 본인 업무는 100% 제외)
   const isSharedToMe = (log, user = currentUser) => {
     if (!user || !log) return false;
 
-    // sharedWith 목록 정제 (배열, 문자열, JSON 파싱 모두 지원)
+    // 1. 내가 작성한 본인 업무는 무조건 제외 (본인 업무 리스트로만 분류)
+    if (isLogVisibleToCurrentUser(log, user)) return false;
+
+    // 2. sharedWith 목록 정제 (배열, 문자열, JSON 파싱 모두 지원)
     let targets = [];
     const rawSw = log.sharedWith || log.shared_with;
     if (Array.isArray(rawSw)) {
@@ -1339,15 +1342,9 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     if (!isSharedFlag && targets.length === 0) return false;
 
-    const isOwn = isLogVisibleToCurrentUser(log, user);
     const matchesTarget = targets.some(t => isTargetMatchingUser(t, user));
 
-    // 1. 본인이 직접 작성한 업무: 본인이 본인을 공유 대상자로 포함했거나, 공유 카테고리 필터 선택 시 공유된 업무 인정
-    if (isOwn) {
-      return matchesTarget || (filterCategory === '공유받은 업무' && isSharedFlag);
-    }
-
-    // 2. 타인이 작성한 업무: 공유 대상자에 내가 포함되었거나, 공유 대상자가 미지정된 전체 공유인 경우
+    // 타인이 작성한 업무: 공유 대상자에 내가 포함되었거나, 공유 대상자가 미지정된 전체 공유인 경우
     return matchesTarget || (isSharedFlag && targets.length === 0);
   };
 
@@ -1355,16 +1352,17 @@ export default function WorkLogTab({ onTriggerToast }) {
   const filteredLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
     if (!log) return false;
     const isOwn = isLogVisibleToCurrentUser(log, currentUser);
-    const isShared = isSharedToMe(log, currentUser);
-    const isItemShared = getIsShared(log);
+    const isShared = !isOwn && isSharedToMe(log, currentUser);
 
     let matchesCategory = false;
     if (filterCategory === '공유받은 업무') {
-      // 타인으로부터 공유받은 업무 + 내가 사내 공유 등록한 업무(공유 리스트)
-      matchesCategory = isShared || (isOwn && isItemShared);
+      // 오직 타인으로부터 공유받은 업무만 표시 (내가 작성하여 사내에 공유한 업무는 본인 업무이므로 여기에 분류하지 않음)
+      matchesCategory = isShared;
     } else if (filterCategory === '전체') {
+      // 내 업무(공유 여부 무관) + 타인으로부터 공유받은 업무
       matchesCategory = isOwn || isShared;
     } else {
+      // 내 업무 중 해당 카테고리 ('사내 업무', '출장 업무') - 공유 여부와 상관없이 항상 본인 업무 리스트에 정상 표시
       matchesCategory = isOwn && log.category === filterCategory;
     }
     if (!matchesCategory) return false;
@@ -1882,10 +1880,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                         const logsForDate = groupedByDate[dateStr] || [];
                         const cardGroupsMap = logsForDate.reduce((acc, log) => {
                           const isOwn = isLogVisibleToCurrentUser(log, currentUser);
-                          const isItemShared = getIsShared(log);
-                          const isSharedFromOther = !isOwn && isSharedToMe(log, currentUser);
-                          const isOwnSharedInFilter = filterCategory === '공유받은 업무' && isOwn && isItemShared;
-                          const isShared = isSharedFromOther || isOwnSharedInFilter || isSharedToMe(log, currentUser);
+                          // 타인으로부터 공유받은 업무만 공유 카드로 묶음 (내가 작성하여 사내 공유한 업무는 100% 본인 업무 카드로 분류)
+                          const isShared = !isOwn && isSharedToMe(log, currentUser);
                           const isInternal = log.category !== '출장 업무';
                           const sName = !isInternal ? (log.siteName || log.site_name || '').trim() : '';
                           const aName = log.authorName || log.name || '작성자';
@@ -1916,7 +1912,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               date: log.date,
                               primaryLog: log,
                               isSharedToMe: isShared,
-                              isOwnShared: isOwn && isItemShared,
+                              isOwn: isOwn,
                               items: []
                             };
                           }
@@ -1996,7 +1992,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           gap: '4px'
                                         }}>
                                           <Share2 size={11} color="#6d28d9" />
-                                          {group.isOwnShared ? '사내 공유 업무' : '공유받은 업무'}
+                                          공유받은 업무
                                         </span>
                                         <span style={{
                                           padding: '4px 9px',
@@ -2010,7 +2006,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           alignItems: 'center',
                                           gap: '4px'
                                         }}>
-                                          👤 {group.isOwnShared ? '작성자(나)' : '공유자'}: <strong style={{ color: '#0f172a' }}>{group.authorName} {group.authorRank}</strong> ({formatOnlyTeam(group.authorTeam)})
+                                          👤 공유자: <strong style={{ color: '#0f172a' }}>{group.authorName} {group.authorRank}</strong> ({formatOnlyTeam(group.authorTeam)})
                                         </span>
                                       </div>
                                     )}
@@ -2179,7 +2175,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       const isEditingThis = inlineEditingId === item.id;
                                       const isBeingDragged = draggedTaskId === item.id;
                                       const isDragOver = dragOverTaskId === item.id && draggedTaskId !== item.id;
-                                      const isSharedToMeItem = Boolean(group.isSharedToMe || isSharedToMe(item, currentUser) || (filterCategory === '공유받은 업무' && !isLogVisibleToCurrentUser(item, currentUser)));
+                                      const isSharedToMeItem = Boolean(group.isSharedToMe || (!isLogVisibleToCurrentUser(item, currentUser) && isSharedToMe(item, currentUser)));
                                       const canModify = !isSharedToMeItem && canModifyLog(item);
                                       const isItemShared = getIsShared(item);
 

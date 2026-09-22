@@ -975,11 +975,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     const matchesMe = targets.some(target => isTargetMatchingMe(target, currentUser));
     const isOwn = isMyAuthoredLog(rep);
-
-    // 본인이 작성한 보고서: 공유 대상자에 내가 포함되어 있거나, 사내 공유 등록된 보고서(targets.length > 0)인 경우 공유 목록으로 확인 가능
-    if (isOwn) {
-      return matchesMe || targets.length > 0;
-    }
+    // 본인이 직접 작성한 보고서는 사내 공유받은 내역에서 제외 (내 업무 보고서로만 관리)
+    if (isOwn) return false;
 
     // 타인이 작성한 보고서: 공유 대상자에 내가 포함되어 있거나, 공유 대상자 미지정 전체 공유인 경우
     return matchesMe || targets.length === 0;
