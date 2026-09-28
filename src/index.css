@@ -591,7 +591,16 @@ option {
 .mobile-shell-wrapper .work-log-desktop-grid {
   display: flex !important;
   flex-direction: column !important;
+  grid-template-columns: 1fr !important;
+  align-items: stretch !important;
   width: 100% !important;
+  max-width: 100% !important;
+}
+
+.mobile-shell-wrapper .work-log-desktop-grid > div {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 .mobile-shell-wrapper .user-setting-desktop-grid {
@@ -631,7 +640,16 @@ option {
   .work-log-desktop-grid {
     display: flex !important;
     flex-direction: column !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
     width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .work-log-desktop-grid > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .user-setting-desktop-grid {

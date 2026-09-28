@@ -30,10 +30,43 @@ import {
 import { dbService, normalizeKstDate } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
-import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
+import { isSamePerson, isTargetMatchingUser, DIVISION_TEAMS_MAP } from '../../services/userMatcher';
+import { Capacitor } from '@capacitor/core';
 import WorkLogCalendar from '../common/WorkLogCalendar';
 
 export default function WorkLogTab({ onTriggerToast }) {
+  const isNative = Capacitor.isNativePlatform();
+  const containerRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+    handleResize();
+
+    let observer = null;
+    if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+      observer = new ResizeObserver((entries) => {
+        for (let entry of entries) {
+          if (entry.contentRect) {
+            setContainerWidth(entry.contentRect.width);
+          }
+        }
+      });
+      observer.observe(containerRef.current);
+    }
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (observer) observer.disconnect();
+    };
+  }, []);
+
+  const isMobile = isNative || (containerWidth > 0 ? containerWidth < 760 : (typeof window !== 'undefined' ? window.innerWidth <= 768 : false));
   const [workLogs, setWorkLogs] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [filterCategory, setFilterCategory] = useState('전체'); // '전체' | '사내 업무' | '출장 업무' | '공유받은 업무'
@@ -56,7 +89,6 @@ export default function WorkLogTab({ onTriggerToast }) {
     });
   };
   const [isSyncing, setIsSyncing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Past Work Copy Modal State
@@ -297,6 +329,32 @@ export default function WorkLogTab({ onTriggerToast }) {
 
 
   // Share Target Designation Helpers
+  const getUserDivision = (user) => {
+    if (!user) return '';
+    if (user.division && typeof user.division === 'string' && user.division.trim()) {
+      return user.division.trim();
+    }
+    const team = (user.team || user.department || '').trim();
+    if (!team) return '';
+    for (const [div, teams] of Object.entries(DIVISION_TEAMS_MAP || {})) {
+      if (teams.some(t => team === t || team.includes(t) || t.includes(team))) {
+        return div;
+      }
+    }
+    return '';
+  };
+
+  const isSameDivisionUser = (u, my) => {
+    if (!u || !my) return false;
+    const myDiv = getUserDivision(my);
+    const uDiv = getUserDivision(u);
+    if (myDiv && uDiv) {
+      return myDiv === uDiv;
+    }
+    if (!myDiv) return true;
+    return false;
+  };
+
   const isUserInShareTargets = (user) => {
     return shareTargets.some(t => isSamePerson(t, user));
   };
@@ -314,7 +372,7 @@ export default function WorkLogTab({ onTriggerToast }) {
           name: user.name || '',
           team: user.team || user.department || '',
           rank: user.rank || '',
-          division: user.division || ''
+          division: user.division || getUserDivision(user) || ''
         }];
       }
     });
@@ -322,13 +380,13 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleSelectAllShareTargets = () => {
     const targets = allUsers
-      .filter(u => !isSamePerson(currentUser, u))
+      .filter(u => !isSamePerson(currentUser, u) && isSameDivisionUser(u, currentUser))
       .map(u => ({
         username: u.username || u.id || '',
         name: u.name || '',
         team: u.team || u.department || '',
         rank: u.rank || '',
-        division: u.division || ''
+        division: u.division || getUserDivision(u) || ''
       }));
     setShareTargets(targets);
   };
@@ -529,18 +587,17 @@ export default function WorkLogTab({ onTriggerToast }) {
         } catch (e) { }
       }
 
-      // 만약 설정된 공유 대상자가 아직 없다면, 같은 팀 동료(또는 전체 인원)를 기본 대상자로 자동 스마트 할당
+      // 만약 설정된 공유 대상자가 아직 없다면, 같은 사업부 동료를 기본 대상자로 자동 스마트 할당
       if (!latestTargets || latestTargets.length === 0) {
-        const teamUsers = allUsers.filter(u =>
-          u && !isSamePerson(u, currentUser) &&
-          (u.team === currentUser?.team || u.department === currentUser?.department || u.division === currentUser?.division)
+        const divisionUsers = allUsers.filter(u =>
+          u && !isSamePerson(u, currentUser) && isSameDivisionUser(u, currentUser)
         );
-        latestTargets = (teamUsers.length > 0 ? teamUsers : allUsers.filter(u => u && !isSamePerson(u, currentUser))).map(u => ({
+        latestTargets = divisionUsers.map(u => ({
           username: u.username || '',
           name: u.name || '',
           team: u.team || u.department || '',
           rank: u.rank || '사원',
-          division: u.division || ''
+          division: u.division || getUserDivision(u) || ''
         }));
 
         if (latestTargets.length > 0) {
@@ -1371,18 +1428,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const selDate = normalizeKstDate(selectedDate) || selectedDate;
     const matchesDate = viewAllDates || logDate === selDate;
 
-    const q = (searchQuery || '').trim().toLowerCase();
-    const titleStr = (log.title || '').toLowerCase();
-    const detailsStr = (log.details || log.tasks_done || log.tasksDone || '').toLowerCase();
-    const authorStr = (log.authorName || log.name || '').toLowerCase();
-    const subCatStr = (log.subCategory || log.sub_category || '').toLowerCase();
-    const matchesQuery = !q ||
-      titleStr.includes(q) ||
-      detailsStr.includes(q) ||
-      authorStr.includes(q) ||
-      subCatStr.includes(q);
-
-    return matchesDate && matchesQuery;
+    return matchesDate;
   });
 
 
@@ -1424,20 +1470,50 @@ export default function WorkLogTab({ onTriggerToast }) {
   const isAllPastLogsSelected = filteredPastLogs.length > 0 && filteredPastLogs.every(l => selectedPastLogIds.includes(l.id));
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div
+      ref={containerRef}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        width: '100%',
+        boxSizing: 'border-box'
+      }}
+    >
 
       {/* Main 2-Column Responsive Layout for Work Log Management & Desktop Calendar */}
-      <div className="work-log-desktop-grid" style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1.3fr',
-        gap: '10px',
-        alignItems: 'start',
-        width: '100%'
-      }}>
-        {/* Left Column: Header Banner, Date Navigation, Search Filter, & Work Log List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
+      <div
+        className="work-log-desktop-grid"
+        style={{
+          display: isMobile ? 'flex' : 'grid',
+          flexDirection: isMobile ? 'column' : undefined,
+          gridTemplateColumns: isMobile ? undefined : '1fr 1.3fr',
+          gap: '10px',
+          alignItems: isMobile ? 'stretch' : 'start',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
+        {/* Left Column: Header Banner, Date Navigation, Filter, & Work Log List */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '10px',
+          minWidth: 0,
+          width: '100%',
+          boxSizing: 'border-box'
+        }}>
           {/* Header Banner */}
-          <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="glass-panel" style={{
+            padding: isMobile ? '12px 14px' : '14px 18px',
+            borderRadius: '6px',
+            border: '1.5px solid #cbd5e1',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}>
             {/* Row 1: Title & Icon + Share Target Setting Button */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1750,10 +1826,10 @@ export default function WorkLogTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* Filter Bar & Search (Single Row Matching Layout) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', flexWrap: 'nowrap' }}>
+          {/* Filter Bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
             {/* Category Segmented Control */}
-            <div style={{ display: 'flex', background: '#ffffff', padding: '3px', borderRadius: '6px', border: '1.5px solid #cbd5e1', flexShrink: 0, boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', background: '#ffffff', padding: '3px', borderRadius: '6px', border: '1.5px solid #cbd5e1', width: '100%', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
               {['전체', '사내 업무', '출장 업무', '공유받은 업무'].map(cat => {
                 const isActive = filterCategory === cat;
                 const isSharedTab = cat === '공유받은 업무';
@@ -1763,7 +1839,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                     type="button"
                     onClick={() => setFilterCategory(cat)}
                     style={{
-                      padding: '6px 11px',
+                      flex: 1,
+                      padding: '7px 11px',
                       borderRadius: '5px',
                       fontSize: '12px',
                       fontWeight: '800',
@@ -1775,6 +1852,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                       whiteSpace: 'nowrap',
                       display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
                       gap: '4px'
                     }}
                   >
@@ -1782,29 +1860,6 @@ export default function WorkLogTab({ onTriggerToast }) {
                   </button>
                 );
               })}
-            </div>
-
-            {/* Search Bar (Auto-expanded to fill remaining right width in single row) */}
-            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-              <Search size={15} color="#64748b" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                placeholder="업무명&내용 검색"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px 9px 34px',
-                  borderRadius: '6px',
-                  background: '#ffffff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#0f172a',
-                  fontSize: '12px',
-                  outline: 'none',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-                }}
-              />
             </div>
           </div>
 
@@ -2802,27 +2857,29 @@ export default function WorkLogTab({ onTriggerToast }) {
           </div>
         </div>
 
-        {/* Right Column: Desktop Calendar Widget */}
-        <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
-          <WorkLogCalendar
-            workLogs={workLogs.filter(log => {
-              if (isLogVisibleToCurrentUser(log, currentUser)) return true;
-              if (showSharedInCalendar && isSharedToMe(log, currentUser)) return true;
-              return false;
-            })}
-            selectedDate={selectedDate}
-            onSelectDate={(date) => {
-              setSelectedDate(date);
-              setViewAllDates(false);
-            }}
-            onOpenAddModal={handleOpenAddModal}
-            onMoveLogDate={handleMoveLogDate}
-            canModifyLog={canModifyLog}
-            showSharedInCalendar={showSharedInCalendar}
-            onToggleShowShared={handleToggleShowSharedCalendar}
-            currentUser={currentUser}
-          />
-        </div>
+        {/* Right Column: Desktop Calendar Widget (데스크톱 모드 전용) */}
+        {!isMobile && (
+          <div className="work-log-calendar-sticky" style={{ position: 'sticky', top: '10px', alignSelf: 'start', height: 'fit-content', minWidth: 0 }}>
+            <WorkLogCalendar
+              workLogs={workLogs.filter(log => {
+                if (isLogVisibleToCurrentUser(log, currentUser)) return true;
+                if (showSharedInCalendar && isSharedToMe(log, currentUser)) return true;
+                return false;
+              })}
+              selectedDate={selectedDate}
+              onSelectDate={(date) => {
+                setSelectedDate(date);
+                setViewAllDates(false);
+              }}
+              onOpenAddModal={handleOpenAddModal}
+              onMoveLogDate={handleMoveLogDate}
+              canModifyLog={canModifyLog}
+              showSharedInCalendar={showSharedInCalendar}
+              onToggleShowShared={handleToggleShowSharedCalendar}
+              currentUser={currentUser}
+            />
+          </div>
+        )}
       </div>
 
       {/* Modal: Register / Edit Work Log */}
@@ -3849,9 +3906,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                 <span style={{ color: '#1e3a8a', fontWeight: '800' }}>
                   선택된 공유 대상: <strong>{shareTargets.length}명</strong>
                 </span>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>
+                  내 사업부: <strong style={{ color: '#0f172a' }}>{getUserDivision(currentUser) || '전체'}</strong>
+                </span>
               </div>
 
-              {/* User List */}
+              {/* User List (같은 사업부 인원만 필터링) */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -3860,22 +3920,34 @@ export default function WorkLogTab({ onTriggerToast }) {
                 overflowY: 'auto',
                 paddingRight: '4px'
               }}>
-                {allUsers
-                  .filter(u => {
+                {(() => {
+                  const sameDivisionUsers = allUsers.filter(u => {
                     if (isSamePerson(currentUser, u)) return false;
+                    if (!isSameDivisionUser(u, currentUser)) return false;
 
                     if (!shareTargetSearchQuery.trim()) return true;
                     const q = shareTargetSearchQuery.toLowerCase();
+                    const uDiv = u.division || getUserDivision(u) || '';
                     return (
                       (u.name || '').toLowerCase().includes(q) ||
                       (u.team || u.department || '').toLowerCase().includes(q) ||
                       (u.rank || '').toLowerCase().includes(q) ||
                       (u.username || '').toLowerCase().includes(q) ||
-                      (u.division || '').toLowerCase().includes(q)
+                      uDiv.toLowerCase().includes(q)
                     );
-                  })
-                  .map(u => {
+                  });
+
+                  if (sameDivisionUsers.length === 0) {
+                    return (
+                      <div style={{ padding: '30px 10px', textAlign: 'center', color: '#94a3b8', fontSize: '13px' }}>
+                        {shareTargetSearchQuery.trim() ? '검색 조건과 일치하는 같은 사업부 동료가 없습니다.' : '등록된 같은 사업부 동료가 없습니다.'}
+                      </div>
+                    );
+                  }
+
+                  return sameDivisionUsers.map(u => {
                     const isSelected = isUserInShareTargets(u);
+                    const userDiv = u.division || getUserDivision(u);
 
                     return (
                       <div
@@ -3915,7 +3987,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                               <span style={{ color: '#1e3a8a', fontWeight: '700' }}>
                                 {u.team || u.department || '소속 미지정'}
                               </span>
-                              {u.division && <span>· {u.division}</span>}
+                              {userDiv && <span>· {userDiv}</span>}
                             </div>
                           </div>
                         </div>
@@ -3934,7 +4006,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                         </div>
                       </div>
                     );
-                  })}
+                  });
+                })()}
               </div>
             </div>
 

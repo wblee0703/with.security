@@ -2854,21 +2854,24 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 <LogIn size={16} /> 기존 계정 로그인
               </button>
               <button
-                onClick={() => setAuthMode('signup')}
+                type="button"
+                disabled
+                title="신규 회원가입이 일시적으로 비활성화되었습니다."
                 style={{
                   flex: 1,
                   padding: '10px',
                   borderRadius: '12px',
-                  border: authMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                  border: '1.5px solid #e2e8f0',
                   fontSize: '13px',
                   fontWeight: '700',
-                  cursor: 'pointer',
-                  background: authMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
-                  color: authMode === 'signup' ? '#1e3a8a' : '#64748b',
+                  cursor: 'not-allowed',
+                  background: '#f1f5f9',
+                  color: '#94a3b8',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '6px',
+                  opacity: 0.6,
                   transition: 'all 0.2s ease'
                 }}
               >

@@ -93,6 +93,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [dailyShareTargets, setDailyShareTargets] = useState([]);
   const [dailyShareSearchQuery, setDailyShareSearchQuery] = useState('');
 
+  // Mobile / App View Tab State ('DAILY' | 'WEEKLY')
+  const [mobileReportTab, setMobileReportTab] = useState('DAILY');
+
 
   // Today local ISO date (YYYY-MM-DD)
   const getTodayIso = () => {
@@ -1679,11 +1682,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     dailyInternalAuthorsText = nameLabel || '담당자 미지정';
   }
 
-  // 본인 표시 라벨 (우측 내 업무 카드 헤더용)
-  let myAuthorLabel = currentUser?.name || '작성자';
-  if (currentUser?.rank && !myAuthorLabel.includes(currentUser.rank)) myAuthorLabel += ` ${currentUser.rank}`;
-  if (currentUser?.team && !myAuthorLabel.includes(currentUser.team)) myAuthorLabel += ` (${formatOnlyTeam(currentUser.team)})`;
-
   const hasCustomDaily = Boolean(dailyCustomReports[dailyDate]);
 
 
@@ -1811,6 +1809,66 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         </div>
       </div>
 
+      {/* 모바일 / 앱 전용 일일업무 & 주간업무 전환 버튼 (TBM 스타일) */}
+      {isMobile && (
+        <div style={{
+          display: 'flex',
+          gap: '6px',
+          width: '100%',
+          padding: '2px 0'
+        }}>
+          <button
+            type="button"
+            onClick={() => setMobileReportTab('DAILY')}
+            style={{
+              flex: 1,
+              padding: '9px 12px',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: mobileReportTab === 'DAILY' ? '800' : '600',
+              background: mobileReportTab === 'DAILY' ? '#1e3a8a' : '#ffffff',
+              color: mobileReportTab === 'DAILY' ? '#ffffff' : '#475569',
+              border: mobileReportTab === 'DAILY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              boxShadow: mobileReportTab === 'DAILY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
+            }}
+          >
+            <CalendarDays size={15} color={mobileReportTab === 'DAILY' ? '#ffffff' : '#64748b'} />
+            <span>일일업무</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileReportTab('WEEKLY')}
+            style={{
+              flex: 1,
+              padding: '9px 12px',
+              borderRadius: '6px',
+              fontSize: '13px',
+              fontWeight: mobileReportTab === 'WEEKLY' ? '800' : '600',
+              background: mobileReportTab === 'WEEKLY' ? '#1e3a8a' : '#ffffff',
+              color: mobileReportTab === 'WEEKLY' ? '#ffffff' : '#475569',
+              border: mobileReportTab === 'WEEKLY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.15s ease',
+              boxShadow: mobileReportTab === 'WEEKLY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
+            }}
+          >
+            <FileSpreadsheet size={15} color={mobileReportTab === 'WEEKLY' ? '#ffffff' : '#64748b'} />
+            <span>주간업무</span>
+          </button>
+        </div>
+      )}
+
       {/* Vertical Stack Layout (Top: Daily Report, Bottom: Weekly Report) */}
       <div style={{
         display: 'flex',
@@ -1820,19 +1878,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       }}>
 
         {/* ========================================================================= */}
-        {/* TOP: 일일 업무 보고서 (Unified Daily Report Card - Fixed Height & Scrollable) */}
+        {/* TOP: 일일 업무 보고서 (Unified Daily Report Card) */}
         {/* ========================================================================= */}
         <div className="glass-panel" style={{
           padding: '16px 18px',
           borderRadius: '6px',
           border: '1.5px solid #cbd5e1',
           background: '#ffffff',
-          display: 'flex',
+          display: (!isMobile || mobileReportTab === 'DAILY') ? 'flex' : 'none',
           flexDirection: 'column',
           gap: '12px',
           boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
           minWidth: 0,
-          height: isMobile ? '520px' : '600px',
+          height: isMobile ? 'auto' : '600px',
           boxSizing: 'border-box'
         }}>
           {/* Header Bar Row */}
@@ -1863,9 +1921,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                 </div>
 
-                {/* Action Buttons: 오늘 (복사 버튼 왼쪽), 복사, 공유 */}
+                {/* Action Buttons: 오늘, 공유 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {/* 오늘 버튼 - 복사 버튼 왼쪽으로 배치 */}
+                  {/* 오늘 버튼 */}
                   <button
                     type="button"
                     onClick={handleToday}
@@ -1888,29 +1946,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     title="오늘 날짜로 이동"
                   >
                     오늘
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
-                    style={{
-                      background: '#eff6ff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      padding: '7px 12px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
-                    }}
-                    title="업무 보고서 텍스트 복사"
-                  >
-                    <Copy size={13} />
                   </button>
                   {isNative && (
                     <button
@@ -2156,30 +2191,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </button>
                 </div>
 
-                {/* Action Buttons: Copy (placed directly right of 오늘 button), Share & Sync */}
+                {/* Action Buttons: Share & Sync */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
-                    style={{
-                      background: '#eff6ff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      padding: '6px 12px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)'
-                    }}
-                    title="일일 업무 보고서 텍스트 복사"
-                  >
-                    <Copy size={13} />
-                  </button>
                   {isNative && (
                     <button
                       type="button"
@@ -2236,8 +2249,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           {/* Scrollable Daily Content Body */}
           <div style={{
             flex: 1,
-            overflowY: 'auto',
-            paddingRight: '6px',
+            overflowY: isMobile ? 'visible' : 'auto',
+            paddingRight: isMobile ? '0' : '6px',
             display: 'flex',
             flexDirection: 'column',
             gap: '10px'
@@ -2319,7 +2332,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                       title="일일 업무 보고를 사내 동료에게 공유하기"
                     >
                       <Users size={13} color="#059669" />
-                      <span>사내 공유</span>
+                      <span>공유</span>
                     </button>
 
 
@@ -2426,7 +2439,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         handleDailyCustomChange('todayTasks', e.target.value);
                         autoResizeTextarea(e.target);
                       }}
-                      placeholder="금일 진행한 업무 내역을 직접 입력하세요. ('일지 불러오기'로 자동 채우기 가능)"
+                      placeholder="금일 진행한 업무 내역을 직접 입력하세요."
                       rows={5}
                       style={{
                         width: '100%',
@@ -2462,7 +2475,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         handleDailyCustomChange('tomorrowPlan', e.target.value);
                         autoResizeTextarea(e.target);
                       }}
-                      placeholder="익일 진행할 예정 업무를 직접 입력하세요. ('일지 불러오기'로 자동 채우기 가능)"
+                      placeholder="익일 진행할 예정 업무를 직접 입력하세요."
                       rows={3}
                       style={{
                         width: '100%',
@@ -2496,9 +2509,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     borderLeft: '3px solid #0f172a',
                     paddingLeft: '8px'
                   }}>
-                    <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div
+                      onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
+                      style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none' }}
+                      title={isDailyOwnCollapsed ? '내 업무 펼치기' : '내 업무 접기'}
+                    >
                       <User size={16} color="#0f172a" />
-                      <span>내 업무 ({dailyOwnLogs.length}건)</span>
+                      <span>내 업무</span>
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2545,74 +2562,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      background: '#f8fafc',
-                      border: '1.5px solid #cbd5e1',
-                      borderRadius: '10px',
-                      padding: '12px 14px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: isDailyOwnCollapsed ? '0px' : '10px',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    {/* Header (클릭 시 접기/펼치기 토글) */}
+                  {!isDailyOwnCollapsed && (
                     <div
-                      onClick={() => setIsDailyOwnCollapsed(prev => !prev)}
                       style={{
+                        background: '#f8fafc',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '10px',
+                        padding: '12px 14px',
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: '8px',
-                        borderBottom: isDailyOwnCollapsed ? 'none' : '1.5px solid #e2e8f0',
-                        paddingBottom: isDailyOwnCollapsed ? '0px' : '8px',
-                        cursor: 'pointer',
-                        userSelect: 'none'
+                        flexDirection: 'column',
+                        gap: '10px',
+                        transition: 'all 0.2s ease'
                       }}
-                      title={isDailyOwnCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                          👤 작성자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{myAuthorLabel}</strong>
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{
-                          fontSize: '11px',
-                          fontWeight: '800',
-                          background: '#eff6ff',
-                          color: '#1e40af',
-                          padding: '2px 6px',
-                          borderRadius: '4px'
-                        }}>
-                          총 {dailyOwnLogs.length}건
-                        </span>
-                        <span style={{
-                          fontSize: '11.5px',
-                          fontWeight: '800',
-                          background: isDailyOwnCollapsed ? '#ffffff' : '#f1f5f9',
-                          color: '#0f172a',
-                          border: '1px solid #cbd5e1',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}>
-                          {isDailyOwnCollapsed ? (
-                            <ChevronDown size={14} />
-                          ) : (
-                            <ChevronUp size={14} />
-                          )}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Items under 내 업무 (펼쳐졌을 때만 렌더링) */}
-                    {!isDailyOwnCollapsed && (
-                      dailyOwnLogs.length === 0 ? (
+                      {dailyOwnLogs.length === 0 ? (
                         <div style={{ fontSize: '13px', color: '#64748b', padding: '6px 2px', fontWeight: '600' }}>
                           - 선택일자에 등록된 내 업무가 없습니다.
                         </div>
@@ -2745,9 +2708,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             </div>
                           )}
                         </div>
-                      )
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* SECTION 2: 공유받은 업무 (기존 공유자별 카드 묶음) */}
@@ -2978,7 +2941,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           borderRadius: '6px',
           border: '1.5px solid #cbd5e1',
           background: '#ffffff',
-          display: 'flex',
+          display: (!isMobile || mobileReportTab === 'WEEKLY') ? 'flex' : 'none',
           flexDirection: 'column',
           gap: '14px',
           flex: 1,
@@ -2988,7 +2951,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           {/* Header Bar Row */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-              {/* Row 1: Title (Icon + 주간 업무) on Left, Action Buttons (복사, 공유) on Right */}
+              {/* Row 1: Title (Icon + 주간 업무) on Left */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <div style={{
@@ -3009,34 +2972,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   <div style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', whiteSpace: 'nowrap' }}>
                     {getWeeklyHeaderTitle()}
                   </div>
-                </div>
-
-                {/* Action Button: In-App Share */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {/* 사내 사용자 주간 업무 공유 버튼 (인앱 공유) */}
-                  <button
-                    type="button"
-                    onClick={handleOpenWeeklyShareModal}
-                    style={{
-                      background: '#ecfdf5',
-                      border: '1.5px solid #a7f3d0',
-                      color: '#047857',
-                      padding: '7px 11px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
-                    }}
-                    title="주간 업무를 사내 동료에게 공유하기"
-                  >
-                    <Users size={13} color="#059669" />
-                    <span>사내 공유</span>
-                  </button>
                 </div>
               </div>
 
@@ -3138,34 +3073,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 <span style={{ fontSize: '12.5px', fontWeight: '700', color: '#64748b', whiteSpace: 'nowrap' }}>
                   {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
                 </span>
-              </div>
-
-              {/* Action Button: In-App Share */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {/* 사내 사용자 주간 업무 공유 버튼 (인앱 공유) */}
-                <button
-                  type="button"
-                  onClick={handleOpenWeeklyShareModal}
-                  style={{
-                    background: '#ecfdf5',
-                    border: '1.5px solid #a7f3d0',
-                    color: '#047857',
-                    padding: '7px 11px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
-                  }}
-                  title="주간 업무를 사내 동료에게 공유하기"
-                >
-                  <Users size={13} color="#059669" />
-                  <span>사내 공유</span>
-                </button>
               </div>
             </div>
           )}
@@ -3405,7 +3312,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   <span>주간 업무 보고</span>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
                   <button
                     type="button"
@@ -3431,6 +3338,31 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   >
                     <Save size={13} color={isWeeklyDirty ? '#059669' : '#94a3b8'} />
                     <span>저장</span>
+                  </button>
+
+                  {/* 사내 사용자 주간 업무 공유 버튼 (인앱 공유) - 저장 버튼 오른쪽 위치 */}
+                  <button
+                    type="button"
+                    onClick={handleOpenWeeklyShareModal}
+                    style={{
+                      background: '#ecfdf5',
+                      border: '1.5px solid #a7f3d0',
+                      color: '#047857',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
+                    }}
+                    title="주간 업무를 사내 동료에게 공유하기"
+                  >
+                    <Users size={13} color="#059669" />
+                    <span>공유</span>
                   </button>
 
                   {/* 텍스트 복사 버튼 */}
