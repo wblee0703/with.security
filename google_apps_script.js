@@ -71,8 +71,8 @@ const SCHEMAS = {
   tbms: [
     'id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
-    'attendees', 'absentees', 'additional_tbms', 'work_content', 'tools_used',
-    'check_list', 'status', 'photo_urls', 'created_at', 'updated_at'
+    'attendees', 'absentees', 'work_content',
+    'check_list', 'status', 'photo_url', 'created_at', 'updated_at'
   ],
   vault: [
     'id', 'category', 'title', 'encryptedData', 'updatedAt'
@@ -287,7 +287,8 @@ function doGet(e) {
   try {
     const params = e ? e.parameter : {};
     const action = params.action || 'get';
-    const sheetName = params.sheet || 'work_logs';
+    let sheetName = params.sheet || 'work_logs';
+    if (sheetName === 'tbm') sheetName = 'tbms';
     
     // 1. 상태 핑(Ping) 테스트
     if (action === 'ping' || action === 'status') {
@@ -359,6 +360,7 @@ function doPost(e) {
     
     const action = payload.action || 'create';
     let sheetName = payload.sheet || 'work_logs';
+    if (sheetName === 'tbm') sheetName = 'tbms';
     const rawData = payload.data || {};
 
     // ⭐ 보안 서약 데이터 격리 규칙: 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장하지 않고 security_logs로 강제 분리
@@ -1272,7 +1274,7 @@ function cleanLegacyUserColumns() {
 }
 
 /**
- * 🗑️ tbms 시트에서 불필요한 열(B열: parent_tbm_id, H열: work_area 및 23열 이후 잉여 열 Y, Z, AA, AB 등) 자동 삭제
+ * 🗑️ tbms 시트에서 불필요한 열(parent_tbm_id, work_area, additional_tbms, tools_used, pre_check, post_check 등) 및 21열 이후 잉여 열 일괄 자동 삭제
  */
 function cleanLegacyTbmColumns() {
   try {
@@ -1282,23 +1284,37 @@ function cleanLegacyTbmColumns() {
     const lastCol = sheet.getLastColumn();
     if (lastCol <= 1) return { success: true, message: '정리할 컬럼이 없습니다.' };
 
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim().toLowerCase());
+    const rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
+    const headersLower = rawHeaders.map(h => h.toLowerCase());
+
+    // 1. photo_urls 컬럼이 존재하고 photo_url 컬럼이 없다면 photo_url로 헤더명 자동 치환
+    const photoUrlsIdx = headersLower.indexOf('photo_urls');
+    const photoUrlIdx = headersLower.indexOf('photo_url');
+    if (photoUrlsIdx !== -1 && photoUrlIdx === -1) {
+      sheet.getRange(1, photoUrlsIdx + 1).setValue('photo_url');
+      headersLower[photoUrlsIdx] = 'photo_url';
+      rawHeaders[photoUrlsIdx] = 'photo_url';
+    }
+
+    // 2. 삭제 대상 레거시/불필요 컬럼 목록 (parent_tbm_id, work_area, additional_tbms, tools_used, pre_check, post_check 등)
     const legacyTargets = [
       'parent_tbm_id', 'parenttbmid', 'parent_id', 'parentid', '원tbm_id',
       'work_area', 'workarea', 'area', '작업구역', '작업장소',
+      'additional_tbms', 'additionaltbms', '추가tbm', '추가_tbm',
+      'tools_used', 'toolsused', '사용공구', '공구',
       'pre_check', 'precheck', 'post_check', 'postcheck', 'photo', 'photos'
     ];
 
     let deletedCols = [];
     // 오른쪽에서 왼쪽(역순)으로 삭제하여 열 번호 인덱스 뒤틀림 방지
-    for (let c = headers.length - 1; c >= 0; c--) {
-      if (legacyTargets.includes(headers[c])) {
+    for (let c = headersLower.length - 1; c >= 0; c--) {
+      if (legacyTargets.includes(headersLower[c])) {
         sheet.deleteColumn(c + 1);
-        deletedCols.push(headers[c]);
+        deletedCols.push(rawHeaders[c]);
       }
     }
 
-    // SCHEMAS.tbms 정의(22개 컬럼) 이후 잉여 열(Y, Z, AA, AB 등) 일괄 삭제
+    // 3. SCHEMAS.tbms 정의(20개 컬럼) 이후 잉여 열 일괄 삭제
     const targetCols = SCHEMAS.tbms.length;
     const maxCols = sheet.getMaxColumns();
     if (maxCols > targetCols) {
@@ -1944,9 +1960,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       });
     }
 
-    // 5. 이미 photo_urls가 전달된 경우 추가 합산
-    if (obj.photo_urls || obj.photoUrls) {
-      const rawUrls = String(obj.photo_urls || obj.photoUrls).split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    // 5. 이미 photo_url 또는 photo_urls가 전달된 경우 추가 합산
+    const incomingPhotoStr = String(obj.photo_url || obj.photoUrl || obj.photo_urls || obj.photoUrls || obj.photo || '').trim();
+    if (incomingPhotoStr) {
+      const rawUrls = incomingPhotoStr.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
       rawUrls.forEach(function(u) {
         if (u && allDriveUrls.indexOf(u) === -1) allDriveUrls.push(u);
       });
@@ -1970,8 +1987,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     return {
       // 1. 식별자 및 일자
       id: idVal,
-      parent_tbm_id: String(obj.parentTbmId || obj.parent_tbm_id || '').trim(),
-      parentTbmId: String(obj.parentTbmId || obj.parent_tbm_id || '').trim(),
       tbm_id: idVal,
       tbmId: idVal,
       date: dVal,
@@ -1990,8 +2005,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       work_title: workTitleVal,
       workTitle: workTitleVal,
       title: workTitleVal,
-      work_area: workAreaVal,
-      workArea: workAreaVal,
       work_category: workCatVal,
       workCategory: workCatVal,
 
@@ -2013,35 +2026,29 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       leaderPhone: leaderPhoneVal,
       phone: leaderPhoneVal,
 
-      // 5. 참석자 및 부가 정보 (이름 직급만 기록, 미참석자는 이름 직급 [이유])
+      // 5. 참석자 및 미참석자 (이름 직급만 기록, 미참석자는 이름 직급 [이유])
       attendees: formatAttendeesForSheet(atts),
       absentees: formatAbsenteesForSheet(abs),
-      additional_tbms: addTbmsStr,
-      additionalTbms: addTbmsStr,
 
-      // 6. TBM 구분 및 작업 내용 (양방향 매핑 - 스프레드시트 컬럼 헤더가 tbm_type, tbmType, 구분 중 어느 것이든 무조건 한글 '업무 후' / '업무 전' 고정 기록)
+      // 6. TBM 구분 및 작업 내용 (양방향 매핑 - 스프레드시트 컬럼 헤더가 tbm_type, tbmType, 구분 중 어느 것이든 무조건 한글 '추가 TBM' / '업무 후' / '업무 전' 고정 기록)
       tbm_type: tbmTypeVal,
       tbmType: tbmTypeVal,
       구분: tbmTypeVal,
       work_content: workContentVal,
       workContent: workContentVal,
       content: workContentVal,
-      tools_used: toolsUsedVal,
-      toolsUsed: toolsUsedVal,
 
-      // 7. 점검 체크리스트(통합 Check List) & 사진 & 상태
+      // 7. 점검 체크리스트(통합 Check List) & 사진(photo_url) & 상태
       check_list: checkListStr,
       checkList: checkListStr,
       checklist: checkListStr,
       'Check List': checkListStr,
       '체크리스트': checkListStr,
-      pre_check: checkListStr,
-      preCheck: checkListStr,
-      post_check: checkListStr,
-      postCheck: checkListStr,
       status: statusVal,
+      photo_url: photoUrlsStr,
       photo_urls: photoUrlsStr,
       photoUrls: photoUrlsStr,
+      photoUrl: photoUrlsStr,
       photo: photoUrlsStr,
       photos: photoUrlsStr,
 
@@ -2108,6 +2115,7 @@ function formatKstDate(rawVal, isDateOnly) {
 }
 
 function readSheetData(sheetName) {
+  if (sheetName === 'tbm') sheetName = 'tbms';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() <= 1) return [];
@@ -2277,6 +2285,13 @@ function readSheetData(sheetName) {
         obj.tbm_type = isAddType ? '추가 TBM' : (isPostType ? '업무 후' : '업무 전');
         obj.tbmType = isAddType ? 'additional' : (isPostType ? 'post' : 'pre');
         obj['구분'] = obj.tbm_type;
+        if (!obj.photo_url && obj.photo_urls) obj.photo_url = obj.photo_urls;
+        if (!obj.photo_urls && obj.photo_url) obj.photo_urls = obj.photo_url;
+        if (!obj.photoUrl && obj.photo_url) obj.photoUrl = obj.photo_url;
+        const pUrls = String(obj.photo_url || obj.photo_urls || '').split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (pUrls.length > 0 && (!Array.isArray(obj.photos) || obj.photos.length === 0)) {
+          obj.photos = pUrls.map((u, pIdx) => ({ id: `photo_${pIdx + 1}`, url: u, viewUrl: u }));
+        }
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
       }
@@ -2581,24 +2596,17 @@ function appendObjectRow(sheet, headers, rawObj) {
 }
 
 function ensureHeaders(sheet, keys) {
+  const sheetName = sheet.getName();
+  const schema = SCHEMAS[sheetName];
+  const targetKeys = schema || keys;
+
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(keys);
-    formatHeaderRow(sheet, keys.length);
-    return keys;
+    sheet.appendRow(targetKeys);
+    formatHeaderRow(sheet, targetKeys.length);
+    return targetKeys;
   }
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
-  const missing = keys.filter(k => !headers.includes(k));
-  if (missing.length > 0) {
-    const startCol = headers.length + 1;
-    const requiredCols = startCol + missing.length - 1;
-    const maxCols = sheet.getMaxColumns();
-    if (requiredCols > maxCols) {
-      try { sheet.insertColumnsAfter(maxCols, requiredCols - maxCols); } catch (e) { }
-    }
-    sheet.getRange(1, startCol, 1, missing.length).setValues([missing]);
-    headers.push(...missing);
-  }
   return headers;
 }
 

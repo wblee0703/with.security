@@ -224,7 +224,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   else if (endpoint.includes('edu-logs') || endpoint.includes('edu_logs')) sheetName = 'edu_logs';
   else if (endpoint.includes('weekly-reports') || endpoint.includes('weekly_reports')) sheetName = 'weekly_reports';
   else if (endpoint.includes('daily-reports') || endpoint.includes('daily_reports')) sheetName = 'daily_reports';
-  else if (endpoint.includes('tbms')) sheetName = 'tbms';
+  else if (endpoint.includes('tbm')) sheetName = 'tbms';
   else if (endpoint.includes('vault')) sheetName = 'vault';
   else if (endpoint.includes('incidents')) sheetName = 'incidents';
   else if (endpoint.includes('notices') || endpoint.includes('app-notices')) sheetName = 'notices';
@@ -4448,13 +4448,13 @@ class SecurityDatabase {
       combinedPrePhotos = prePhotos1.length > 0 ? prePhotos1 : prePhotos2;
     }
 
-    // 구글 시트 photo_urls 또는 최상위 photos fallback 지원
+    // 구글 시트 photo_url 또는 최상위 photos fallback 지원
     if (combinedPrePhotos.length === 0) {
       if (Array.isArray(tbm.photos) && tbm.photos.length > 0) {
         combinedPrePhotos = tbm.photos;
-      } else if (tbm.photo_urls || tbm.photoUrls) {
-        const rawUrls = tbm.photo_urls || tbm.photoUrls;
-        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split('\n').map(u => u.trim()).filter(Boolean);
+      } else if (tbm.photo_url || tbm.photoUrl || tbm.photo_urls || tbm.photoUrls) {
+        const rawUrls = tbm.photo_url || tbm.photoUrl || tbm.photo_urls || tbm.photoUrls;
+        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split(/[\n,]+/).map(u => u.trim()).filter(Boolean);
         combinedPrePhotos = urlList.map((u, uIdx) => ({
           id: `pre_url_${uIdx + 1}`,
           name: `photo_${uIdx + 1}.jpg`,
@@ -4511,13 +4511,13 @@ class SecurityDatabase {
       combinedPostPhotos = postPhotos1.length > 0 ? postPhotos1 : postPhotos2;
     }
 
-    // 구글 시트 photo_urls 또는 최상위 photos fallback 지원
+    // 구글 시트 photo_url 또는 최상위 photos fallback 지원
     if (combinedPostPhotos.length === 0 && (String(tbm.id || '').startsWith('tbm_post_') || rawType.indexOf('후') !== -1 || rawType === 'post')) {
       if (Array.isArray(tbm.photos) && tbm.photos.length > 0) {
         combinedPostPhotos = tbm.photos;
-      } else if (tbm.photo_urls || tbm.photoUrls) {
-        const rawUrls = tbm.photo_urls || tbm.photoUrls;
-        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split('\n').map(u => u.trim()).filter(Boolean);
+      } else if (tbm.photo_url || tbm.photoUrl || tbm.photo_urls || tbm.photoUrls) {
+        const rawUrls = tbm.photo_url || tbm.photoUrl || tbm.photo_urls || tbm.photoUrls;
+        const urlList = Array.isArray(rawUrls) ? rawUrls : String(rawUrls).split(/[\n,]+/).map(u => u.trim()).filter(Boolean);
         combinedPostPhotos = urlList.map((u, uIdx) => ({
           id: `post_url_${uIdx + 1}`,
           name: `photo_${uIdx + 1}.jpg`,
@@ -5039,8 +5039,24 @@ class SecurityDatabase {
         String(fullTbm.id || '').startsWith('tbm_post_'));
     const resolvedTbmType = isAdditionalTbm ? '추가 TBM' : (isPostTbmRecord ? '업무 후' : '업무 전');
 
+    // 모든 사진(업무 전, 업무 후, 추가 TBM) 수집하여 Google Drive 저장 및 photo_url 기록
+    const allPhotos = [
+      ...(Array.isArray(fullTbm.photos) ? fullTbm.photos : []),
+      ...(Array.isArray(fullTbm.preCheck?.photos) ? fullTbm.preCheck.photos : []),
+      ...(Array.isArray(fullTbm.postCheck?.photos) ? fullTbm.postCheck.photos : [])
+    ];
+    (fullTbm.additionalTbms || []).forEach(a => {
+      if (Array.isArray(a.photos)) allPhotos.push(...a.photos);
+      else if (a.photo) allPhotos.push({ dataUrl: a.photo, name: 'add_photo.jpg' });
+    });
+    const photoUrlString = allPhotos
+      .map(p => p.url || p.viewUrl || p.thumbnailUrl || '')
+      .filter(Boolean)
+      .join('\n');
+
     const remotePayload = {
-      ...fullTbm,
+      id: fullTbm.id,
+      date: fullTbm.date,
       // 참석자 및 미참석자 스프레드시트 기록 표준 포맷 ("이름 직급" 및 "이름 직급 [이유]")
       attendees: formatAttendeesForSheet(fullTbm.attendees),
       absentees: formatAbsenteesForSheet(combinedAbs),
@@ -5049,8 +5065,6 @@ class SecurityDatabase {
       checkList: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
       checklist: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
       'Check List': formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
-      pre_check: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
-      post_check: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
       // 1. 사업장 및 기본 정보 (camelCase & snake_case 둘 다 명시적으로 매핑하여 시트 컬럼 100% 저장 보장)
       site: fullTbm.site || fullTbm.siteName || '',
       site_name: fullTbm.site || fullTbm.siteName || '',
@@ -5073,88 +5087,18 @@ class SecurityDatabase {
       leaderPhone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
       work_content: fullTbm.workContent || fullTbm.work_content || '',
       workContent: fullTbm.workContent || fullTbm.work_content || '',
-      tools_used: fullTbm.toolsUsed || fullTbm.tools_used || '',
       tbmType: resolvedTbmType,
       tbm_type: resolvedTbmType,
       구분: resolvedTbmType,
-
-      // 2. 추가 TBM 인원 및 사진
-      additionalTbms: (fullTbm.additionalTbms || []).map(a => ({
-        ...a,
-        photos: (a.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        })),
-        photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
-      })),
-      additional_tbms: (fullTbm.additionalTbms || []).map(a => ({
-        ...a,
-        photos: (a.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        })),
-        photo: (a.photo && typeof a.photo === 'string' && a.photo.length < 25000) ? a.photo : ''
-      })),
-
-      // 3. 작업 전 점검 사진 (Drive/서버 저장을 위해 dataUrl 및 사진 정보 유지 전달)
-      preCheck: {
-        ...fullTbm.preCheck,
-        photos: (fullTbm.preCheck?.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || p.takenAt || '',
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        }))
-      },
-      pre_check: {
-        ...fullTbm.preCheck,
-        photos: (fullTbm.preCheck?.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || p.takenAt || '',
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        }))
-      },
-
-      // 4. 작업 후 점검 사진 (Drive/서버 저장을 위해 dataUrl 및 사진 정보 유지 전달)
-      postCheck: {
-        ...fullTbm.postCheck,
-        photos: (fullTbm.postCheck?.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || p.takenAt || '',
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        }))
-      },
-      post_check: {
-        ...fullTbm.postCheck,
-        photos: (fullTbm.postCheck?.photos || []).map(p => ({
-          id: p.id,
-          name: p.name || 'photo.jpg',
-          size: p.size || 0,
-          timestamp: p.timestamp || p.takenAt || '',
-          takenAt: p.takenAt || p.timestamp || '',
-          dataUrl: p.dataUrl || '',
-          url: p.url || p.viewUrl || p.thumbnailUrl || ''
-        }))
-      }
+      status: fullTbm.status || (isAdditionalTbm ? 'ADDITIONAL_COMPLETED' : (isPostTbmRecord ? 'ALL_COMPLETED' : 'PRE_COMPLETED')),
+      photo_url: photoUrlString,
+      photo_urls: photoUrlString,
+      photoUrl: photoUrlString,
+      photos: allPhotos,
+      createdAt: fullTbm.createdAt || fullTbm.created_at || new Date().toISOString(),
+      created_at: fullTbm.created_at || fullTbm.createdAt || new Date().toISOString(),
+      updatedAt: fullTbm.updatedAt || fullTbm.updated_at || new Date().toISOString(),
+      updated_at: fullTbm.updated_at || fullTbm.updatedAt || new Date().toISOString()
     };
 
     // 3. Non-blocking background sync with server (never stalls the UI!)
