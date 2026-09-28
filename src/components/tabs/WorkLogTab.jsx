@@ -1197,7 +1197,7 @@ export default function WorkLogTab({ onTriggerToast }) {
   // Author Permission Helper: Only author or Admin/Dev can edit/delete
   const canModifyLog = (log) => {
     if (!currentUser || !log) return false;
-    if (currentUser.role === '개발자' || currentUser.role === '관리자' || currentUser.username === 'admin') {
+    if (['개발자', '사업부장', '팀장', '관리자'].includes(currentUser.role) || currentUser.username === 'admin') {
       return true;
     }
     const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || log.userId || '').trim().toLowerCase();

@@ -8,9 +8,17 @@
  * 3. 직급 (rank / title)
  * 4. 연락처 (phone)
  * 5. 이름 (name / visitorName)
- * 6. 계정구분 / 권한 (role / accountType)
+ * 6. 직책 / 권한 (role / accountType)
  * 7. 아이디 (username / userId)
  */
+
+export const ROLE_LIST = [
+  '개발자',
+  '사업부장',
+  '팀장',
+  '관리자',
+  '일반'
+];
 
 export const DIVISION_LIST = [
   '위드텍',

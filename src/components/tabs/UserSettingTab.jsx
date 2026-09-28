@@ -5,7 +5,7 @@ import { UserCheck, UserPlus, LogIn, LogOut, Shield, Save, User, Database, Uploa
 import { dbService, DEFAULT_PUBLIC_URL, DEFAULT_GOOGLE_SHEETS_URL, normalizeKstDate } from '../../services/dbService';
 import { hashPassword, verifyPasswordHash } from '../../services/cryptoUtil';
 import { useModalBack } from '../../services/modalBackHandler';
-import { DIVISION_LIST, getTeamsForDivision, RANK_LIST } from '../../services/userMatcher';
+import { DIVISION_LIST, getTeamsForDivision, RANK_LIST, ROLE_LIST } from '../../services/userMatcher';
 import AppNoticeAdminModal from '../common/AppNoticeAdminModal';
 
 const TRAINING_CATEGORIES = ['SKHynix', 'Samsung', 'LGD', '법정', '기타 (직접입력)'];
@@ -1019,7 +1019,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('with_security_data_changed', { detail: { isExplicitLogin: true } }));
         }
-        if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [구분: ${activeUser.role}]`, 'success');
+        if (onTriggerToast) onTriggerToast(`'${activeUser.name}'님 환영합니다! [직책: ${activeUser.role}]`, 'success');
 
         // 플랫폼/디바이스 모드에 따른 로그인 후 첫 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
         const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
@@ -1114,7 +1114,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       window.dispatchEvent(new CustomEvent('with_security_data_changed', { detail: { isExplicitLogin: true } }));
     }
 
-    if (onTriggerToast) onTriggerToast(`'${newUser.name}'님 계정이 정상 생성되고 로그인 되었습니다. [구분: 일반]`, 'success');
+    if (onTriggerToast) onTriggerToast(`'${newUser.name}'님 계정이 정상 생성되고 로그인 되었습니다. [직책: 일반]`, 'success');
 
     // 플랫폼/디바이스 모드에 따른 회원가입 후 첫 화면: 모바일/어플 -> 보안 서약(entryCheck), PC 웹 -> 업무 일지(workLog)
     const isMobileEnv = Capacitor.isNativePlatform() || (typeof window !== 'undefined' && window.innerWidth <= 768);
@@ -1213,7 +1213,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       }
     }
 
-    const isAdmin = currentUser?.role === '관리자' || currentUser?.username === 'admin';
+    const isAdmin = ['개발자', '사업부장', '팀장', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
     const updatedUser = {
       ...editForm,
       role: isAdmin ? (editForm.role || '일반') : (currentUser?.role || '일반'),
@@ -1286,7 +1286,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       setEditForm(updatedUser);
     }
 
-    if (onTriggerToast) onTriggerToast(`'${targetUser.name}'님의 계정 구분이 '${newRole}'(으)로 변경되었습니다.`, 'success');
+    if (onTriggerToast) onTriggerToast(`'${targetUser.name}'님의 직책이 '${newRole}'(으)로 변경되었습니다.`, 'success');
   };
 
   // Handle Logout
@@ -1304,7 +1304,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   };
 
   const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
-  const isManagerUser = currentUser?.role === '관리자';
+  const isManagerUser = ['사업부장', '팀장', '관리자'].includes(currentUser?.role);
 
   // Filter users based on logged-in user role for Management Modal
   const filteredMgmtUsers = mgmtUsers.filter(u => {
@@ -1474,11 +1474,23 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                       borderRadius: '6px',
                       fontSize: '10px',
                       fontWeight: '700',
-                      background: currentUser.role === '개발자' ? 'rgba(30, 58, 138, 0.12)' : currentUser.role === '관리자' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
-                      color: currentUser.role === '개발자' ? '#1e3a8a' : currentUser.role === '관리자' ? '#d97706' : '#059669',
-                      border: currentUser.role === '개발자' ? '1px solid rgba(30, 58, 138, 0.25)' : currentUser.role === '관리자' ? '1px solid rgba(245, 158, 11, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)'
+                      background: currentUser.role === '개발자' ? 'rgba(30, 58, 138, 0.12)'
+                        : currentUser.role === '사업부장' ? 'rgba(124, 58, 237, 0.12)'
+                        : currentUser.role === '팀장' ? 'rgba(8, 145, 178, 0.12)'
+                        : currentUser.role === '관리자' ? 'rgba(245, 158, 11, 0.15)'
+                        : 'rgba(16, 185, 129, 0.15)',
+                      color: currentUser.role === '개발자' ? '#1e3a8a'
+                        : currentUser.role === '사업부장' ? '#7c3aed'
+                        : currentUser.role === '팀장' ? '#0891b2'
+                        : currentUser.role === '관리자' ? '#d97706'
+                        : '#059669',
+                      border: currentUser.role === '개발자' ? '1px solid rgba(30, 58, 138, 0.25)'
+                        : currentUser.role === '사업부장' ? '1px solid rgba(124, 58, 237, 0.3)'
+                        : currentUser.role === '팀장' ? '1px solid rgba(8, 145, 178, 0.3)'
+                        : currentUser.role === '관리자' ? '1px solid rgba(245, 158, 11, 0.3)'
+                        : '1px solid rgba(16, 185, 129, 0.3)'
                     }}>
-                      구분: {currentUser.role || '일반'}
+                      직책: {currentUser.role || '일반'}
                     </span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
@@ -1637,7 +1649,7 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '12px', color: '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
-                      계정 구분
+                      직책
                     </label>
                     {(currentUser?.role === '개발자' || currentUser?.username === 'admin') ? (
                       <select
@@ -1657,14 +1669,16 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                           cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
                         }}
                       >
-                        <option value="일반">일반</option>
-                        <option value="관리자">관리자</option>
                         <option value="개발자">개발자</option>
+                        <option value="사업부장">사업부장</option>
+                        <option value="팀장">팀장</option>
+                        <option value="관리자">관리자</option>
+                        <option value="일반">일반</option>
                       </select>
-                    ) : currentUser?.role === '관리자' ? (
+                    ) : ['사업부장', '팀장', '관리자'].includes(currentUser?.role) ? (
                       <select
                         disabled={!isEditUnlocked}
-                        value={editForm?.role || '관리자'}
+                        value={editForm?.role || currentUser?.role}
                         onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                         style={{
                           width: '100%',
@@ -1679,8 +1693,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                           cursor: isEditUnlocked ? 'pointer' : 'not-allowed'
                         }}
                       >
-                        <option value="일반">일반</option>
+                        {currentUser?.role === '사업부장' && <option value="사업부장">사업부장</option>}
+                        {(currentUser?.role === '사업부장' || currentUser?.role === '팀장') && <option value="팀장">팀장</option>}
                         <option value="관리자">관리자</option>
+                        <option value="일반">일반</option>
                       </select>
                     ) : (
                       <input
@@ -3658,6 +3674,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                         height: '42px',
                         borderRadius: '12px',
                         background: u.role === '개발자' ? 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' :
+                          u.role === '사업부장' ? 'linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%)' :
+                          u.role === '팀장' ? 'linear-gradient(135deg, #0891b2 0%, #164e63 100%)' :
                           u.role === '관리자' ? 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)' :
                             '#e2e8f0',
                         display: 'flex',
@@ -3684,16 +3702,18 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                                 borderRadius: '6px',
                                 fontSize: '11px',
                                 fontWeight: '700',
-                                background: u.role === '개발자' ? '#eff6ff' : u.role === '관리자' ? '#fffbeb' : '#ecfdf5',
-                                border: u.role === '개발자' ? '1.5px solid #cbd5e1' : u.role === '관리자' ? '1.5px solid #fde68a' : '1.5px solid #a7f3d0',
-                                color: u.role === '개발자' ? '#1e3a8a' : u.role === '관리자' ? '#d97706' : '#059669',
+                                background: u.role === '개발자' ? '#eff6ff' : u.role === '사업부장' ? '#f5f3ff' : u.role === '팀장' ? '#ecfeff' : u.role === '관리자' ? '#fffbeb' : '#ecfdf5',
+                                border: u.role === '개발자' ? '1.5px solid #cbd5e1' : u.role === '사업부장' ? '1.5px solid #ddd6fe' : u.role === '팀장' ? '1.5px solid #a5f3fc' : u.role === '관리자' ? '1.5px solid #fde68a' : '1.5px solid #a7f3d0',
+                                color: u.role === '개발자' ? '#1e3a8a' : u.role === '사업부장' ? '#7c3aed' : u.role === '팀장' ? '#0891b2' : u.role === '관리자' ? '#d97706' : '#059669',
                                 cursor: u.username === 'admin' ? 'not-allowed' : 'pointer',
                                 outline: 'none'
                               }}
                             >
-                              <option value="일반">구분: 일반</option>
-                              <option value="관리자">구분: 관리자</option>
-                              <option value="개발자">구분: 개발자</option>
+                              <option value="개발자">직책: 개발자</option>
+                              <option value="사업부장">직책: 사업부장</option>
+                              <option value="팀장">직책: 팀장</option>
+                              <option value="관리자">직책: 관리자</option>
+                              <option value="일반">직책: 일반</option>
                             </select>
                           ) : (
                             <span style={{
@@ -3701,9 +3721,21 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
                               borderRadius: '4px',
                               fontSize: '10px',
                               fontWeight: '700',
-                              background: u.role === '개발자' ? 'rgba(30, 58, 138, 0.12)' : u.role === '관리자' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                              color: u.role === '개발자' ? '#1e3a8a' : u.role === '관리자' ? '#d97706' : '#059669',
-                              border: u.role === '개발자' ? '1px solid #cbd5e1' : u.role === '관리자' ? '1px solid #fde68a' : '1px solid #a7f3d0'
+                              background: u.role === '개발자' ? 'rgba(30, 58, 138, 0.12)'
+                                : u.role === '사업부장' ? 'rgba(124, 58, 237, 0.12)'
+                                : u.role === '팀장' ? 'rgba(8, 145, 178, 0.12)'
+                                : u.role === '관리자' ? 'rgba(245, 158, 11, 0.12)'
+                                : 'rgba(16, 185, 129, 0.12)',
+                              color: u.role === '개발자' ? '#1e3a8a'
+                                : u.role === '사업부장' ? '#7c3aed'
+                                : u.role === '팀장' ? '#0891b2'
+                                : u.role === '관리자' ? '#d97706'
+                                : '#059669',
+                              border: u.role === '개발자' ? '1px solid #cbd5e1'
+                                : u.role === '사업부장' ? '1px solid #ddd6fe'
+                                : u.role === '팀장' ? '1px solid #a5f3fc'
+                                : u.role === '관리자' ? '1px solid #fde68a'
+                                : '1px solid #a7f3d0'
                             }}>
                               {u.role || '일반'}
                             </span>

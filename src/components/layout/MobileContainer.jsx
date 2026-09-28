@@ -60,7 +60,7 @@ export default function MobileContainer({
     return () => window.removeEventListener('with_security_data_changed', loadUser);
   }, [activeTab]);
 
-  const isAdmin = ['개발자', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
+  const isAdmin = ['개발자', '사업부장', '팀장', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
   const isDeveloper = currentUser?.role === '개발자' || currentUser?.username === 'admin';
   const isNative = Capacitor.isNativePlatform();
 
@@ -232,11 +232,11 @@ export default function MobileContainer({
                 <div style={{
                   padding: '2px 6px',
                   borderRadius: '6px',
-                  background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '관리자' ? '#fffbeb' : '#eff6ff'),
-                  color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '관리자' ? '#d97706' : '#1e3a8a'),
+                  background: currentUser.role === '개발자' ? '#fff1f2' : (currentUser.role === '사업부장' ? '#f5f3ff' : (currentUser.role === '팀장' ? '#ecfeff' : (currentUser.role === '관리자' ? '#fffbeb' : '#eff6ff'))),
+                  color: currentUser.role === '개발자' ? '#e11d48' : (currentUser.role === '사업부장' ? '#7c3aed' : (currentUser.role === '팀장' ? '#0891b2' : (currentUser.role === '관리자' ? '#d97706' : '#1e3a8a'))),
                   fontWeight: '800',
                   fontSize: '10px',
-                  border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '관리자' ? '#fde68a' : '#cbd5e1')}`,
+                  border: `1.5px solid ${currentUser.role === '개발자' ? '#fda4af' : (currentUser.role === '사업부장' ? '#ddd6fe' : (currentUser.role === '팀장' ? '#a5f3fc' : (currentUser.role === '관리자' ? '#fde68a' : '#cbd5e1')))}`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

@@ -2552,7 +2552,7 @@ export default function TbmSection({
             });
 
             // 관리자/개발자는 출장 미참석자가 남아있을 때 대리 등록 가능, 일반 사용자는 본인이 출장 미참석자일 때만 진행 가능
-            const isPrivilegedUser = currentUser?.role === '관리자' || currentUser?.role === '개발자' || currentUser?.username === 'admin';
+            const isPrivilegedUser = ['개발자', '사업부장', '팀장', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin';
             const isAdditionalDisabled = isPrivilegedUser
               ? !hasPendingTripAbsentees
               : (isCurrentUserAttended || !isCurrentUserAbsenteeAndPending);

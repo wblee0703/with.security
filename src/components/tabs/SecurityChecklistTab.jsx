@@ -1548,7 +1548,7 @@ export default function SecurityChecklistTab({
     // - 관리자 (Admin): 같은 소속(팀/부서/회사) 인원의 서약 내역 전체 조회 가능
     // - 일반 (General): 본인이 작성했거나 본인이 동행자로 포함된 서약 내역만 조회 가능
     const isDev = currentUser?.role === '개발자' || currentUser?.username === 'admin';
-    const isManager = currentUser?.role === '관리자';
+    const isManager = ['사업부장', '팀장', '관리자'].includes(currentUser?.role);
 
     if (!isDev) {
       const userName = (currentUser?.name || '').trim();
@@ -2467,7 +2467,7 @@ export default function SecurityChecklistTab({
                           const isDevUser = currentUser?.role === '개발자' || currentUser?.username === 'admin';
                           const canDeleteMainPledge = hasCompletedCompanions
                             ? isDevUser
-                            : (isDevUser || currentUser?.role === '관리자' || isPrimaryVisitor);
+                            : (isDevUser || ['사업부장', '팀장', '관리자'].includes(currentUser?.role) || isPrimaryVisitor);
 
                           if (!canDeleteMainPledge) return null;
 
@@ -4586,7 +4586,7 @@ export default function SecurityChecklistTab({
                   >
                     <Printer size={16} /> 승인증 인쇄 / PDF 저장
                   </button>
-                  {(currentUser?.role === '개발자' || currentUser?.role === '관리자' || currentUser?.username === 'admin') && (
+                  {(['개발자', '사업부장', '팀장', '관리자'].includes(currentUser?.role) || currentUser?.username === 'admin') && (
                     <button
                       type="button"
                       onClick={() => {
