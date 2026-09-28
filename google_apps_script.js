@@ -72,7 +72,7 @@ const SCHEMAS = {
     'id', 'parent_tbm_id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
     'attendees', 'absentees', 'additional_tbms', 'work_content', 'tools_used',
-    'pre_check', 'post_check', 'status', 'photo_urls', 'created_at', 'updated_at'
+    'check_list', 'status', 'photo_urls', 'created_at', 'updated_at'
   ],
   vault: [
     'id', 'category', 'title', 'encryptedData', 'updatedAt'
@@ -1320,6 +1320,106 @@ function formatAbsenteesForSheet(rawAbs) {
   }).filter(Boolean).join(', ');
 }
 
+// TBM 점검 항목 한글 매핑 맵
+var TBM_CHECKLIST_LABELS = {
+  // 작업 전 안전 점검 항목
+  teamSafetySlogan: '팀 안전구호',
+  prePpeCheck: '작업전 보호구 확인',
+  businessTripSafety: '출장자 안전수칙',
+  hazardPredictionTraining: '위험예지 훈련',
+  dangerPointCheck: '위험점 확인',
+  emergencyResponseCheck: '비상대응 절차 확인',
+  safetyDocTraining: '안전문서 교육',
+
+  // 4대 사후 안전·보안 점검 항목
+  cleanupCheck: '현장 정리정돈',
+  toolRecoveryCheck: '공구·자재 회수',
+  securityMediaCheck: '보안매체·문서 점검',
+  powerSafetyCheck: '잔류 전원·화기 확인',
+
+  // 작업 후 안전 점검 항목
+  sitePatrolCheck: '현장 순회 점검',
+  stopWorkAuthority: '작업 중지권 시행',
+  nearMissDiscovery: '아차사고 및 잠재위험 발굴',
+  fiveSThreeRCheck: '5S3정 및 청소상태',
+  workerInterview: '작업자 인터뷰',
+  siteImprovementActivity: '현장 개선 활동',
+  emergencyEvacuationDrill: '비상대피훈련',
+  safetyEducation: '교육'
+};
+
+/**
+ * 📋 TBM 점검 체크리스트를 구글 스프레드시트용 텍스트("항목1, 항목2, ...")로 통합 변환
+ * (note/전달사항은 work_content 컬럼에 별도 기록되므로 체크리스트에서는 제외)
+ */
+function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
+  var items = [];
+
+  // 추가 TBM 서약 항목 처리
+  if (isAdditional) {
+    items.push('안전수칙 숙지 및 개인보호구(PPE) 점검 확인');
+  }
+
+  // 1. 작업 전 점검 항목
+  if (preChk) {
+    if (typeof preChk === 'string') {
+      try { preChk = JSON.parse(preChk); } catch (e) { preChk = {}; }
+    }
+    if (preChk && typeof preChk === 'object') {
+      if (Array.isArray(preChk.selectedItems)) {
+        preChk.selectedItems.forEach(function(item) {
+          if (!item) return;
+          var label = TBM_CHECKLIST_LABELS[item] || String(item).trim();
+          if (label && items.indexOf(label) === -1) items.push(label);
+        });
+      }
+      Object.keys(TBM_CHECKLIST_LABELS).forEach(function(k) {
+        if (preChk[k] === true) {
+          var label = TBM_CHECKLIST_LABELS[k];
+          if (label && items.indexOf(label) === -1) items.push(label);
+        }
+      });
+    }
+  }
+
+  // 2. 작업 후 점검 항목
+  if (postChk) {
+    if (typeof postChk === 'string') {
+      try { postChk = JSON.parse(postChk); } catch (e) { postChk = {}; }
+    }
+    if (postChk && typeof postChk === 'object') {
+      // 4대 사후 안전·보안 점검
+      if (postChk.cleanupCheck === true || (isPost && postChk.cleanupCheck !== false && postChk.cleanupCheck !== undefined)) {
+        if (items.indexOf('현장 정리정돈') === -1) items.push('현장 정리정돈');
+      }
+      if (postChk.toolRecoveryCheck === true || (isPost && postChk.toolRecoveryCheck !== false && postChk.toolRecoveryCheck !== undefined)) {
+        if (items.indexOf('공구·자재 회수') === -1) items.push('공구·자재 회수');
+      }
+      if (postChk.securityMediaCheck === true || (isPost && postChk.securityMediaCheck !== false && postChk.securityMediaCheck !== undefined)) {
+        if (items.indexOf('보안매체·문서 점검') === -1) items.push('보안매체·문서 점검');
+      }
+      if (postChk.powerSafetyCheck === true || (isPost && postChk.powerSafetyCheck !== false && postChk.powerSafetyCheck !== undefined)) {
+        if (items.indexOf('잔류 전원·화기 확인') === -1) items.push('잔류 전원·화기 확인');
+      }
+
+      if (Array.isArray(postChk.selectedItems)) {
+        postChk.selectedItems.forEach(function(item) {
+          if (!item) return;
+          var label = TBM_CHECKLIST_LABELS[item] || String(item).trim();
+          if (label && items.indexOf(label) === -1) items.push(label);
+        });
+      }
+
+      // 작업 결과 현황 (특이사항 발생 시에만 추가)
+      if (postChk.workOutcome && postChk.workOutcome !== '계획 이행 완료') {
+        if (items.indexOf(postChk.workOutcome) === -1) items.push(postChk.workOutcome);
+      }
+    }
+  }
+
+  return items.filter(Boolean).join(', ');
+}
+
 /**
  * 객체를 MySQL 테이블 표준 컬럼 형식으로 100% 매핑 및 정규화
  */
@@ -1743,7 +1843,33 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       isPost = Boolean(postChk && postChk.isCompleted && (!preChk || !preChk.isCompleted));
     }
     const tbmTypeVal = isAdditional ? '추가 TBM' : (isPost ? '업무 후' : '업무 전');
-    const statusVal = obj.status || (isAdditional ? 'ADDITIONAL_COMPLETED' : (isPost ? 'POST_COMPLETED' : 'PRE_COMPLETED'));
+    // 4. root photos 구글 드라이브 자동 저장 및 URL 변환
+    if (Array.isArray(obj.photos)) {
+      obj.photos.forEach(function(p, pIdx) {
+        let driveInfo = null;
+        if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
+          driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_photo_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
+        }
+        const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
+        const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
+        if (finalViewUrl && allDriveUrls.indexOf(finalViewUrl) === -1) allDriveUrls.push(finalViewUrl);
+        else if (finalUrl && allDriveUrls.indexOf(finalUrl) === -1) allDriveUrls.push(finalUrl);
+      });
+    }
+
+    // 5. 이미 photo_urls가 전달된 경우 추가 합산
+    if (obj.photo_urls || obj.photoUrls) {
+      const rawUrls = String(obj.photo_urls || obj.photoUrls).split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+      rawUrls.forEach(function(u) {
+        if (u && allDriveUrls.indexOf(u) === -1) allDriveUrls.push(u);
+      });
+    }
+
+    let checkListStr = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
+    if (!checkListStr && (obj.check_list || obj.checkList || obj.checklist || obj['Check List'])) {
+      checkListStr = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List']).trim();
+    }
+
     const photoUrlsStr = allDriveUrls.join('\n');
 
     return {
@@ -1808,14 +1934,21 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       tools_used: toolsUsedVal,
       toolsUsed: toolsUsedVal,
 
-      // 7. 점검 체크리스트 & 사진 & 상태
-      pre_check: preCheckStr,
-      preCheck: preCheckStr,
-      post_check: postCheckStr,
-      postCheck: postCheckStr,
+      // 7. 점검 체크리스트(통합 Check List) & 사진 & 상태
+      check_list: checkListStr,
+      checkList: checkListStr,
+      checklist: checkListStr,
+      'Check List': checkListStr,
+      '체크리스트': checkListStr,
+      pre_check: checkListStr,
+      preCheck: checkListStr,
+      post_check: checkListStr,
+      postCheck: checkListStr,
       status: statusVal,
       photo_urls: photoUrlsStr,
       photoUrls: photoUrlsStr,
+      photo: photoUrlsStr,
+      photos: photoUrlsStr,
 
       // 8. 타임스탬프
       created_at: obj.createdAt || obj.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
