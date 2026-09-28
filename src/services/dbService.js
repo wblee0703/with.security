@@ -152,48 +152,10 @@ export function isApiEndpoint(url) {
   return !lower.includes('github.io') && !lower.includes('github.com');
 }
 
-// Get REST API Base URL helper (prioritizes Google Sheets for Cloud DB, retains MySQL for Local Dev)
+// Get REST API Base URL helper (100% Google Spreadsheet Withsharing_DB integration)
 export function getApiServerUrl() {
   const sheetUrl = getGoogleSheetsUrl();
-  const dbTarget = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_db_target') : null;
-  const hostedUrl = getHostedServerUrl();
-
-  // 1. 사용자가 명시적으로 로컬 MySQL 서버를 타겟으로 지정한 경우만 로컬 proxy 사용
-  if (dbTarget === 'mysql' || (hostedUrl && hostedUrl.includes('localhost:4000'))) {
-    return '';
-  }
-
-  // 2. 구글 스프레드시트 클라우드 DB 연동 (모바일 앱 APK, 모바일 웹, PC 브라우저, GitHub Pages 통합 단일 진실 공급원)
-  if (sheetUrl && sheetUrl.includes('script.google.com')) {
-    return sheetUrl;
-  }
-
-  // 3. 브라우저 환경 (PC 웹, 스마트폰 모바일 브라우저) Same-Origin API fallback
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname.toLowerCase();
-    // 로컬호스트, 사설망 IP (스마트폰 모바일 브라우저 접속 192.168.x, 10.x, 172.x), 동일 출처 호스팅
-    if (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === '::1' ||
-      host.startsWith('192.168.') ||
-      host.startsWith('10.') ||
-      host.startsWith('172.') ||
-      !sheetUrl
-    ) {
-      return ''; // Use relative '/api' via local Vite proxy -> http://localhost:4000
-    }
-  }
-
-  // 4. 백엔드 Node.js/MySQL 서버가 명시적으로 설정된 경우 (가비아 호스팅 등)
-  if (hostedUrl && isApiEndpoint(hostedUrl)) {
-    if (typeof window !== 'undefined' && window.location.protocol === 'https:' && hostedUrl.startsWith('http://')) {
-      return null;
-    }
-    return hostedUrl;
-  }
-
-  return null;
+  return (sheetUrl && sheetUrl.includes('script.google.com')) ? sheetUrl : DEFAULT_GOOGLE_SHEETS_URL;
 }
 
 // In-Flight Promise Cache & Short-Term Response Cache to prevent burst API calls
@@ -682,34 +644,75 @@ export const TBM_CHECKLIST_LABELS = {
 
 export const LABEL_TO_CHECKLIST_KEY = {
   '팀 안전구호': 'teamSafetySlogan',
+  '팀안전구호': 'teamSafetySlogan',
   '작업전 보호구 확인': 'prePpeCheck',
+  '작업 전 보호구 확인': 'prePpeCheck',
+  '작업전보호구확인': 'prePpeCheck',
   '출장자 안전수칙': 'businessTripSafety',
+  '출장자안전수칙': 'businessTripSafety',
   '위험예지 훈련': 'hazardPredictionTraining',
+  '위험예지훈련': 'hazardPredictionTraining',
   '위험점 확인': 'dangerPointCheck',
+  '위험점확인': 'dangerPointCheck',
   '비상대응 절차 확인': 'emergencyResponseCheck',
+  '비상대응절차확인': 'emergencyResponseCheck',
   '안전문서 교육': 'safetyDocTraining',
+  '안전문서교육': 'safetyDocTraining',
 
   '현장 정리정돈': 'cleanupCheck',
+  '현장정리정돈': 'cleanupCheck',
   '공구·자재 회수': 'toolRecoveryCheck',
+  '공구 자재 회수': 'toolRecoveryCheck',
+  '공구자재회수': 'toolRecoveryCheck',
   '보안매체·문서 점검': 'securityMediaCheck',
+  '보안매체 문서 점검': 'securityMediaCheck',
+  '보안매체문서점검': 'securityMediaCheck',
   '잔류 전원·화기 확인': 'powerSafetyCheck',
+  '잔류 전원 화기 확인': 'powerSafetyCheck',
+  '잔류전원화기확인': 'powerSafetyCheck',
 
   '현장 순회 점검': 'sitePatrolCheck',
+  '현장순회점검': 'sitePatrolCheck',
   '작업 중지권 시행': 'stopWorkAuthority',
+  '작업중지권 시행': 'stopWorkAuthority',
+  '작업중지권시행': 'stopWorkAuthority',
   '아차사고 및 잠재위험 발굴': 'nearMissDiscovery',
+  '아차사고및잠재위험발굴': 'nearMissDiscovery',
   '5S3정 및 청소상태': 'fiveSThreeRCheck',
   '작업자 인터뷰': 'workerInterview',
+  '작업자인터뷰': 'workerInterview',
   '현장 개선 활동': 'siteImprovementActivity',
+  '현장개선활동': 'siteImprovementActivity',
   '비상대피훈련': 'emergencyEvacuationDrill',
+  '비상 대피 훈련': 'emergencyEvacuationDrill',
   '교육': 'safetyEducation'
 };
 
-// 점검 항목 유효 라벨 변환기 (체크박스에 없는 임의의 문구는 안전하게 걸러냄)
+// 점검 항목 유효 라벨 변환기 (띄어쓰기, 기호, 영문 키를 표준 한글 라벨로 100% 매핑)
 export function getChecklistLabel(val) {
   if (!val) return '';
   const s = String(val).trim();
   if (TBM_CHECKLIST_LABELS[s]) return TBM_CHECKLIST_LABELS[s];
-  if (LABEL_TO_CHECKLIST_KEY[s]) return s;
+  if (LABEL_TO_CHECKLIST_KEY[s]) {
+    const key = LABEL_TO_CHECKLIST_KEY[s];
+    return TBM_CHECKLIST_LABELS[key] || s;
+  }
+
+  // 공백 및 기호 제거 정규화 매칭
+  const cleanNorm = s.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+  for (const k in TBM_CHECKLIST_LABELS) {
+    if (k.toLowerCase() === cleanNorm) return TBM_CHECKLIST_LABELS[k];
+    const lbl = TBM_CHECKLIST_LABELS[k];
+    const normLbl = lbl.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+    if (cleanNorm === normLbl) return lbl;
+  }
+  for (const l in LABEL_TO_CHECKLIST_KEY) {
+    const normL = l.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+    if (cleanNorm === normL) {
+      const mappedKey = LABEL_TO_CHECKLIST_KEY[l];
+      return TBM_CHECKLIST_LABELS[mappedKey] || l;
+    }
+  }
   return s;
 }
 
@@ -1266,7 +1269,7 @@ class SecurityDatabase {
       signatureDate: checklist.signatureDate || checklist.signature_date || checklist.signedAt || new Date().toLocaleString('ko-KR', { hour12: false })
     };
 
-    // 1. Try remote MySQL API sync (Non-blocking)
+    // 1. Try remote cloud DB sync (Non-blocking)
     try {
       const nowFormatted = new Date().toLocaleString('ko-KR', { hour12: false });
       const payload = {
@@ -1296,7 +1299,7 @@ class SecurityDatabase {
         body: JSON.stringify(payload)
       });
     } catch (e) {
-      console.warn('MySQL Security Log Sync Warning:', e);
+      console.warn('Security Log Cloud Sync Warning:', e);
     }
 
     // 2. Guaranteed Local Persistence: Save to LocalStorage immediately
@@ -1341,7 +1344,7 @@ class SecurityDatabase {
     try {
       await safeFetchApi(`/api/security-logs/${id}`, { method: 'DELETE' });
     } catch (e) {
-      console.warn('MySQL deleteSecurityLog API call warning:', e);
+      console.warn('deleteSecurityLog Cloud API call warning:', e);
     }
 
     try {
@@ -3080,13 +3083,13 @@ class SecurityDatabase {
     } catch (err) {
       return {
         success: false,
-        message: `백엔드 서버 연결 실패: Node/Express API 서버(node server/db.js)가 4000번 포트에서 실행 중인지 확인해 주세요. (${target})`
+        message: `클라우드 DB 연결 실패: 구글 스프레드시트 배포 URL 상태를 확인해 주세요. (${target})`
       };
     }
   }
 
   // -------------------------------------------------------------
-  // Work Log Persistence Methods (MySQL work_log Table Direct Sync)
+  // Work Log Persistence Methods (work_logs Table Direct Sync)
   // -------------------------------------------------------------
   _getWorkLogBlacklistKeys(log) {
     if (!log) return [];
@@ -4425,11 +4428,13 @@ class SecurityDatabase {
     tbm.id = String(tbm.id || tbm.tbm_id || tbm.tbmId || `tbm_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`).trim();
     tbm.date = normalizeKstDate(tbm.date || tbm.log_date || tbm.logDate) || new Date().toLocaleDateString('sv-SE');
     tbm.parentTbmId = String(tbm.parentTbmId || tbm.parent_tbm_id || tbm.parentId || '').trim();
-    tbm.parent_tbm_id = tbm.parentTbmId;
+    delete tbm.parent_tbm_id;
+    delete tbm.parentId;
     tbm.site = (tbm.site || tbm.siteName || tbm.site_name || '').trim();
     tbm.siteAddress = (tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
     tbm.workTitle = (tbm.workTitle || tbm.work_title || tbm.title || '').trim();
     tbm.workArea = (tbm.workArea || tbm.work_area || '').trim();
+    delete tbm.work_area;
     tbm.workCategory = (tbm.workCategory || tbm.work_category || '일반작업').trim();
     tbm.leaderDivision = (tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
     tbm.leaderTeam = (tbm.leaderTeam || tbm.leader_team || tbm.team || '').trim();
@@ -4450,7 +4455,8 @@ class SecurityDatabase {
       ''
     ).trim();
     tbm.work_content = tbm.workContent;
-    tbm.toolsUsed = (tbm.toolsUsed || tbm.tools_used || '').trim();
+    delete tbm.tools_used;
+    delete tbm.toolsUsed;
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
 
     // Parse attendees safely (JSON 배열 또는 "이원배 대리, 김철수 과장" 텍스트 파싱)
@@ -4482,7 +4488,7 @@ class SecurityDatabase {
         photo
       };
     }).filter(Boolean);
-    tbm.additional_tbms = tbm.additionalTbms;
+    delete tbm.additional_tbms;
 
     // Parse preCheck safely with photo preservation
     let preCheckObj = tbm.preCheck;
@@ -4545,7 +4551,7 @@ class SecurityDatabase {
     if (!Array.isArray(mergedPre.selectedItems)) mergedPre.selectedItems = [];
     if (mergedPre.isCompleted === undefined) mergedPre.isCompleted = true;
     tbm.preCheck = mergedPre;
-    tbm.pre_check = mergedPre;
+    delete tbm.pre_check;
 
     // Parse postCheck safely with photo preservation
     let postCheckObj = tbm.postCheck;
@@ -4615,7 +4621,7 @@ class SecurityDatabase {
       tbm.absentees = [...mergedPost.absentees];
     }
     tbm.postCheck = mergedPost;
-    tbm.post_check = mergedPost;
+    delete tbm.post_check;
 
     let isAdditional = false;
     let isPostTbm = false;
@@ -4624,7 +4630,7 @@ class SecurityDatabase {
       rawType.indexOf('추가') !== -1 ||
       rawType === 'additional' ||
       String(tbm.workTitle || tbm.work_title || '').indexOf('추가') !== -1 ||
-      Boolean(tbm.parentTbmId || tbm.parent_tbm_id)
+      Boolean(tbm.parentTbmId)
     ) {
       isAdditional = true;
     } else if (String(tbm.id || '').startsWith('tbm_post_')) {
@@ -4654,17 +4660,22 @@ class SecurityDatabase {
     // preCheck.selectedItems가 비어있다면 check_list에서 항목 역매핑
     if (tbm.preCheck && (!Array.isArray(tbm.preCheck.selectedItems) || tbm.preCheck.selectedItems.length === 0) && tbm.check_list) {
       const tokens = tbm.check_list.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-      const mappedKeys = tokens
-        .map(tok => LABEL_TO_CHECKLIST_KEY[tok] || (TBM_CHECKLIST_LABELS[tok] ? tok : null))
-        .filter(Boolean);
+      const mappedKeys = [];
+      tokens.forEach(tok => {
+        const key = LABEL_TO_CHECKLIST_KEY[tok] || (TBM_CHECKLIST_LABELS[tok] ? tok : null);
+        if (key && !mappedKeys.includes(key)) {
+          mappedKeys.push(key);
+          tbm.preCheck[key] = true;
+        }
+      });
       tbm.preCheck.selectedItems = mappedKeys;
     }
     // postCheck 주요 항목 역매핑
     if (tbm.postCheck && tbm.check_list) {
-      if (tbm.check_list.includes('현장 정리정돈')) tbm.postCheck.cleanupCheck = true;
-      if (tbm.check_list.includes('공구·자재 회수')) tbm.postCheck.toolRecoveryCheck = true;
-      if (tbm.check_list.includes('보안매체·문서 점검')) tbm.postCheck.securityMediaCheck = true;
-      if (tbm.check_list.includes('잔류 전원·화기 확인')) tbm.postCheck.powerSafetyCheck = true;
+      if (tbm.check_list.includes('현장 정리정돈') || tbm.check_list.includes('현장정리정돈')) tbm.postCheck.cleanupCheck = true;
+      if (tbm.check_list.includes('공구·자재 회수') || tbm.check_list.includes('공구 자재 회수') || tbm.check_list.includes('공구자재회수')) tbm.postCheck.toolRecoveryCheck = true;
+      if (tbm.check_list.includes('보안매체·문서 점검') || tbm.check_list.includes('보안매체 문서 점검') || tbm.check_list.includes('보안매체문서점검')) tbm.postCheck.securityMediaCheck = true;
+      if (tbm.check_list.includes('잔류 전원·화기 확인') || tbm.check_list.includes('잔류 전원 화기 확인') || tbm.check_list.includes('잔류전원화기확인')) tbm.postCheck.powerSafetyCheck = true;
     }
 
     return tbm;
@@ -4694,7 +4705,6 @@ class SecurityDatabase {
           viewUrl: dp.viewUrl || sp.viewUrl || dp.url || sp.url || ''
         };
       });
-      res.pre_check = res.preCheck;
     }
 
     // 2. postCheck photos
@@ -4715,7 +4725,6 @@ class SecurityDatabase {
           viewUrl: dp.viewUrl || sp.viewUrl || dp.url || sp.url || ''
         };
       });
-      res.post_check = res.postCheck;
     }
 
     // 3. additionalTbms photos
@@ -4755,7 +4764,6 @@ class SecurityDatabase {
         }
       });
       res.additionalTbms = Array.from(addMap.values());
-      res.additional_tbms = res.additionalTbms;
     }
 
     return res;
@@ -4776,14 +4784,14 @@ class SecurityDatabase {
               ...cleanItem.preCheck,
               photos: cleanItem.preCheck.photos.map(p => ({ ...p, dataUrl: '' }))
             };
-            cleanItem.pre_check = cleanItem.preCheck;
+            delete cleanItem.pre_check;
           }
           if (cleanItem.postCheck?.photos) {
             cleanItem.postCheck = {
               ...cleanItem.postCheck,
               photos: cleanItem.postCheck.photos.map(p => ({ ...p, dataUrl: '' }))
             };
-            cleanItem.post_check = cleanItem.postCheck;
+            delete cleanItem.post_check;
           }
           if (cleanItem.additionalTbms) {
             cleanItem.additionalTbms = cleanItem.additionalTbms.map(a => ({
@@ -4791,7 +4799,7 @@ class SecurityDatabase {
               photos: (a.photos || []).map(p => ({ ...p, dataUrl: '' })),
               photo: ''
             }));
-            cleanItem.additional_tbms = cleanItem.additionalTbms;
+            delete cleanItem.additional_tbms;
           }
           return cleanItem;
         });
@@ -4931,7 +4939,6 @@ class SecurityDatabase {
                           }
                         });
                         remoteItem.additionalTbms = Array.from(comb.values());
-                        remoteItem.additional_tbms = remoteItem.additionalTbms;
                       }
                     }
                   }
@@ -4983,7 +4990,6 @@ class SecurityDatabase {
                     }
                   });
                   item.additionalTbms = Array.from(combined.values());
-                  item.additional_tbms = item.additionalTbms;
                 }
                 // Restore absentee completed state
                 if (Array.isArray(localDbItem.absentees) && Array.isArray(item.absentees)) {
@@ -5092,16 +5098,25 @@ class SecurityDatabase {
         String(fullTbm.id || '').startsWith('tbm_post_'));
     const resolvedTbmType = isAdditionalTbm ? '추가 TBM' : (isPostTbmRecord ? '업무 후' : '업무 전');
 
-    // 모든 사진(업무 전, 업무 후, 추가 TBM) 수집하여 Google Drive 저장 및 photo_url 기록
-    const allPhotos = [
-      ...(Array.isArray(fullTbm.photos) ? fullTbm.photos : []),
-      ...(Array.isArray(fullTbm.preCheck?.photos) ? fullTbm.preCheck.photos : []),
-      ...(Array.isArray(fullTbm.postCheck?.photos) ? fullTbm.postCheck.photos : [])
-    ];
+    // 모든 사진(업무 전, 업무 후, 추가 TBM) 중복 없이 안전하게 수집
+    const allPhotosMap = new Map();
+    const collectPhoto = (p, defaultName) => {
+      if (!p) return;
+      const dataUrl = (typeof p === 'string') ? p.trim() : String(p.dataUrl || p.url || p.viewUrl || '').trim();
+      if (!dataUrl) return;
+      const key = (typeof p === 'object' && p.id) ? p.id : dataUrl.slice(0, 80);
+      if (!allPhotosMap.has(key)) {
+        allPhotosMap.set(key, (typeof p === 'object') ? p : { dataUrl, url: dataUrl, name: defaultName || 'photo.jpg' });
+      }
+    };
+    (fullTbm.photos || []).forEach(p => collectPhoto(p, 'tbm_photo.jpg'));
+    (fullTbm.preCheck?.photos || []).forEach(p => collectPhoto(p, 'pre_photo.jpg'));
+    (fullTbm.postCheck?.photos || []).forEach(p => collectPhoto(p, 'post_photo.jpg'));
     (fullTbm.additionalTbms || []).forEach(a => {
-      if (Array.isArray(a.photos)) allPhotos.push(...a.photos);
-      else if (a.photo) allPhotos.push({ dataUrl: a.photo, name: 'add_photo.jpg' });
+      if (Array.isArray(a.photos)) a.photos.forEach(p => collectPhoto(p, 'add_photo.jpg'));
+      else if (a.photo) collectPhoto(a.photo, 'add_photo.jpg');
     });
+    const allPhotos = Array.from(allPhotosMap.values());
     const photoUrlString = allPhotos
       .map(p => p.url || p.viewUrl || p.thumbnailUrl || '')
       .filter(Boolean)
@@ -5123,53 +5138,27 @@ class SecurityDatabase {
 
     const remotePayload = {
       id: fullTbm.id,
+      tbm_type: resolvedTbmType,
       date: fullTbm.date,
-      // 참석자 및 미참석자 스프레드시트 기록 표준 포맷 ("이름 직급" 및 "이름 직급 [이유]")
+      site: fullTbm.site || fullTbm.siteName || '',
+      site_address: fullTbm.siteAddress || fullTbm.site_address || '',
+      work_title: fullTbm.workTitle || fullTbm.work_title || '',
+      work_category: fullTbm.workCategory || fullTbm.work_category || '일반작업',
+      leader_division: fullTbm.leaderDivision || fullTbm.leader_division || '',
+      leader_team: fullTbm.leaderTeam || fullTbm.leader_team || '',
+      leader_name: fullTbm.leaderName || fullTbm.leader_name || '',
+      leader_rank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
+      leader_phone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
       attendees: formatAttendeesForSheet(fullTbm.attendees),
       absentees: formatAbsenteesForSheet(combinedAbs),
-      // 통합 Check List: 업무 전/후 체크한 항목 텍스트 기록 (note/전달사항은 work_content에 기록되므로 제외)
-      check_list: effectiveCheckList,
-      checkList: effectiveCheckList,
-      checklist: effectiveCheckList,
-      'Check List': effectiveCheckList,
-      preCheck: fullTbm.preCheck,
-      pre_check: fullTbm.preCheck,
-      postCheck: fullTbm.postCheck,
-      post_check: fullTbm.postCheck,
-      // 1. 사업장 및 기본 정보 (camelCase & snake_case 둘 다 명시적으로 매핑하여 시트 컬럼 100% 저장 보장)
-      site: fullTbm.site || fullTbm.siteName || '',
-      site_name: fullTbm.site || fullTbm.siteName || '',
-      siteName: fullTbm.site || fullTbm.siteName || '',
-      site_address: fullTbm.siteAddress || fullTbm.site_address || '',
-      siteAddress: fullTbm.siteAddress || fullTbm.site_address || '',
-      work_title: fullTbm.workTitle || fullTbm.work_title || '',
-      workTitle: fullTbm.workTitle || fullTbm.work_title || '',
-      work_category: fullTbm.workCategory || fullTbm.work_category || '일반작업',
-      workCategory: fullTbm.workCategory || fullTbm.work_category || '일반작업',
-      leader_division: fullTbm.leaderDivision || fullTbm.leader_division || '',
-      leaderDivision: fullTbm.leaderDivision || fullTbm.leader_division || '',
-      leader_team: fullTbm.leaderTeam || fullTbm.leader_team || '',
-      leaderTeam: fullTbm.leaderTeam || fullTbm.leader_team || '',
-      leader_name: fullTbm.leaderName || fullTbm.leader_name || '',
-      leaderName: fullTbm.leaderName || fullTbm.leader_name || '',
-      leader_rank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
-      leaderRank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
-      leader_phone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
-      leaderPhone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
       work_content: effectiveWorkContent,
-      workContent: effectiveWorkContent,
-      notes: effectiveWorkContent,
-      tbmType: resolvedTbmType,
-      tbm_type: resolvedTbmType,
-      구분: resolvedTbmType,
+      check_list: effectiveCheckList,
       status: fullTbm.status || (isAdditionalTbm ? 'ADDITIONAL_COMPLETED' : (isPostTbmRecord ? 'ALL_COMPLETED' : 'PRE_COMPLETED')),
       photo_url: photoUrlString,
-      photo_urls: photoUrlString,
-      photoUrl: photoUrlString,
       photos: allPhotos,
-      createdAt: fullTbm.createdAt || fullTbm.created_at || new Date().toISOString(),
+      preCheck: fullTbm.preCheck,
+      postCheck: fullTbm.postCheck,
       created_at: fullTbm.created_at || fullTbm.createdAt || new Date().toISOString(),
-      updatedAt: fullTbm.updatedAt || fullTbm.updated_at || new Date().toISOString(),
       updated_at: fullTbm.updated_at || fullTbm.updatedAt || new Date().toISOString()
     };
 

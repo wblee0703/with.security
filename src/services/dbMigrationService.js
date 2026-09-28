@@ -3,7 +3,6 @@ import { dbService } from './dbService';
 /**
  * Migration & DB Converter Utility Service
  * Provides structured JSON Dump export/import (Serverless/File-based DB mode)
- * and 1-Click MySQL DDL/DML SQL Conversion Script Generator.
  */
 export const dbMigrationService = {
   /**
@@ -161,83 +160,7 @@ export const dbMigrationService = {
   },
 
   /**
-   * Convert live JSON data directly into executable MySQL .sql DDL/DML file script (Preserved for future Gabia/MySQL hosting)
-   */
-  async generateMySQLDumpSQL() {
-    try {
-      const users = await dbService.getRegisteredUsers();
-      const checklists = await dbService.getChecklists();
-      const sites = await dbService.getSites();
-
-      let sql = `-- ==========================================================\n`;
-      sql += `-- WithSecurity Application - MySQL Database Auto Migration Script\n`;
-      sql += `-- Generated At: ${new Date().toISOString()}\n`;
-      sql += `-- Target Engine: MySQL 8.0+ / MariaDB\n`;
-      sql += `-- ==========================================================\n\n`;
-
-      sql += `CREATE DATABASE IF NOT EXISTS \`dbwithtech002\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n`;
-      sql += `USE \`dbwithtech002\`;\n\n`;
-
-      // 1. Users Table DDL
-      sql += `-- 1. Table Structure for \`security_user\`\n`;
-      sql += `DROP TABLE IF EXISTS \`security_user\`;\n`;
-      sql += `CREATE TABLE \`security_user\` (\n`;
-      sql += `  \`username\` VARCHAR(50) NOT NULL PRIMARY KEY,\n`;
-      sql += `  \`password\` VARCHAR(255) NOT NULL,\n`;
-      sql += `  \`role\` VARCHAR(20) NOT NULL DEFAULT '일반',\n`;
-      sql += `  \`division\` VARCHAR(100) DEFAULT NULL,\n`;
-      sql += `  \`team\` VARCHAR(100) DEFAULT NULL,\n`;
-      sql += `  \`rank\` VARCHAR(50) DEFAULT NULL,\n`;
-      sql += `  \`name\` VARCHAR(50) NOT NULL,\n`;
-      sql += `  \`phone\` VARCHAR(30) DEFAULT NULL,\n`;
-      sql += `  \`email\` VARCHAR(100) DEFAULT NULL,\n`;
-      sql += `  \`created_at\` DATETIME DEFAULT CURRENT_TIMESTAMP\n`;
-      sql += `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n\n`;
-
-      if (users && users.length > 0) {
-        sql += `-- Data for \`security_user\`\n`;
-        users.forEach(u => {
-          const pass = (u.passwordHash || u.password || '').replace(/'/g, "\\'");
-          const role = (u.role || '일반').replace(/'/g, "\\'");
-          const division = (u.division || '').replace(/'/g, "\\'");
-          const team = (u.team || '').replace(/'/g, "\\'");
-          const rank = (u.rank || '').replace(/'/g, "\\'");
-          const name = (u.name || '').replace(/'/g, "\\'");
-          const phone = (u.phone || '').replace(/'/g, "\\'");
-          const email = (u.email || '').replace(/'/g, "\\'");
-          sql += `INSERT INTO \`security_user\` (\`username\`, \`password\`, \`role\`, \`division\`, \`team\`, \`rank\`, \`name\`, \`phone\`, \`email\`) VALUES ('${u.username}', '${pass}', '${role}', '${division}', '${team}', '${rank}', '${name}', '${phone}', '${email}');\n`;
-        });
-        sql += `\n`;
-      }
-
-      // 2. Sites Table DDL
-      sql += `-- 2. Table Structure for \`security_site\`\n`;
-      sql += `DROP TABLE IF EXISTS \`security_site\`;\n`;
-      sql += `CREATE TABLE \`security_site\` (\n`;
-      sql += `  \`id\` VARCHAR(50) NOT NULL PRIMARY KEY,\n`;
-      sql += `  \`name\` VARCHAR(100) NOT NULL,\n`;
-      sql += `  \`type\` VARCHAR(50) DEFAULT '보안앱O',\n`;
-      sql += `  \`address\` VARCHAR(255) DEFAULT NULL,\n`;
-      sql += `  \`site_name\` VARCHAR(255) DEFAULT NULL\n`;
-      sql += `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;\n\n`;
-
-      if (sites && sites.length > 0) {
-        sql += `-- Data for \`security_site\`\n`;
-        sites.forEach(s => {
-          sql += `INSERT INTO \`security_site\` (\`id\`, \`name\`, \`type\`, \`address\`, \`site_name\`) VALUES ('${s.id}', '${(s.name || '').replace(/'/g, "\\'")}', '${(s.type || '보안앱O').replace(/'/g, "\\'")}', '${(s.address || '').replace(/'/g, "\\'")}', '${(s.site_name || s.siteName || '').replace(/'/g, "\\'")}');\n`;
-        });
-        sql += `\n`;
-      }
-
-      return sql;
-    } catch (err) {
-      console.error('Failed to generate MySQL dump SQL:', err);
-      throw err;
-    }
-  },
-
-  /**
-   * Helper to trigger browser file download for exported JSON / SQL files
+   * Helper to trigger browser file download for exported JSON files
    */
   downloadFile(content, fileName, mimeType = 'application/json') {
     const blob = new Blob([content], { type: mimeType });

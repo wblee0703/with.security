@@ -3,13 +3,13 @@
  * Withsharing_DB - 구글 스프레드시트 데이터베이스 전용 Apps Script
  * ==============================================================================
  * 
- * [MySQL 데이터베이스 스키마와 100% 완벽 동기화 & Google Drive 사진 자동 저장 v3]
+ * [Withsharing_DB 클라우드 데이터베이스 스키마 & Google Drive 사진 자동 저장 v3]
  * 1. 생성하신 'Withsharing_DB' 구글 스프레드시트 열기
  * 2. 상단 메뉴 [확장 프로그램] > [Apps Script] 클릭
  * 3. 기존 코드를 모두 지우고 이 파일의 전체 코드를 그대로 붙여넣기
  * 4. 상단 툴바의 함수 선택 목록에서 'syncDatabaseHeaders' (또는 'initDatabase') 선택 후 [실행] 클릭
  *    -> 필요한 모든 탭(users, sites, work_logs, security_logs, tbms 등)의 컬럼이
- *       MySQL 테이블 컬럼 및 사진 링크(photo_urls)와 100% 동일한 헤더와 서식으로 즉시 자동 동기화됩니다!
+ *       표준 컬럼 및 사진 링크(photo_url)와 100% 동일한 헤더와 서식으로 즉시 자동 동기화됩니다!
  * 5. 우측 상단 [배포] > [새 배포] 클릭
  *    - 유형: '웹 앱' (톱니바퀴 아이콘 클릭)
  *    - 설명: Withsharing_DB Google Drive Photos v3
@@ -22,7 +22,7 @@
  * ==============================================================================
  */
 
-// 테이블별 컬럼 스키마 정의 (MySQL Database Schema와 100% 동일한 표준 컬럼 체계)
+// 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
   // 1. 사용자 계정 정보 (MySQL: security_user)
   users: [
@@ -86,72 +86,16 @@ const SCHEMAS = {
   ]
 };
 
-// 기본 초기 시드 데이터 (users & sites)
-const INITIAL_USERS = [
-  {
-    id: 1,
-    username: 'admin',
-    password: '046d1bf1917f8a7fb783fa6fdb46a53cb6ff090cf16e8b7c527e77a16bfad884',
-    name: '이원배',
-    role: '개발자',
-    division: '영업/운영사업부',
-    team: '운영1팀',
-    rank: '대리',
-    siteId: 'ALL',
-    phone: '010-9885-0393',
-    email: 'wblee@withtech.co.kr',
-    created_at: '2026-01-01T00:00:00.000Z'
-  },
-  {
-    id: 2,
-    username: 'wblee',
-    password: '046d1bf1917f8a7fb783fa6fdb46a53cb6ff090cf16e8b7c527e77a16bfad884',
-    name: '이원배',
-    role: '일반',
-    division: '영업/운영사업부',
-    team: '운영1팀',
-    rank: '대리',
-    siteId: 'site-001',
-    phone: '010-9885-0393',
-    email: 'wblee@withtech.co.kr',
-    created_at: '2026-01-01T00:00:00.000Z'
-  }
-];
-
-const INITIAL_SITES = [
-  {
-    id: 'site-001',
-    type: '보안앱O',
-    name: '삼성전자 평택캠퍼스 P4 라인',
-    address: '경기도 평택시 고덕면 삼성로 114',
-    site_name: '삼성전자 평택캠퍼스 P4 라인 경기도 평택시 고덕면 삼성로 114'
-  },
-  {
-    id: 'site-002',
-    type: '보안앱O',
-    name: 'SK하이닉스 이천 M16 공장',
-    address: '경기도 이천시 부발읍 경충대로 2091',
-    site_name: 'SK하이닉스 이천 M16 공장 경기도 이천시 부발읍 경충대로 2091'
-  },
-  {
-    id: 'site-003',
-    type: '보안앱X',
-    name: '일반 협력사 물류센터 (보안앱 예외)',
-    address: '경기도 용인시 처인구 백암면 원설로 123',
-    site_name: '일반 협력사 물류센터 (보안앱 예외) 경기도 용인시 처인구 백암면 원설로 123'
-  }
-];
-
 /**
- * 🚀 [100% 자동 초기화 및 MySQL 스키마 동기화 함수]
+ * 🚀 [100% 자동 초기화 및 스키마 동기화 함수]
  */
 function initDatabase() {
   return syncDatabaseHeaders();
 }
 
 /**
- * 🔄 MySQL 스키마와 구글 스프레드시트 컬럼 헤더 100% 동기화 함수
- * - 각 시트의 1행 헤더를 MySQL 최신 표준 스키마로 완벽 재정렬
+ * 🔄 구글 스프레드시트 컬럼 헤더 100% 동기화 함수
+ * - 각 시트의 1행 헤더를 최신 표준 스키마로 완벽 재정렬
  * - 기존에 저장된 데이터(구버전 컬럼명 등)를 새 컬럼 위치로 자동 마이그레이션하여 보존
  */
 function syncDatabaseHeaders() {
@@ -179,11 +123,6 @@ function syncDatabaseHeaders() {
         try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
       }
 
-      if (sheetName === 'users') {
-        INITIAL_USERS.forEach(u => appendObjectRow(sheet, targetHeaders, u));
-      } else if (sheetName === 'sites') {
-        INITIAL_SITES.forEach(s => appendObjectRow(sheet, targetHeaders, s));
-      }
       report[sheetName] = '헤더 생성 완료';
       continue;
     }
@@ -234,10 +173,10 @@ function syncDatabaseHeaders() {
     try { ss.deleteSheet(defaultSheet); } catch (e) {}
   }
   
-  Logger.log('✅ MySQL 스키마와 Withsharing_DB 컬럼 헤더 100% 동기화 완료!');
+  Logger.log('✅ Withsharing_DB 컬럼 헤더 100% 동기화 완료!');
   return {
     success: true,
-    message: 'MySQL 스키마와 스프레드시트의 모든 시트 컬럼이 100% 동일하게 동기화되었습니다.',
+    message: '스프레드시트의 모든 시트 컬럼이 100% 동일하게 동기화되었습니다.',
     details: report
   };
 }
@@ -257,17 +196,10 @@ function formatHeaderRow(sheet, numCols) {
  * 구글 스프레드시트 상단 메뉴 자동 등록
  */
 function onOpen() {
-  try {
-    cleanLegacyUserColumns();
-    cleanLegacyTbmColumns();
-    enforcePasswordHashingInSheet();
-    enforceNumericUserIds();
-  } catch (e) {}
-
   SpreadsheetApp.getUi()
     .createMenu('🛡️ Withsharing DB 관리')
     .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
-    .addItem('🔄 MySQL 스키마 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
+    .addItem('🔄 시트 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🗑️ users 시트 교육 컬럼(L~O열) 삭제 (cleanLegacyUserColumns)', 'cleanLegacyUserColumns')
     .addItem('🗑️ tbms 시트 불필요한 열(B, H, 23열 이후) 삭제 (cleanLegacyTbmColumns)', 'cleanLegacyTbmColumns')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
@@ -315,9 +247,6 @@ function doGet(e) {
 
     // 4. 전체 데이터베이스 일괄 동기화 (sync/all)
     if (action === 'getAll') {
-      try { cleanLegacyUserColumns(); } catch (e) {}
-      try { enforcePasswordHashingInSheet(); } catch (e) {}
-      try { enforceNumericUserIds(); } catch (e) {}
       const allData = {};
       for (const key of Object.keys(SCHEMAS)) {
         allData[key] = readSheetData(key);
@@ -330,11 +259,6 @@ function doGet(e) {
     }
     
     // 5. 개별 시트 데이터 조회
-    if (sheetName === 'users') {
-      try { cleanLegacyUserColumns(); } catch (e) {}
-      try { enforcePasswordHashingInSheet(); } catch (e) {}
-      try { enforceNumericUserIds(); } catch (e) {}
-    }
     const data = readSheetData(sheetName);
     return jsonResponse({
       success: true,
@@ -389,12 +313,6 @@ function doPost(e) {
     if (!sheet) {
       initDatabase();
       sheet = ss.getSheetByName(sheetName);
-    }
-
-    if (sheetName === 'users') {
-      try { cleanLegacyUserColumns(); } catch (e) {}
-    } else if (sheetName === 'tbms') {
-      try { cleanLegacyTbmColumns(); } catch (e) {}
     }
     
     // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
@@ -981,52 +899,82 @@ function doPost(e) {
 // 구글 드라이브(Google Drive) 사진 자동 저장 헬퍼 함수
 // -------------------------------------------------------------
 
+// Global request cache to avoid duplicate Google Drive uploads within the same request execution
+var _driveSaveCache = {};
+var _targetDriveFolder = null;
+
 /**
  * 📷 Google Drive에 Base64 이미지를 자동 저장하고 영구 공유 URL을 반환하는 함수
  */
 function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
   try {
-    if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image')) {
+    if (!dataUrl || typeof dataUrl !== 'string') {
       return null;
     }
     
-    // 1. DataURL 정규식 파싱
-    const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
+    // 1. 이미 http/https 웹 URL인 경우 그대로 반환
+    if (dataUrl.startsWith('http://') || dataUrl.startsWith('https://')) {
+      return {
+        fileId: '',
+        name: fileName || 'photo.jpg',
+        viewUrl: dataUrl,
+        url: dataUrl,
+        thumbnailUrl: dataUrl,
+        size: 0
+      };
+    }
+
+    if (!dataUrl.startsWith('data:image')) {
+      return null;
+    }
+
+    // 2. 요청 내 중복 업로드 방지 메모리 캐시 확인
+    var cacheKey = dataUrl.substring(0, 100) + '_' + dataUrl.length;
+    if (_driveSaveCache[cacheKey]) {
+      return _driveSaveCache[cacheKey];
+    }
+    
+    // 3. DataURL 고속 안전 파싱 (정규식 대신 indexOf/substring 사용으로 대용량 Base64 문자열 파싱 100% 보장)
+    var marker = ';base64,';
+    var markerIdx = dataUrl.indexOf(marker);
+    if (markerIdx === -1) {
       return null;
     }
     
-    const contentType = matches[1];
-    const base64Data = matches[2];
-    const decodedBytes = Utilities.base64Decode(base64Data);
+    var contentType = dataUrl.substring(5, markerIdx); // 'data:'.length === 5
+    var rawBase64 = dataUrl.substring(markerIdx + marker.length);
+    var cleanBase64 = rawBase64.replace(/\s+/g, '');
+    var decodedBytes = Utilities.base64Decode(cleanBase64);
     
-    let ext = 'jpg';
-    if (contentType.includes('png')) ext = 'png';
-    else if (contentType.includes('webp')) ext = 'webp';
-    else if (contentType.includes('gif')) ext = 'gif';
+    var ext = 'jpg';
+    if (contentType.indexOf('png') !== -1) ext = 'png';
+    else if (contentType.indexOf('webp') !== -1) ext = 'webp';
+    else if (contentType.indexOf('gif') !== -1) ext = 'gif';
     
-    const timeStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss');
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const safeName = fileName ? `${fileName.replace(/\.[^/.]+$/, '')}_${timeStr}.${ext}` : `tbm_${timeStr}_${randomSuffix}.${ext}`;
+    var timeStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss');
+    var randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    var safeName = fileName ? (fileName.replace(/\.[^/.]+$/, '') + '_' + timeStr + '.' + ext) : ('tbm_' + timeStr + '_' + randomSuffix + '.' + ext);
     
-    const blob = Utilities.newBlob(decodedBytes, contentType, safeName);
+    var blob = Utilities.newBlob(decodedBytes, contentType, safeName);
     
-    // 2. 구글 드라이브 전용 폴더 (WithSharing_TBM_Photos) 생성 또는 조회
-    const targetFolder = getOrCreateDriveFolder(folderName || 'WithSharing_TBM_Photos');
+    // 4. 구글 드라이브 전용 폴더 (WithSharing_TBM_Photos) 조회/생성
+    if (!_targetDriveFolder) {
+      _targetDriveFolder = getOrCreateDriveFolder(folderName || 'WithSharing_TBM_Photos');
+    }
+    var targetFolder = _targetDriveFolder;
     
-    // 3. 파일 생성 및 누구나 링크로 보기 권한 부여
-    const file = targetFolder.createFile(blob);
+    // 5. 파일 생성 및 누구나 링크로 보기 권한 부여
+    var file = targetFolder.createFile(blob);
     try {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     } catch (e) { }
     
-    const fileId = file.getId();
-    const viewUrl = file.getUrl();
-    const directCdnUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
-    const downloadUrl = 'https://drive.google.com/uc?export=view&id=' + fileId;
-    const thumbnailUrl = directCdnUrl;
+    var fileId = file.getId();
+    var viewUrl = file.getUrl();
+    var directCdnUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
+    var thumbnailUrl = directCdnUrl;
     
-    return {
+    var resultInfo = {
       fileId: fileId,
       name: safeName,
       viewUrl: viewUrl,
@@ -1034,6 +982,9 @@ function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
       thumbnailUrl: thumbnailUrl,
       size: decodedBytes.length
     };
+
+    _driveSaveCache[cacheKey] = resultInfo;
+    return resultInfo;
   } catch (err) {
     Logger.log('Drive image save error: ' + err.toString());
     return null;
@@ -1412,37 +1363,78 @@ var TBM_CHECKLIST_LABELS = {
   safetyEducation: '교육'
 };
 
-// 한글 라벨 -> 점검 항목 키 역매핑 맵
+// 한글 라벨 -> 점검 항목 키 역매핑 맵 (띄어쓰기 및 기호 변형 100% 수용)
 var LABEL_TO_CHECKLIST_KEY = {
   '팀 안전구호': 'teamSafetySlogan',
+  '팀안전구호': 'teamSafetySlogan',
   '작업전 보호구 확인': 'prePpeCheck',
+  '작업 전 보호구 확인': 'prePpeCheck',
+  '작업전보호구확인': 'prePpeCheck',
   '출장자 안전수칙': 'businessTripSafety',
+  '출장자안전수칙': 'businessTripSafety',
   '위험예지 훈련': 'hazardPredictionTraining',
+  '위험예지훈련': 'hazardPredictionTraining',
   '위험점 확인': 'dangerPointCheck',
+  '위험점확인': 'dangerPointCheck',
   '비상대응 절차 확인': 'emergencyResponseCheck',
+  '비상대응절차확인': 'emergencyResponseCheck',
   '안전문서 교육': 'safetyDocTraining',
+  '안전문서교육': 'safetyDocTraining',
 
   '현장 정리정돈': 'cleanupCheck',
+  '현장정리정돈': 'cleanupCheck',
   '공구·자재 회수': 'toolRecoveryCheck',
+  '공구 자재 회수': 'toolRecoveryCheck',
+  '공구자재회수': 'toolRecoveryCheck',
   '보안매체·문서 점검': 'securityMediaCheck',
+  '보안매체 문서 점검': 'securityMediaCheck',
+  '보안매체문서점검': 'securityMediaCheck',
   '잔류 전원·화기 확인': 'powerSafetyCheck',
+  '잔류 전원 화기 확인': 'powerSafetyCheck',
+  '잔류전원화기확인': 'powerSafetyCheck',
 
   '현장 순회 점검': 'sitePatrolCheck',
+  '현장순회점검': 'sitePatrolCheck',
   '작업 중지권 시행': 'stopWorkAuthority',
+  '작업중지권 시행': 'stopWorkAuthority',
+  '작업중지권시행': 'stopWorkAuthority',
   '아차사고 및 잠재위험 발굴': 'nearMissDiscovery',
+  '아차사고및잠재위험발굴': 'nearMissDiscovery',
   '5S3정 및 청소상태': 'fiveSThreeRCheck',
   '작업자 인터뷰': 'workerInterview',
+  '작업자인터뷰': 'workerInterview',
   '현장 개선 활동': 'siteImprovementActivity',
+  '현장개선활동': 'siteImprovementActivity',
   '비상대피훈련': 'emergencyEvacuationDrill',
+  '비상 대피 훈련': 'emergencyEvacuationDrill',
   '교육': 'safetyEducation'
 };
 
-// 점검 항목 유효 라벨 변환기 (체크박스에 없는 임의의 문구는 안전하게 걸러냄)
+// 점검 항목 유효 라벨 변환기 (띄어쓰기, 기호, 영문 키를 표준 한글 라벨로 100% 매핑)
 function getChecklistLabel(val) {
   if (!val) return '';
   var s = String(val).trim();
   if (TBM_CHECKLIST_LABELS[s]) return TBM_CHECKLIST_LABELS[s];
-  if (LABEL_TO_CHECKLIST_KEY[s]) return s;
+  if (LABEL_TO_CHECKLIST_KEY[s]) {
+    var key = LABEL_TO_CHECKLIST_KEY[s];
+    return TBM_CHECKLIST_LABELS[key] || s;
+  }
+
+  // 공백 및 기호 제거 정규화 매칭
+  var cleanNorm = s.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+  for (var k in TBM_CHECKLIST_LABELS) {
+    if (k.toLowerCase() === cleanNorm) return TBM_CHECKLIST_LABELS[k];
+    var lbl = TBM_CHECKLIST_LABELS[k];
+    var normLbl = lbl.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+    if (cleanNorm === normLbl) return lbl;
+  }
+  for (var l in LABEL_TO_CHECKLIST_KEY) {
+    var normL = l.replace(/[\s·・ㆍ_\-\/\\]+/g, '').toLowerCase();
+    if (cleanNorm === normL) {
+      var mappedKey = LABEL_TO_CHECKLIST_KEY[l];
+      return TBM_CHECKLIST_LABELS[mappedKey] || l;
+    }
+  }
   return s;
 }
 
@@ -1721,6 +1713,63 @@ function normalizeObjectForSheet(sheetName, rawObj) {
 
     const allDriveUrls = [];
 
+    // 사진 단일 항목 안전 처리 헬퍼 (문자열 URL, base64, 객체 형태 모두 완벽 대응 및 구글 드라이브 업로드)
+    function processPhotoItem(p, defaultName) {
+      if (!p) return null;
+      var dataUrl = '';
+      var pName = defaultName || 'tbm_photo.jpg';
+      var pId = '';
+      var pTaken = '';
+      var pSize = 0;
+      var pUrl = '';
+      var pViewUrl = '';
+      var pThumb = '';
+
+      if (typeof p === 'string') {
+        dataUrl = p.trim();
+      } else if (typeof p === 'object') {
+        dataUrl = String(p.dataUrl || p.url || p.viewUrl || '').trim();
+        pName = p.name || defaultName;
+        pId = p.id || '';
+        pTaken = p.takenAt || p.timestamp || '';
+        pSize = p.size || 0;
+        pUrl = p.url || '';
+        pViewUrl = p.viewUrl || '';
+        pThumb = p.thumbnailUrl || '';
+      }
+
+      var driveInfo = null;
+      if (dataUrl) {
+        if (dataUrl.startsWith('data:image')) {
+          driveInfo = saveBase64ImageToDrive(dataUrl, pName, 'WithSharing_TBM_Photos');
+        } else if (dataUrl.startsWith('http://') || dataUrl.startsWith('https://')) {
+          pUrl = dataUrl;
+          pViewUrl = dataUrl;
+        }
+      }
+
+      var finalUrl = (driveInfo && driveInfo.url) || pUrl || pViewUrl || pThumb || '';
+      var finalViewUrl = (driveInfo && driveInfo.viewUrl) || pViewUrl || finalUrl;
+      var finalThumb = (driveInfo && driveInfo.thumbnailUrl) || pThumb || finalUrl;
+
+      var urlToRecord = finalViewUrl || finalUrl;
+      if (urlToRecord && allDriveUrls.indexOf(urlToRecord) === -1) {
+        allDriveUrls.push(urlToRecord);
+      }
+
+      return {
+        id: pId || ('photo_' + Date.now()),
+        name: pName,
+        size: (driveInfo && driveInfo.size) || pSize,
+        takenAt: pTaken,
+        timestamp: pTaken,
+        driveFileId: (driveInfo && driveInfo.fileId) || '',
+        url: finalUrl,
+        viewUrl: finalViewUrl,
+        thumbnailUrl: finalThumb
+      };
+    }
+
     // 1. pre_check photos 구글 드라이브 자동 저장 및 URL 변환
     let preChk = obj.preCheck || obj.pre_check || {};
     if (typeof preChk === 'string') {
@@ -1729,29 +1778,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (preChk && typeof preChk === 'object') {
       preChk = { ...preChk };
       if (Array.isArray(preChk.photos)) {
-        preChk.photos = preChk.photos.map((p, pIdx) => {
-          let driveInfo = null;
-          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
-            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_pre_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
-          }
-          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
-          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
-          const finalThumb = (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl;
-          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
-          else if (finalUrl) allDriveUrls.push(finalUrl);
-
-          return {
-            id: p.id || `pre_photo_${pIdx + 1}`,
-            name: p.name || `pre_photo_${pIdx + 1}.jpg`,
-            size: (driveInfo && driveInfo.size) || p.size || 0,
-            timestamp: p.timestamp || p.takenAt || '',
-            takenAt: p.takenAt || p.timestamp || '',
-            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
-            url: finalUrl,
-            viewUrl: finalViewUrl,
-            thumbnailUrl: finalThumb
-          };
-        });
+        preChk.photos = preChk.photos.map(function(p, pIdx) {
+          return processPhotoItem(p, 'tbm_pre_' + dVal + '_' + (pIdx + 1) + '.jpg');
+        }).filter(Boolean);
       }
     }
 
@@ -1763,29 +1792,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (postChk && typeof postChk === 'object') {
       postChk = { ...postChk };
       if (Array.isArray(postChk.photos)) {
-        postChk.photos = postChk.photos.map((p, pIdx) => {
-          let driveInfo = null;
-          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
-            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_post_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
-          }
-          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
-          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
-          const finalThumb = (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl;
-          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
-          else if (finalUrl) allDriveUrls.push(finalUrl);
-
-          return {
-            id: p.id || `post_photo_${pIdx + 1}`,
-            name: p.name || `post_photo_${pIdx + 1}.jpg`,
-            size: (driveInfo && driveInfo.size) || p.size || 0,
-            timestamp: p.timestamp || p.takenAt || '',
-            takenAt: p.takenAt || p.timestamp || '',
-            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
-            url: finalUrl,
-            viewUrl: finalViewUrl,
-            thumbnailUrl: finalThumb
-          };
-        });
+        postChk.photos = postChk.photos.map(function(p, pIdx) {
+          return processPhotoItem(p, 'tbm_post_' + dVal + '_' + (pIdx + 1) + '.jpg');
+        }).filter(Boolean);
       }
     }
 
@@ -1795,38 +1804,36 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       try { addTbms = JSON.parse(addTbms); } catch (e) { addTbms = []; }
     }
     if (Array.isArray(addTbms)) {
-      addTbms = addTbms.map((a, aIdx) => {
+      addTbms = addTbms.map(function(a, aIdx) {
         let photosList = Array.isArray(a.photos) ? a.photos : [];
-        if (photosList.length === 0 && a.photo && typeof a.photo === 'string') {
-          photosList = [{ id: 'photo_1', dataUrl: a.photo, name: 'add_tbm.jpg' }];
+        if (photosList.length === 0 && a.photo) {
+          photosList = [a.photo];
         }
-        const mappedPhotos = photosList.map((p, pIdx) => {
-          let driveInfo = null;
-          if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
-            driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_add_${dVal}_${aIdx + 1}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
-          }
-          const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || '';
-          const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
-          if (finalViewUrl) allDriveUrls.push(finalViewUrl);
-          else if (finalUrl) allDriveUrls.push(finalUrl);
-
-          return {
-            id: p.id || `add_photo_${pIdx + 1}`,
-            name: p.name || 'photo.jpg',
-            size: (driveInfo && driveInfo.size) || p.size || 0,
-            takenAt: p.takenAt || p.timestamp || '',
-            driveFileId: (driveInfo && driveInfo.fileId) || p.driveFileId || '',
-            url: finalUrl,
-            viewUrl: finalViewUrl,
-            thumbnailUrl: (driveInfo && driveInfo.thumbnailUrl) || p.thumbnailUrl || finalUrl
-          };
-        });
+        const mappedPhotos = photosList.map(function(p, pIdx) {
+          return processPhotoItem(p, 'tbm_add_' + dVal + '_' + (aIdx + 1) + '_' + (pIdx + 1) + '.jpg');
+        }).filter(Boolean);
 
         return {
           ...a,
-          photo: mappedPhotos[0]?.url || mappedPhotos[0]?.viewUrl || '',
+          photo: mappedPhotos[0]?.viewUrl || mappedPhotos[0]?.url || '',
           photos: mappedPhotos
         };
+      });
+    }
+
+    // 4. root photos 구글 드라이브 자동 저장 및 URL 변환
+    if (Array.isArray(obj.photos)) {
+      obj.photos.forEach(function(p, pIdx) {
+        processPhotoItem(p, 'tbm_photo_' + dVal + '_' + (pIdx + 1) + '.jpg');
+      });
+    }
+
+    // 5. 이미 photo_url 또는 photo_urls가 전달된 경우 추가 합산
+    const incomingPhotoStr = String(obj.photo_url || obj.photoUrl || obj.photo_urls || obj.photoUrls || obj.photo || '').trim();
+    if (incomingPhotoStr) {
+      const rawUrls = incomingPhotoStr.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+      rawUrls.forEach(function(u) {
+        if (u && allDriveUrls.indexOf(u) === -1) allDriveUrls.push(u);
       });
     }
 
@@ -1835,7 +1842,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       let json = JSON.stringify(dataObj);
       if (json.length <= maxLen) return json;
 
-      // If length exceeds maxLen (Google Sheet cell limit), strip bulky dataUrl from photos while keeping Drive URLs
       try {
         const copy = JSON.parse(JSON.stringify(dataObj));
         if (Array.isArray(copy.photos)) {
@@ -1855,7 +1861,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
         if (json.length <= maxLen) return json;
       } catch (e) { }
 
-      // Minimal fallback representation
       try {
         const minimal = {
           isCompleted: Boolean(dataObj.isCompleted),
@@ -1959,49 +1964,35 @@ function normalizeObjectForSheet(sheetName, rawObj) {
         workContentVal = preNotes || postNotes || rootNotes;
       }
     }
-    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
-    // 4. root photos 구글 드라이브 자동 저장 및 URL 변환
-    if (Array.isArray(obj.photos)) {
-      obj.photos.forEach(function(p, pIdx) {
-        let driveInfo = null;
-        if (p.dataUrl && typeof p.dataUrl === 'string' && p.dataUrl.startsWith('data:image')) {
-          driveInfo = saveBase64ImageToDrive(p.dataUrl, p.name || `tbm_photo_${dVal}_${pIdx + 1}.jpg`, 'WithSharing_TBM_Photos');
-        }
-        const finalUrl = (driveInfo && driveInfo.url) || p.url || p.viewUrl || p.thumbnailUrl || '';
-        const finalViewUrl = (driveInfo && driveInfo.viewUrl) || p.viewUrl || p.url || '';
-        if (finalViewUrl && allDriveUrls.indexOf(finalViewUrl) === -1) allDriveUrls.push(finalViewUrl);
-        else if (finalUrl && allDriveUrls.indexOf(finalUrl) === -1) allDriveUrls.push(finalUrl);
-      });
-    }
 
-    // 5. 이미 photo_url 또는 photo_urls가 전달된 경우 추가 합산
-    const incomingPhotoStr = String(obj.photo_url || obj.photoUrl || obj.photo_urls || obj.photoUrls || obj.photo || '').trim();
-    if (incomingPhotoStr) {
-      const rawUrls = incomingPhotoStr.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
-      rawUrls.forEach(function(u) {
-        if (u && allDriveUrls.indexOf(u) === -1) allDriveUrls.push(u);
-      });
-    }
-
+    // 📋 점검 체크리스트(check_list): 클라이언트 전달값과 preCheck/postCheck 점검항목을 합산하여 100% 보존
     let checkListStr = '';
-    const incomingCheckList = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List'] || '').trim();
-    if (incomingCheckList) {
-      const tokens = incomingCheckList.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
-      const validLabels = [];
+    const incomingCheckList = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List'] || obj['체크리스트'] || '').trim();
+    const computedCheckList = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
+    const combinedValidLabels = [];
+
+    const addLabelTokens = function(str) {
+      if (!str) return;
+      const tokens = str.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
       tokens.forEach(function(tok) {
         const lbl = getChecklistLabel(tok) || tok;
-        if (lbl && validLabels.indexOf(lbl) === -1) validLabels.push(lbl);
+        if (lbl && combinedValidLabels.indexOf(lbl) === -1) {
+          combinedValidLabels.push(lbl);
+        }
       });
-      checkListStr = validLabels.join(', ');
-    }
-    if (!checkListStr) {
-      checkListStr = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
-    }
+    };
+
+    addLabelTokens(incomingCheckList);
+    addLabelTokens(computedCheckList);
+    checkListStr = combinedValidLabels.join(', ');
 
     const photoUrlsStr = allDriveUrls.join('\n');
     const statusVal = String(obj.status || (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED')).trim() || 'PRE_COMPLETED';
 
     return {
+      // 정규화 완료 플래그 (중복 업로드 방지)
+      _isNormalized: true,
+
       // 1. 식별자 및 일자
       id: idVal,
       tbm_id: idVal,
@@ -2587,7 +2578,7 @@ function cleanupDuplicates() {
 
 function appendObjectRow(sheet, headers, rawObj) {
   const sheetName = sheet.getName();
-  const obj = normalizeObjectForSheet(sheetName, rawObj);
+  const obj = (rawObj && rawObj._isNormalized) ? rawObj : normalizeObjectForSheet(sheetName, rawObj);
   if (sheetName === 'users') {
     const numId = parseInt(obj.id, 10);
     if (isNaN(numId) || numId <= 0 || String(obj.id).trim() !== String(numId)) {

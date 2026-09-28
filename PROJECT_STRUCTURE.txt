@@ -14,19 +14,6 @@ with.sharing/ (또는 with.security/)
 ├── dist/                         : vite build 시 자동 생성되는 최적화된 최종 배포 파일
 ├── node_modules/                 : npm 의존성 라이브러리 폴더
 ├── public/                       : Web & PWA 정적 자원 (manifest.json, 앱 아이콘 등)
-├── server/                       : 백엔드 Node.js REST API 서버 (MySQL 데이터베이스 연동, Port 4000)
-│   ├── db.js                     : REST API 라우팅 서버 메인 엔트리 (MySQL 지원)
-│   ├── init_db.js                : 데이터베이스 초기화 스크립트
-│   ├── mysql.js                  : MySQL 데이터베이스 커넥션 풀 (Keep-Alive & 자동 폴백)
-│   ├── schema.sql                : MySQL 데이터베이스 기본 테이블 DDL 스키마
-│   ├── schema_logs.sql           : 보안 서약 및 감사 로그 DDL 스키마
-│   └── db_modules/               : 모듈별 DB 쿼리 서비스
-│       ├── eduLog.js             : 교육 이수(edu_log) CRUD
-│       ├── securityLog.js        : 사업장 출입 보안 서약(security_log) CRUD
-│       ├── securitySite.js       : 출입 사업장(security_site) CRUD
-│       ├── securityUser.js       : 사용자 계정(security_user) CRUD
-│       ├── weeklyReport.js       : 주간 업무 보고(weekly_report) CRUD
-│       └── workLog.js            : 업무 일지(work_log) CRUD
 ├── src/                          : [단일 소스 통합 폴더 (Single Source of Truth)]
 │   ├── components/               : React UI 컴포넌트 모음
 │   │   ├── common/               : 재사용 가능한 공통 UI 컴포넌트
@@ -45,7 +32,7 @@ with.sharing/ (또는 with.security/)
 │   │   ├── appLauncherService.js : 모바일 외부 보안 앱 / 카메라 앱 실행 및 포커스 감지 검증 서비스
 │   │   ├── cryptoUtil.js         : Web Crypto API (SHA-256 / AES-256) 암호화 유틸리티
 │   │   ├── dbMigrationService.js : IndexedDB 데이터 마이그레이션 서비스
-│   │   ├── dbService.js          : MySQL REST API & IndexedDB 통합 데이터 영속성 서비스
+│   │   ├── dbService.js          : Google Spreadsheet Withsharing_DB & IndexedDB 통합 데이터 영속성 서비스
 │   │   ├── modalBackHandler.js   : Android 물리/제스처 뒤로가기 키 모달 제어 훅 (useModalBack)
 │   │   └── userMatcher.js        : 사용자 부서/팀/직급 기준 매칭 및 동일인 판정 유틸리티
 │   ├── App.jsx                   : 애플리케이션 최상위 루트 컴포넌트 (로그인 가드, 뷰모드 제어, 탭 라우팅)

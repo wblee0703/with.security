@@ -1248,23 +1248,82 @@ export default function TbmSection({
 
     // PreCheck fallback
     const rawPre = safeTbm.preCheck || safeTbm.pre_check || {};
+    let safePreSelected = Array.isArray(rawPre.selectedItems) ? [...rawPre.selectedItems] : [];
+
+    // Fallback 1: If safePreSelected is empty, check boolean flags in rawPre
+    if (safePreSelected.length === 0) {
+      PRE_WORK_CHECKLIST_ITEMS.forEach(item => {
+        if (rawPre[item.key]) {
+          safePreSelected.push(item.key);
+        }
+      });
+    }
+
+    // Fallback 2: If still empty, parse selected items from check_list / checkList
+    if (safePreSelected.length === 0) {
+      const rawCheckListStr = String(safeTbm.check_list || safeTbm.checkList || safeTbm.checklist || '');
+      if (rawCheckListStr) {
+        const normCheckList = rawCheckListStr.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+        PRE_WORK_CHECKLIST_ITEMS.forEach(item => {
+          const normLabel = item.label.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+          if (normCheckList.includes(normLabel)) {
+            safePreSelected.push(item.key);
+          }
+        });
+      }
+    }
+
+    // Pre-check photos fallback (from rawPre.photos -> safeTbm.photos -> safeTbm.photo_url)
+    let prePhotos = Array.isArray(rawPre.photos) && rawPre.photos.length > 0
+      ? rawPre.photos
+      : (Array.isArray(safeTbm.photos) && safeTbm.photos.length > 0 ? safeTbm.photos : []);
+    if (prePhotos.length === 0 && (safeTbm.photo_url || safeTbm.photoUrl)) {
+      prePhotos = String(safeTbm.photo_url || safeTbm.photoUrl)
+        .split(/[\n,;]+/)
+        .map(u => u.trim())
+        .filter(Boolean)
+        .map((u, idx) => ({
+          id: `photo_${idx}_${Date.now()}`,
+          dataUrl: u,
+          url: u,
+          name: `현장사진_${idx + 1}`
+        }));
+    }
+
     const safePre = {
-      teamSafetySlogan: Boolean(rawPre.teamSafetySlogan),
-      prePpeCheck: Boolean(rawPre.prePpeCheck),
-      businessTripSafety: Boolean(rawPre.businessTripSafety),
-      hazardPredictionTraining: Boolean(rawPre.hazardPredictionTraining),
-      dangerPointCheck: Boolean(rawPre.dangerPointCheck),
-      emergencyResponseCheck: Boolean(rawPre.emergencyResponseCheck),
-      safetyDocTraining: Boolean(rawPre.safetyDocTraining),
-      selectedItems: Array.isArray(rawPre.selectedItems) ? rawPre.selectedItems : [],
-      notes: rawPre.notes || '',
-      photos: Array.isArray(rawPre.photos) ? rawPre.photos : [],
-      conductedAt: rawPre.conductedAt || getCurrentTimeStr(),
+      teamSafetySlogan: safePreSelected.includes('teamSafetySlogan') || Boolean(rawPre.teamSafetySlogan),
+      prePpeCheck: safePreSelected.includes('prePpeCheck') || Boolean(rawPre.prePpeCheck),
+      businessTripSafety: safePreSelected.includes('businessTripSafety') || Boolean(rawPre.businessTripSafety),
+      hazardPredictionTraining: safePreSelected.includes('hazardPredictionTraining') || Boolean(rawPre.hazardPredictionTraining),
+      dangerPointCheck: safePreSelected.includes('dangerPointCheck') || Boolean(rawPre.dangerPointCheck),
+      emergencyResponseCheck: safePreSelected.includes('emergencyResponseCheck') || Boolean(rawPre.emergencyResponseCheck),
+      safetyDocTraining: safePreSelected.includes('safetyDocTraining') || Boolean(rawPre.safetyDocTraining),
+      selectedItems: safePreSelected,
+      notes: rawPre.notes || safeTbm.notes || safeTbm.workContent || safeTbm.work_content || '',
+      photos: prePhotos,
+      conductedAt: rawPre.conductedAt || safeTbm.conductedAt || getCurrentTimeStr(),
       isCompleted: true
     };
 
     // PostCheck fallback
     const rawPost = safeTbm.postCheck || safeTbm.post_check || {};
+    const isPostTbmRecord = (String(safeTbm.id || '').startsWith('tbm_post_') || safeTbm.tbmType === 'post' || safeTbm.displayType === 'post');
+    let postPhotos = Array.isArray(rawPost.photos) && rawPost.photos.length > 0
+      ? rawPost.photos
+      : (isPostTbmRecord && Array.isArray(safeTbm.photos) && safeTbm.photos.length > 0 ? safeTbm.photos : []);
+    if (postPhotos.length === 0 && isPostTbmRecord && (safeTbm.photo_url || safeTbm.photoUrl)) {
+      postPhotos = String(safeTbm.photo_url || safeTbm.photoUrl)
+        .split(/[\n,;]+/)
+        .map(u => u.trim())
+        .filter(Boolean)
+        .map((u, idx) => ({
+          id: `post_photo_${idx}_${Date.now()}`,
+          dataUrl: u,
+          url: u,
+          name: `사후사진_${idx + 1}`
+        }));
+    }
+
     const safePost = {
       cleanupCheck: rawPost.cleanupCheck !== undefined ? Boolean(rawPost.cleanupCheck) : true,
       toolRecoveryCheck: rawPost.toolRecoveryCheck !== undefined ? Boolean(rawPost.toolRecoveryCheck) : true,
@@ -1275,7 +1334,7 @@ export default function TbmSection({
       absentees: Array.isArray(rawPost.absentees) ? rawPost.absentees : (safeAbsentees || []),
       selectedItems: Array.isArray(rawPost.selectedItems) ? rawPost.selectedItems : [],
       handoverNotes: rawPost.handoverNotes || '',
-      photos: Array.isArray(rawPost.photos) ? rawPost.photos : [],
+      photos: postPhotos,
       conductedAt: rawPost.conductedAt || getCurrentTimeStr(),
       isCompleted: rawPost.isCompleted !== undefined ? Boolean(rawPost.isCompleted) : true
     };
@@ -1753,6 +1812,8 @@ export default function TbmSection({
         tools_used: targetAdditionalTbm.toolsUsed || '',
         status: 'ALL_COMPLETED',
         conductedAt: conductedAtStr,
+        photos: additionalFormData.photos || [],
+        photo_url: (additionalFormData.photos || []).map(p => (typeof p === 'string' ? p : (p?.dataUrl || p?.url || ''))).filter(Boolean).join('\n'),
         preCheck: {
           isCompleted: true,
           selectedItems: inheritedSelectedItems,
@@ -1983,12 +2044,28 @@ export default function TbmSection({
         : (formData.preCheck?.notes || formData.workContent || '')
     ).trim();
 
+    const prePhotos = Array.isArray(formData.preCheck?.photos) ? formData.preCheck.photos : [];
+    const postPhotos = Array.isArray(formData.postCheck?.photos) ? formData.postCheck.photos : [];
+    const effectivePhotos = isPost
+      ? (postPhotos.length > 0 ? postPhotos : (Array.isArray(formData.photos) ? formData.photos : []))
+      : (prePhotos.length > 0 ? prePhotos : (Array.isArray(formData.photos) ? formData.photos : []));
+
     const currentPreCheck = isPost
-      ? { isCompleted: false, selectedItems: [], photos: [], notes: '', conductedAt: '' }
+      ? {
+        ...formData.preCheck,
+        selectedItems: (Array.isArray(formData.preCheck?.selectedItems) && formData.preCheck.selectedItems.length > 0)
+          ? formData.preCheck.selectedItems
+          : (currentSelectedKeys.length > 0 ? currentSelectedKeys : []),
+        notes: (formData.preCheck?.notes || '').trim(),
+        photos: prePhotos,
+        conductedAt: formData.preCheck?.conductedAt || '',
+        isCompleted: Boolean(formData.preCheck?.isCompleted)
+      }
       : {
         ...formData.preCheck,
         selectedItems: currentSelectedKeys,
         notes: effectiveWorkContent,
+        photos: prePhotos,
         conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
         isCompleted: true
       };
@@ -1998,10 +2075,19 @@ export default function TbmSection({
         ...formData.postCheck,
         selectedItems: currentPostSelectedKeys,
         handoverNotes: effectiveWorkContent,
+        photos: postPhotos,
         conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
         isCompleted: true
       }
-      : { isCompleted: false, selectedItems: [], photos: [], absentees: [], handoverNotes: '', conductedAt: '' };
+      : {
+        ...formData.postCheck,
+        isCompleted: false,
+        selectedItems: [],
+        photos: postPhotos,
+        absentees: [],
+        handoverNotes: '',
+        conductedAt: ''
+      };
 
     const calculatedCheckList = formatCheckListForSheet(currentPreCheck, currentPostCheck, isPost, false);
 
@@ -2039,6 +2125,8 @@ export default function TbmSection({
       check_list: calculatedCheckList,
       checkList: calculatedCheckList,
       checklist: calculatedCheckList,
+      photos: effectivePhotos,
+      photo_url: effectivePhotos.map(p => (typeof p === 'string' ? p : (p?.dataUrl || p?.url || ''))).filter(Boolean).join('\n'),
       toolsUsed: formData.toolsUsed?.trim() || '',
       tools_used: formData.toolsUsed?.trim() || '',
       status: finalStatus,
@@ -2572,12 +2660,32 @@ export default function TbmSection({
 
             const preCheckItems = PRE_WORK_CHECKLIST_ITEMS.filter(item => {
               if (preCheckObj?.selectedItems && Array.isArray(preCheckObj.selectedItems)) {
-                return preCheckObj.selectedItems.includes(item.key);
+                if (preCheckObj.selectedItems.includes(item.key) || preCheckObj.selectedItems.includes(item.label)) {
+                  return true;
+                }
               }
-              return Boolean(preCheckObj?.[item.key]);
+              if (preCheckObj?.[item.key]) return true;
+
+              // Google Sheets / IndexedDB fallback via check_list
+              const rawCheckListStr = String(tbm.check_list || tbm.checkList || tbm.checklist || '');
+              if (rawCheckListStr) {
+                const normCheckList = rawCheckListStr.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+                const normItem = item.label.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+                if (normCheckList.includes(normItem)) return true;
+              }
+              return false;
             });
             const preCheckCount = preCheckItems.length;
-            const prePhotosList = Array.isArray(preCheckObj.photos) ? preCheckObj.photos : (Array.isArray(tbm.photos) ? tbm.photos : []);
+            let prePhotosList = Array.isArray(preCheckObj.photos) && preCheckObj.photos.length > 0
+              ? preCheckObj.photos
+              : (Array.isArray(tbm.photos) && tbm.photos.length > 0 ? tbm.photos : []);
+            if (prePhotosList.length === 0 && (tbm.photo_url || tbm.photoUrl)) {
+              prePhotosList = String(tbm.photo_url || tbm.photoUrl)
+                .split(/[\n,;]+/)
+                .map(u => u.trim())
+                .filter(Boolean)
+                .map((u, i) => ({ id: `p_${i}`, dataUrl: u, url: u }));
+            }
             const prePhotoCount = prePhotosList.length;
             const preNotes = (preCheckObj.notes || tbm.notes || '').trim();
 
@@ -2589,7 +2697,16 @@ export default function TbmSection({
             if (!postCheckObj || typeof postCheckObj !== 'object') postCheckObj = {};
 
             const postOutcome = postCheckObj.workOutcome || '계획 이행 완료';
-            const postPhotosList = Array.isArray(postCheckObj.photos) ? postCheckObj.photos : [];
+            let postPhotosList = Array.isArray(postCheckObj.photos) && postCheckObj.photos.length > 0
+              ? postCheckObj.photos
+              : (isPost && Array.isArray(tbm.photos) && tbm.photos.length > 0 ? tbm.photos : []);
+            if (postPhotosList.length === 0 && isPost && (tbm.photo_url || tbm.photoUrl)) {
+              postPhotosList = String(tbm.photo_url || tbm.photoUrl)
+                .split(/[\n,;]+/)
+                .map(u => u.trim())
+                .filter(Boolean)
+                .map((u, i) => ({ id: `post_p_${i}`, dataUrl: u, url: u }));
+            }
             const postPhotoCount = postPhotosList.length;
             const isOutcomeWarning = postOutcome.includes('미비') || postOutcome.includes('특이사항');
             const postNotes = (postCheckObj.handoverNotes || '').trim();
@@ -2688,10 +2805,33 @@ export default function TbmSection({
             // CASE 0: ADDITIONAL TBM CARD (추가 TBM 독립 개별 카드)
             // ========================================================
             if (isAdditional) {
-              const addPhotos = (tbm.preCheck?.photos && tbm.preCheck.photos.length > 0)
+              let addPhotos = (tbm.preCheck?.photos && tbm.preCheck.photos.length > 0)
                 ? tbm.preCheck.photos
                 : ((tbm.photos && tbm.photos.length > 0) ? tbm.photos : []);
+              if (addPhotos.length === 0 && (tbm.photo_url || tbm.photoUrl)) {
+                addPhotos = String(tbm.photo_url || tbm.photoUrl)
+                  .split(/[\n,;]+/)
+                  .map(u => u.trim())
+                  .filter(Boolean)
+                  .map((u, i) => ({ id: `add_p_${i}`, dataUrl: u, url: u }));
+              }
               const addNotes = (tbm.preCheck?.notes || tbm.notes || '').trim();
+
+              const addCheckItems = PRE_WORK_CHECKLIST_ITEMS.filter(item => {
+                if (tbm.preCheck?.selectedItems && Array.isArray(tbm.preCheck.selectedItems)) {
+                  if (tbm.preCheck.selectedItems.includes(item.key) || tbm.preCheck.selectedItems.includes(item.label)) {
+                    return true;
+                  }
+                }
+                if (tbm.preCheck?.[item.key]) return true;
+                const rawList = String(tbm.check_list || tbm.checkList || tbm.checklist || '');
+                if (rawList) {
+                  const normItem = item.label.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+                  const normList = rawList.replace(/[\s·・ㆍ_\-\/\\]+/g, '');
+                  if (normList.includes(normItem)) return true;
+                }
+                return false;
+              });
 
               return (
                 <div
@@ -2836,6 +2976,25 @@ export default function TbmSection({
                     <CheckCircle2 size={14} color="#059669" />
                     <span>작업 전 안전수칙 숙지 및 개인보호구(PPE) 점검 확인 완료</span>
                   </div>
+
+                  {/* Checklist item tags */}
+                  {addCheckItems.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {addCheckItems.map(item => (
+                        <span key={item.key} style={{
+                          fontSize: '11.5px',
+                          color: '#7e22ce',
+                          background: '#f3e8ff',
+                          border: '1px solid #d8b4fe',
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontWeight: '700'
+                        }}>
+                          ✓ {item.label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Notes / Special Instructions if any */}
                   {addNotes && (

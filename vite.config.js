@@ -2,7 +2,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
-import { spawn } from 'child_process';
 
 // Ensure LOGO+WITHTECH.png is copied to public directory for reliable static serving
 try {
@@ -22,52 +21,11 @@ try {
   console.error('Error syncing logo file:', e);
 }
 
-function backendDbServerPlugin() {
-  let dbProcess = null;
-  let isShuttingDown = false;
-
-  function startDbServer() {
-    if (isShuttingDown) return;
-    console.log('🚀 Starting Backend MySQL API Server (node server/db.js)...');
-    dbProcess = spawn('node', ['server/db.js'], {
-      stdio: 'inherit',
-      shell: true
-    });
-
-    dbProcess.on('exit', (code) => {
-      if (!isShuttingDown && code !== 0) {
-        console.log(`⚠️ Backend server exited (code ${code}). Auto-restarting in 1s...`);
-        setTimeout(startDbServer, 1000);
-      }
-    });
-  }
-
-  return {
-    name: 'backend-db-server',
-    configureServer(server) {
-      startDbServer();
-
-      process.on('exit', () => {
-        isShuttingDown = true;
-        if (dbProcess) dbProcess.kill();
-      });
-
-      server.httpServer?.on('close', () => {
-        isShuttingDown = true;
-        if (dbProcess) {
-          console.log('🛑 Closing Backend MySQL Server...');
-          dbProcess.kill();
-        }
-      });
-    }
-  };
-}
-
 export default defineConfig({
   root: 'src',
   publicDir: '../public',
   base: './',
-  plugins: [react(), backendDbServerPlugin()],
+  plugins: [react()],
   build: {
     outDir: '../dist',
     emptyOutDir: true
@@ -79,14 +37,6 @@ export default defineConfig({
     hmr: {
       clientPort: 3000
     },
-    open: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-        secure: false,
-        ws: false
-      }
-    }
+    open: true
   }
 });
