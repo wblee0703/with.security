@@ -910,12 +910,11 @@ export default function WorkLogCalendar({
                     // Format display text:
                     const displayText = (() => {
                       if (isReceivedShared) {
-                        const author = log.authorName || '동료';
                         if (item.isTripGroup) {
                           const base = `[공유] [출장] ${item.siteName} ${item.subCategory}`.trim();
                           return item.count > 1 ? `${base} ${item.count}건` : base;
                         }
-                        return `[공유:${author}] ${log.title}`;
+                        return `[공유] ${log.title}`;
                       }
                       if (item.isTripGroup) {
                         const base = `[출장] ${item.siteName} ${item.subCategory}`.trim();
