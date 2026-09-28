@@ -1017,13 +1017,6 @@ export default function WorkLogCalendar({
                               })
                             : displayText}
                         </span>
-                        {isShared && (
-                          <Share2
-                            size={11}
-                            color="#16a34a"
-                            style={{ flexShrink: 0 }}
-                          />
-                        )}
                       </div>
                     );
                   });

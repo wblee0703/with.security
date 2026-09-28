@@ -1266,6 +1266,61 @@ function cleanLegacyUserColumns() {
 }
 
 /**
+ * 👥 TBM 참석자를 구글 스프레드시트용 간결 포맷("이름 직급, 이름 직급")으로 변환
+ * (사업부 TBM 특성상 팀/전화번호 등 불필요한 부가정보 제외)
+ */
+function formatAttendeesForSheet(rawAtts) {
+  if (!rawAtts) return '';
+  var list = rawAtts;
+  if (typeof list === 'string') {
+    var trimmed = list.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try { list = JSON.parse(trimmed); } catch (e) { return trimmed; }
+    } else {
+      return trimmed;
+    }
+  }
+  if (!Array.isArray(list)) list = [list];
+
+  return list.map(function(a) {
+    if (!a) return '';
+    if (typeof a === 'string') return a.trim();
+    var name = String(a.name || '').trim();
+    if (!name) return '';
+    var rank = String(a.rank || '').trim();
+    return rank ? (name + ' ' + rank) : name;
+  }).filter(Boolean).join(', ');
+}
+
+/**
+ * 🚫 TBM 미참석자를 구글 스프레드시트용 포맷("이름 직급 [이유], ...")으로 변환
+ */
+function formatAbsenteesForSheet(rawAbs) {
+  if (!rawAbs) return '';
+  var list = rawAbs;
+  if (typeof list === 'string') {
+    var trimmed = list.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try { list = JSON.parse(trimmed); } catch (e) { return trimmed; }
+    } else {
+      return trimmed;
+    }
+  }
+  if (!Array.isArray(list)) list = [list];
+
+  return list.map(function(a) {
+    if (!a) return '';
+    if (typeof a === 'string') return a.trim();
+    var name = String(a.name || '').trim();
+    if (!name) return '';
+    var rank = String(a.rank || '').trim();
+    var reason = String(a.reason || '').trim();
+    var nameRank = rank ? (name + ' ' + rank) : name;
+    return reason ? (nameRank + ' [' + reason + ']') : nameRank;
+  }).filter(Boolean).join(', ');
+}
+
+/**
  * 객체를 MySQL 테이블 표준 컬럼 형식으로 100% 매핑 및 정규화
  */
 function normalizeObjectForSheet(sheetName, rawObj) {
@@ -1461,8 +1516,12 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const idVal = obj.id || obj.tbm_id || obj.tbmId || `TBM-${Date.now()}`;
     const rawDate = obj.date || obj.log_date || obj.logDate || '';
     const dVal = rawDate ? formatKstDate(rawDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
-    const atts = obj.attendees || [];
-    const abs = obj.absentees || [];
+    let atts = obj.attendees || [];
+    let abs = obj.absentees || [];
+    const postChkForAbs = obj.postCheck || obj.post_check || {};
+    if ((!abs || (Array.isArray(abs) && abs.length === 0)) && postChkForAbs && Array.isArray(postChkForAbs.absentees) && postChkForAbs.absentees.length > 0) {
+      abs = postChkForAbs.absentees;
+    }
 
     const allDriveUrls = [];
 
@@ -1733,9 +1792,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       leaderPhone: leaderPhoneVal,
       phone: leaderPhoneVal,
 
-      // 5. 참석자 및 부가 정보
-      attendees: (typeof atts === 'object' && atts !== null) ? JSON.stringify(atts) : String(atts || ''),
-      absentees: (typeof abs === 'object' && abs !== null) ? JSON.stringify(abs) : String(abs || ''),
+      // 5. 참석자 및 부가 정보 (이름 직급만 기록, 미참석자는 이름 직급 [이유])
+      attendees: formatAttendeesForSheet(atts),
+      absentees: formatAbsenteesForSheet(abs),
       additional_tbms: addTbmsStr,
       additionalTbms: addTbmsStr,
 

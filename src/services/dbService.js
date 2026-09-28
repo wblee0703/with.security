@@ -437,6 +437,166 @@ async function safeFetchApi(endpoint, options = {}) {
   return fetchPromise;
 }
 
+/**
+ * 👥 TBM 참석자를 구글 스프레드시트용 간결 포맷("이름 직급, 이름 직급")으로 변환
+ * (사업부 TBM 특성상 팀 소속/핸드폰 번호 등 불필요한 부가정보 제외)
+ */
+export function formatAttendeesForSheet(rawAtts) {
+  if (!rawAtts) return '';
+  let list = rawAtts;
+  if (typeof list === 'string') {
+    const trimmed = list.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try { list = JSON.parse(trimmed); } catch (e) { return trimmed; }
+    } else {
+      return trimmed;
+    }
+  }
+  if (!Array.isArray(list)) list = [list];
+
+  return list.map(a => {
+    if (!a) return '';
+    if (typeof a === 'string') return a.trim();
+    const name = String(a.name || '').trim();
+    if (!name) return '';
+    const rank = String(a.rank || '').trim();
+    return rank ? `${name} ${rank}` : name;
+  }).filter(Boolean).join(', ');
+}
+
+/**
+ * 🚫 TBM 미참석자를 구글 스프레드시트용 포맷("이름 직급 [이유], ...")으로 변환
+ */
+export function formatAbsenteesForSheet(rawAbs) {
+  if (!rawAbs) return '';
+  let list = rawAbs;
+  if (typeof list === 'string') {
+    const trimmed = list.trim();
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try { list = JSON.parse(trimmed); } catch (e) { return trimmed; }
+    } else {
+      return trimmed;
+    }
+  }
+  if (!Array.isArray(list)) list = [list];
+
+  return list.map(a => {
+    if (!a) return '';
+    if (typeof a === 'string') return a.trim();
+    const name = String(a.name || '').trim();
+    if (!name) return '';
+    const rank = String(a.rank || '').trim();
+    const reason = String(a.reason || '').trim();
+    const nameRank = rank ? `${name} ${rank}` : name;
+    return reason ? `${nameRank} [${reason}]` : nameRank;
+  }).filter(Boolean).join(', ');
+}
+
+/**
+ * 👥 구글 스프레드시트 또는 캐시의 참석자 문자열("이원배 대리, 김철수 과장")을 객체 배열로 안전하게 역파싱
+ */
+export function parseAttendeesString(str) {
+  if (!str) return [];
+  if (Array.isArray(str)) {
+    return str.map(item => {
+      if (typeof item === 'string') {
+        const parts = item.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          const rank = parts[parts.length - 1];
+          const name = parts.slice(0, -1).join(' ');
+          return { name, rank };
+        }
+        return { name: item.trim(), rank: '사원' };
+      }
+      return item;
+    }).filter(Boolean);
+  }
+  const trimmed = String(str).trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => {
+          if (typeof item === 'string') {
+            const parts = item.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              const rank = parts[parts.length - 1];
+              const name = parts.slice(0, -1).join(' ');
+              return { name, rank };
+            }
+            return { name: item.trim(), rank: '사원' };
+          }
+          return item;
+        }).filter(Boolean);
+      }
+    } catch (e) { }
+  }
+
+  return trimmed.split(',').map(s => s.trim()).filter(Boolean).map(item => {
+    const parts = item.split(/\s+/);
+    if (parts.length >= 2) {
+      const rank = parts[parts.length - 1];
+      const name = parts.slice(0, -1).join(' ');
+      return { name, rank };
+    }
+    return { name: item, rank: '사원' };
+  });
+}
+
+/**
+ * 🚫 개별 미참석자 문자열("김철수 과장 [출장]" 등)을 파싱
+ */
+function parseSingleAbsentee(itemStr) {
+  if (!itemStr) return null;
+  if (typeof itemStr === 'object') return itemStr;
+  const s = String(itemStr || '').trim();
+  if (!s) return null;
+
+  // "이름 직급 [이유]" 또는 "이름 직급 (이유)" 매칭
+  const bracketMatch = s.match(/^(.*?)\s*[\[\(](.*?)[\]\)]$/);
+  let nameRank = s;
+  let reason = '';
+  if (bracketMatch) {
+    nameRank = bracketMatch[1].trim();
+    reason = bracketMatch[2].trim();
+  }
+  const parts = nameRank.split(/\s+/);
+  let name = nameRank;
+  let rank = '사원';
+  if (parts.length >= 2) {
+    rank = parts[parts.length - 1];
+    name = parts.slice(0, -1).join(' ');
+  }
+  return {
+    name,
+    rank,
+    reason
+  };
+}
+
+/**
+ * 🚫 구글 스프레드시트 또는 캐시의 미참석자 문자열("김철수 과장 [출장], 이영희 대리 [휴가]")을 객체 배열로 안전하게 역파싱
+ */
+export function parseAbsenteesString(str) {
+  if (!str) return [];
+  if (Array.isArray(str)) {
+    return str.map(item => parseSingleAbsentee(item)).filter(Boolean);
+  }
+  const trimmed = String(str).trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed.map(item => parseSingleAbsentee(item)).filter(Boolean);
+      }
+    } catch (e) { }
+  }
+
+  return trimmed.split(',').map(s => s.trim()).filter(Boolean).map(parseSingleAbsentee).filter(Boolean);
+}
+
 // W3C IndexedDB Persistent Database Engine for WithSecurity Application
 const DB_NAME = 'WithSecurity_DB';
 const DB_VERSION = 7;
@@ -4086,17 +4246,11 @@ class SecurityDatabase {
     tbm.toolsUsed = (tbm.toolsUsed || tbm.tools_used || '').trim();
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
 
-    // Parse attendees safely
-    if (typeof tbm.attendees === 'string') {
-      try { tbm.attendees = JSON.parse(tbm.attendees); } catch (e) { tbm.attendees = []; }
-    }
-    if (!Array.isArray(tbm.attendees)) tbm.attendees = [];
+    // Parse attendees safely (JSON 배열 또는 "이원배 대리, 김철수 과장" 텍스트 파싱)
+    tbm.attendees = parseAttendeesString(tbm.attendees);
 
-    // Parse absentees safely
-    if (typeof tbm.absentees === 'string') {
-      try { tbm.absentees = JSON.parse(tbm.absentees); } catch (e) { tbm.absentees = []; }
-    }
-    if (!Array.isArray(tbm.absentees)) tbm.absentees = [];
+    // Parse absentees safely (JSON 배열 또는 "김철수 과장 [출장], 이영희 대리 [휴가]" 텍스트 파싱)
+    tbm.absentees = parseAbsenteesString(tbm.absentees);
 
     // Parse additionalTbms safely (미참석자 추가 TBM 이수 목록)
     if (typeof tbm.additionalTbms === 'string') {
@@ -4247,9 +4401,12 @@ class SecurityDatabase {
     if (mergedPost.cleanupCheck === undefined) mergedPost.cleanupCheck = true;
     if (mergedPost.toolRecoveryCheck === undefined) mergedPost.toolRecoveryCheck = true;
     if (mergedPost.securityMediaCheck === undefined) mergedPost.securityMediaCheck = true;
-    if (mergedPost.powerSafetyCheck === undefined) mergedPost.powerSafetyCheck = true;
     if (!Array.isArray(mergedPost.selectedItems)) mergedPost.selectedItems = [];
-    if (!Array.isArray(mergedPost.absentees)) mergedPost.absentees = [];
+    mergedPost.absentees = parseAbsenteesString(mergedPost.absentees);
+    // root absentees가 비어있고 postCheck에 미참석자가 있다면 동기화 보장
+    if (tbm.absentees.length === 0 && mergedPost.absentees.length > 0) {
+      tbm.absentees = [...mergedPost.absentees];
+    }
     tbm.postCheck = mergedPost;
     tbm.post_check = mergedPost;
 
@@ -4670,8 +4827,25 @@ class SecurityDatabase {
     } catch (e) { }
 
     // Send full TBM payload including photos (Google Apps Script will safely upload to Drive & return permanent URLs)
+    const postAbs = fullTbm.postCheck?.absentees || [];
+    let combinedAbs = [];
+    if (Array.isArray(fullTbm.absentees) && fullTbm.absentees.length > 0) {
+      combinedAbs = [...fullTbm.absentees];
+    }
+    if (Array.isArray(postAbs) && postAbs.length > 0) {
+      postAbs.forEach(pa => {
+        const paName = typeof pa === 'string' ? pa : pa?.name;
+        if (paName && !combinedAbs.some(ca => (typeof ca === 'string' ? ca : ca?.name) === paName)) {
+          combinedAbs.push(pa);
+        }
+      });
+    }
+
     const remotePayload = {
       ...fullTbm,
+      // 참석자 및 미참석자 스프레드시트 기록 표준 포맷 ("이름 직급" 및 "이름 직급 [이유]")
+      attendees: formatAttendeesForSheet(fullTbm.attendees),
+      absentees: formatAbsenteesForSheet(combinedAbs),
       // 1. 사업장 및 기본 정보 (camelCase & snake_case 둘 다 명시적으로 매핑하여 시트 컬럼 100% 저장 보장)
       site: fullTbm.site || fullTbm.siteName || '',
       site_name: fullTbm.site || fullTbm.siteName || '',
@@ -5346,6 +5520,27 @@ class SecurityDatabase {
       const vault = await this.getAll('vault').catch(() => []);
       const incidents = await this.getAll('incidents').catch(() => []);
 
+      const formattedTbms = (tbms || []).map(t => {
+        const postAbs = t.postCheck?.absentees || [];
+        let combinedAbs = [];
+        if (Array.isArray(t.absentees) && t.absentees.length > 0) {
+          combinedAbs = [...t.absentees];
+        }
+        if (Array.isArray(postAbs) && postAbs.length > 0) {
+          postAbs.forEach(pa => {
+            const paName = typeof pa === 'string' ? pa : pa?.name;
+            if (paName && !combinedAbs.some(ca => (typeof ca === 'string' ? ca : ca?.name) === paName)) {
+              combinedAbs.push(pa);
+            }
+          });
+        }
+        return {
+          ...t,
+          attendees: formatAttendeesForSheet(t.attendees),
+          absentees: formatAbsenteesForSheet(combinedAbs)
+        };
+      });
+
       const payload = {
         action: 'upload_all',
         data: {
@@ -5356,7 +5551,7 @@ class SecurityDatabase {
           edu_logs: eduLogs || [],
           weekly_reports: weeklyReports || [],
           daily_reports: dailyReports || [],
-          tbms: tbms || [],
+          tbms: formattedTbms || [],
           vault: vault || [],
           incidents: incidents || []
         }

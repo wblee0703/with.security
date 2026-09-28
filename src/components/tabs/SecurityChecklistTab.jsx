@@ -28,6 +28,7 @@ import {
   LogIn,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Calendar,
   ExternalLink,
   Award,
@@ -111,6 +112,10 @@ export default function SecurityChecklistTab({
   const lastSubmitTimestampRef = useRef(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const cameraTriggerInputRef = useRef(null);
+
+  // Target Entrance Site Suggestion Dropdown States (보안앱O / 보안앱X 녹색/빨간색 라벨 구분 제안박스)
+  const [isSiteDropdownOpen, setIsSiteDropdownOpen] = useState(false);
+  const [siteSearchQuery, setSiteSearchQuery] = useState('');
 
   useEffect(() => {
     isModalOpenRef.current = isModalOpen;
@@ -240,6 +245,8 @@ export default function SecurityChecklistTab({
       editingPledgeId: null
     });
     setActiveStep(1);
+    setIsSiteDropdownOpen(false);
+    setSiteSearchQuery('');
     setIsModalOpen(true);
   };
 
@@ -753,6 +760,8 @@ export default function SecurityChecklistTab({
   // Close Security Pledge Modal & Force Security App Re-verification
   const handleCloseModal = () => {
     resetAppVerificationState();
+    setIsSiteDropdownOpen(false);
+    setSiteSearchQuery('');
     setIsModalOpen(false);
     isSubmittingRef.current = false;
     setIsSubmitting(false);
@@ -1172,9 +1181,12 @@ export default function SecurityChecklistTab({
       return;
     }
     const targetApp = getTargetSecurityAppInfo(formData.site);
-    const isStep2Done = targetApp.isChecklistMode
-      ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
-      : (secAppVerified && cameraCheckVerified);
+    const isStep2Done = Boolean(
+      (formData.mdmVerified && formData.cameraLocked) ||
+      (targetApp.isChecklistMode
+        ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
+        : (secAppVerified && cameraCheckVerified))
+    );
 
     if (targetStep > 2 && !isStep2Done) {
       setStep2Attempted(true);
@@ -1440,6 +1452,8 @@ export default function SecurityChecklistTab({
 
     // 사업장 정보가 확실히 있으면 바로 2단계로 진행, 사업장이 비어있으면 1단계에서 확인/선택할 수 있게 배려
     setActiveStep(targetSite ? 2 : 1);
+    setIsSiteDropdownOpen(false);
+    setSiteSearchQuery('');
     setIsModalOpen(true);
     const targetApp = getTargetSecurityAppInfo(targetSite);
     if (onTriggerToast) {
@@ -1498,6 +1512,8 @@ export default function SecurityChecklistTab({
     });
 
     setActiveStep(1);
+    setIsSiteDropdownOpen(false);
+    setSiteSearchQuery('');
     setIsModalOpen(true);
     if (onTriggerToast) onTriggerToast(`[${targetItem.site}] 서약 재작성 모드가 시작되었습니다. 1단계부터 확인 후 다시 서약을 완료해 주세요.`, 'info');
   };
@@ -1757,31 +1773,24 @@ export default function SecurityChecklistTab({
       }
 
       // 2) Step 2 Validation: Security App & Camera Lock Verification
-      if (targetApp.isChecklistMode) {
-        const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked;
-        if (!isAll || !formData.mdmVerified || !formData.cameraLocked) {
+      const isStep2Passed = Boolean(
+        (formData.mdmVerified && formData.cameraLocked) ||
+        (targetApp.isChecklistMode
+          ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
+          : (secAppVerified && cameraCheckVerified))
+      );
+      if (!isStep2Passed) {
+        if (targetApp.isChecklistMode) {
           if (onTriggerToast) {
             onTriggerToast('❌ [승인 제출 거부] 2단계 카메라 보안 체크리스트 3개 항목(스티커 부착, 촬영 금지, 카메라 차단 확인) 검수가 완료되지 않았습니다.', 'warning');
           }
-          setActiveStep(2);
-          return;
-        }
-      } else {
-        if (!secAppVerified) {
+        } else {
           if (onTriggerToast) {
-            onTriggerToast(`❌ [승인 제출 거부] 2단계 모바일 보안 앱('${targetApp.shortName}') 실행 및 검수가 완료되지 않았습니다. [1. 모바일 보안 앱 바로가기]를 클릭해 주세요.`, 'warning');
+            onTriggerToast(`❌ [승인 제출 거부] 2단계 모바일 보안 앱('${targetApp.shortName}') 실행 및 카메라 차단 검수를 완료해 주세요.`, 'warning');
           }
-          setActiveStep(2);
-          return;
         }
-
-        if (!cameraCheckVerified || !formData.cameraLocked) {
-          if (onTriggerToast) {
-            onTriggerToast(`❌ [승인 제출 거부] 2단계 [카메라 차단 검수]가 완료되지 않았습니다. 카메라가 비활성화된 상태에서 [카메라 검수]를 완료해 주세요.`, 'warning');
-          }
-          setActiveStep(2);
-          return;
-        }
+        setActiveStep(2);
+        return;
       }
 
       // 3) Step 3 Validation: Material & Document Security Checklist
@@ -2907,11 +2916,13 @@ export default function SecurityChecklistTab({
                       formData.purposeType && formData.purposeType.trim() &&
                       (formData.purposeType !== '기타' || formData.customPurpose?.trim())
                     );
-                    const selSite = findSiteByDisplayNameOrName(formData.site, sites);
-                    const isSecSite = selSite ? !isSiteSecurityAppDisabled(selSite, formData.site) : true;
-                    const isStep2Done = isSecSite
-                      ? (secAppVerified && cameraCheckVerified)
-                      : Boolean(cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked);
+                    const targetApp = getTargetSecurityAppInfo(formData.site);
+                    const isStep2Done = Boolean(
+                      (formData.mdmVerified && formData.cameraLocked) ||
+                      (targetApp.isChecklistMode
+                        ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
+                        : (secAppVerified && cameraCheckVerified))
+                    );
                     const isStep3Done = Boolean(
                       formData.docChecklist?.gateApproved &&
                       formData.docChecklist?.docSecVerified &&
@@ -3031,121 +3042,407 @@ export default function SecurityChecklistTab({
                     return (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         {/* Select Target Site */}
-                        <div>
+                        <div style={{ position: 'relative' }}>
                           <label style={{ fontSize: '12px', color: isSiteInvalid ? '#e11d48' : '#475569', fontWeight: '700', display: 'block', marginBottom: '6px' }}>
                             출입 대상 사업장 * {isSiteInvalid && <span style={{ fontSize: '11px', color: '#e11d48', fontWeight: '800' }}>[사업장을 선택해 주세요]</span>}
                           </label>
                           {formData.isCompanionMode && formData.site ? (
-                            <input
-                              type="text"
-                              disabled
-                              value={formData.site}
+                            <div
                               style={{
                                 width: '100%',
                                 padding: '10px 14px',
                                 borderRadius: '12px',
                                 background: '#f1f5f9',
                                 border: '1.5px solid #cbd5e1',
-                                color: (() => {
-                                  const selSite = findSiteByDisplayNameOrName(formData.site, sites);
-                                  const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
-                                  return isSecAppO ? '#16a34a' : '#dc2626';
-                                })(),
-                                fontWeight: '800',
-                                fontSize: '13px',
-                                outline: 'none',
-                                cursor: 'not-allowed'
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                                cursor: 'not-allowed',
+                                boxSizing: 'border-box'
                               }}
-                            />
+                            >
+                              {(() => {
+                                const selSite = findSiteByDisplayNameOrName(formData.site, sites);
+                                const isSecAppX = selSite ? isSiteSecurityAppDisabled(selSite, selSite.type || selSite.category) : false;
+                                const isSecAppO = !isSecAppX;
+                                return (
+                                  <>
+                                    <span style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      background: isSecAppO ? '#dcfce7' : '#fee2e2',
+                                      color: isSecAppO ? '#16a34a' : '#dc2626',
+                                      border: `1px solid ${isSecAppO ? '#86efac' : '#fca5a5'}`,
+                                      flexShrink: 0
+                                    }}>
+                                      {isSecAppO ? '보안앱O' : '보안앱X'}
+                                    </span>
+                                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#0f172a' }}>
+                                      {formData.site}
+                                    </span>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           ) : (() => {
                             const selectedSiteObj = findSiteByDisplayNameOrName(formData.site, sites);
-                            const currentSelectValue = selectedSiteObj
-                              ? (selectedSiteObj.address ? `${selectedSiteObj.name} (${selectedSiteObj.address})` : selectedSiteObj.name)
-                              : (formData.site || '');
+                            const searchQ = (siteSearchQuery || '').trim().toLowerCase();
+                            const filteredSites = sites.filter(s => {
+                              if (!searchQ) return true;
+                              const nameMatch = (s.name || '').toLowerCase().includes(searchQ);
+                              const addrMatch = (s.address || '').toLowerCase().includes(searchQ);
+                              const typeMatch = (s.type || '').toLowerCase().includes(searchQ);
+                              return nameMatch || addrMatch || typeMatch;
+                            });
 
                             return (
-                              <select
-                                value={currentSelectValue}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  if (!val) return;
-                                  const matchedSite = findSiteByDisplayNameOrName(val, sites);
-                                  const canonicalSiteVal = matchedSite
-                                    ? (matchedSite.address ? `${matchedSite.name} (${matchedSite.address})` : matchedSite.name)
-                                    : val;
+                              <div style={{ position: 'relative' }}>
+                                {/* Trigger Box */}
+                                <div
+                                  onClick={() => {
+                                    setIsSiteDropdownOpen(prev => !prev);
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '10px 14px',
+                                    borderRadius: '12px',
+                                    background: isSiteInvalid ? '#fff1f2' : '#ffffff',
+                                    border: isSiteInvalid ? '2px solid #e11d48' : isSiteDropdownOpen ? '2px solid #0284c7' : '1.5px solid #cbd5e1',
+                                    boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : isSiteDropdownOpen ? '0 0 0 3px rgba(2, 132, 199, 0.15)' : 'none',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s ease',
+                                    userSelect: 'none',
+                                    boxSizing: 'border-box'
+                                  }}
+                                >
+                                  {selectedSiteObj ? (() => {
+                                    const isSecAppX = isSiteSecurityAppDisabled(selectedSiteObj, selectedSiteObj.type || selectedSiteObj.category);
+                                    const isSecAppO = !isSecAppX;
+                                    return (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                        <span style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          padding: '2px 7px',
+                                          borderRadius: '6px',
+                                          fontSize: '11px',
+                                          fontWeight: '800',
+                                          background: isSecAppO ? '#dcfce7' : '#fee2e2',
+                                          color: isSecAppO ? '#16a34a' : '#dc2626',
+                                          border: `1px solid ${isSecAppO ? '#86efac' : '#fca5a5'}`,
+                                          flexShrink: 0
+                                        }}>
+                                          {isSecAppO ? '보안앱O' : '보안앱X'}
+                                        </span>
+                                        <span style={{
+                                          fontSize: '13px',
+                                          fontWeight: '800',
+                                          color: '#0f172a',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>
+                                          {selectedSiteObj.name}
+                                        </span>
+                                        {selectedSiteObj.address && (
+                                          <span style={{
+                                            fontSize: '11.5px',
+                                            color: '#64748b',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis'
+                                          }}>
+                                            ({selectedSiteObj.address})
+                                          </span>
+                                        )}
+                                      </div>
+                                    );
+                                  })() : formData.site ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                      <span style={{
+                                        fontSize: '13px',
+                                        fontWeight: '700',
+                                        color: '#0f172a',
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis'
+                                      }}>
+                                        {formData.site}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>
+                                      -- 출입 대상 사업장을 선택해 주세요 --
+                                    </span>
+                                  )}
 
-                                  const targetName = formData.visitorName || currentUser?.name || '';
-                                  const targetPhone = formData.phone || currentUser?.phone || '';
-                                  const targetUsername = currentUser?.username || '';
-                                  const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                                  const targetRank = formData.rank || currentUser?.rank || '';
+                                  <ChevronDown
+                                    size={18}
+                                    color="#64748b"
+                                    style={{
+                                      transform: isSiteDropdownOpen ? 'rotate(180deg)' : 'none',
+                                      transition: 'transform 0.2s ease',
+                                      flexShrink: 0,
+                                      marginLeft: '8px'
+                                    }}
+                                  />
+                                </div>
 
-                                  const isAlreadyPledged = !formData.isEditMode && !formData.isCompanionMode && matchedSite && isSiteAlreadyPledgedToday(matchedSite, targetName, targetPhone, targetUsername, targetTeam, targetRank);
-
-                                  const previousSite = formData.site;
-                                  // 사업장 선택 상태를 즉시 저장 (초기화 및 되돌림 방지)
-                                  resetAllPostSiteSteps(canonicalSiteVal);
-
-                                  if (isAlreadyPledged) {
-                                    if (onTriggerToast) {
-                                      onTriggerToast(`ℹ️ [안내] '${matchedSite.name}' 사업장에 오늘 작성된 서약 내역이 있습니다.`, 'info');
-                                    }
-                                  } else if (previousSite && previousSite !== canonicalSiteVal) {
-                                    if (onTriggerToast) {
-                                      onTriggerToast(`🔄 사업장 변경: 보안앱 검수 및 체크리스트(2·3·4단계)가 초기화되었습니다. 다시 검수를 진행해 주세요.`, 'info');
-                                    }
-                                  }
-                                }}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 14px',
-                                  borderRadius: '12px',
-                                  background: isSiteInvalid ? '#fff1f2' : '#ffffff',
-                                  border: isSiteInvalid ? '2px solid #e11d48' : '1.5px solid #cbd5e1',
-                                  boxShadow: isSiteInvalid ? '0 0 0 3px rgba(225, 29, 72, 0.15)' : 'none',
-                                  color: currentSelectValue ? (() => {
-                                    const selSite = findSiteByDisplayNameOrName(currentSelectValue, sites);
-                                    const isSecAppO = selSite ? (selSite.type === '보안앱O' || selSite.type === '보안어플O' || !selSite.type) : true;
-                                    return isSecAppO ? '#16a34a' : '#dc2626';
-                                  })() : '#94a3b8',
-                                  fontWeight: currentSelectValue ? '700' : 'normal',
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  cursor: 'pointer',
-                                  transition: 'all 0.2s ease'
-                                }}
-                              >
-                                <option value="" disabled>-- 출입 사업장을 선택해 주세요 --</option>
-                                {currentSelectValue && !sites.some(s => (s.address ? `${s.name} (${s.address})` : s.name) === currentSelectValue) && (
-                                  <option value={currentSelectValue}>[선택됨] {currentSelectValue}</option>
-                                )}
-                                {sites.map((s) => {
-                                  const displayName = s.address ? `${s.name} (${s.address})` : s.name;
-                                  const targetName = formData.visitorName || currentUser?.name || '';
-                                  const targetPhone = formData.phone || currentUser?.phone || '';
-                                  const targetUsername = currentUser?.username || '';
-                                  const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
-                                  const targetRank = formData.rank || currentUser?.rank || '';
-
-                                  const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
-                                  const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
-                                  const displayType = (s.type === '보안어플O' ? '보안앱O' : s.type === '보안어플X' ? '보안앱X' : s.type) || s.category || '보안앱O';
-
-                                  return (
-                                    <option
-                                      key={s.id}
-                                      value={displayName}
+                                {/* Floating Suggestion Box (제안박스: 사업장 목록 및 보안앱O(녹색)/보안앱X(빨간색) 라벨 구분) */}
+                                {isSiteDropdownOpen && (
+                                  <>
+                                    {/* Click-outside backdrop */}
+                                    <div
+                                      onClick={() => {
+                                        setIsSiteDropdownOpen(false);
+                                        setSiteSearchQuery('');
+                                      }}
                                       style={{
-                                        background: isPledged ? '#f8fafc' : '#ffffff',
-                                        color: isPledged ? '#64748b' : (isSecAppO ? '#16a34a' : '#dc2626'),
-                                        fontWeight: isPledged ? '500' : '700'
+                                        position: 'fixed',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        zIndex: 100
+                                      }}
+                                    />
+
+                                    <div
+                                      style={{
+                                        position: 'absolute',
+                                        top: 'calc(100% + 6px)',
+                                        left: 0,
+                                        right: 0,
+                                        zIndex: 101,
+                                        background: '#ffffff',
+                                        borderRadius: '12px',
+                                        border: '1.5px solid #cbd5e1',
+                                        boxShadow: '0 12px 28px -4px rgba(15, 23, 42, 0.18), 0 4px 12px -2px rgba(15, 23, 42, 0.08)',
+                                        overflow: 'hidden',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        maxHeight: '320px',
+                                        boxSizing: 'border-box'
                                       }}
                                     >
-                                      {isPledged ? '[서약완료] ' : `[${displayType}] `}{displayName}
-                                    </option>
-                                  );
-                                })}
-                              </select>
+                                      {/* Quick Search Bar inside Suggestion Box */}
+                                      <div
+                                        style={{
+                                          padding: '8px 10px',
+                                          borderBottom: '1px solid #e2e8f0',
+                                          background: '#f8fafc',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '6px'
+                                        }}
+                                      >
+                                        <Search size={14} color="#64748b" style={{ flexShrink: 0 }} />
+                                        <input
+                                          type="text"
+                                          autoFocus
+                                          value={siteSearchQuery}
+                                          onChange={(e) => setSiteSearchQuery(e.target.value)}
+                                          placeholder="사업장명 또는 주소 검색..."
+                                          style={{
+                                            flex: 1,
+                                            border: 'none',
+                                            background: 'transparent',
+                                            outline: 'none',
+                                            fontSize: '12.5px',
+                                            color: '#0f172a',
+                                            fontWeight: '600'
+                                          }}
+                                        />
+                                        {siteSearchQuery && (
+                                          <button
+                                            type="button"
+                                            onClick={() => setSiteSearchQuery('')}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              padding: '2px',
+                                              color: '#94a3b8',
+                                              display: 'flex',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {/* Total Count Header */}
+                                      <div
+                                        style={{
+                                          padding: '5px 12px',
+                                          background: '#f1f5f9',
+                                          borderBottom: '1px solid #e2e8f0',
+                                          fontSize: '11px',
+                                          fontWeight: '700',
+                                          color: '#64748b',
+                                          display: 'flex',
+                                          justifyContent: 'space-between',
+                                          alignItems: 'center'
+                                        }}
+                                      >
+                                        <span>등록 사업장 ({filteredSites.length}개)</span>
+                                        <span style={{ fontSize: '10.5px', color: '#94a3b8' }}>보안앱 적용 여부 구분</span>
+                                      </div>
+
+                                      {/* Scrollable Site Items */}
+                                      <div style={{ overflowY: 'auto', maxHeight: '240px' }}>
+                                        {filteredSites.length === 0 ? (
+                                          <div style={{ padding: '18px 12px', textAlign: 'center', color: '#94a3b8', fontSize: '12.5px' }}>
+                                            검색된 사업장이 없습니다.
+                                          </div>
+                                        ) : (
+                                          filteredSites.map((s) => {
+                                            const displayName = s.address ? `${s.name} (${s.address})` : s.name;
+                                            const targetName = formData.visitorName || currentUser?.name || '';
+                                            const targetPhone = formData.phone || currentUser?.phone || '';
+                                            const targetUsername = currentUser?.username || '';
+                                            const targetTeam = formData.team || formData.department || currentUser?.team || currentUser?.department || '';
+                                            const targetRank = formData.rank || currentUser?.rank || '';
+
+                                            const isPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+                                            const isSecAppX = isSiteSecurityAppDisabled(s, s.type || s.category);
+                                            const isSecAppO = !isSecAppX;
+                                            const isSelected = (formData.site === displayName) || (selectedSiteObj && selectedSiteObj.id === s.id);
+
+                                            return (
+                                              <div
+                                                key={s.id}
+                                                onClick={() => {
+                                                  const canonicalSiteVal = s.address ? `${s.name} (${s.address})` : s.name;
+                                                  const isAlreadyPledged = !formData.isEditMode && !formData.isCompanionMode && isSiteAlreadyPledgedToday(s, targetName, targetPhone, targetUsername, targetTeam, targetRank);
+                                                  const previousSite = formData.site;
+
+                                                  resetAllPostSiteSteps(canonicalSiteVal);
+                                                  setIsSiteDropdownOpen(false);
+                                                  setSiteSearchQuery('');
+
+                                                  if (isAlreadyPledged) {
+                                                    if (onTriggerToast) {
+                                                      onTriggerToast(`ℹ️ [안내] '${s.name}' 사업장에 오늘 작성된 서약 내역이 있습니다.`, 'info');
+                                                    }
+                                                  } else if (previousSite && previousSite !== canonicalSiteVal) {
+                                                    if (onTriggerToast) {
+                                                      onTriggerToast(`🔄 사업장 변경: 보안앱 검수 및 체크리스트(2·3·4단계)가 초기화되었습니다. 다시 검수를 진행해 주세요.`, 'info');
+                                                    }
+                                                  }
+                                                }}
+                                                style={{
+                                                  padding: '10px 12px',
+                                                  cursor: 'pointer',
+                                                  display: 'flex',
+                                                  alignItems: 'center',
+                                                  justifyContent: 'space-between',
+                                                  borderBottom: '1px solid #f1f5f9',
+                                                  background: isSelected ? '#f0f9ff' : (isPledged ? '#f8fafc' : '#ffffff'),
+                                                  transition: 'background 0.15s ease'
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  if (!isSelected) e.currentTarget.style.background = '#f8fafc';
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  if (!isSelected) e.currentTarget.style.background = isSelected ? '#f0f9ff' : (isPledged ? '#f8fafc' : '#ffffff');
+                                                }}
+                                              >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
+                                                  {/* 라벨: 서약완료 / 보안앱O (녹색) / 보안앱X (빨간색) */}
+                                                  {isPledged ? (
+                                                    <span style={{
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      padding: '2px 7px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '800',
+                                                      background: '#f1f5f9',
+                                                      color: '#64748b',
+                                                      border: '1px solid #cbd5e1',
+                                                      flexShrink: 0
+                                                    }}>
+                                                      서약완료
+                                                    </span>
+                                                  ) : isSecAppO ? (
+                                                    <span style={{
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      padding: '2px 7px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '800',
+                                                      background: '#dcfce7',
+                                                      color: '#16a34a',
+                                                      border: '1px solid #86efac',
+                                                      flexShrink: 0
+                                                    }}>
+                                                      보안앱O
+                                                    </span>
+                                                  ) : (
+                                                    <span style={{
+                                                      display: 'inline-flex',
+                                                      alignItems: 'center',
+                                                      padding: '2px 7px',
+                                                      borderRadius: '6px',
+                                                      fontSize: '11px',
+                                                      fontWeight: '800',
+                                                      background: '#fee2e2',
+                                                      color: '#dc2626',
+                                                      border: '1px solid #fca5a5',
+                                                      flexShrink: 0
+                                                    }}>
+                                                      보안앱X
+                                                    </span>
+                                                  )}
+
+                                                  {/* 사업장명 */}
+                                                  <span style={{
+                                                    fontSize: '13px',
+                                                    fontWeight: isSelected ? '800' : '700',
+                                                    color: isSelected ? '#0284c7' : '#0f172a',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis'
+                                                  }}>
+                                                    {s.name}
+                                                  </span>
+                                                </div>
+
+                                                {/* 사업장 상세 주소 (오른쪽 정렬) */}
+                                                {s.address && (
+                                                  <span style={{
+                                                    fontSize: '11.5px',
+                                                    color: '#64748b',
+                                                    marginLeft: '10px',
+                                                    flexShrink: 0,
+                                                    maxWidth: '45%',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    textAlign: 'right'
+                                                  }}>
+                                                    {s.address}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             );
                           })()}
                         </div>
@@ -3491,6 +3788,10 @@ export default function SecurityChecklistTab({
                                     const updated = { ...cameraSelfChecklist, stickerAttached: nextVal };
                                     setCameraSelfChecklist(updated);
                                     const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
+                                    if (isAll) {
+                                      setSecAppVerified(true);
+                                      setCameraCheckVerified(true);
+                                    }
                                     setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                                   }}
                                   style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
@@ -3507,6 +3808,10 @@ export default function SecurityChecklistTab({
                                     const updated = { ...cameraSelfChecklist, noPhotoAgreed: nextVal };
                                     setCameraSelfChecklist(updated);
                                     const isAll = updated.stickerAttached && updated.noPhotoAgreed && updated.cameraChecked;
+                                    if (isAll) {
+                                      setSecAppVerified(true);
+                                      setCameraCheckVerified(true);
+                                    }
                                     setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                                   }}
                                   style={{ width: '16px', height: '16px', accentColor: '#1e3a8a', marginTop: '2px' }}
@@ -3687,6 +3992,10 @@ export default function SecurityChecklistTab({
                                         const updated = { ...cameraSelfChecklist, cameraChecked: Boolean(passed) };
                                         setCameraSelfChecklist(updated);
                                         const isAll = Boolean(passed) && updated.stickerAttached && updated.noPhotoAgreed;
+                                        if (isAll) {
+                                          setSecAppVerified(true);
+                                          setCameraCheckVerified(true);
+                                        }
                                         setFormData(prev => ({ ...prev, mdmVerified: isAll, cameraLocked: isAll }));
                                       }}
                                       style={{
@@ -3830,6 +4139,7 @@ export default function SecurityChecklistTab({
                                     if (result.success) {
                                       setSecAppVerified(true);
                                       setSecAppFailed(false);
+                                      setFormData(prev => ({ ...prev, mdmVerified: true }));
                                     } else if (result.method === 'web-disabled') {
                                       setSecAppVerified(false);
                                       setSecAppFailed(true);
@@ -4074,7 +4384,7 @@ export default function SecurityChecklistTab({
                                 return;
                               }
                               if (targetApp.isChecklistMode) {
-                                const isAll = cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked;
+                                const isAll = (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked) || (formData.mdmVerified && formData.cameraLocked);
                                 if (!isAll) {
                                   if (onTriggerToast) {
                                     if (!cameraSelfChecklist.stickerAttached || !cameraSelfChecklist.noPhotoAgreed) {
@@ -4085,8 +4395,12 @@ export default function SecurityChecklistTab({
                                   }
                                   return;
                                 }
+                                setSecAppVerified(true);
+                                setCameraCheckVerified(true);
+                                setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
                               } else {
-                                if (!secAppVerified || !cameraCheckVerified) {
+                                const isDualPassed = (secAppVerified && cameraCheckVerified) || (formData.mdmVerified && formData.cameraLocked);
+                                if (!isDualPassed) {
                                   setStep2Attempted(true);
                                   if (!secAppVerified && !cameraCheckVerified) {
                                     if (onTriggerToast) onTriggerToast(`❌ [검수 미완료] 1단계 모바일 보안 앱 실행과 2단계 카메라 차단 검수를 모두 완료해 주세요.`, 'warning');
@@ -4097,6 +4411,9 @@ export default function SecurityChecklistTab({
                                   }
                                   return;
                                 }
+                                setSecAppVerified(true);
+                                setCameraCheckVerified(true);
+                                setFormData(prev => ({ ...prev, mdmVerified: true, cameraLocked: true }));
                               }
                               setStep2Attempted(false);
                               setActiveStep(3);
@@ -4337,7 +4654,14 @@ export default function SecurityChecklistTab({
                         const isSiteValid = !!formData.site?.trim();
                         const isNameValid = !!formData.visitorName?.trim();
                         const isStep1Valid = isSiteValid && isNameValid;
-                        const isMdmValid = !!formData.mdmVerified || appScanState.status === 'VERIFIED';
+                        const targetApp = getTargetSecurityAppInfo(formData.site);
+                        const isStep2Done = Boolean(
+                          (formData.mdmVerified && formData.cameraLocked) ||
+                          (targetApp.isChecklistMode
+                            ? (cameraSelfChecklist.stickerAttached && cameraSelfChecklist.noPhotoAgreed && cameraSelfChecklist.cameraChecked)
+                            : (secAppVerified && cameraCheckVerified))
+                        );
+                        const isMdmValid = isStep2Done || !!formData.mdmVerified || appScanState.status === 'VERIFIED';
                         const isDocValid = !!formData.docChecklist?.gateApproved && !!formData.docChecklist?.docSecVerified && !!formData.docChecklist?.preCheckVerified;
                         const isTermsValid = !!formData.agreedToTerms;
                         const isReadyToSubmit = isStep1Valid && isMdmValid && isDocValid && isTermsValid;
