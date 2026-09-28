@@ -27,8 +27,7 @@ const SCHEMAS = {
   // 1. 사용자 계정 정보 (MySQL: security_user)
   users: [
     'id', 'username', 'password', 'name', 'role', 'division', 'team',
-    'rank', 'siteId', 'phone', 'email', 'education_date', 'education_expiry_date',
-    'education_name', 'trainings', 'created_at'
+    'rank', 'siteId', 'phone', 'email', 'created_at'
   ],
   // 2. 작업 현장 정보 (MySQL: security_site)
   sites: [
@@ -259,6 +258,7 @@ function formatHeaderRow(sheet, numCols) {
  */
 function onOpen() {
   try {
+    cleanLegacyUserColumns();
     enforcePasswordHashingInSheet();
     enforceNumericUserIds();
   } catch (e) {}
@@ -267,6 +267,7 @@ function onOpen() {
     .createMenu('🛡️ Withsharing DB 관리')
     .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
     .addItem('🔄 MySQL 스키마 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
+    .addItem('🗑️ users 시트 교육 컬럼(L~O열) 삭제 (cleanLegacyUserColumns)', 'cleanLegacyUserColumns')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
     .addItem('🔢 사용자 ID 번호(1, 2, 3...) 자동 정리 (enforceNumericUserIds)', 'enforceNumericUserIds')
     .addItem('🔒 비밀번호 전체 SHA-256 일괄 암호화 (enforcePasswordHashingInSheet)', 'enforcePasswordHashingInSheet')
@@ -311,6 +312,7 @@ function doGet(e) {
 
     // 4. 전체 데이터베이스 일괄 동기화 (sync/all)
     if (action === 'getAll') {
+      try { cleanLegacyUserColumns(); } catch (e) {}
       try { enforcePasswordHashingInSheet(); } catch (e) {}
       try { enforceNumericUserIds(); } catch (e) {}
       const allData = {};
@@ -326,6 +328,7 @@ function doGet(e) {
     
     // 5. 개별 시트 데이터 조회
     if (sheetName === 'users') {
+      try { cleanLegacyUserColumns(); } catch (e) {}
       try { enforcePasswordHashingInSheet(); } catch (e) {}
       try { enforceNumericUserIds(); } catch (e) {}
     }
@@ -382,6 +385,10 @@ function doPost(e) {
     if (!sheet) {
       initDatabase();
       sheet = ss.getSheetByName(sheetName);
+    }
+
+    if (sheetName === 'users') {
+      try { cleanLegacyUserColumns(); } catch (e) {}
     }
     
     // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
@@ -1218,13 +1225,54 @@ function onEdit(e) {
 }
 
 /**
+ * 🗑️ users 시트에서 더 이상 사용되지 않는 교육 관련 컬럼(L~O열: education_date, education_expiry_date, education_name, trainings) 자동 삭제
+ */
+function cleanLegacyUserColumns() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('users');
+    if (!sheet || sheet.getLastRow() <= 0) return { success: false, message: 'users 시트가 비어있습니다.' };
+    const lastCol = sheet.getLastColumn();
+    if (lastCol <= 1) return { success: true, message: '정리할 컬럼이 없습니다.' };
+
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim().toLowerCase());
+    const legacyTargets = [
+      'education_date', 'education_expiry_date', 'education_name', 'trainings',
+      'educationdate', 'educationexpirydate', 'educationname', '교육수료일', '교육만료일', '교육명'
+    ];
+
+    let deletedCols = [];
+    // 오른쪽에서 왼쪽(역순)으로 삭제하여 열 번호 인덱스 뒤틀림 방지
+    for (let c = headers.length - 1; c >= 0; c--) {
+      if (legacyTargets.includes(headers[c])) {
+        sheet.deleteColumn(c + 1);
+        deletedCols.push(headers[c]);
+      }
+    }
+
+    // SCHEMAS.users 정의(12개 컬럼) 이후 열이 시트에 남아있다면 잉여 열 일괄 삭제
+    const targetCols = SCHEMAS.users.length;
+    const maxCols = sheet.getMaxColumns();
+    if (maxCols > targetCols && sheet.getLastColumn() <= targetCols) {
+      try { sheet.deleteColumns(targetCols + 1, maxCols - targetCols); } catch (e) {}
+    }
+
+    SpreadsheetApp.flush();
+    return { success: true, deleted: deletedCols };
+  } catch (err) {
+    Logger.log('cleanLegacyUserColumns error: ' + err.toString());
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
  * 객체를 MySQL 테이블 표준 컬럼 형식으로 100% 매핑 및 정규화
  */
 function normalizeObjectForSheet(sheetName, rawObj) {
   if (!rawObj || typeof rawObj !== 'object') return {};
   const obj = { ...rawObj };
 
-  // 1. 사용자 계정 (security_user) - id는 순차 숫자, 비밀번호는 무조건 SHA-256 해시로만 기록
+  // 1. 사용자 계정 (security_user) - id는 순차 숫자, 비밀번호는 무조건 SHA-256 해시로만 기록 (L~O열 교육 필드 제외)
   if (sheetName === 'users') {
     let passVal = String(obj.password || obj.passwordHash || obj.passward || obj.password_hash || obj['비밀번호'] || '').trim();
     if (passVal) {
@@ -1248,10 +1296,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       siteId: obj.siteId || obj.site_id || '',
       phone: obj.phone || '',
       email: obj.email || '',
-      education_date: obj.education_date || obj.educationDate || '',
-      education_expiry_date: obj.education_expiry_date || obj.educationExpiryDate || '',
-      education_name: obj.education_name || obj.educationName || '',
-      trainings: (typeof obj.trainings === 'object' && obj.trainings !== null) ? JSON.stringify(obj.trainings) : String(obj.trainings || ''),
       created_at: obj.created_at || obj.createdAt || new Date().toISOString()
     };
   }
@@ -1790,7 +1834,7 @@ function readSheetData(sheetName) {
 
   const DATE_ONLY_COLS = [
     'log_date', 'due_date', 'date', 'weekly_monday', 'daily_date',
-    'completion_date', 'expiry_date', 'education_date', 'education_expiry_date'
+    'completion_date', 'expiry_date'
   ];
   
   for (let i = 1; i < rows.length; i++) {

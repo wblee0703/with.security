@@ -2354,33 +2354,6 @@ class SecurityDatabase {
       }
     }
 
-    // 2. Ensure wblee standard account exists
-    const wbleeIdx = list.findIndex(u => String(u.username || '').trim() === 'wblee');
-    if (wbleeIdx === -1) {
-      list.push({
-        username: 'wblee',
-        password: defaultAdminPass,
-        passwordHash: defaultAdminHash,
-        name: '이원배',
-        role: '일반',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'site-001',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        educationDate: '',
-        educationExpiryDate: '',
-        educationName: '',
-        trainings: []
-      });
-    } else {
-      if (!list[wbleeIdx].password && !list[wbleeIdx].passwordHash) {
-        list[wbleeIdx].password = defaultAdminPass;
-        list[wbleeIdx].passwordHash = defaultAdminHash;
-      }
-    }
-
     return list;
   }
 
@@ -2529,42 +2502,6 @@ class SecurityDatabase {
         usersList[adminIdx].password = defaultAdminPass;
         usersList[adminIdx].passwordHash = defaultAdminHash;
         try { await this.putItem('users', usersList[adminIdx]); } catch (e) { }
-      }
-    }
-
-    // Ensure default wblee standard user always exists
-    const wbleeIdx = usersList.findIndex(u => String(u.username || '').trim() === 'wblee');
-    if (wbleeIdx === -1) {
-      const defaultWblee = {
-        id: 2,
-        username: 'wblee',
-        password: defaultAdminPass,
-        passwordHash: defaultAdminHash,
-        name: '이원배',
-        role: '일반',
-        division: '영업/운영사업부',
-        team: '운영1팀',
-        rank: '대리',
-        siteId: 'site-001',
-        phone: '010-9885-0393',
-        email: 'wblee@withtech.co.kr',
-        educationDate: '',
-        educationExpiryDate: '',
-        educationName: '',
-        trainings: []
-      };
-      usersList.push(defaultWblee);
-      try {
-        await this.putItem('users', defaultWblee);
-      } catch (e) { }
-    } else {
-      if (!usersList[wbleeIdx].id || isNaN(parseInt(usersList[wbleeIdx].id, 10))) {
-        usersList[wbleeIdx].id = 2;
-      }
-      if (!usersList[wbleeIdx].password && !usersList[wbleeIdx].passwordHash) {
-        usersList[wbleeIdx].password = defaultAdminPass;
-        usersList[wbleeIdx].passwordHash = defaultAdminHash;
-        try { await this.putItem('users', usersList[wbleeIdx]); } catch (e) { }
       }
     }
 

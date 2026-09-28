@@ -2105,19 +2105,19 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         fontSize: '11px',
                                         fontWeight: '800',
                                         background: (() => {
-                                          if (group.subCategory === '미팅') return '#f5f3ff';
+                                          if (group.subCategory === '미팅') return '#fff7ed';
                                           if (group.subCategory === '점검') return '#fffbeb';
                                           if (group.subCategory === '납품') return '#ecfdf5';
                                           return '#eff6ff';
                                         })(),
                                         color: (() => {
-                                          if (group.subCategory === '미팅') return '#7c3aed';
+                                          if (group.subCategory === '미팅') return '#ea580c';
                                           if (group.subCategory === '점검') return '#d97706';
                                           if (group.subCategory === '납품') return '#059669';
                                           return '#1e40af';
                                         })(),
                                         border: (() => {
-                                          if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
+                                          if (group.subCategory === '미팅') return '1.5px solid #fed7aa';
                                           if (group.subCategory === '점검') return '1.5px solid #fde68a';
                                           if (group.subCategory === '납품') return '1.5px solid #a7f3d0';
                                           return '1.5px solid #bfdbfe';
@@ -2139,22 +2139,22 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         fontWeight: '800',
                                         background: (() => {
                                           if (group.subCategory === '고객' || group.subCategory === '고객대응') return '#ecfdf5';
-                                          if (group.subCategory === '미팅') return '#f5f3ff';
-                                          if (group.subCategory === '교육') return '#fffbeb';
+                                          if (group.subCategory === '미팅') return '#fff7ed';
+                                          if (group.subCategory === '교육') return '#ecfeff';
                                           if (group.subCategory === '기타') return '#f1f5f9';
                                           return '#eff6ff'; // 일반 / 일반업무
                                         })(),
                                         color: (() => {
                                           if (group.subCategory === '고객' || group.subCategory === '고객대응') return '#059669';
-                                          if (group.subCategory === '미팅') return '#7c3aed';
-                                          if (group.subCategory === '교육') return '#d97706';
+                                          if (group.subCategory === '미팅') return '#ea580c';
+                                          if (group.subCategory === '교육') return '#0891b2';
                                           if (group.subCategory === '기타') return '#475569';
                                           return '#1e3a8a'; // 일반 / 일반업무
                                         })(),
                                         border: (() => {
                                           if (group.subCategory === '고객' || group.subCategory === '고객대응') return '1.5px solid #a7f3d0';
-                                          if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
-                                          if (group.subCategory === '교육') return '1.5px solid #fde68a';
+                                          if (group.subCategory === '미팅') return '1.5px solid #fed7aa';
+                                          if (group.subCategory === '교육') return '1.5px solid #a5f3fc';
                                           if (group.subCategory === '기타') return '1.5px solid #cbd5e1';
                                           return '1.5px solid #bfdbfe'; // 일반 / 일반업무
                                         })(),
