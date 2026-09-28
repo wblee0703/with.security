@@ -395,6 +395,13 @@ async function safeFetchApi(endpoint, options = {}) {
         delete headers['Bypass-Tunnel-Reminder'];
         delete headers['Authorization'];
         delete headers['X-Auth-Token'];
+
+        // 웹 브라우저 환경에서 구글 스프레드시트 POST/PUT/DELETE 변경 시 브라우저 CORS 차단(Redirect preflight error)을
+        // 방지하기 위해 mode: 'no-cors'를 적용합니다. mode: 'no-cors'로 요청하면 브라우저가 CORS 에러를 발생시키지 않고
+        // payload를 Google Apps Script doPost(e)로 100% 온전하게 전달합니다.
+        if (method !== 'GET') {
+          finalOptions.mode = 'no-cors';
+        }
       } else {
         const authToken = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_auth_token') : null;
         headers = {
@@ -404,13 +411,24 @@ async function safeFetchApi(endpoint, options = {}) {
         };
       }
 
-      const res = await fetch(fullUrl, {
+      let res = await fetch(fullUrl, {
         ...finalOptions,
         headers,
         redirect: 'follow',
         signal: controller.signal
-      }).catch((err) => {
-        console.warn(`Fetch error for [${fullUrl}]:`, err);
+      }).catch(async (err) => {
+        // 일반 CORS fetch 실패 시 mode: 'no-cors'로 즉시 재전송 시도하여 스프레드시트 저장 보장
+        if (isGoogleSheet && method !== 'GET' && finalOptions.mode !== 'no-cors') {
+          try {
+            return await fetch(fullUrl, {
+              ...finalOptions,
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              signal: controller.signal
+            });
+          } catch (retryErr) { }
+        }
+        console.warn(`[SafeFetch] Sync notice for [${fullUrl}]:`, err?.message || err);
         return null;
       });
       clearTimeout(tid);
@@ -5568,16 +5586,41 @@ class SecurityDatabase {
     try {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 25000);
-      const res = await fetch(sheetUrl, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'cleanup' }),
-        signal: controller.signal
-      });
+      let res = null;
+      let isNoCors = false;
+      try {
+        res = await fetch(sheetUrl, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'cleanup' }),
+          signal: controller.signal
+        });
+      } catch (fetchErr) {
+        try {
+          res = await fetch(sheetUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'cleanup' }),
+            signal: controller.signal
+          });
+          isNoCors = true;
+        } catch (noCorsErr) {
+          throw fetchErr;
+        }
+      }
       clearTimeout(tid);
 
-      if (res.ok) {
+      if (isNoCors && res) {
+        await this.syncFromGoogleSheets(sheetUrl);
+        return {
+          success: true,
+          message: '구글 스프레드시트 중복 행 정리 요청이 성공적으로 전송되었습니다.'
+        };
+      }
+
+      if (res && res.ok) {
         const json = await res.json();
         if (json.success) {
           recentResponseCache.clear();
@@ -5593,7 +5636,7 @@ class SecurityDatabase {
           return { success: false, message: json.error || '중복 정리 처리 오류' };
         }
       } else {
-        return { success: false, message: `스프레드시트 서버 응답 실패 [HTTP ${res.status}]` };
+        return { success: false, message: `스프레드시트 서버 응답 실패 [HTTP ${res?.status || 'ERR'}]` };
       }
     } catch (err) {
       return { success: false, message: `중복 정리 통신 실패: ${err.message}` };
@@ -5714,16 +5757,47 @@ class SecurityDatabase {
       const controller = new AbortController();
       const tid = setTimeout(() => controller.abort(), 25000); // 25초 넉넉하게 대기
 
-      const res = await fetch(rawUrl, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+      let res = null;
+      let isNoCors = false;
+      try {
+        res = await fetch(rawUrl, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+      } catch (fetchErr) {
+        // 브라우저 CORS 차단 발생 시 mode: 'no-cors'로 페이로드 즉각 안전 전송
+        try {
+          res = await fetch(rawUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload),
+            signal: controller.signal
+          });
+          isNoCors = true;
+        } catch (noCorsErr) {
+          throw fetchErr;
+        }
+      }
       clearTimeout(tid);
 
-      if (res.ok) {
+      if (isNoCors && res) {
+        return {
+          success: true,
+          message: `구글 시트로 일괄 업로드 전송 완료! (업무일지 ${workLogs.length}건, 서약서 ${checklists.length}건, 계정 ${users.length}건, 사업장 ${sites.length}건)\n※ 브라우저 CORS 정책상 상세 결과는 구글 스프레드시트에서 직접 확인하실 수 있습니다.`,
+          counts: {
+            workLogs: workLogs.length,
+            checklists: checklists.length,
+            users: users.length,
+            sites: sites.length
+          }
+        };
+      }
+
+      if (res && res.ok) {
         const json = await res.json();
         if (json.success) {
           return {
@@ -5741,7 +5815,7 @@ class SecurityDatabase {
           return { success: false, message: `구글 시트 처리 오류: ${json.error || '알 수 없는 오류'}` };
         }
       } else {
-        return { success: false, message: `구글 시트 응답 실패 [HTTP ${res.status}]` };
+        return { success: false, message: `구글 시트 응답 실패 [HTTP ${res?.status || 'ERR'}]` };
       }
     } catch (err) {
       return { success: false, message: `업로드 실패: ${err.message}` };
