@@ -325,7 +325,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
     });
   }
 
-  fetchOptions.timeout = Math.max(fetchOptions.timeout || 0, 12000);
+  fetchOptions.timeout = Math.max(fetchOptions.timeout || 0, 35000);
   return { targetUrl, fetchOptions };
 }
 
@@ -383,9 +383,7 @@ async function safeFetchApi(endpoint, options = {}) {
 
   const fetchPromise = (async () => {
     try {
-      const controller = new AbortController();
-      const timeoutMs = finalOptions.timeout || (isGoogleSheet ? 12000 : 4000);
-      const tid = setTimeout(() => controller.abort(), timeoutMs);
+      const timeoutMs = finalOptions.timeout || (isGoogleSheet ? 35000 : 8000);
 
       // ⭐ CRITICAL: 구글 스프레드시트 Web App은 OPTIONS preflight를 지원하지 않습니다!
       // 따라서 커스텀 헤더(Authorization, Bypass-Tunnel-Reminder 등)를 절대 붙이지 않아야 100% 정상 통신됩니다.
@@ -411,27 +409,66 @@ async function safeFetchApi(endpoint, options = {}) {
         };
       }
 
-      let res = await fetch(fullUrl, {
-        ...finalOptions,
-        headers,
-        redirect: 'follow',
-        signal: controller.signal
-      }).catch(async (err) => {
-        // 일반 CORS fetch 실패 시 mode: 'no-cors'로 즉시 재전송 시도하여 스프레드시트 저장 보장
-        if (isGoogleSheet && method !== 'GET' && finalOptions.mode !== 'no-cors') {
+      const executeFetch = async (isRetry = false) => {
+        const controller = new AbortController();
+        const curTimeout = isRetry ? 20000 : timeoutMs;
+        let isTimedOut = false;
+        const tid = setTimeout(() => {
+          isTimedOut = true;
           try {
-            return await fetch(fullUrl, {
-              ...finalOptions,
-              mode: 'no-cors',
-              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              signal: controller.signal
-            });
-          } catch (retryErr) { }
+            controller.abort(new DOMException(`Request timed out after ${curTimeout}ms`, 'TimeoutError'));
+          } catch (e) {
+            controller.abort();
+          }
+        }, curTimeout);
+
+        if (finalOptions.signal) {
+          if (finalOptions.signal.aborted) {
+            controller.abort(finalOptions.signal.reason);
+          } else {
+            finalOptions.signal.addEventListener('abort', () => controller.abort(finalOptions.signal.reason), { once: true });
+          }
         }
-        console.warn(`[SafeFetch] Sync notice for [${fullUrl}]:`, err?.message || err);
-        return null;
-      });
-      clearTimeout(tid);
+
+        try {
+          const res = await fetch(fullUrl, {
+            ...finalOptions,
+            headers,
+            redirect: 'follow',
+            signal: controller.signal
+          });
+          clearTimeout(tid);
+          return res;
+        } catch (err) {
+          clearTimeout(tid);
+
+          // 구글 시트 GET 요청 시 첫 번째 시도가 콜드 스타트로 타임아웃된 경우, 이미 컨테이너가 깨어났으므로 1회 즉시 재시도
+          if (isGoogleSheet && method === 'GET' && !isRetry && (isTimedOut || err?.name === 'AbortError' || err?.name === 'TimeoutError')) {
+            return await executeFetch(true);
+          }
+
+          // 일반 CORS fetch 실패 시 mode: 'no-cors'로 즉시 재전송 시도하여 스프레드시트 저장 보장
+          if (isGoogleSheet && method !== 'GET' && finalOptions.mode !== 'no-cors') {
+            try {
+              return await fetch(fullUrl, {
+                ...finalOptions,
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                signal: controller.signal
+              });
+            } catch (retryErr) { }
+          }
+
+          if (isTimedOut || err?.name === 'AbortError' || err?.name === 'TimeoutError' || controller.signal.aborted) {
+            console.info(`[SafeFetch] Remote fetch timed out (${curTimeout}ms) for [${fullUrl}], falling back to local cache.`);
+          } else {
+            console.warn(`[SafeFetch] Sync notice for [${fullUrl}]:`, err?.message || err);
+          }
+          return null;
+        }
+      };
+
+      const res = await executeFetch(false);
 
       if (res && res.ok && method === 'GET') {
         recentResponseCache.set(fullUrl, {
@@ -673,7 +710,7 @@ export function getChecklistLabel(val) {
   const s = String(val).trim();
   if (TBM_CHECKLIST_LABELS[s]) return TBM_CHECKLIST_LABELS[s];
   if (LABEL_TO_CHECKLIST_KEY[s]) return s;
-  return '';
+  return s;
 }
 
 /**
@@ -2953,7 +2990,13 @@ class SecurityDatabase {
     if (target.includes('script.google.com')) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        const timeoutId = setTimeout(() => {
+          try {
+            controller.abort(new DOMException('Connection test timed out after 25s', 'TimeoutError'));
+          } catch (e) {
+            controller.abort();
+          }
+        }, 25000);
         const pingUrl = `${target}${target.includes('?') ? '&' : '?'}action=ping`;
         const res = await fetch(pingUrl, {
           method: 'GET',
@@ -4393,7 +4436,20 @@ class SecurityDatabase {
     tbm.leaderName = (tbm.leaderName || tbm.leader_name || tbm.leader || '').trim();
     tbm.leaderRank = (tbm.leaderRank || tbm.leader_rank || tbm.rank || '대리').trim();
     tbm.leaderPhone = (tbm.leaderPhone || tbm.leader_phone || tbm.phone || '').trim();
-    tbm.workContent = (tbm.workContent || tbm.work_content || tbm.content || '').trim();
+    tbm.workContent = (
+      tbm.workContent ||
+      tbm.work_content ||
+      tbm.content ||
+      tbm.preCheck?.notes ||
+      tbm.pre_check?.notes ||
+      tbm.postCheck?.handoverNotes ||
+      tbm.post_check?.handoverNotes ||
+      tbm.postCheck?.notes ||
+      tbm.post_check?.notes ||
+      tbm.notes ||
+      ''
+    ).trim();
+    tbm.work_content = tbm.workContent;
     tbm.toolsUsed = (tbm.toolsUsed || tbm.tools_used || '').trim();
     const rawType = String(tbm.tbmType || tbm.tbm_type || tbm['구분'] || '').trim().toLowerCase();
 
@@ -4590,28 +4646,25 @@ class SecurityDatabase {
     tbm.updatedAt = tbm.updatedAt || tbm.updated_at || tbm.createdAt;
 
     // 통합 check_list 문자열 보존 및 양방향 매핑
+    const calculatedCheckList = formatCheckListForSheet(tbm.preCheck, tbm.postCheck, tbm.tbmType === 'post', tbm.tbmType === 'additional');
     const rawCheckList = String(raw.check_list || raw.checkList || raw.checklist || raw['Check List'] || '').trim();
-    if (rawCheckList) {
-      tbm.check_list = rawCheckList;
-      tbm.checkList = rawCheckList;
-      // preCheck.selectedItems가 비어있다면 check_list에서 항목 역매핑
-      if (tbm.preCheck && (!Array.isArray(tbm.preCheck.selectedItems) || tbm.preCheck.selectedItems.length === 0)) {
-        const tokens = rawCheckList.split(',').map(s => s.trim()).filter(Boolean);
-        const mappedKeys = tokens
-          .map(tok => LABEL_TO_CHECKLIST_KEY[tok] || (TBM_CHECKLIST_LABELS[tok] ? tok : null))
-          .filter(Boolean);
-        tbm.preCheck.selectedItems = mappedKeys;
-      }
-      // postCheck 주요 항목 역매핑
-      if (tbm.postCheck) {
-        if (rawCheckList.includes('현장 정리정돈')) tbm.postCheck.cleanupCheck = true;
-        if (rawCheckList.includes('공구·자재 회수')) tbm.postCheck.toolRecoveryCheck = true;
-        if (rawCheckList.includes('보안매체·문서 점검')) tbm.postCheck.securityMediaCheck = true;
-        if (rawCheckList.includes('잔류 전원·화기 확인')) tbm.postCheck.powerSafetyCheck = true;
-      }
-    } else {
-      tbm.check_list = formatCheckListForSheet(tbm.preCheck, tbm.postCheck, tbm.tbmType === 'post', tbm.tbmType === 'additional');
-      tbm.checkList = tbm.check_list;
+    tbm.check_list = calculatedCheckList || rawCheckList;
+    tbm.checkList = tbm.check_list;
+
+    // preCheck.selectedItems가 비어있다면 check_list에서 항목 역매핑
+    if (tbm.preCheck && (!Array.isArray(tbm.preCheck.selectedItems) || tbm.preCheck.selectedItems.length === 0) && tbm.check_list) {
+      const tokens = tbm.check_list.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      const mappedKeys = tokens
+        .map(tok => LABEL_TO_CHECKLIST_KEY[tok] || (TBM_CHECKLIST_LABELS[tok] ? tok : null))
+        .filter(Boolean);
+      tbm.preCheck.selectedItems = mappedKeys;
+    }
+    // postCheck 주요 항목 역매핑
+    if (tbm.postCheck && tbm.check_list) {
+      if (tbm.check_list.includes('현장 정리정돈')) tbm.postCheck.cleanupCheck = true;
+      if (tbm.check_list.includes('공구·자재 회수')) tbm.postCheck.toolRecoveryCheck = true;
+      if (tbm.check_list.includes('보안매체·문서 점검')) tbm.postCheck.securityMediaCheck = true;
+      if (tbm.check_list.includes('잔류 전원·화기 확인')) tbm.postCheck.powerSafetyCheck = true;
     }
 
     return tbm;
@@ -5054,6 +5107,20 @@ class SecurityDatabase {
       .filter(Boolean)
       .join('\n');
 
+    const effectiveCheckList = formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm) || fullTbm.check_list || fullTbm.checkList || '';
+    const effectiveWorkContent = (
+      fullTbm.workContent ||
+      fullTbm.work_content ||
+      fullTbm.preCheck?.notes ||
+      fullTbm.pre_check?.notes ||
+      fullTbm.postCheck?.handoverNotes ||
+      fullTbm.post_check?.handoverNotes ||
+      fullTbm.postCheck?.notes ||
+      fullTbm.post_check?.notes ||
+      fullTbm.notes ||
+      ''
+    ).trim();
+
     const remotePayload = {
       id: fullTbm.id,
       date: fullTbm.date,
@@ -5061,10 +5128,14 @@ class SecurityDatabase {
       attendees: formatAttendeesForSheet(fullTbm.attendees),
       absentees: formatAbsenteesForSheet(combinedAbs),
       // 통합 Check List: 업무 전/후 체크한 항목 텍스트 기록 (note/전달사항은 work_content에 기록되므로 제외)
-      check_list: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
-      checkList: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
-      checklist: formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
-      'Check List': formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm),
+      check_list: effectiveCheckList,
+      checkList: effectiveCheckList,
+      checklist: effectiveCheckList,
+      'Check List': effectiveCheckList,
+      preCheck: fullTbm.preCheck,
+      pre_check: fullTbm.preCheck,
+      postCheck: fullTbm.postCheck,
+      post_check: fullTbm.postCheck,
       // 1. 사업장 및 기본 정보 (camelCase & snake_case 둘 다 명시적으로 매핑하여 시트 컬럼 100% 저장 보장)
       site: fullTbm.site || fullTbm.siteName || '',
       site_name: fullTbm.site || fullTbm.siteName || '',
@@ -5085,8 +5156,9 @@ class SecurityDatabase {
       leaderRank: fullTbm.leaderRank || fullTbm.leader_rank || '대리',
       leader_phone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
       leaderPhone: fullTbm.leaderPhone || fullTbm.leader_phone || '',
-      work_content: fullTbm.workContent || fullTbm.work_content || '',
-      workContent: fullTbm.workContent || fullTbm.work_content || '',
+      work_content: effectiveWorkContent,
+      workContent: effectiveWorkContent,
+      notes: effectiveWorkContent,
       tbmType: resolvedTbmType,
       tbm_type: resolvedTbmType,
       구분: resolvedTbmType,

@@ -30,7 +30,7 @@ import {
   Edit3,
   MapPin
 } from 'lucide-react';
-import { dbService, normalizeKstDate } from '../../services/dbService';
+import { dbService, normalizeKstDate, formatCheckListForSheet } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
 import { isSamePerson, DIVISION_LIST, DIVISION_TEAMS_MAP, getTeamsForDivision } from '../../services/userMatcher';
 import { useModalBack } from '../../services/modalBackHandler';
@@ -1692,6 +1692,17 @@ export default function TbmSection({
         : (additionalFormData.tripSiteAddress || targetAdditionalTbm.siteAddress || '').trim();
 
       // 2. 스프레드시트 및 DB에 독립된 별도 행으로 저장
+      const addWorkContent = (additionalFormData.notes || additionalFormData.workContent || '').trim();
+      const parentCheckListStr = String(targetAdditionalTbm.check_list || targetAdditionalTbm.checkList || '').trim();
+      const inheritedSelectedItems = (
+        (Array.isArray(targetAdditionalTbm.preCheck?.selectedItems) && targetAdditionalTbm.preCheck.selectedItems.length > 0)
+          ? targetAdditionalTbm.preCheck.selectedItems
+          : (Array.isArray(targetAdditionalTbm.postCheck?.selectedItems) && targetAdditionalTbm.postCheck.selectedItems.length > 0)
+            ? targetAdditionalTbm.postCheck.selectedItems
+            : (parentCheckListStr ? parentCheckListStr.split(/[\n,]+/).map(s => s.trim()).filter(Boolean) : [])
+      );
+      const addCheckListStr = parentCheckListStr || formatCheckListForSheet({ selectedItems: inheritedSelectedItems }, null, false, true);
+
       const addTbmPayload = {
         id: addTbmId,
         parentTbmId: parentId,
@@ -1733,16 +1744,19 @@ export default function TbmSection({
           phone: m.phone || ''
         })),
         absentees: [],
-        workContent: (additionalFormData.notes || '').trim(),
-        work_content: (additionalFormData.notes || '').trim(),
+        workContent: addWorkContent,
+        work_content: addWorkContent,
+        check_list: addCheckListStr,
+        checkList: addCheckListStr,
+        checklist: addCheckListStr,
         toolsUsed: targetAdditionalTbm.toolsUsed || '',
         tools_used: targetAdditionalTbm.toolsUsed || '',
         status: 'ALL_COMPLETED',
         conductedAt: conductedAtStr,
         preCheck: {
           isCompleted: true,
-          selectedItems: targetAdditionalTbm.preCheck?.selectedItems || [],
-          notes: (additionalFormData.notes || '').trim(),
+          selectedItems: inheritedSelectedItems,
+          notes: addWorkContent,
           photos: additionalFormData.photos || [],
           conductedAt: conductedAtStr
         },
@@ -1963,6 +1977,34 @@ export default function TbmSection({
       assignedId = `${prefix}${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     }
 
+    const effectiveWorkContent = (
+      isPost
+        ? (formData.postCheck?.handoverNotes || formData.workContent || formData.postCheck?.notes || '')
+        : (formData.preCheck?.notes || formData.workContent || '')
+    ).trim();
+
+    const currentPreCheck = isPost
+      ? { isCompleted: false, selectedItems: [], photos: [], notes: '', conductedAt: '' }
+      : {
+        ...formData.preCheck,
+        selectedItems: currentSelectedKeys,
+        notes: effectiveWorkContent,
+        conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
+        isCompleted: true
+      };
+
+    const currentPostCheck = isPost
+      ? {
+        ...formData.postCheck,
+        selectedItems: currentPostSelectedKeys,
+        handoverNotes: effectiveWorkContent,
+        conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
+        isCompleted: true
+      }
+      : { isCompleted: false, selectedItems: [], photos: [], absentees: [], handoverNotes: '', conductedAt: '' };
+
+    const calculatedCheckList = formatCheckListForSheet(currentPreCheck, currentPostCheck, isPost, false);
+
     const tbmPayload = {
       ...formData,
       id: assignedId,
@@ -1992,27 +2034,16 @@ export default function TbmSection({
       leader_phone: formData.leaderPhone || '',
       attendees: formData.attendees || [],
       absentees: formData.absentees || [],
-      workContent: formData.workContent?.trim() || '',
-      work_content: formData.workContent?.trim() || '',
+      workContent: effectiveWorkContent,
+      work_content: effectiveWorkContent,
+      check_list: calculatedCheckList,
+      checkList: calculatedCheckList,
+      checklist: calculatedCheckList,
       toolsUsed: formData.toolsUsed?.trim() || '',
       tools_used: formData.toolsUsed?.trim() || '',
       status: finalStatus,
-      preCheck: isPost
-        ? { isCompleted: false, selectedItems: [], photos: [], notes: '', conductedAt: '' }
-        : {
-          ...formData.preCheck,
-          selectedItems: currentSelectedKeys,
-          conductedAt: formData.preCheck?.conductedAt || getCurrentTimeStr(),
-          isCompleted: true
-        },
-      postCheck: isPost
-        ? {
-          ...formData.postCheck,
-          selectedItems: currentPostSelectedKeys,
-          conductedAt: formData.postCheck?.conductedAt || getCurrentTimeStr(),
-          isCompleted: true
-        }
-        : { isCompleted: false, selectedItems: [], photos: [], absentees: [], handoverNotes: '', conductedAt: '' }
+      preCheck: currentPreCheck,
+      postCheck: currentPostCheck
     };
 
     setIsSubmitting(true);

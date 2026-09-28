@@ -1443,7 +1443,7 @@ function getChecklistLabel(val) {
   var s = String(val).trim();
   if (TBM_CHECKLIST_LABELS[s]) return TBM_CHECKLIST_LABELS[s];
   if (LABEL_TO_CHECKLIST_KEY[s]) return s;
-  return '';
+  return s;
 }
 
 /**
@@ -1920,8 +1920,6 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const leaderNameVal = String(obj.leaderName || obj.leader_name || obj.leader || '').trim();
     const leaderRankVal = String(obj.leaderRank || obj.leader_rank || obj.rank || '대리').trim();
     const leaderPhoneVal = String(obj.leaderPhone || obj.leader_phone || obj.phone || '').trim();
-    const workContentVal = String(obj.workContent || obj.work_content || obj.content || '').trim();
-    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
     let isPost = false;
     let isAdditional = Boolean(
@@ -1946,6 +1944,22 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       isPost = Boolean(postChk && postChk.isCompleted && (!preChk || !preChk.isCompleted));
     }
     const tbmTypeVal = isAdditional ? '추가 TBM' : (isPost ? '업무 후' : '업무 전');
+
+    // 전달 사항 및 지도 내역 또는 추가 TBM 작업 내용/특이사항 우선 반영하여 work_content 컬럼에 100% 저장
+    const preNotes = (preChk && preChk.notes) ? String(preChk.notes).trim() : '';
+    const postNotes = (postChk && (postChk.handoverNotes || postChk.notes)) ? String(postChk.handoverNotes || postChk.notes).trim() : '';
+    const rootNotes = String(obj.notes || '').trim();
+    let workContentVal = String(obj.work_content || obj.workContent || obj.content || '').trim();
+    if (!workContentVal) {
+      if (isAdditional) {
+        workContentVal = rootNotes || preNotes || postNotes;
+      } else if (isPost) {
+        workContentVal = postNotes || preNotes || rootNotes;
+      } else {
+        workContentVal = preNotes || postNotes || rootNotes;
+      }
+    }
+    const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     // 4. root photos 구글 드라이브 자동 저장 및 URL 변환
     if (Array.isArray(obj.photos)) {
       obj.photos.forEach(function(p, pIdx) {
@@ -1969,16 +1983,19 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       });
     }
 
-    let checkListStr = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
-    if (!checkListStr && (obj.check_list || obj.checkList || obj.checklist || obj['Check List'])) {
-      const rawText = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List']).trim();
-      const tokens = rawText.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+    let checkListStr = '';
+    const incomingCheckList = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List'] || '').trim();
+    if (incomingCheckList) {
+      const tokens = incomingCheckList.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
       const validLabels = [];
       tokens.forEach(function(tok) {
-        const lbl = getChecklistLabel(tok);
+        const lbl = getChecklistLabel(tok) || tok;
         if (lbl && validLabels.indexOf(lbl) === -1) validLabels.push(lbl);
       });
       checkListStr = validLabels.join(', ');
+    }
+    if (!checkListStr) {
+      checkListStr = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
     }
 
     const photoUrlsStr = allDriveUrls.join('\n');
