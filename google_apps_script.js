@@ -69,7 +69,7 @@ const SCHEMAS = {
     'id', 'site', 'status', 'createdAt', 'data'
   ],
   tbms: [
-    'id', 'parent_tbm_id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_area', 'work_category',
+    'id', 'tbm_type', 'date', 'site', 'site_address', 'work_title', 'work_category',
     'leader_division', 'leader_team', 'leader_name', 'leader_rank', 'leader_phone',
     'attendees', 'absentees', 'additional_tbms', 'work_content', 'tools_used',
     'check_list', 'status', 'photo_urls', 'created_at', 'updated_at'
@@ -259,6 +259,7 @@ function formatHeaderRow(sheet, numCols) {
 function onOpen() {
   try {
     cleanLegacyUserColumns();
+    cleanLegacyTbmColumns();
     enforcePasswordHashingInSheet();
     enforceNumericUserIds();
   } catch (e) {}
@@ -268,6 +269,7 @@ function onOpen() {
     .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
     .addItem('🔄 MySQL 스키마 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🗑️ users 시트 교육 컬럼(L~O열) 삭제 (cleanLegacyUserColumns)', 'cleanLegacyUserColumns')
+    .addItem('🗑️ tbms 시트 불필요한 열(B, H, 23열 이후) 삭제 (cleanLegacyTbmColumns)', 'cleanLegacyTbmColumns')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
     .addItem('🔢 사용자 ID 번호(1, 2, 3...) 자동 정리 (enforceNumericUserIds)', 'enforceNumericUserIds')
     .addItem('🔒 비밀번호 전체 SHA-256 일괄 암호화 (enforcePasswordHashingInSheet)', 'enforcePasswordHashingInSheet')
@@ -389,6 +391,8 @@ function doPost(e) {
 
     if (sheetName === 'users') {
       try { cleanLegacyUserColumns(); } catch (e) {}
+    } else if (sheetName === 'tbms') {
+      try { cleanLegacyTbmColumns(); } catch (e) {}
     }
     
     // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
@@ -589,7 +593,9 @@ function doPost(e) {
             const updatedRow = headers.map((h, colIdx) => {
               // TBM 구분 컬럼은 무조건 '업무 전' / '업무 후' / '추가 TBM' 한글로 완벽 보장
               if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
-                if (normItemType === 'additional' || String(item.id || '').startsWith('tbm_add_')) return '추가 TBM';
+                if (normItemType === 'additional' || String(item.id || '').startsWith('tbm_add_') || String(item.tbm_type || item.tbmType || item['구분'] || '').includes('추가') || String(item.work_title || item.workTitle || '').includes('추가')) {
+                  return '추가 TBM';
+                }
                 return (normItemType === 'post' || String(item.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
               }
               const val = item[h];
@@ -1266,6 +1272,48 @@ function cleanLegacyUserColumns() {
 }
 
 /**
+ * 🗑️ tbms 시트에서 불필요한 열(B열: parent_tbm_id, H열: work_area 및 23열 이후 잉여 열 Y, Z, AA, AB 등) 자동 삭제
+ */
+function cleanLegacyTbmColumns() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('tbms');
+    if (!sheet || sheet.getLastRow() <= 0) return { success: false, message: 'tbms 시트가 비어있습니다.' };
+    const lastCol = sheet.getLastColumn();
+    if (lastCol <= 1) return { success: true, message: '정리할 컬럼이 없습니다.' };
+
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim().toLowerCase());
+    const legacyTargets = [
+      'parent_tbm_id', 'parenttbmid', 'parent_id', 'parentid', '원tbm_id',
+      'work_area', 'workarea', 'area', '작업구역', '작업장소',
+      'pre_check', 'precheck', 'post_check', 'postcheck', 'photo', 'photos'
+    ];
+
+    let deletedCols = [];
+    // 오른쪽에서 왼쪽(역순)으로 삭제하여 열 번호 인덱스 뒤틀림 방지
+    for (let c = headers.length - 1; c >= 0; c--) {
+      if (legacyTargets.includes(headers[c])) {
+        sheet.deleteColumn(c + 1);
+        deletedCols.push(headers[c]);
+      }
+    }
+
+    // SCHEMAS.tbms 정의(22개 컬럼) 이후 잉여 열(Y, Z, AA, AB 등) 일괄 삭제
+    const targetCols = SCHEMAS.tbms.length;
+    const maxCols = sheet.getMaxColumns();
+    if (maxCols > targetCols) {
+      try { sheet.deleteColumns(targetCols + 1, maxCols - targetCols); } catch (e) {}
+    }
+
+    SpreadsheetApp.flush();
+    return { success: true, deleted: deletedCols };
+  } catch (err) {
+    Logger.log('cleanLegacyTbmColumns error: ' + err.toString());
+    return { success: false, error: err.toString() };
+  }
+}
+
+/**
  * 👥 TBM 참석자를 구글 스프레드시트용 간결 포맷("이름 직급, 이름 직급")으로 변환
  * (사업부 TBM 특성상 팀/전화번호 등 불필요한 부가정보 제외)
  */
@@ -1320,9 +1368,9 @@ function formatAbsenteesForSheet(rawAbs) {
   }).filter(Boolean).join(', ');
 }
 
-// TBM 점검 항목 한글 매핑 맵
+// TBM 점검 항목 한글 매핑 맵 (실제 사용자가 체크 가능한 19개 표준 점검 항목)
 var TBM_CHECKLIST_LABELS = {
-  // 작업 전 안전 점검 항목
+  // 작업 전 안전 점검 항목 (7개)
   teamSafetySlogan: '팀 안전구호',
   prePpeCheck: '작업전 보호구 확인',
   businessTripSafety: '출장자 안전수칙',
@@ -1331,13 +1379,13 @@ var TBM_CHECKLIST_LABELS = {
   emergencyResponseCheck: '비상대응 절차 확인',
   safetyDocTraining: '안전문서 교육',
 
-  // 4대 사후 안전·보안 점검 항목
+  // 4대 사후 안전·보안 점검 항목 (4개)
   cleanupCheck: '현장 정리정돈',
   toolRecoveryCheck: '공구·자재 회수',
   securityMediaCheck: '보안매체·문서 점검',
   powerSafetyCheck: '잔류 전원·화기 확인',
 
-  // 작업 후 안전 점검 항목
+  // 작업 후 안전 점검 항목 (8개)
   sitePatrolCheck: '현장 순회 점검',
   stopWorkAuthority: '작업 중지권 시행',
   nearMissDiscovery: '아차사고 및 잠재위험 발굴',
@@ -1348,19 +1396,48 @@ var TBM_CHECKLIST_LABELS = {
   safetyEducation: '교육'
 };
 
+// 한글 라벨 -> 점검 항목 키 역매핑 맵
+var LABEL_TO_CHECKLIST_KEY = {
+  '팀 안전구호': 'teamSafetySlogan',
+  '작업전 보호구 확인': 'prePpeCheck',
+  '출장자 안전수칙': 'businessTripSafety',
+  '위험예지 훈련': 'hazardPredictionTraining',
+  '위험점 확인': 'dangerPointCheck',
+  '비상대응 절차 확인': 'emergencyResponseCheck',
+  '안전문서 교육': 'safetyDocTraining',
+
+  '현장 정리정돈': 'cleanupCheck',
+  '공구·자재 회수': 'toolRecoveryCheck',
+  '보안매체·문서 점검': 'securityMediaCheck',
+  '잔류 전원·화기 확인': 'powerSafetyCheck',
+
+  '현장 순회 점검': 'sitePatrolCheck',
+  '작업 중지권 시행': 'stopWorkAuthority',
+  '아차사고 및 잠재위험 발굴': 'nearMissDiscovery',
+  '5S3정 및 청소상태': 'fiveSThreeRCheck',
+  '작업자 인터뷰': 'workerInterview',
+  '현장 개선 활동': 'siteImprovementActivity',
+  '비상대피훈련': 'emergencyEvacuationDrill',
+  '교육': 'safetyEducation'
+};
+
+// 점검 항목 유효 라벨 변환기 (체크박스에 없는 임의의 문구는 안전하게 걸러냄)
+function getChecklistLabel(val) {
+  if (!val) return '';
+  var s = String(val).trim();
+  if (TBM_CHECKLIST_LABELS[s]) return TBM_CHECKLIST_LABELS[s];
+  if (LABEL_TO_CHECKLIST_KEY[s]) return s;
+  return '';
+}
+
 /**
  * 📋 TBM 점검 체크리스트를 구글 스프레드시트용 텍스트("항목1, 항목2, ...")로 통합 변환
- * (note/전달사항은 work_content 컬럼에 별도 기록되므로 체크리스트에서는 제외)
+ * (사용자가 실제로 체크한 점검 항목만 정확하게 기록하며, 임의 문구나 전달사항/note는 제외)
  */
 function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
   var items = [];
 
-  // 추가 TBM 서약 항목 처리
-  if (isAdditional) {
-    items.push('안전수칙 숙지 및 개인보호구(PPE) 점검 확인');
-  }
-
-  // 1. 작업 전 점검 항목
+  // 1. 작업 전 점검 항목 (업무 전 TBM, 추가 TBM, 또는 전/후 통합 TBM)
   if (preChk) {
     if (typeof preChk === 'string') {
       try { preChk = JSON.parse(preChk); } catch (e) { preChk = {}; }
@@ -1368,13 +1445,12 @@ function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
     if (preChk && typeof preChk === 'object') {
       if (Array.isArray(preChk.selectedItems)) {
         preChk.selectedItems.forEach(function(item) {
-          if (!item) return;
-          var label = TBM_CHECKLIST_LABELS[item] || String(item).trim();
+          var label = getChecklistLabel(item);
           if (label && items.indexOf(label) === -1) items.push(label);
         });
       }
       Object.keys(TBM_CHECKLIST_LABELS).forEach(function(k) {
-        if (preChk[k] === true) {
+        if (preChk[k] === true || preChk[k] === 1 || preChk[k] === 'true') {
           var label = TBM_CHECKLIST_LABELS[k];
           if (label && items.indexOf(label) === -1) items.push(label);
         }
@@ -1382,37 +1458,41 @@ function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
     }
   }
 
-  // 2. 작업 후 점검 항목
-  if (postChk) {
+  // 2. 작업 후 점검 항목 (업무 후 TBM 또는 사후 점검이 완료된 경우에만 체크된 항목 추가)
+  // (※ 추가 TBM은 업무 전 사전 점검이므로 사후 점검 항목을 추가하지 않음)
+  if (postChk && !isAdditional) {
     if (typeof postChk === 'string') {
       try { postChk = JSON.parse(postChk); } catch (e) { postChk = {}; }
     }
     if (postChk && typeof postChk === 'object') {
-      // 4대 사후 안전·보안 점검
-      if (postChk.cleanupCheck === true || (isPost && postChk.cleanupCheck !== false && postChk.cleanupCheck !== undefined)) {
-        if (items.indexOf('현장 정리정돈') === -1) items.push('현장 정리정돈');
-      }
-      if (postChk.toolRecoveryCheck === true || (isPost && postChk.toolRecoveryCheck !== false && postChk.toolRecoveryCheck !== undefined)) {
-        if (items.indexOf('공구·자재 회수') === -1) items.push('공구·자재 회수');
-      }
-      if (postChk.securityMediaCheck === true || (isPost && postChk.securityMediaCheck !== false && postChk.securityMediaCheck !== undefined)) {
-        if (items.indexOf('보안매체·문서 점검') === -1) items.push('보안매체·문서 점검');
-      }
-      if (postChk.powerSafetyCheck === true || (isPost && postChk.powerSafetyCheck !== false && postChk.powerSafetyCheck !== undefined)) {
-        if (items.indexOf('잔류 전원·화기 확인') === -1) items.push('잔류 전원·화기 확인');
-      }
+      var isPostCompleted = Boolean(isPost || postChk.isCompleted);
+      if (isPostCompleted) {
+        // 4대 사후 안전·보안 점검 (실제 체크된 경우에만)
+        if (postChk.cleanupCheck === true || postChk.cleanupCheck === 1 || postChk.cleanupCheck === 'true') {
+          if (items.indexOf('현장 정리정돈') === -1) items.push('현장 정리정돈');
+        }
+        if (postChk.toolRecoveryCheck === true || postChk.toolRecoveryCheck === 1 || postChk.toolRecoveryCheck === 'true') {
+          if (items.indexOf('공구·자재 회수') === -1) items.push('공구·자재 회수');
+        }
+        if (postChk.securityMediaCheck === true || postChk.securityMediaCheck === 1 || postChk.securityMediaCheck === 'true') {
+          if (items.indexOf('보안매체·문서 점검') === -1) items.push('보안매체·문서 점검');
+        }
+        if (postChk.powerSafetyCheck === true || postChk.powerSafetyCheck === 1 || postChk.powerSafetyCheck === 'true') {
+          if (items.indexOf('잔류 전원·화기 확인') === -1) items.push('잔류 전원·화기 확인');
+        }
 
-      if (Array.isArray(postChk.selectedItems)) {
-        postChk.selectedItems.forEach(function(item) {
-          if (!item) return;
-          var label = TBM_CHECKLIST_LABELS[item] || String(item).trim();
-          if (label && items.indexOf(label) === -1) items.push(label);
+        if (Array.isArray(postChk.selectedItems)) {
+          postChk.selectedItems.forEach(function(item) {
+            var label = getChecklistLabel(item);
+            if (label && items.indexOf(label) === -1) items.push(label);
+          });
+        }
+        Object.keys(TBM_CHECKLIST_LABELS).forEach(function(k) {
+          if (postChk[k] === true || postChk[k] === 1 || postChk[k] === 'true') {
+            var label = TBM_CHECKLIST_LABELS[k];
+            if (label && items.indexOf(label) === -1) items.push(label);
+          }
         });
-      }
-
-      // 작업 결과 현황 (특이사항 발생 시에만 추가)
-      if (postChk.workOutcome && postChk.workOutcome !== '계획 이행 완료') {
-        if (items.indexOf(postChk.workOutcome) === -1) items.push(postChk.workOutcome);
       }
     }
   }
@@ -1828,9 +1908,16 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const toolsUsedVal = String(obj.toolsUsed || obj.tools_used || '').trim();
     const rawType = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
     let isPost = false;
-    let isAdditional = false;
-    if (String(idVal).startsWith('tbm_add_') || rawType.indexOf('추가') !== -1 || rawType === 'additional') {
-      isAdditional = true;
+    let isAdditional = Boolean(
+      String(idVal).startsWith('tbm_add_') ||
+      rawType.indexOf('추가') !== -1 ||
+      rawType === 'additional' ||
+      String(obj.work_title || obj.workTitle || '').includes('추가') ||
+      (obj.parent_tbm_id && String(obj.parent_tbm_id).trim() !== '') ||
+      (obj.parentTbmId && String(obj.parentTbmId).trim() !== '')
+    );
+    if (isAdditional) {
+      isPost = false;
     } else if (String(idVal).startsWith('tbm_post_')) {
       isPost = true;
     } else if (String(idVal).startsWith('tbm_pre_')) {
@@ -1867,10 +1954,18 @@ function normalizeObjectForSheet(sheetName, rawObj) {
 
     let checkListStr = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
     if (!checkListStr && (obj.check_list || obj.checkList || obj.checklist || obj['Check List'])) {
-      checkListStr = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List']).trim();
+      const rawText = String(obj.check_list || obj.checkList || obj.checklist || obj['Check List']).trim();
+      const tokens = rawText.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
+      const validLabels = [];
+      tokens.forEach(function(tok) {
+        const lbl = getChecklistLabel(tok);
+        if (lbl && validLabels.indexOf(lbl) === -1) validLabels.push(lbl);
+      });
+      checkListStr = validLabels.join(', ');
     }
 
     const photoUrlsStr = allDriveUrls.join('\n');
+    const statusVal = String(obj.status || (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED')).trim() || 'PRE_COMPLETED';
 
     return {
       // 1. 식별자 및 일자
@@ -2177,9 +2272,10 @@ function readSheetData(sheetName) {
         if (!obj.status && obj.postCheck && obj.postCheck.isCompleted) obj.status = 'ALL_COMPLETED';
         if (!obj.status) obj.status = 'PRE_COMPLETED';
         const rawTypeStr = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
-        const isPostType = rawTypeStr.indexOf('후') !== -1 || rawTypeStr === 'post' || String(obj.id || '').startsWith('tbm_post_') || (obj.postCheck && obj.postCheck.isCompleted);
-        obj.tbm_type = isPostType ? '업무 후' : '업무 전';
-        obj.tbmType = isPostType ? 'post' : 'pre';
+        const isAddType = rawTypeStr.indexOf('추가') !== -1 || rawTypeStr === 'additional' || String(obj.id || '').startsWith('tbm_add_') || String(obj.work_title || obj.workTitle || '').includes('추가');
+        const isPostType = !isAddType && (rawTypeStr.indexOf('후') !== -1 || rawTypeStr === 'post' || String(obj.id || '').startsWith('tbm_post_') || (obj.postCheck && obj.postCheck.isCompleted));
+        obj.tbm_type = isAddType ? '추가 TBM' : (isPostType ? '업무 후' : '업무 전');
+        obj.tbmType = isAddType ? 'additional' : (isPostType ? 'post' : 'pre');
         obj['구분'] = obj.tbm_type;
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
@@ -2470,7 +2566,10 @@ function appendObjectRow(sheet, headers, rawObj) {
   }
   const row = headers.map(h => {
     if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
-      const rawT = String(obj[h] || '').trim().toLowerCase();
+      const rawT = String(obj[h] || obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
+      if (rawT.indexOf('추가') !== -1 || rawT === 'additional' || String(obj.id || '').startsWith('tbm_add_') || String(obj.work_title || obj.workTitle || '').includes('추가')) {
+        return '추가 TBM';
+      }
       return (rawT.indexOf('후') !== -1 || rawT === 'post' || String(obj.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
     }
     const v = obj[h];
