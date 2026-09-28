@@ -1778,19 +1778,21 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
       {/* Top Main Banner */}
       <div className="glass-panel" style={{
-        padding: '14px 18px',
+        padding: isMobile ? '12px 14px' : '14px 18px',
         borderRadius: '6px',
         background: '#ffffff',
         border: '1.5px solid #cbd5e1',
         boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
         display: 'flex',
-        alignItems: 'center',
-        gap: '10px'
+        flexDirection: isMobile ? 'column' : 'row',
+        alignItems: isMobile ? 'stretch' : 'center',
+        justifyContent: 'space-between',
+        gap: isMobile ? '12px' : '10px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '40px',
-            height: '40px',
+            width: isMobile ? '36px' : '40px',
+            height: isMobile ? '36px' : '40px',
             borderRadius: '6px',
             background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
             border: '1.5px solid #1e3a8a',
@@ -1801,73 +1803,72 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
             flexShrink: 0
           }}>
-            <FileSpreadsheet size={22} />
+            <FileSpreadsheet size={isMobile ? 20 : 22} />
           </div>
           <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
             업무 정리 보고서
           </div>
         </div>
+
+        {/* 모바일 / 앱 전용 일일업무 & 주간업무 전환 버튼 (TBM 스타일, 헤더 카드 내부) */}
+        {isMobile && (
+          <div style={{
+            display: 'flex',
+            gap: '6px',
+            width: '100%'
+          }}>
+            <button
+              type="button"
+              onClick={() => setMobileReportTab('DAILY')}
+              style={{
+                flex: 1,
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: mobileReportTab === 'DAILY' ? '800' : '600',
+                background: mobileReportTab === 'DAILY' ? '#1e3a8a' : '#f8fafc',
+                color: mobileReportTab === 'DAILY' ? '#ffffff' : '#475569',
+                border: mobileReportTab === 'DAILY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+                boxShadow: mobileReportTab === 'DAILY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
+              }}
+            >
+              <CalendarDays size={15} color={mobileReportTab === 'DAILY' ? '#ffffff' : '#64748b'} />
+              <span>일일업무</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileReportTab('WEEKLY')}
+              style={{
+                flex: 1,
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '13px',
+                fontWeight: mobileReportTab === 'WEEKLY' ? '800' : '600',
+                background: mobileReportTab === 'WEEKLY' ? '#1e3a8a' : '#f8fafc',
+                color: mobileReportTab === 'WEEKLY' ? '#ffffff' : '#475569',
+                border: mobileReportTab === 'WEEKLY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                transition: 'all 0.15s ease',
+                boxShadow: mobileReportTab === 'WEEKLY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
+              }}
+            >
+              <FileSpreadsheet size={15} color={mobileReportTab === 'WEEKLY' ? '#ffffff' : '#64748b'} />
+              <span>주간업무</span>
+            </button>
+          </div>
+        )}
       </div>
-
-      {/* 모바일 / 앱 전용 일일업무 & 주간업무 전환 버튼 (TBM 스타일) */}
-      {isMobile && (
-        <div style={{
-          display: 'flex',
-          gap: '6px',
-          width: '100%',
-          padding: '2px 0'
-        }}>
-          <button
-            type="button"
-            onClick={() => setMobileReportTab('DAILY')}
-            style={{
-              flex: 1,
-              padding: '9px 12px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: mobileReportTab === 'DAILY' ? '800' : '600',
-              background: mobileReportTab === 'DAILY' ? '#1e3a8a' : '#ffffff',
-              color: mobileReportTab === 'DAILY' ? '#ffffff' : '#475569',
-              border: mobileReportTab === 'DAILY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              boxShadow: mobileReportTab === 'DAILY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
-            }}
-          >
-            <CalendarDays size={15} color={mobileReportTab === 'DAILY' ? '#ffffff' : '#64748b'} />
-            <span>일일업무</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setMobileReportTab('WEEKLY')}
-            style={{
-              flex: 1,
-              padding: '9px 12px',
-              borderRadius: '6px',
-              fontSize: '13px',
-              fontWeight: mobileReportTab === 'WEEKLY' ? '800' : '600',
-              background: mobileReportTab === 'WEEKLY' ? '#1e3a8a' : '#ffffff',
-              color: mobileReportTab === 'WEEKLY' ? '#ffffff' : '#475569',
-              border: mobileReportTab === 'WEEKLY' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              transition: 'all 0.15s ease',
-              boxShadow: mobileReportTab === 'WEEKLY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
-            }}
-          >
-            <FileSpreadsheet size={15} color={mobileReportTab === 'WEEKLY' ? '#ffffff' : '#64748b'} />
-            <span>주간업무</span>
-          </button>
-        </div>
-      )}
 
       {/* Vertical Stack Layout (Top: Daily Report, Bottom: Weekly Report) */}
       <div style={{
@@ -2191,9 +2192,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </button>
                 </div>
 
-                {/* Action Buttons: Share & Sync */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isNative && (
+                {/* Action Buttons: Share */}
+                {isNative && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button
                       type="button"
                       onClick={() => handleShareText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
@@ -2216,32 +2217,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     >
                       <Share2 size={13} />
                     </button>
-                  )}
-                  {/* 구글 스프레드시트 최신 데이터 실시간 동기화 버튼 */}
-                  <button
-                    type="button"
-                    onClick={handleManualSync}
-                    disabled={isSyncing}
-                    style={{
-                      background: isSyncing ? '#eff6ff' : '#ffffff',
-                      border: '1.5px solid #cbd5e1',
-                      color: isSyncing ? '#1e3a8a' : '#475569',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: isSyncing ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 1px 3px rgba(15, 23, 42, 0.08)'
-                    }}
-                    title="구글 스프레드시트 최신 데이터 실시간 동기화"
-                  >
-                    <RefreshCw size={13} style={{ animation: isSyncing ? 'spin 0.8s linear infinite' : 'none' }} />
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

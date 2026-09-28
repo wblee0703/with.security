@@ -239,7 +239,8 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
 
       let internalSubCat = '';
       if (internalLogs.length > 0) {
-        internalSubCat = (internalLogs[0].subCategory || internalLogs[0].sub_category || '일반업무').trim();
+        const rawSub = (internalLogs[0].subCategory || internalLogs[0].sub_category || '일반').trim();
+        internalSubCat = rawSub === '일반업무' ? '일반' : (rawSub === '고객대응' ? '고객' : rawSub);
       }
 
       // 출장 업무 배지 텍스트: 1건이면 업무구분 표기, 2건 이상이면 업무구분 빼고 '외 N건'
@@ -257,7 +258,7 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       // 사내 업무 배지 텍스트: 1건이면 업무구분 표기, 2건 이상이면 업무구분 빼고 '외 N건'
       let internalBadgeText = '';
       if (internalLogs.length > 0) {
-        const sub = internalSubCat || '일반업무';
+        const sub = internalSubCat || '일반';
         if (internalLogs.length === 1) {
           internalBadgeText = `사내 [${sub}]`;
         } else {
@@ -304,7 +305,8 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       let internalText = '';
       if (internalLogs.length > 0) {
         const firstInternal = internalLogs[0];
-        const sub = (firstInternal.subCategory || firstInternal.sub_category || '일반업무').trim();
+        const rawSub = (firstInternal.subCategory || firstInternal.sub_category || '일반').trim();
+        const sub = rawSub === '일반업무' ? '일반' : (rawSub === '고객대응' ? '고객' : rawSub);
         const internalTitle = (firstInternal.workTitle || firstInternal.title || '').trim();
         const detail = internalTitle && internalTitle !== sub ? ` - ${internalTitle}` : '';
         if (internalLogs.length > 1) {
@@ -349,7 +351,8 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         line1 = internalText;
         if (internalLogs.length >= 2) {
           const secondInternal = internalLogs[1];
-          const sub2 = (secondInternal.subCategory || secondInternal.sub_category || '일반업무').trim();
+          const rawSub2 = (secondInternal.subCategory || secondInternal.sub_category || '일반').trim();
+          const sub2 = rawSub2 === '일반업무' ? '일반' : (rawSub2 === '고객대응' ? '고객' : rawSub2);
           const title2 = (secondInternal.workTitle || secondInternal.title || '').trim();
           const detail2 = title2 && title2 !== sub2 ? ` - ${title2}` : '';
           line2 = `🏢 [사내] ${sub2}${detail2}`;
@@ -376,7 +379,7 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         internalText,
         title,
         site,
-        subCategory: hasBusinessTrip ? (tripSubCat || '작업') : (internalSubCat || '일반업무'),
+        subCategory: hasBusinessTrip ? (tripSubCat || '작업') : (internalSubCat || '일반'),
         status,
         category,
         cellWorkText,

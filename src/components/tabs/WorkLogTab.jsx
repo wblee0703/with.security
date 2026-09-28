@@ -122,11 +122,11 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   // Inline editing state for editing task directly inside list card
   const [inlineEditingId, setInlineEditingId] = useState(null);
-  const [inlineForm, setInlineForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
+  const [inlineForm, setInlineForm] = useState({ title: '', details: '', subCategory: '일반', dueDate: '', date: '' });
 
   // Inline adding state for adding new task directly inside list card without modal
   const [inlineAddingCardKey, setInlineAddingCardKey] = useState(null);
-  const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+  const [inlineNewForm, setInlineNewForm] = useState({ title: '', details: '', subCategory: '일반', dueDate: '' });
 
   // Refs to protect active editing/typing forms from background sync reloads
   const isModalOpenRef = useRef(false);
@@ -206,7 +206,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setInlineForm({
       title: item.title || '',
       details: item.details || item.tasksDone || item.tasks_done || '',
-      subCategory: item.subCategory || item.sub_category || ((item.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
+      subCategory: item.subCategory === '일반업무' ? '일반' : (item.subCategory === '고객대응' ? '고객' : (item.subCategory || item.sub_category || ((item.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
       dueDate: item.dueDate || item.due_date || '',
       date: normalizeKstDate(item.date || item.log_date) || selectedDate || getTodayIsoDate()
     });
@@ -214,7 +214,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleCancelInlineEdit = () => {
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반', dueDate: '', date: '' });
   };
 
   const handleSaveInlineEdit = async (item) => {
@@ -237,17 +237,17 @@ export default function WorkLogTab({ onTriggerToast }) {
       details: inlineForm.details.trim(),
       tasks_done: inlineForm.details.trim(),
       tasksDone: inlineForm.details.trim(),
-      subCategory: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
-      sub_category: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반업무'),
-      dueDate: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
-      due_date: (item.category !== '출장 업무' && ['일반업무', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
+      subCategory: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반'),
+      sub_category: item.category === '출장 업무' ? (inlineForm.subCategory || '작업') : (inlineForm.subCategory || '일반'),
+      dueDate: (item.category !== '출장 업무' && ['일반', '일반업무', '고객', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
+      due_date: (item.category !== '출장 업무' && ['일반', '일반업무', '고객', '고객대응'].includes(inlineForm.subCategory)) ? (inlineForm.dueDate || '') : '',
       updatedAt: new Date().toISOString()
     };
 
     const updatedLogs = await dbService.saveWorkLog(updatedLogItem, { syncImmediate: true });
     setWorkLogs(updatedLogs);
     setInlineEditingId(null);
-    setInlineForm({ title: '', details: '', subCategory: '일반업무', dueDate: '', date: '' });
+    setInlineForm({ title: '', details: '', subCategory: '일반', dueDate: '', date: '' });
 
     if (origDate && newDate && origDate !== newDate) {
       setSelectedDate(newDate);
@@ -268,14 +268,14 @@ export default function WorkLogTab({ onTriggerToast }) {
     setInlineNewForm({
       title: '',
       details: '',
-      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
+      subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
       dueDate: logItem.dueDate || logItem.due_date || ''
     });
   };
 
   const handleCancelInlineAdd = () => {
     setInlineAddingCardKey(null);
-    setInlineNewForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+    setInlineNewForm({ title: '', details: '', subCategory: '일반', dueDate: '' });
   };
 
   const handleSaveInlineAdd = async (primaryLog) => {
@@ -287,8 +287,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     const now = new Date();
     const timeStr = `${primaryLog.date || getTodayIsoDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const isInternal = (primaryLog.category || '사내 업무') !== '출장 업무';
-    const subCat = isInternal ? (inlineNewForm.subCategory || '일반업무') : (inlineNewForm.subCategory || '작업');
-    const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (inlineNewForm.dueDate || '') : '';
+    const subCat = isInternal ? (inlineNewForm.subCategory || '일반') : (inlineNewForm.subCategory || '작업');
+    const dDate = (isInternal && ['일반', '일반업무', '고객', '고객대응'].includes(subCat)) ? (inlineNewForm.dueDate || '') : '';
 
     const newLogItem = {
       id: `LOG-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
@@ -319,7 +319,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
     }
     setInlineAddingCardKey(null);
-    setInlineNewForm({ title: '', details: '', subCategory: '일반업무', dueDate: '' });
+    setInlineNewForm({ title: '', details: '', subCategory: '일반', dueDate: '' });
 
     if (onTriggerToast) {
       onTriggerToast(`'${newLogItem.title}' 업무가 추가되었습니다.`, 'success');
@@ -866,7 +866,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const [form, setForm] = useState({
     category: '사내 업무',
-    subCategory: '일반업무',
+    subCategory: '일반',
     dueDate: '',
     date: getTodayIsoDate(),
     title: '',
@@ -1017,7 +1017,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: '사내 업무',
-      subCategory: '일반업무',
+      subCategory: '일반',
       dueDate: '',
       date: selectedDate || getTodayIsoDate(),
       title: '',
@@ -1032,7 +1032,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(null);
     setForm({
       category: logItem.category || '사내 업무',
-      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
+      subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
       dueDate: logItem.dueDate || logItem.due_date || '',
       date: logItem.date || getTodayIsoDate(),
       title: '',
@@ -1048,7 +1048,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setEditingLogId(editId);
     setForm({
       category: logItem.category || '사내 업무',
-      subCategory: logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반업무'),
+      subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
       dueDate: logItem.dueDate || logItem.due_date || '',
       date: normalizeKstDate(logItem.date || logItem.log_date) || getTodayIsoDate(),
       title: logItem.title || '',
@@ -1081,8 +1081,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       const authorRole = currentUser?.role || '일반';
 
       const isInternal = form.category !== '출장 업무';
-      const curSubCat = isInternal ? (form.subCategory || '일반업무') : (form.subCategory || '작업');
-      const curDueDate = (isInternal && ['일반업무', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
+      const curSubCat = isInternal ? (form.subCategory || '일반') : (form.subCategory || '작업');
+      const curDueDate = (isInternal && ['일반', '일반업무', '고객', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
 
       const existingLog = editingLogId
         ? (Array.isArray(workLogs) ? workLogs : []).find(l => {
@@ -1132,8 +1132,8 @@ export default function WorkLogTab({ onTriggerToast }) {
         for (let i = 0; i < extraTasks.length; i++) {
           const ext = extraTasks[i];
           if (ext && ext.title && ext.title.trim()) {
-            const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반업무') : (ext.subCategory || curSubCat || '작업');
-            const extDueDate = (isInternal && ['일반업무', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
+            const extSubCat = isInternal ? (ext.subCategory || curSubCat || '일반') : (ext.subCategory || curSubCat || '작업');
+            const extDueDate = (isInternal && ['일반', '일반업무', '고객', '고객대응'].includes(extSubCat)) ? (ext.dueDate || '') : '';
             const extraLogItem = {
               id: `LOG-${Date.now() + i + 1}-${Math.floor(100 + Math.random() * 900)}`,
               category: form.category,
@@ -1943,9 +1943,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                           const aRank = log.authorRank || log.rank || '';
                           const aTeam = log.authorTeam || log.team || log.department || '';
                           const subCat = isInternal
-                            ? (log.subCategory || log.sub_category || '일반업무')
+                            ? (log.subCategory === '일반업무' ? '일반' : (log.subCategory === '고객대응' ? '고객' : (log.subCategory || log.sub_category || '일반')))
                             : (log.subCategory || log.sub_category || '작업');
-                          const dDate = (isInternal && ['일반업무', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
+                          const dDate = (isInternal && ['일반', '일반업무', '고객', '고객대응'].includes(subCat)) ? (log.dueDate || log.due_date || '') : '';
 
                           const key = isShared
                             ? `SHARED___${log.category}___${sName}___${subCat}___${aName}_${aRank}_${aTeam}`
@@ -1994,9 +1994,9 @@ export default function WorkLogTab({ onTriggerToast }) {
                               const oB = tripOrder[b.subCategory] || 9;
                               if (oA !== oB) return oA - oB;
                             }
-                            // 사내 업무는 구분 순서(일반업무, 고객대응, 미팅, 교육)로 정렬
+                            // 사내 업무는 구분 순서(일반, 고객, 미팅, 교육, 기타)로 정렬
                             if (!isATrip && !isBTrip && a.subCategory !== b.subCategory) {
-                              const order = { '일반업무': 1, '고객대응': 2, '미팅': 3, '교육': 4 };
+                              const order = { '일반': 1, '일반업무': 1, '고객': 2, '고객대응': 2, '미팅': 3, '교육': 4, '기타': 5 };
                               const oA = order[a.subCategory] || 9;
                               const oB = order[b.subCategory] || 9;
                               if (oA !== oB) return oA - oB;
@@ -2138,28 +2138,31 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         fontSize: '11px',
                                         fontWeight: '800',
                                         background: (() => {
-                                          if (group.subCategory === '고객대응') return '#ecfdf5';
+                                          if (group.subCategory === '고객' || group.subCategory === '고객대응') return '#ecfdf5';
                                           if (group.subCategory === '미팅') return '#f5f3ff';
                                           if (group.subCategory === '교육') return '#fffbeb';
-                                          return '#eff6ff';
+                                          if (group.subCategory === '기타') return '#f1f5f9';
+                                          return '#eff6ff'; // 일반 / 일반업무
                                         })(),
                                         color: (() => {
-                                          if (group.subCategory === '고객대응') return '#059669';
+                                          if (group.subCategory === '고객' || group.subCategory === '고객대응') return '#059669';
                                           if (group.subCategory === '미팅') return '#7c3aed';
                                           if (group.subCategory === '교육') return '#d97706';
-                                          return '#1e3a8a';
+                                          if (group.subCategory === '기타') return '#475569';
+                                          return '#1e3a8a'; // 일반 / 일반업무
                                         })(),
                                         border: (() => {
-                                          if (group.subCategory === '고객대응') return '1.5px solid #a7f3d0';
+                                          if (group.subCategory === '고객' || group.subCategory === '고객대응') return '1.5px solid #a7f3d0';
                                           if (group.subCategory === '미팅') return '1.5px solid #ddd6fe';
                                           if (group.subCategory === '교육') return '1.5px solid #fde68a';
-                                          return '1.5px solid #bfdbfe';
+                                          if (group.subCategory === '기타') return '1.5px solid #cbd5e1';
+                                          return '1.5px solid #bfdbfe'; // 일반 / 일반업무
                                         })(),
                                         display: 'inline-flex',
                                         alignItems: 'center',
                                         gap: '4px'
                                       }}>
-                                        {group.subCategory}
+                                        {group.subCategory === '일반업무' ? '일반' : (group.subCategory === '고객대응' ? '고객' : group.subCategory)}
                                       </span>
                                     )}
 
@@ -2373,13 +2376,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>구분:</span>
                                                     <select
-                                                      value={inlineForm.subCategory || '일반업무'}
+                                                      value={inlineForm.subCategory === '일반업무' ? '일반' : (inlineForm.subCategory === '고객대응' ? '고객' : (inlineForm.subCategory || '일반'))}
                                                       onChange={(e) => {
                                                         const val = e.target.value;
                                                         setInlineForm({
                                                           ...inlineForm,
                                                           subCategory: val,
-                                                          dueDate: ['일반업무', '고객대응'].includes(val) ? inlineForm.dueDate : ''
+                                                          dueDate: ['일반', '일반업무', '고객', '고객대응'].includes(val) ? inlineForm.dueDate : ''
                                                         });
                                                       }}
                                                       style={{
@@ -2393,14 +2396,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                         outline: 'none'
                                                       }}
                                                     >
-                                                      <option value="일반업무">일반업무</option>
-                                                      <option value="고객대응">고객대응</option>
+                                                      <option value="일반">일반</option>
+                                                      <option value="고객">고객</option>
                                                       <option value="미팅">미팅</option>
                                                       <option value="교육">교육</option>
+                                                      <option value="기타">기타</option>
                                                     </select>
                                                   </div>
 
-                                                  {['일반업무', '고객대응'].includes(inlineForm.subCategory || '일반업무') && (
+                                                  {['일반', '일반업무', '고객', '고객대응'].includes(inlineForm.subCategory || '일반') && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                       <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#e11d48', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                                                         <Clock size={11} /> 납기:
@@ -2719,13 +2723,13 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                             <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#1e3a8a' }}>구분:</span>
                                             <select
-                                              value={inlineNewForm.subCategory || '일반업무'}
+                                              value={inlineNewForm.subCategory === '일반업무' ? '일반' : (inlineNewForm.subCategory === '고객대응' ? '고객' : (inlineNewForm.subCategory || '일반'))}
                                               onChange={(e) => {
                                                 const val = e.target.value;
                                                 setInlineNewForm({
                                                   ...inlineNewForm,
                                                   subCategory: val,
-                                                  dueDate: ['일반업무', '고객대응'].includes(val) ? inlineNewForm.dueDate : ''
+                                                  dueDate: ['일반', '일반업무', '고객', '고객대응'].includes(val) ? inlineNewForm.dueDate : ''
                                                 });
                                               }}
                                               style={{
@@ -2739,14 +2743,15 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                 outline: 'none'
                                               }}
                                             >
-                                              <option value="일반업무">일반업무</option>
-                                              <option value="고객대응">고객대응</option>
+                                              <option value="일반">일반</option>
+                                              <option value="고객">고객</option>
                                               <option value="미팅">미팅</option>
                                               <option value="교육">교육</option>
+                                              <option value="기타">기타</option>
                                             </select>
                                           </div>
 
-                                          {['일반업무', '고객대응'].includes(inlineNewForm.subCategory || '일반업무') && (
+                                          {['일반', '일반업무', '고객', '고객대응'].includes(inlineNewForm.subCategory || '일반') && (
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                               <span style={{ fontSize: '11.5px', fontWeight: '800', color: '#e11d48', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                                                 <Clock size={11} /> 납기:
@@ -2961,7 +2966,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                         ...form,
                         category: newCat,
                         subCategory: newCat === '사내 업무'
-                          ? (['일반업무', '고객대응', '미팅', '교육'].includes(form.subCategory) ? form.subCategory : '일반업무')
+                          ? (['일반', '일반업무', '고객', '고객대응', '미팅', '교육', '기타'].includes(form.subCategory) ? (form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : form.subCategory)) : '일반')
                           : (['작업', '미팅', '점검', '납품'].includes(form.subCategory) ? form.subCategory : '작업'),
                         dueDate: newCat === '사내 업무' ? form.dueDate : ''
                       });
@@ -3007,94 +3012,80 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* SubCategory Selection & Optional Due Date for 사내 업무 */}
               {form.category === '사내 업무' && (
-                <div style={{
-                  background: '#f8fafc',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '6px',
-                  padding: '12px 14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px'
-                }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: ['일반업무', '고객대응'].includes(form.subCategory || '일반업무') ? '1fr 1fr' : '1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#1e3a8a', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                        🏢 사내 업무 구분 *
-                      </label>
-                      <select
-                        value={form.subCategory || '일반업무'}
-                        onChange={(e) => setForm({
-                          ...form,
-                          subCategory: e.target.value,
-                          dueDate: ['일반업무', '고객대응'].includes(e.target.value) ? form.dueDate : ''
-                        })}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          borderRadius: '4px',
-                          background: '#ffffff',
-                          border: '1.5px solid #93c5fd',
-                          color: '#0f172a',
-                          fontSize: '13px',
-                          fontWeight: '700',
-                          outline: 'none',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <option value="일반업무">일반업무</option>
-                        <option value="고객대응">고객대응</option>
-                        <option value="미팅">미팅</option>
-                        <option value="교육">교육</option>
-                      </select>
-                    </div>
-
-                    {/* Due Date (납기) - Only for 일반업무 and 고객대응, Optional */}
-                    {['일반업무', '고객대응'].includes(form.subCategory || '일반업무') && (
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                          ⏰ 납기 (선택 입력)
-                        </label>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <input
-                            type="date"
-                            value={form.dueDate || ''}
-                            onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                            style={{
-                              flex: 1,
-                              padding: '10px 12px',
-                              borderRadius: '4px',
-                              background: '#ffffff',
-                              border: '1.5px solid #cbd5e1',
-                              color: '#0f172a',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                          />
-                          {form.dueDate && (
-                            <button
-                              type="button"
-                              onClick={() => setForm({ ...form, dueDate: '' })}
-                              style={{
-                                padding: '0 8px',
-                                background: '#ffffff',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '4px',
-                                color: '#64748b',
-                                fontSize: '11px',
-                                cursor: 'pointer'
-                              }}
-                              title="납기 삭제"
-                            >
-                              초기화
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                <div style={{ display: 'grid', gridTemplateColumns: ['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#1e3a8a', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                      🏢 사내 업무 구분 *
+                    </label>
+                    <select
+                      value={form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : (form.subCategory || '일반'))}
+                      onChange={(e) => setForm({
+                        ...form,
+                        subCategory: e.target.value,
+                        dueDate: ['일반', '일반업무', '고객', '고객대응'].includes(e.target.value) ? form.dueDate : ''
+                      })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '13px',
+                        fontWeight: '700',
+                        outline: 'none',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="일반">일반</option>
+                      <option value="고객">고객</option>
+                      <option value="미팅">미팅</option>
+                      <option value="교육">교육</option>
+                      <option value="기타">기타</option>
+                    </select>
                   </div>
-                  {['일반업무', '고객대응'].includes(form.subCategory || '일반업무') && (
-                    <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
-                      💡 납기일을 입력하면 해당 날짜의 캘린더에 <strong>[납기]</strong> 배지가 함께 표기됩니다.
+
+                  {/* Due Date (납기) - Only for 일반 and 고객, Optional */}
+                  {['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') && (
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                        ⏰ 납기 (선택 입력)
+                      </label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input
+                          type="date"
+                          value={form.dueDate || ''}
+                          onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                          style={{
+                            flex: 1,
+                            padding: '10px 12px',
+                            borderRadius: '4px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            color: '#0f172a',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {form.dueDate && (
+                          <button
+                            type="button"
+                            onClick={() => setForm({ ...form, dueDate: '' })}
+                            style={{
+                              padding: '0 8px',
+                              background: '#ffffff',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              color: '#64748b',
+                              fontSize: '11px',
+                              cursor: 'pointer'
+                            }}
+                            title="납기 삭제"
+                          >
+                            초기화
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

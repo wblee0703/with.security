@@ -14,6 +14,19 @@ import {
 import { getHolidayName } from '../../data/holidays.js';
 import { normalizeKstDate } from '../../services/dbService';
 
+// Helper for distinguishing category labels by color while keeping card styling uniform
+const getCalendarLabelColor = (token) => {
+  if (token === '[출장]') return '#7c3aed'; // 보라
+  if (token === '[일반]' || token === '[일반업무]') return '#2563eb'; // 블루
+  if (token === '[고객]' || token === '[고객대응]') return '#059669'; // 그린
+  if (token === '[미팅]') return '#ea580c'; // 선명한 오렌지
+  if (token === '[교육]') return '#0891b2'; // 청록/사이언
+  if (token === '[기타]') return '#64748b'; // 슬레이트 그레이
+  if (token === '[납기]') return '#e11d48'; // 로즈 레드
+  if (typeof token === 'string' && token.startsWith('[공유')) return '#6d28d9'; // 딥 퍼플
+  return null;
+};
+
 export default function WorkLogCalendar({
   workLogs = [],
   selectedDate,
@@ -357,7 +370,7 @@ export default function WorkLogCalendar({
             pointerEvents: 'none',
             padding: '6px 12px',
             borderRadius: '6px',
-            background: touchState.log.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
+            background: '#1e3a8a',
             color: '#ffffff',
             fontSize: '11.5px',
             fontWeight: '800',
@@ -420,10 +433,7 @@ export default function WorkLogCalendar({
           {/* Category Color Legends placed directly next to Year/Month */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '11px' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569', fontWeight: '700', whiteSpace: 'nowrap' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#1e3a8a', boxShadow: '0 0 0 1px rgba(30, 58, 138, 0.3)' }} /> 사내 업무
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#475569', fontWeight: '700', whiteSpace: 'nowrap' }}>
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#7c3aed', boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.3)' }} /> 출장 업무
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#1e3a8a', boxShadow: '0 0 0 1px rgba(30, 58, 138, 0.3)' }} /> 업무
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#dc2626', fontWeight: '700', whiteSpace: 'nowrap' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 0 1px rgba(239, 68, 68, 0.3)' }} /> 공휴일
@@ -886,35 +896,15 @@ export default function WorkLogCalendar({
                     };
                     const isReceivedShared = item.isTripGroup ? (Array.isArray(item.logs) && item.logs.some(isLogSharedToMe)) : isLogSharedToMe(log);
 
-                    // Styling based on category, due status, or subCategory
+                    // Styling based on category or due status (출장/사내/납기 업무 모두 업무명 네이비 #1e3a8a 통일, 라벨만 개별 색상)
                     let bg = '#eff6ff';
                     let borderColor = '#cbd5e1';
-                    let textColor = '#1e3a8a';
+                    let textColor = '#1e3a8a'; // 기본 업무명 색상 (#1e3a8a)
 
                     if (isReceivedShared) {
                       bg = '#f5f3ff';
                       borderColor = '#c4b5fd';
                       textColor = '#6d28d9';
-                    } else if (isBusinessTrip) {
-                      bg = '#faf5ff';
-                      borderColor = '#e9d5ff';
-                      textColor = '#7c3aed';
-                    } else if (isDue) {
-                      bg = '#fff1f2';
-                      borderColor = '#fecdd3';
-                      textColor = '#e11d48';
-                    } else if (subCat === '고객대응') {
-                      bg = '#ecfdf5';
-                      borderColor = '#a7f3d0';
-                      textColor = '#059669';
-                    } else if (subCat === '미팅') {
-                      bg = '#f5f3ff';
-                      borderColor = '#ddd6fe';
-                      textColor = '#7c3aed';
-                    } else if (subCat === '교육') {
-                      bg = '#fffbeb';
-                      borderColor = '#fde68a';
-                      textColor = '#d97706';
                     }
 
                     // Format display text:
@@ -922,13 +912,13 @@ export default function WorkLogCalendar({
                       if (isReceivedShared) {
                         const author = log.authorName || '동료';
                         if (item.isTripGroup) {
-                          const base = `[공유] ${item.siteName} ${item.subCategory}`.trim();
+                          const base = `[공유] [출장] ${item.siteName} ${item.subCategory}`.trim();
                           return item.count > 1 ? `${base} ${item.count}건` : base;
                         }
                         return `[공유:${author}] ${log.title}`;
                       }
                       if (item.isTripGroup) {
-                        const base = `${item.siteName} ${item.subCategory}`.trim();
+                        const base = `[출장] ${item.siteName} ${item.subCategory}`.trim();
                         if (item.count > 1) {
                           return `${base} ${item.count}건`;
                         }
@@ -937,8 +927,12 @@ export default function WorkLogCalendar({
                       if (isDue) {
                         return `[납기] ${log.title}`;
                       }
+                      if (isBusinessTrip) {
+                        return `[출장] ${log.title}`;
+                      }
                       if (subCat) {
-                        return `[${subCat}] ${log.title}`;
+                        const normalizedSub = subCat === '일반업무' ? '일반' : (subCat === '고객대응' ? '고객' : subCat);
+                        return `[${normalizedSub}] ${log.title}`;
                       }
                       return log.title;
                     })();
@@ -1010,7 +1004,19 @@ export default function WorkLogCalendar({
                             display: 'block'
                           }}
                         >
-                          {displayText}
+                          {typeof displayText === 'string'
+                            ? displayText.split(/(\[[^\]]+\])/g).map((part, pIdx) => {
+                                const labelColor = getCalendarLabelColor(part);
+                                if (labelColor) {
+                                  return (
+                                    <span key={pIdx} style={{ color: labelColor, fontWeight: '800' }}>
+                                      {part}
+                                    </span>
+                                  );
+                                }
+                                return part;
+                              })
+                            : displayText}
                         </span>
                         {isShared && (
                           <Share2
