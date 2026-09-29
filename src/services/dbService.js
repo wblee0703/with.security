@@ -3785,12 +3785,16 @@ class SecurityDatabase {
             };
           });
 
-          // Prepend local items if unsynced
+          // Prepend local items ONLY if actively created/edited within 15s on THIS device
+          const now = Date.now();
           const serverIds = new Set(mapped.map(m => m.id));
           localOverrides.forEach(lo => {
             const lId = lo.id || lo.reportId;
             if (lId && !serverIds.has(lId)) {
-              mapped.push(lo);
+              const editTime = new Date(lo.updatedAt || lo.createdAt || 0).getTime();
+              if (now - editTime < 15000) {
+                mapped.push(lo);
+              }
             }
           });
 
@@ -3998,12 +4002,16 @@ class SecurityDatabase {
             };
           });
 
-          // Prepend local items if unsynced
+          // Prepend local items ONLY if actively created/edited within 15s on THIS device
+          const now = Date.now();
           const serverIds = new Set(mapped.map(m => m.id));
           localOverrides.forEach(lo => {
             const lId = lo.id || lo.reportId;
             if (lId && !serverIds.has(lId)) {
-              mapped.push(lo);
+              const editTime = new Date(lo.updatedAt || lo.createdAt || 0).getTime();
+              if (now - editTime < 15000) {
+                mapped.push(lo);
+              }
             }
           });
 
@@ -4810,6 +4818,16 @@ class SecurityDatabase {
     }
   }
 
+  _isTbmRecentlyEdited(tbm, now = Date.now()) {
+    if (!tbm) return false;
+    const tbmId = String(tbm.id || '').trim();
+    if (this._recentLocalTbmEdits && tbmId && this._recentLocalTbmEdits.has(tbmId)) {
+      const editTime = this._recentLocalTbmEdits.get(tbmId);
+      if (now - editTime < 15000) return true; // 15초 이내 작성/수정 중인 로컬 TBM 보호
+    }
+    return false;
+  }
+
   // Merge remote sync items with IndexedDB local items to permanently preserve photos
   async _mergeRemoteWithLocalTbms(remoteList) {
     if (!Array.isArray(remoteList)) return [];
@@ -4824,6 +4842,7 @@ class SecurityDatabase {
       if (item && item.id) localMap.set(String(item.id), item);
     });
 
+    const now = Date.now();
     const merged = remoteList.map(remote => {
       const normRemote = this._normalizeTbm(remote);
       if (!normRemote) return null;
@@ -4832,11 +4851,15 @@ class SecurityDatabase {
       return this._normalizeTbm(this._mergeTbmPhotos(normRemote, local));
     }).filter(Boolean);
 
-    // Retain any local TBMs created offline or not yet synchronized to remote
+    // 구글 스프레드시트가 단일 진실의 원천(SSOT).
+    // 오직 방금(15초 이내) 이 기기에서 작성/수정 중인 미반영 로컬 TBM만 일시 유지하고,
+    // 스프레드시트에 없는 과거 잔여 로컬 데이터는 절대 부활시키지 않고 자동 영구 삭제.
     const remoteIdSet = new Set(merged.map(m => String(m.id)));
     localItems.forEach(loc => {
       if (loc && loc.id && !remoteIdSet.has(String(loc.id))) {
-        merged.push(this._normalizeTbm(loc));
+        if (this._isTbmRecentlyEdited(loc, now)) {
+          merged.push(this._normalizeTbm(loc));
+        }
       }
     });
 
@@ -4869,12 +4892,6 @@ class SecurityDatabase {
               const dbItem = dbMap.get(String(item.id));
               if (!dbItem) return this._normalizeTbm(item);
               return this._normalizeTbm(this._mergeTbmPhotos(item, dbItem));
-            });
-            // Include any items in IndexedDB that weren't in localStorage
-            dbItems.forEach(dbItem => {
-              if (dbItem && dbItem.id && !enriched.some(e => String(e.id) === String(dbItem.id))) {
-                enriched.push(this._normalizeTbm(dbItem));
-              }
             });
             this._revalidateTbmsInBackground().catch(() => { });
             return this._filterAndSortTbms(enriched, filterDate);
@@ -4911,9 +4928,11 @@ class SecurityDatabase {
         if (Array.isArray(remoteData)) {
           const normalized = remoteData.map(item => this._normalizeTbm(item)).filter(Boolean);
 
-          // Merge with local items to prevent newly created local records from being erased
+          // Google Sheets is authoritative: map remote items first
           const mergedMap = new Map();
           normalized.forEach(item => mergedMap.set(String(item.id), item));
+          const now = Date.now();
+
           try {
             const currentRaw = localStorage.getItem('with_security_tbms_backup');
             if (currentRaw) {
@@ -4922,8 +4941,11 @@ class SecurityDatabase {
                 currentList.forEach(loc => {
                   if (loc && loc.id) {
                     const idStr = String(loc.id);
+                    // 스프레드시트에 없는 항목은 오직 15초 이내 작성된 경우에만 임시 보존
                     if (!mergedMap.has(idStr)) {
-                      mergedMap.set(idStr, this._normalizeTbm(loc));
+                      if (this._isTbmRecentlyEdited(loc, now)) {
+                        mergedMap.set(idStr, this._normalizeTbm(loc));
+                      }
                     } else {
                       const remoteItem = mergedMap.get(idStr);
                       const locTime = new Date(loc.updatedAt || loc.updated_at || loc.createdAt || loc.created_at || 0).getTime();
@@ -4981,14 +5003,11 @@ class SecurityDatabase {
               const localDbItem = await this.getItem('tbms', item.id);
               if (localDbItem) {
                 // Restore pre/post check photos
-                let restoredPhoto = false;
                 if ((!item.preCheck?.photos?.[0]?.dataUrl) && localDbItem.preCheck?.photos?.[0]?.dataUrl) {
                   item.preCheck.photos = localDbItem.preCheck.photos;
-                  restoredPhoto = true;
                 }
                 if ((!item.postCheck?.photos?.[0]?.dataUrl) && localDbItem.postCheck?.photos?.[0]?.dataUrl) {
                   item.postCheck.photos = localDbItem.postCheck.photos;
-                  restoredPhoto = true;
                 }
                 // Restore & merge additionalTbms from local DB (including full photo dataUrls)
                 const localAdd = Array.isArray(localDbItem.additionalTbms) ? localDbItem.additionalTbms : [];
@@ -5027,10 +5046,11 @@ class SecurityDatabase {
                   });
                 }
               }
-              await this.putItem('tbms', item);
             } catch (e) { }
           }
 
+          // IndexedDB의 tbms 컬렉션을 원격 기준 mergedList로 완전 교체하여 과거 잔여 로컬 데이터 완전 제거
+          await this.replaceCollection('tbms', mergedList);
           this._safeSaveTbmsToLocalStorage(mergedList);
           list = mergedList;
           this.notifyDataChanged(true);
@@ -5071,6 +5091,10 @@ class SecurityDatabase {
       ...tbm,
       updatedAt: new Date().toISOString()
     });
+
+    // Track recently created/edited TBM on this device to protect during sync roundtrip
+    if (!this._recentLocalTbmEdits) this._recentLocalTbmEdits = new Map();
+    this._recentLocalTbmEdits.set(String(fullTbm.id), Date.now());
 
     // 1. Immediately update LocalStorage cache safely (0.1ms UI response)
     try {
@@ -5341,6 +5365,13 @@ class SecurityDatabase {
     const targetId = String(id).trim();
     const meta = (targetObj && typeof targetObj === 'object') ? targetObj : {};
 
+    if (this._recentLocalTbmEdits) {
+      this._recentLocalTbmEdits.delete(targetId);
+      if (Array.isArray(meta.additionalTbms)) {
+        meta.additionalTbms.forEach(a => { if (a && a.id) this._recentLocalTbmEdits.delete(String(a.id)); });
+      }
+    }
+
     // 1. Immediately delete from LocalStorage cache (0.1ms UI response)
     try {
       const raw = localStorage.getItem('with_security_tbms_backup');
@@ -5529,9 +5560,14 @@ class SecurityDatabase {
             };
           }
         });
-        const currentCustom = JSON.parse(localStorage.getItem('with_sec_daily_custom_reports') || '{}');
-        const mergedCustom = { ...currentCustom, ...customMap };
-        localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(mergedCustom));
+        if (isSheet) {
+          localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(customMap));
+        } else {
+          const currentCustom = JSON.parse(localStorage.getItem('with_sec_daily_custom_reports') || '{}');
+          const mergedCustom = { ...currentCustom, ...customMap };
+          localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(mergedCustom));
+        }
+        localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(syncData.daily_reports));
       } catch (e) {
         console.warn('Failed to merge daily_reports into localStorage', e);
       }
@@ -5659,6 +5695,9 @@ class SecurityDatabase {
       }
 
       // _applySyncPayload는 replaceCollection을 호출하여 시트에 없는 로컬 데이터를 완전 삭제함
+      if (this._recentLocalWorkLogEdits) this._recentLocalWorkLogEdits.clear();
+      if (this._recentLocalTbmEdits) this._recentLocalTbmEdits.clear();
+      recentResponseCache.clear();
       const syncResult = await this._applySyncPayload(json.data, true);
 
       return {
