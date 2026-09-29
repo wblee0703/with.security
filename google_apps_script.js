@@ -173,6 +173,10 @@ function syncDatabaseHeaders() {
     try { ss.deleteSheet(defaultSheet); } catch (e) {}
   }
   
+  // 사용자 시트 비밀번호 단방향 암호화 및 순차 ID 일괄 점검
+  try { enforcePasswordHashingInSheet(); } catch (e) {}
+  try { enforceNumericUserIds(); } catch (e) {}
+
   Logger.log('✅ Withsharing_DB 컬럼 헤더 100% 동기화 완료!');
   return {
     success: true,
@@ -198,13 +202,8 @@ function formatHeaderRow(sheet, numCols) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('🛡️ Withsharing DB 관리')
-    .addItem('🚀 데이터베이스 자동 초기화 (initDatabase)', 'initDatabase')
-    .addItem('🔄 시트 헤더 100% 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
-    .addItem('🗑️ users 시트 교육 컬럼(L~O열) 삭제 (cleanLegacyUserColumns)', 'cleanLegacyUserColumns')
-    .addItem('🗑️ tbms 시트 불필요한 열(B, H, 23열 이후) 삭제 (cleanLegacyTbmColumns)', 'cleanLegacyTbmColumns')
+    .addItem('🔄 전체 시트 헤더 & 스키마 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
-    .addItem('🔢 사용자 ID 번호(1, 2, 3...) 자동 정리 (enforceNumericUserIds)', 'enforceNumericUserIds')
-    .addItem('🔒 비밀번호 전체 SHA-256 일괄 암호화 (enforcePasswordHashingInSheet)', 'enforcePasswordHashingInSheet')
     .addToUi();
 }
 
@@ -1183,102 +1182,6 @@ function onEdit(e) {
   }
 }
 
-/**
- * 🗑️ users 시트에서 더 이상 사용되지 않는 교육 관련 컬럼(L~O열: education_date, education_expiry_date, education_name, trainings) 자동 삭제
- */
-function cleanLegacyUserColumns() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('users');
-    if (!sheet || sheet.getLastRow() <= 0) return { success: false, message: 'users 시트가 비어있습니다.' };
-    const lastCol = sheet.getLastColumn();
-    if (lastCol <= 1) return { success: true, message: '정리할 컬럼이 없습니다.' };
-
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim().toLowerCase());
-    const legacyTargets = [
-      'education_date', 'education_expiry_date', 'education_name', 'trainings',
-      'educationdate', 'educationexpirydate', 'educationname', '교육수료일', '교육만료일', '교육명'
-    ];
-
-    let deletedCols = [];
-    // 오른쪽에서 왼쪽(역순)으로 삭제하여 열 번호 인덱스 뒤틀림 방지
-    for (let c = headers.length - 1; c >= 0; c--) {
-      if (legacyTargets.includes(headers[c])) {
-        sheet.deleteColumn(c + 1);
-        deletedCols.push(headers[c]);
-      }
-    }
-
-    // SCHEMAS.users 정의(12개 컬럼) 이후 열이 시트에 남아있다면 잉여 열 일괄 삭제
-    const targetCols = SCHEMAS.users.length;
-    const maxCols = sheet.getMaxColumns();
-    if (maxCols > targetCols && sheet.getLastColumn() <= targetCols) {
-      try { sheet.deleteColumns(targetCols + 1, maxCols - targetCols); } catch (e) {}
-    }
-
-    SpreadsheetApp.flush();
-    return { success: true, deleted: deletedCols };
-  } catch (err) {
-    Logger.log('cleanLegacyUserColumns error: ' + err.toString());
-    return { success: false, error: err.toString() };
-  }
-}
-
-/**
- * 🗑️ tbms 시트에서 불필요한 열(parent_tbm_id, work_area, additional_tbms, tools_used, pre_check, post_check 등) 및 21열 이후 잉여 열 일괄 자동 삭제
- */
-function cleanLegacyTbmColumns() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const sheet = ss.getSheetByName('tbms');
-    if (!sheet || sheet.getLastRow() <= 0) return { success: false, message: 'tbms 시트가 비어있습니다.' };
-    const lastCol = sheet.getLastColumn();
-    if (lastCol <= 1) return { success: true, message: '정리할 컬럼이 없습니다.' };
-
-    const rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
-    const headersLower = rawHeaders.map(h => h.toLowerCase());
-
-    // 1. photo_urls 컬럼이 존재하고 photo_url 컬럼이 없다면 photo_url로 헤더명 자동 치환
-    const photoUrlsIdx = headersLower.indexOf('photo_urls');
-    const photoUrlIdx = headersLower.indexOf('photo_url');
-    if (photoUrlsIdx !== -1 && photoUrlIdx === -1) {
-      sheet.getRange(1, photoUrlsIdx + 1).setValue('photo_url');
-      headersLower[photoUrlsIdx] = 'photo_url';
-      rawHeaders[photoUrlsIdx] = 'photo_url';
-    }
-
-    // 2. 삭제 대상 레거시/불필요 컬럼 목록 (parent_tbm_id, work_area, additional_tbms, tools_used, pre_check, post_check 등)
-    const legacyTargets = [
-      'parent_tbm_id', 'parenttbmid', 'parent_id', 'parentid', '원tbm_id',
-      'work_area', 'workarea', 'area', '작업구역', '작업장소',
-      'additional_tbms', 'additionaltbms', '추가tbm', '추가_tbm',
-      'tools_used', 'toolsused', '사용공구', '공구',
-      'pre_check', 'precheck', 'post_check', 'postcheck', 'photo', 'photos'
-    ];
-
-    let deletedCols = [];
-    // 오른쪽에서 왼쪽(역순)으로 삭제하여 열 번호 인덱스 뒤틀림 방지
-    for (let c = headersLower.length - 1; c >= 0; c--) {
-      if (legacyTargets.includes(headersLower[c])) {
-        sheet.deleteColumn(c + 1);
-        deletedCols.push(rawHeaders[c]);
-      }
-    }
-
-    // 3. SCHEMAS.tbms 정의(20개 컬럼) 이후 잉여 열 일괄 삭제
-    const targetCols = SCHEMAS.tbms.length;
-    const maxCols = sheet.getMaxColumns();
-    if (maxCols > targetCols) {
-      try { sheet.deleteColumns(targetCols + 1, maxCols - targetCols); } catch (e) {}
-    }
-
-    SpreadsheetApp.flush();
-    return { success: true, deleted: deletedCols };
-  } catch (err) {
-    Logger.log('cleanLegacyTbmColumns error: ' + err.toString());
-    return { success: false, error: err.toString() };
-  }
-}
 
 /**
  * 👥 TBM 참석자를 구글 스프레드시트용 간결 포맷("이름 직급, 이름 직급")으로 변환
@@ -1877,48 +1780,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       return '{}';
     }
 
-    let preCheckStr = safeJsonStringifyForSheet(preChk, 45000);
-    let postCheckStr = safeJsonStringifyForSheet(postChk, 45000);
-
-    function safeAddTbmsStringifyForSheet(addList, maxLen) {
-      if (!Array.isArray(addList)) return '[]';
-      let json = JSON.stringify(addList);
-      if (json.length <= maxLen) return json;
-
-      try {
-        const copy = JSON.parse(JSON.stringify(addList));
-        const cleanList = copy.map(function(item) {
-          const c = { ...item };
-          if (Array.isArray(c.photos)) {
-            c.photos = c.photos.map(function(p) {
-              return {
-                id: p.id || '',
-                name: p.name || '',
-                url: p.url || p.viewUrl || '',
-                viewUrl: p.viewUrl || p.url || '',
-                thumbnailUrl: p.thumbnailUrl || p.url || ''
-              };
-            });
-          }
-          if (c.photo && typeof c.photo === 'string' && c.photo.startsWith('data:image')) {
-            c.photo = (c.photos && c.photos[0] && (c.photos[0].url || c.photos[0].viewUrl)) || '';
-          }
-          return c;
-        });
-        json = JSON.stringify(cleanList);
-        if (json.length <= maxLen) return json;
-      } catch (e) { }
-
-      return '[]';
-    }
-
-    let addTbmsStr = safeAddTbmsStringifyForSheet(addTbms, 45000);
-
     // 기본 정보 완벽 추출 (모든 필드명 변형 수용)
     const siteVal = String(obj.site || obj.siteName || obj.site_name || '').trim();
     const siteAddrVal = String(obj.siteAddress || obj.site_address || obj.address || '').trim();
     const workTitleVal = String(obj.workTitle || obj.work_title || obj.title || '').trim();
-    const workAreaVal = String(obj.workArea || obj.work_area || '').trim();
     const workCatVal = String(obj.workCategory || obj.work_category || '일반작업').trim();
     const leaderDivVal = String(obj.leaderDivision || obj.leader_division || obj.division || '').trim();
     const leaderTeamVal = String(obj.leaderTeam || obj.leader_team || obj.team || obj.department || '').trim();
@@ -2612,6 +2477,10 @@ function ensureHeaders(sheet, keys) {
     sheet.appendRow(targetKeys);
     formatHeaderRow(sheet, targetKeys.length);
     return targetKeys;
+  }
+  // 스키마가 정의된 시트의 경우 스키마 컬럼 수 이후의 불필요한 잉여 열 자동 정리
+  if (schema && sheet.getMaxColumns() > schema.length) {
+    try { sheet.deleteColumns(schema.length + 1, sheet.getMaxColumns() - schema.length); } catch (e) {}
   }
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());

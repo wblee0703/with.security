@@ -5156,8 +5156,6 @@ class SecurityDatabase {
       status: fullTbm.status || (isAdditionalTbm ? 'ADDITIONAL_COMPLETED' : (isPostTbmRecord ? 'ALL_COMPLETED' : 'PRE_COMPLETED')),
       photo_url: photoUrlString,
       photos: allPhotos,
-      preCheck: fullTbm.preCheck,
-      postCheck: fullTbm.postCheck,
       created_at: fullTbm.created_at || fullTbm.createdAt || new Date().toISOString(),
       updated_at: fullTbm.updated_at || fullTbm.updatedAt || new Date().toISOString()
     };
@@ -5765,14 +5763,35 @@ class SecurityDatabase {
             }
           });
         }
+        const isAdd = t.tbmType === 'additional' || String(t.id || '').startsWith('tbm_add_') || String(t.workTitle || t.work_title || '').includes('추가');
+        const isPost = !isAdd && (t.tbmType === 'post' || String(t.id || '').startsWith('tbm_post_'));
+        const resolvedType = isAdd ? '추가 TBM' : (isPost ? '업무 후' : '업무 전');
+
+        const photosList = Array.isArray(t.photos) ? t.photos : [];
+        const photoUrlStr = photosList.map(p => (typeof p === 'string' ? p : (p?.dataUrl || p?.url || ''))).filter(Boolean).join('\n') || t.photo_url || '';
+
         return {
-          ...t,
+          id: t.id,
+          tbm_type: resolvedType,
+          date: t.date,
+          site: t.site || t.siteName || t.site_name || '',
+          site_address: t.siteAddress || t.site_address || '',
+          work_title: t.workTitle || t.work_title || '',
+          work_category: t.workCategory || t.work_category || '일반작업',
+          leader_division: t.leaderDivision || t.leader_division || '',
+          leader_team: t.leaderTeam || t.leader_team || '',
+          leader_name: t.leaderName || t.leader_name || '',
+          leader_rank: t.leaderRank || t.leader_rank || '대리',
+          leader_phone: t.leaderPhone || t.leader_phone || '',
           attendees: formatAttendeesForSheet(t.attendees),
           absentees: formatAbsenteesForSheet(combinedAbs),
-          check_list: formatCheckListForSheet(t.preCheck, t.postCheck, t.tbmType === 'post', t.tbmType === 'additional'),
-          checkList: formatCheckListForSheet(t.preCheck, t.postCheck, t.tbmType === 'post', t.tbmType === 'additional'),
-          checklist: formatCheckListForSheet(t.preCheck, t.postCheck, t.tbmType === 'post', t.tbmType === 'additional'),
-          'Check List': formatCheckListForSheet(t.preCheck, t.postCheck, t.tbmType === 'post', t.tbmType === 'additional')
+          work_content: (t.workContent || t.work_content || t.notes || '').trim(),
+          check_list: formatCheckListForSheet(t.preCheck, t.postCheck, isPost, isAdd) || t.check_list || '',
+          status: t.status || (isAdd ? 'ADDITIONAL_COMPLETED' : (isPost ? 'ALL_COMPLETED' : 'PRE_COMPLETED')),
+          photo_url: photoUrlStr,
+          photos: photosList,
+          created_at: t.created_at || t.createdAt || new Date().toISOString(),
+          updated_at: t.updated_at || t.updatedAt || new Date().toISOString()
         };
       });
 
