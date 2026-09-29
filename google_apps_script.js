@@ -2172,18 +2172,6 @@ function readSheetData(sheetName) {
         }
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
-
-        // 불필요한 레거시 컬럼 속성 완전 제거 (클라이언트로의 누출 방지)
-        delete obj.work_area;
-        delete obj.workArea;
-        delete obj.tools_used;
-        delete obj.toolsUsed;
-        delete obj.pre_check;
-        delete obj.preCheck;
-        delete obj.post_check;
-        delete obj.postCheck;
-        delete obj.additional_tbms;
-        delete obj.additionalTbms;
       }
 
       // 키별 중복 방지: 시트에 기존에 누적된 중복 행이 있더라도 가장 최신(아래쪽) 행 데이터만 반환

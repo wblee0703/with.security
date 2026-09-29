@@ -1740,7 +1740,7 @@ export default function TbmSection({
         ? (customTrimmed ? `기타 (${customTrimmed})` : '기타 사업장')
         : (additionalFormData.tripSite || targetAdditionalTbm.site || '').trim();
       const currentTripSiteAddress = isOtherSite
-        ? (customTrimmed ? `직접입력: ${customTrimmed}` : '직접 입력')
+        ? (customTrimmed ? `${customTrimmed}` : '직접 입력')
         : (additionalFormData.tripSiteAddress || targetAdditionalTbm.siteAddress || '').trim();
 
       // 2. 스프레드시트 및 DB에 독립된 별도 행으로 저장
@@ -2034,7 +2034,7 @@ export default function TbmSection({
 
     const prePhotos = Array.isArray(formData.preCheck?.photos) ? formData.preCheck.photos : [];
     const postPhotos = Array.isArray(formData.postCheck?.photos) ? formData.postCheck.photos : [];
-    
+
     // 작업 전 사진과 작업 후 사진을 모두 빠짐없이 취합하여 photo_url 및 photos에 저장
     const allPhotosMap = new Map();
     const addPhotoToEffective = (p) => {
