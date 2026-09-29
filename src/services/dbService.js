@@ -4963,9 +4963,6 @@ class SecurityDatabase {
                   item.postCheck.photos = localDbItem.postCheck.photos;
                   restoredPhoto = true;
                 }
-                if (restoredPhoto) {
-                  this.saveTbm(item).catch(() => { });
-                }
                 // Restore & merge additionalTbms from local DB (including full photo dataUrls)
                 const localAdd = Array.isArray(localDbItem.additionalTbms) ? localDbItem.additionalTbms : [];
                 const remoteAdd = Array.isArray(item.additionalTbms) ? item.additionalTbms : [];
@@ -5116,11 +5113,13 @@ class SecurityDatabase {
       if (Array.isArray(a.photos)) a.photos.forEach(p => collectPhoto(p, 'add_photo.jpg'));
       else if (a.photo) collectPhoto(a.photo, 'add_photo.jpg');
     });
-    const allPhotos = Array.from(allPhotosMap.values());
     const photoUrlString = allPhotos
-      .map(p => p.url || p.viewUrl || p.thumbnailUrl || '')
+      .map(p => {
+        const u = String(p.url || p.viewUrl || p.thumbnailUrl || '').trim();
+        return (u.startsWith('http://') || u.startsWith('https://')) ? u : '';
+      })
       .filter(Boolean)
-      .join('\n');
+      .join('\n') || (typeof fullTbm.photo_url === 'string' && (fullTbm.photo_url.startsWith('http://') || fullTbm.photo_url.startsWith('https://')) ? fullTbm.photo_url : '');
 
     const effectiveCheckList = formatCheckListForSheet(fullTbm.preCheck, fullTbm.postCheck, isPostTbmRecord, isAdditionalTbm) || fullTbm.check_list || fullTbm.checkList || '';
     const effectiveWorkContent = (
@@ -5767,8 +5766,21 @@ class SecurityDatabase {
         const isPost = !isAdd && (t.tbmType === 'post' || String(t.id || '').startsWith('tbm_post_'));
         const resolvedType = isAdd ? '추가 TBM' : (isPost ? '업무 후' : '업무 전');
 
-        const photosList = Array.isArray(t.photos) ? t.photos : [];
-        const photoUrlStr = photosList.map(p => (typeof p === 'string' ? p : (p?.dataUrl || p?.url || ''))).filter(Boolean).join('\n') || t.photo_url || '';
+        const photoMap = new Map();
+        const addP = (p) => {
+          if (!p) return;
+          const k = (typeof p === 'object' && p.id) ? p.id : (typeof p === 'string' ? p : (p.dataUrl || p.url || '')).slice(0, 80);
+          if (k && !photoMap.has(k)) photoMap.set(k, p);
+        };
+        (Array.isArray(t.photos) ? t.photos : []).forEach(addP);
+        (Array.isArray(t.preCheck?.photos) ? t.preCheck.photos : []).forEach(addP);
+        (Array.isArray(t.postCheck?.photos) ? t.postCheck.photos : []).forEach(addP);
+        (Array.isArray(t.additionalTbms) ? t.additionalTbms : []).forEach(a => {
+          if (Array.isArray(a.photos)) a.photos.forEach(addP);
+          else if (a.photo) addP(a.photo);
+        });
+        const photosList = Array.from(photoMap.values());
+        const photoUrlStr = photosList.map(p => (typeof p === 'string' ? p : (p?.url || p?.viewUrl || p?.thumbnailUrl || ''))).filter(Boolean).join('\n') || t.photo_url || '';
 
         return {
           id: t.id,

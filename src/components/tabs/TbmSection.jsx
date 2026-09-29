@@ -2043,9 +2043,18 @@ export default function TbmSection({
 
     const prePhotos = Array.isArray(formData.preCheck?.photos) ? formData.preCheck.photos : [];
     const postPhotos = Array.isArray(formData.postCheck?.photos) ? formData.postCheck.photos : [];
-    const effectivePhotos = isPost
-      ? (postPhotos.length > 0 ? postPhotos : (Array.isArray(formData.photos) ? formData.photos : []))
-      : (prePhotos.length > 0 ? prePhotos : (Array.isArray(formData.photos) ? formData.photos : []));
+    
+    // 작업 전 사진과 작업 후 사진을 모두 빠짐없이 취합하여 photo_url 및 photos에 저장
+    const allPhotosMap = new Map();
+    const addPhotoToEffective = (p) => {
+      if (!p) return;
+      const key = (typeof p === 'object' && p.id) ? p.id : (typeof p === 'string' ? p : (p.dataUrl || p.url || '')).slice(0, 80);
+      if (key && !allPhotosMap.has(key)) allPhotosMap.set(key, p);
+    };
+    (Array.isArray(formData.photos) ? formData.photos : []).forEach(addPhotoToEffective);
+    prePhotos.forEach(addPhotoToEffective);
+    postPhotos.forEach(addPhotoToEffective);
+    const effectivePhotos = Array.from(allPhotosMap.values());
 
     const currentPreCheck = isPost
       ? {
@@ -2089,11 +2098,11 @@ export default function TbmSection({
     const calculatedCheckList = formatCheckListForSheet(currentPreCheck, currentPostCheck, isPost, false);
 
     const tbmPayload = {
-      ...formData,
       id: assignedId,
       tbmType: isPost ? 'post' : 'pre',
       tbm_type: isPost ? '업무 후' : '업무 전',
       구분: isPost ? '업무 후' : '업무 전',
+      date: formData.date || selectedDate || getTodayIsoDate(),
       site: formData.site?.trim() || '',
       siteName: formData.site?.trim() || '',
       site_name: formData.site?.trim() || '',
@@ -2121,7 +2130,17 @@ export default function TbmSection({
       checkList: calculatedCheckList,
       checklist: calculatedCheckList,
       photos: effectivePhotos,
-      photo_url: effectivePhotos.map(p => (typeof p === 'string' ? p : (p?.dataUrl || p?.url || ''))).filter(Boolean).join('\n'),
+      photo_url: effectivePhotos
+        .map(p => {
+          if (typeof p === 'string' && (p.startsWith('http://') || p.startsWith('https://'))) return p.trim();
+          if (typeof p === 'object') {
+            const u = String(p.url || p.viewUrl || p.thumbnailUrl || '').trim();
+            if (u.startsWith('http://') || u.startsWith('https://')) return u;
+          }
+          return '';
+        })
+        .filter(Boolean)
+        .join('\n'),
       status: finalStatus,
       preCheck: currentPreCheck,
       postCheck: currentPostCheck

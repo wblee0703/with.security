@@ -112,12 +112,11 @@ function syncDatabaseHeaders() {
     const lastCol = sheet.getLastColumn();
     
     if (lastRow <= 1) {
-      // 데이터가 없거나 헤더만 있는 경우: 헤더 덮어쓰기
-      sheet.clear();
-      sheet.appendRow(targetHeaders);
+      // 데이터가 없는 경우: 1행 헤더만 갱신
+      sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
       formatHeaderRow(sheet, targetHeaders.length);
 
-      // ⭐ 필요없는 잉여 열(컬럼) 자동 삭제
+      // 필요없는 잉여 열(컬럼) 자동 삭제
       const maxCols = sheet.getMaxColumns();
       if (maxCols > targetHeaders.length) {
         try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
@@ -127,44 +126,70 @@ function syncDatabaseHeaders() {
       continue;
     }
     
-    // 기존 데이터가 있는 경우: 기존 행을 읽어 새 스키마로 정규화 후 안전 재작성
+    // 기존 데이터가 있는 경우: 기존 행 데이터를 보존하면서 1행 헤더 및 열 안전 정렬
     const existingValues = sheet.getRange(1, 1, lastRow, Math.max(lastCol, 1)).getValues();
-    const oldHeaders = existingValues[0];
+    const oldHeaders = existingValues[0].map(h => String(h || '').trim());
     const dataRows = existingValues.slice(1);
     
-    const normalizedData = [];
-    dataRows.forEach(row => {
-      const rowObj = {};
-      let hasData = false;
-      oldHeaders.forEach((h, idx) => {
-        let val = row[idx];
-        if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
-          try { val = JSON.parse(val); } catch (e) {}
-        }
-        rowObj[h] = val;
-        if (val !== '' && val !== null && val !== undefined) hasData = true;
-      });
-      if (hasData) {
-        normalizedData.push(normalizeObjectForSheet(sheetName, rowObj));
-      }
-    });
-    
-    sheet.clear();
-    sheet.appendRow(targetHeaders);
+    // 1행 헤더를 새 표준 스키마로 즉시 교체
+    sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
     formatHeaderRow(sheet, targetHeaders.length);
 
-    // ⭐ 필요없는 잉여 열(컬럼) 자동 삭제 (targetHeaders 이후 열 일괄 삭제)
+    // 컬럼 매핑: 구버전 헤더 위치에서 신규 헤더 위치로 값 재배치
+    const reorderedRows = dataRows.map(row => {
+      // TBM 시트: 기존 pre_check / post_check 컬럼에 있던 사진 데이터가 있다면 photo_url 컬럼으로 자동 추출 이관
+      let tbmPhotos = [];
+      if (sheetName === 'tbms') {
+        const photoColIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('photo_url');
+        if (photoColIdx !== -1 && row[photoColIdx]) {
+          String(row[photoColIdx]).split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(u => {
+            if (tbmPhotos.indexOf(u) === -1) tbmPhotos.push(u);
+          });
+        }
+        const extractPhotos = function(cellVal) {
+          if (!cellVal || typeof cellVal !== 'string') return;
+          try {
+            if (cellVal.startsWith('{') || cellVal.startsWith('[')) {
+              const parsed = JSON.parse(cellVal);
+              const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.photos) ? parsed.photos : []);
+              list.forEach(p => {
+                const u = (typeof p === 'string') ? p : (p?.viewUrl || p?.url || '');
+                if (u && tbmPhotos.indexOf(u) === -1) tbmPhotos.push(u);
+              });
+            }
+          } catch (e) {}
+        };
+        const preIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('pre_check');
+        const postIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('post_check');
+        if (preIdx !== -1) extractPhotos(row[preIdx]);
+        if (postIdx !== -1) extractPhotos(row[postIdx]);
+      }
+
+      return targetHeaders.map(th => {
+        if (sheetName === 'tbms' && th === 'photo_url' && tbmPhotos.length > 0) {
+          return tbmPhotos.join('\n');
+        }
+        const idx = oldHeaders.indexOf(th);
+        if (idx !== -1) return row[idx];
+        // 대소문자 무시 매칭
+        const lowerIdx = oldHeaders.map(h => h.toLowerCase()).indexOf(th.toLowerCase());
+        if (lowerIdx !== -1) return row[lowerIdx];
+        return '';
+      });
+    });
+
+    if (reorderedRows.length > 0) {
+      sheet.getRange(2, 1, reorderedRows.length, targetHeaders.length).setValues(reorderedRows);
+    }
+
+    // 스키마 컬럼 수 이후의 잉여 열만 안전하게 삭제 (데이터 손실 없음)
     const maxCols = sheet.getMaxColumns();
     if (maxCols > targetHeaders.length) {
       try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
     }
     
-    normalizedData.forEach(item => {
-      appendObjectRow(sheet, targetHeaders, item);
-    });
-    
     try { sheet.autoResizeColumns(1, targetHeaders.length); } catch (e) {}
-    report[sheetName] = `${normalizedData.length}건 데이터 마이그레이션 및 불필요한 열 자동 정리 완료`;
+    report[sheetName] = `${reorderedRows.length}건 데이터 컬럼 안전 재정렬 완료`;
   }
   
   // 기본 생성되었던 빈 '시트1' 또는 'Sheet1' 정리
@@ -176,6 +201,8 @@ function syncDatabaseHeaders() {
   // 사용자 시트 비밀번호 단방향 암호화 및 순차 ID 일괄 점검
   try { enforcePasswordHashingInSheet(); } catch (e) {}
   try { enforceNumericUserIds(); } catch (e) {}
+  // 시트 내 누적된 빈 행 및 중복 데이터 일괄 정리 자동 실행
+  try { cleanupDuplicates(); } catch (e) {}
 
   Logger.log('✅ Withsharing_DB 컬럼 헤더 100% 동기화 완료!');
   return {
@@ -336,6 +363,16 @@ function doPost(e) {
         return jsonResponse({ success: false, error: '유효하지 않은 사용자 데이터: username과 name은 필수 입력 항목입니다.' });
       }
 
+      // TBM 무결성 검증: 빈 껍데기 요청(사업장, 작업명, 주관자 모두 부재)은 신규 생성 원천 차단
+      if (sheetName === 'tbms') {
+        const sCheck = String(rawData.site || rawData.siteName || rawData.site_name || '').trim();
+        const tCheck = String(rawData.workTitle || rawData.work_title || rawData.title || '').trim();
+        const lCheck = String(rawData.leaderName || rawData.leader_name || rawData.leader || '').trim();
+        if (!sCheck && !tCheck && !lCheck) {
+          return jsonResponse({ success: false, error: '유효하지 않은 TBM 데이터: 사업장, 작업명, 주관자 중 최소 1개 이상 필요합니다.' });
+        }
+      }
+
       const item = normalizeObjectForSheet(sheetName, rawData);
       const keyField = (sheetName === 'users') ? 'username' : (sheetName === 'sites' ? 'id' : (item.log_id ? 'log_id' : 'id'));
       const keyValue = String(item[keyField] || item.log_id || item.id || '').trim();
@@ -430,53 +467,53 @@ function doPost(e) {
             const targetId = String(item.id || keyValue).trim();
             const idMatched = Boolean(targetId && rowId && rowId === targetId);
 
-            const dateIdx = headers.indexOf('date');
-            const siteIdx = headers.indexOf('site');
-            const leaderIdx = headers.indexOf('leader_name');
-            let typeIdx = headers.indexOf('tbm_type');
-            if (typeIdx === -1) typeIdx = headers.indexOf('tbmType');
-            if (typeIdx === -1) typeIdx = headers.indexOf('구분');
-
-            const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
-            const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
-            const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
-            const rawRowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
-
-            const itemDate = formatKstDate(item.date || '', true);
-            const itemSite = String(item.site || '').trim().toLowerCase();
-            const itemLeader = String(item.leader_name || '').trim().toLowerCase();
-            const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
-
-            // 업무 전/후/추가 TBM 타입 정규화 ('pre' vs 'post' vs 'additional')
-            const normalizeType = function(val, idHint) {
-              if (idHint) {
-                if (String(idHint).startsWith('tbm_add_')) return 'additional';
-                if (String(idHint).startsWith('tbm_post_')) return 'post';
-                if (String(idHint).startsWith('tbm_pre_')) return 'pre';
-              }
-              if (!val) return '';
-              if (val.indexOf('추가') !== -1 || val === 'additional') return 'additional';
-              if (val.indexOf('후') !== -1 || val === 'post') return 'post';
-              if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
-              return val;
-            };
-
-            const normRowType = normalizeType(rawRowType, rowId);
-            const normItemType = normalizeType(rawItemType, item.id);
-
-            // ⭐ 핵심 규칙: 업무 전 TBM, 업무 후 TBM, 추가 TBM은 절대로 서로를 덮어쓰지 않고 각각 독립된 별도 행으로 기록!
-            if (normRowType && normItemType && normRowType !== normItemType) {
-              // 타입이 다르면(업무 전 vs 업무 후 vs 추가 TBM) 설령 id나 날짜가 같더라도 절대로 같은 행으로 취급하지 않음 (새 행으로 추가)
-              isMatch = false;
+            if (idMatched) {
+              // 1. ID가 일치하면 무조건 동일 레코드 수정으로 판정 (새 행 증식 원천 방지)
+              isMatch = true;
             } else {
-              // 동일 타입인 경우에만 ID 매칭 또는 동일 조건 매칭
+              // 2. ID가 일치하지 않거나 없는 경우: 복합 키(일자 8자리 + 사업장 + 팀/주관자 + 구분)로 매칭
+              const dateIdx = headers.indexOf('date');
+              const siteIdx = headers.indexOf('site');
+              const leaderIdx = headers.indexOf('leader_name');
+              let typeIdx = headers.indexOf('tbm_type');
+              if (typeIdx === -1) typeIdx = headers.indexOf('tbmType');
+              if (typeIdx === -1) typeIdx = headers.indexOf('구분');
+
+              const rowDateRaw = dateIdx !== -1 ? (rows[i][dateIdx] instanceof Date ? formatKstDate(rows[i][dateIdx], true) : String(rows[i][dateIdx] || '')) : '';
+              const rowDateNorm = rowDateRaw.replace(/\D/g, '').slice(0, 8);
+              const itemDateNorm = String(item.date || '').replace(/\D/g, '').slice(0, 8);
+
+              const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
+              const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
+              const rawRowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
+
+              const itemSite = String(item.site || '').trim().toLowerCase();
+              const itemLeader = String(item.leader_name || '').trim().toLowerCase();
+              const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
+
+              const normalizeType = function(val, idHint) {
+                if (idHint) {
+                  if (String(idHint).startsWith('tbm_add_')) return 'additional';
+                  if (String(idHint).startsWith('tbm_post_')) return 'post';
+                  if (String(idHint).startsWith('tbm_pre_')) return 'pre';
+                }
+                if (!val) return '';
+                if (val.indexOf('추가') !== -1 || val === 'additional') return 'additional';
+                if (val.indexOf('후') !== -1 || val === 'post') return 'post';
+                if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
+                return val;
+              };
+
+              const normRowType = normalizeType(rawRowType, rowId);
+              const normItemType = normalizeType(rawItemType, item.id);
+
               const compositeMatched = Boolean(
-                itemDate && itemSite && itemLeader && normItemType &&
-                rowDate === itemDate && rowSite === itemSite && rowLeader === itemLeader &&
+                itemDateNorm && itemSite && itemLeader && normItemType &&
+                rowDateNorm === itemDateNorm && rowSite === itemSite && rowLeader === itemLeader &&
                 normRowType === normItemType
               );
 
-              isMatch = idMatched || compositeMatched;
+              isMatch = compositeMatched;
             }
           } else if (sheetName === 'daily_reports') {
             const rowId = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
@@ -2359,16 +2396,27 @@ function cleanupDuplicates() {
         const dateIdx = headers.indexOf('date');
         const siteIdx = headers.indexOf('site');
         const leaderIdx = headers.indexOf('leader_name');
-        const typeIdx = headers.indexOf('tbm_type');
+        const titleIdx = headers.indexOf('work_title');
+        let typeIdx = headers.indexOf('tbm_type');
+        if (typeIdx === -1) typeIdx = headers.indexOf('구분');
 
         const id = idIdx !== -1 ? String(row[idIdx] || '').trim() : '';
-        const dVal = dateIdx !== -1 ? formatKstDate(row[dateIdx], true) : '';
+        const rawDate = dateIdx !== -1 ? (row[dateIdx] instanceof Date ? formatKstDate(row[dateIdx], true) : String(row[dateIdx] || '')) : '';
+        const dVal = rawDate.replace(/\D/g, '').slice(0, 8);
         const sVal = siteIdx !== -1 ? String(row[siteIdx] || '').trim().toLowerCase() : '';
         const lVal = leaderIdx !== -1 ? String(row[leaderIdx] || '').trim().toLowerCase() : '';
-        const tVal = typeIdx !== -1 ? String(row[typeIdx] || '').trim().toLowerCase() : '';
+        const titleVal = titleIdx !== -1 ? String(row[titleIdx] || '').trim().toLowerCase() : '';
+        const rawType = typeIdx !== -1 ? String(row[typeIdx] || '').trim().toLowerCase() : '';
+        const tVal = (rawType.indexOf('추가') !== -1 || rawType === 'additional' || id.startsWith('tbm_add_')) ? 'additional' : ((rawType.indexOf('후') !== -1 || rawType === 'post' || id.startsWith('tbm_post_')) ? 'post' : 'pre');
 
-        // Pre and Post TBMs must NEVER collide during duplicate cleanup!
-        key = id || (dVal && sVal ? `TBM::${dVal}::${sVal}::${lVal}::${tVal}` : '');
+        // 사업장, 주관자, 작업명이 모두 비어있는 유령/빈 행은 즉시 삭제 대상 등록 (시트에 빈 행 무한 증식 차단)
+        if (!sVal && !lVal && !titleVal) {
+          rowsToDelete.push(r + 1);
+          continue;
+        }
+
+        // 동일 일자, 사업장, 주관자, 구분인 경우 가장 최신(아래쪽) 1행만 보존하고 이전 중복 행 삭제
+        key = (dVal && sVal && lVal) ? `TBM::${dVal}::${sVal}::${lVal}::${tVal}` : (id || `TBM_ROW_${r}`);
       } else if (sheetName === 'edu_logs') {
         const titleIdx = headers.indexOf('title');
         const compDateIdx = headers.indexOf('completion_date');
@@ -2478,10 +2526,24 @@ function ensureHeaders(sheet, keys) {
     formatHeaderRow(sheet, targetKeys.length);
     return targetKeys;
   }
-  // 스키마가 정의된 시트의 경우 스키마 컬럼 수 이후의 불필요한 잉여 열 자동 정리
-  if (schema && sheet.getMaxColumns() > schema.length) {
-    try { sheet.deleteColumns(schema.length + 1, sheet.getMaxColumns() - schema.length); } catch (e) {}
+
+  // 스키마가 정의된 시트의 경우: 1행 헤더를 무조건 표준 스키마로 강제 정렬하고 잉여 컬럼(U~Y 등) 즉시 완전 삭제
+  if (schema) {
+    sheet.getRange(1, 1, 1, schema.length).setValues([schema]);
+    formatHeaderRow(sheet, schema.length);
+    const maxCols = sheet.getMaxColumns();
+    if (maxCols > schema.length) {
+      const extraCols = maxCols - schema.length;
+      try {
+        sheet.getRange(1, schema.length + 1, Math.max(sheet.getMaxRows(), 1), extraCols).clear();
+        sheet.deleteColumns(schema.length + 1, extraCols);
+      } catch (e) {
+        Logger.log('ensureHeaders deleteColumns warning: ' + e.message);
+      }
+    }
+    return schema;
   }
+
   const lastCol = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h || '').trim());
   return headers;
