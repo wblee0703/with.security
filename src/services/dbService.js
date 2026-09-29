@@ -1664,8 +1664,8 @@ class SecurityDatabase {
       const logs = await this.getWorkLogs();
       let logsChanged = false;
       const updatedLogs = logs.map(log => {
-        const logSiteName = (log.siteName || log.site_name || '').trim();
-        const logSiteLoc = (log.siteLocation || log.siteAddress || log.location || '').trim();
+        const logSiteName = String(log.siteName || log.site_name || '').trim();
+        const logSiteLoc = String(log.siteLocation || log.siteAddress || log.location || '').trim();
 
         // 사업장명 또는 사업장 식별자가 일치하는 경우 동기화
         const isMatch = (oldName && logSiteName === oldName) ||
@@ -1688,7 +1688,7 @@ class SecurityDatabase {
       if (logsChanged) {
         localStorage.setItem('with_security_work_logs', JSON.stringify(updatedLogs));
         for (const logItem of updatedLogs) {
-          const logSiteName = (logItem.siteName || logItem.site_name || '').trim();
+          const logSiteName = String(logItem.siteName || logItem.site_name || '').trim();
           if (logSiteName === newSite.name) {
             try {
               await safeFetchApi('/api/work-logs', {
@@ -4430,18 +4430,18 @@ class SecurityDatabase {
     tbm.parentTbmId = String(tbm.parentTbmId || tbm.parent_tbm_id || tbm.parentId || '').trim();
     delete tbm.parent_tbm_id;
     delete tbm.parentId;
-    tbm.site = (tbm.site || tbm.siteName || tbm.site_name || '').trim();
-    tbm.siteAddress = (tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
-    tbm.workTitle = (tbm.workTitle || tbm.work_title || tbm.title || '').trim();
+    tbm.site = String(tbm.site || tbm.siteName || tbm.site_name || '').trim();
+    tbm.siteAddress = String(tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
+    tbm.workTitle = String(tbm.workTitle || tbm.work_title || tbm.title || '').trim();
     delete tbm.work_area;
     delete tbm.workArea;
-    tbm.workCategory = (tbm.workCategory || tbm.work_category || '일반작업').trim();
-    tbm.leaderDivision = (tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
-    tbm.leaderTeam = (tbm.leaderTeam || tbm.leader_team || tbm.team || '').trim();
-    tbm.leaderName = (tbm.leaderName || tbm.leader_name || tbm.leader || '').trim();
-    tbm.leaderRank = (tbm.leaderRank || tbm.leader_rank || tbm.rank || '대리').trim();
-    tbm.leaderPhone = (tbm.leaderPhone || tbm.leader_phone || tbm.phone || '').trim();
-    tbm.workContent = (
+    tbm.workCategory = String(tbm.workCategory || tbm.work_category || '일반작업').trim();
+    tbm.leaderDivision = String(tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
+    tbm.leaderTeam = String(tbm.leaderTeam || tbm.leader_team || tbm.team || '').trim();
+    tbm.leaderName = String(tbm.leaderName || tbm.leader_name || tbm.leader || '').trim();
+    tbm.leaderRank = String(tbm.leaderRank || tbm.leader_rank || tbm.rank || '대리').trim();
+    tbm.leaderPhone = String(tbm.leaderPhone || tbm.leader_phone || tbm.phone || '').trim();
+    tbm.workContent = String(
       tbm.workContent ||
       tbm.work_content ||
       tbm.content ||

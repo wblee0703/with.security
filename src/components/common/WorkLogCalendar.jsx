@@ -804,13 +804,13 @@ export default function WorkLogCalendar({
 
                   for (const log of sortedLogs) {
                     if (log.category === '출장 업무' && !log.isDueMarker) {
-                      const sName = (log.siteName || log.site_name || '').trim();
-                      const sAddr = (log.siteAddress || log.site_address || log.location || '').trim();
+                      const sName = String(log.siteName || log.site_name || '').trim();
+                      const sAddr = String(log.siteAddress || log.site_address || log.location || '').trim();
                       let baseSite = sName;
                       if (!baseSite && sAddr) baseSite = sAddr;
                       if (!baseSite) baseSite = '출장';
 
-                      const subCat = (log.subCategory || log.sub_category || '작업').trim();
+                      const subCat = String(log.subCategory || log.sub_category || '작업').trim();
                       const groupKey = `${baseSite}___${subCat}`;
 
                       if (!tripGroupsMap.has(groupKey)) {

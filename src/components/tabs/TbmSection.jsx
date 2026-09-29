@@ -802,10 +802,10 @@ export default function TbmSection({
             rank: (typeof att === 'object' ? att.rank : '') || addRow.leaderRank || '사원',
             team: (typeof att === 'object' ? att.team : '') || addRow.leaderTeam || '',
             division: (typeof att === 'object' ? att.division : '') || addRow.leaderDivision || '',
-            site: (addRow.site || addRow.tripSite || addRow.siteName || addRow.site_name || parent.site || '').trim(),
-            siteAddress: (addRow.siteAddress || addRow.tripSiteAddress || addRow.site_address || parent.siteAddress || '').trim(),
-            tripSite: (addRow.tripSite || addRow.site || addRow.siteName || parent.site || '').trim(),
-            conductedAt: addRow.conductedAt || `${addRow.date || ''} ${addRow.time || ''}`.trim() || '실시 완료',
+            site: String(addRow.site || addRow.tripSite || addRow.siteName || addRow.site_name || parent.site || '').trim(),
+            siteAddress: String(addRow.siteAddress || addRow.tripSiteAddress || addRow.site_address || parent.siteAddress || '').trim(),
+            tripSite: String(addRow.tripSite || addRow.site || addRow.siteName || parent.site || '').trim(),
+            conductedAt: addRow.conductedAt || String(`${addRow.date || ''} ${addRow.time || ''}`).trim() || '실시 완료',
             date: addRowDate || addRow.date,
             safetyChecked: true,
             targetType: targetType,
@@ -2769,10 +2769,10 @@ export default function TbmSection({
             const additionalGroups = [];
             additionalList.forEach(item => {
               const conductedAtVal = (item.conductedAt || tbm.conductedAt || '').slice(0, 16);
-              const notesVal = (item.notes || '').trim();
-              const regVal = (item.registeredBy || '').trim();
-              const siteVal = (item.site || item.tripSite || item.siteName || item.site_name || item.trip_site || tbm.site || '').trim();
-              const siteAddrVal = (item.siteAddress || item.tripSiteAddress || item.site_address || item.trip_site_address || tbm.siteAddress || '').trim();
+              const notesVal = String(item.notes || '').trim();
+              const regVal = String(item.registeredBy || '').trim();
+              const siteVal = String(item.site || item.tripSite || item.siteName || item.site_name || item.trip_site || tbm.site || '').trim();
+              const siteAddrVal = String(item.siteAddress || item.tripSiteAddress || item.site_address || item.trip_site_address || tbm.siteAddress || '').trim();
               const key = `${conductedAtVal}_${siteVal}_${notesVal}_${regVal}`;
 
               let grp = additionalGroups.find(g => g.key === key);
