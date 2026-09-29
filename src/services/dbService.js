@@ -4433,8 +4433,8 @@ class SecurityDatabase {
     tbm.site = (tbm.site || tbm.siteName || tbm.site_name || '').trim();
     tbm.siteAddress = (tbm.siteAddress || tbm.site_address || tbm.address || '').trim();
     tbm.workTitle = (tbm.workTitle || tbm.work_title || tbm.title || '').trim();
-    tbm.workArea = (tbm.workArea || tbm.work_area || '').trim();
     delete tbm.work_area;
+    delete tbm.workArea;
     tbm.workCategory = (tbm.workCategory || tbm.work_category || '일반작업').trim();
     tbm.leaderDivision = (tbm.leaderDivision || tbm.leader_division || tbm.division || '').trim();
     tbm.leaderTeam = (tbm.leaderTeam || tbm.leader_team || tbm.team || '').trim();
@@ -5113,6 +5113,7 @@ class SecurityDatabase {
       if (Array.isArray(a.photos)) a.photos.forEach(p => collectPhoto(p, 'add_photo.jpg'));
       else if (a.photo) collectPhoto(a.photo, 'add_photo.jpg');
     });
+    const allPhotos = Array.from(allPhotosMap.values());
     const photoUrlString = allPhotos
       .map(p => {
         const u = String(p.url || p.viewUrl || p.thumbnailUrl || '').trim();

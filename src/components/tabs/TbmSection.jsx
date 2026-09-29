@@ -214,7 +214,6 @@ export default function TbmSection({
     site: '',
     siteAddress: '',
     workTitle: '',
-    workArea: '',
     workCategory: '일반작업', // '허가작업' | '신고작업' | '일반작업' | '작업 없음'
     leaderDivision: '',
     leaderTeam: '',
@@ -225,7 +224,6 @@ export default function TbmSection({
     absentees: [], // [{ name, rank, reason }]
     additionalTbms: [], // [{ id, name, rank, team, division, phone, conductedAt, date, safetyChecked, notes, registeredBy }]
     workContent: '',
-    toolsUsed: '',
     preCheck: {
       teamSafetySlogan: false,
       prePpeCheck: false,
@@ -835,7 +833,6 @@ export default function TbmSection({
           site: addRow.site || '사업장 미지정',
           siteAddress: addRow.siteAddress || '',
           workTitle: addRow.workTitle || addRow.work_title || (isTargetPost ? '업무 후 추가 TBM' : '업무 전 추가 TBM'),
-          workArea: addRow.workArea || '',
           workCategory: addRow.workCategory || '일반작업',
           leaderDivision: addRow.leaderDivision || '',
           leaderTeam: addRow.leaderTeam || '',
@@ -1247,7 +1244,7 @@ export default function TbmSection({
     const safeAdditionalTbms = Array.isArray(safeTbm.additionalTbms) ? safeTbm.additionalTbms : [];
 
     // PreCheck fallback
-    const rawPre = safeTbm.preCheck || safeTbm.pre_check || {};
+    const rawPre = safeTbm.preCheck || {};
     let safePreSelected = Array.isArray(rawPre.selectedItems) ? [...rawPre.selectedItems] : [];
 
     // Fallback 1: If safePreSelected is empty, check boolean flags in rawPre
@@ -1306,7 +1303,7 @@ export default function TbmSection({
     };
 
     // PostCheck fallback
-    const rawPost = safeTbm.postCheck || safeTbm.post_check || {};
+    const rawPost = safeTbm.postCheck || {};
     const isPostTbmRecord = (String(safeTbm.id || '').startsWith('tbm_post_') || safeTbm.tbmType === 'post' || safeTbm.displayType === 'post');
     let postPhotos = Array.isArray(rawPost.photos) && rawPost.photos.length > 0
       ? rawPost.photos
@@ -1347,7 +1344,6 @@ export default function TbmSection({
       site: safeTbm.site || safeTbm.siteName || safeTbm.site_name || '',
       siteAddress: safeTbm.siteAddress || safeTbm.site_address || safeTbm.address || '',
       workTitle: safeTbm.workTitle || safeTbm.work_title || safeTbm.title || '',
-      workArea: safeTbm.workArea || safeTbm.work_area || '',
       workCategory: safeTbm.workCategory || safeTbm.work_category || '일반작업',
       leaderDivision: lDiv,
       leaderTeam: lTeam,
@@ -1358,7 +1354,6 @@ export default function TbmSection({
       absentees: safeAbsentees,
       additionalTbms: safeAdditionalTbms,
       workContent: safeTbm.workContent || safeTbm.work_content || safeTbm.content || '',
-      toolsUsed: safeTbm.toolsUsed || safeTbm.tools_used || '',
       preCheck: safePre,
       postCheck: safePost,
       includePostCheckNow: (String(safeTbm.id || '').startsWith('tbm_post_') || safeTbm.tbmType === 'post' || safeTbm.displayType === 'post'),
@@ -1406,7 +1401,6 @@ export default function TbmSection({
       site: normalized.site || preTbm.site || preTbm.siteName || preTbm.site_name || '',
       siteAddress: normalized.siteAddress || preTbm.siteAddress || preTbm.site_address || preTbm.address || '',
       workTitle: normalized.workTitle || preTbm.workTitle || preTbm.work_title || `${normalized.leaderDivision || ''} ${normalized.leaderTeam || ''} TBM`.trim(),
-      workArea: normalized.workArea || preTbm.workArea || preTbm.work_area || '',
       workCategory: normalized.workCategory || preTbm.workCategory || preTbm.work_category || '일반작업',
       leaderDivision: normalized.leaderDivision || preTbm.leaderDivision || preTbm.leader_division || '',
       leaderTeam: normalized.leaderTeam || preTbm.leaderTeam || preTbm.leader_team || '',
@@ -1417,7 +1411,6 @@ export default function TbmSection({
       absentees: Array.isArray(preTbm.absentees) ? preTbm.absentees : [],
       additionalTbms: [],
       workContent: normalized.workContent || preTbm.workContent || preTbm.work_content || '',
-      toolsUsed: normalized.toolsUsed || preTbm.toolsUsed || preTbm.tools_used || '',
       tbmType: 'post',
       includePostCheckNow: true,
       postCheck: {
@@ -1781,8 +1774,6 @@ export default function TbmSection({
         trip_site: currentTripSite,
         workTitle: addWorkTitle,
         work_title: addWorkTitle,
-        workArea: targetAdditionalTbm.workArea || '',
-        work_area: targetAdditionalTbm.workArea || '',
         workCategory: targetAdditionalTbm.workCategory || '일반작업',
         work_category: targetAdditionalTbm.workCategory || '일반작업',
         leaderDivision: targetAdditionalTbm.leaderDivision || '',
@@ -2664,7 +2655,7 @@ export default function TbmSection({
             const totalAttendees = otherAtts.length + (leaderVal ? 1 : 0);
 
             // Pre-TBM stats (문자열/객체 안전 파싱 및 사진 보장)
-            let preCheckObj = tbm.preCheck || tbm.pre_check;
+            let preCheckObj = tbm.preCheck;
             if (typeof preCheckObj === 'string') {
               try { preCheckObj = JSON.parse(preCheckObj); } catch (e) { preCheckObj = {}; }
             }
@@ -2702,7 +2693,7 @@ export default function TbmSection({
             const preNotes = (preCheckObj.notes || tbm.notes || '').trim();
 
             // Post-TBM stats (문자열/객체 안전 파싱 및 사진 보장)
-            let postCheckObj = tbm.postCheck || tbm.post_check;
+            let postCheckObj = tbm.postCheck;
             if (typeof postCheckObj === 'string') {
               try { postCheckObj = JSON.parse(postCheckObj); } catch (e) { postCheckObj = {}; }
             }
@@ -2868,11 +2859,6 @@ export default function TbmSection({
                       <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
                         {tbm.site || '사업장 미지정'}
                       </span>
-                      {tbm.workArea && (
-                        <span style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                          {tbm.workArea}
-                        </span>
-                      )}
                     </div>
 
                     <span style={{
@@ -3112,11 +3098,6 @@ export default function TbmSection({
                       <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
                         {tbm.site || '사업장 미지정'}
                       </span>
-                      {tbm.workArea && (
-                        <span style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                          {tbm.workArea}
-                        </span>
-                      )}
                     </div>
 
                     <span style={{
@@ -3736,11 +3717,6 @@ export default function TbmSection({
                     <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a' }}>
                       {tbm.site || '사업장 미지정'}
                     </span>
-                    {tbm.workArea && (
-                      <span style={{ fontSize: '11px', color: '#475569', background: '#f8fafc', padding: '1px 6px', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
-                        {tbm.workArea}
-                      </span>
-                    )}
                   </div>
 
                   <span style={{
