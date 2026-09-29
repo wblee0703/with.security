@@ -436,6 +436,23 @@ function doPost(e) {
             const targetId = String(item.id || keyValue).trim();
             const idMatched = Boolean(targetId && rowId && rowId === targetId);
 
+            const normalizeType = function (val, idHint) {
+              if (idHint) {
+                if (String(idHint).startsWith('tbm_add_')) return 'additional';
+                if (String(idHint).startsWith('tbm_post_')) return 'post';
+                if (String(idHint).startsWith('tbm_pre_')) return 'pre';
+              }
+              if (!val) return '';
+              const s = String(val).toLowerCase();
+              if (s.indexOf('추가') !== -1 || s === 'additional') return 'additional';
+              if (s.indexOf('후') !== -1 || s === 'post') return 'post';
+              if (s.indexOf('전') !== -1 || s === 'pre') return 'pre';
+              return s;
+            };
+
+            const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
+            const normItemType = normalizeType(rawItemType, item.id);
+
             if (idMatched) {
               // 1. ID가 일치하면 무조건 동일 레코드 수정으로 판정 (새 행 증식 원천 방지)
               isMatch = true;
@@ -458,23 +475,8 @@ function doPost(e) {
 
               const itemSite = String(item.site || '').trim().toLowerCase();
               const itemLeader = String(item.leader_name || '').trim().toLowerCase();
-              const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
-
-              const normalizeType = function (val, idHint) {
-                if (idHint) {
-                  if (String(idHint).startsWith('tbm_add_')) return 'additional';
-                  if (String(idHint).startsWith('tbm_post_')) return 'post';
-                  if (String(idHint).startsWith('tbm_pre_')) return 'pre';
-                }
-                if (!val) return '';
-                if (val.indexOf('추가') !== -1 || val === 'additional') return 'additional';
-                if (val.indexOf('후') !== -1 || val === 'post') return 'post';
-                if (val.indexOf('전') !== -1 || val === 'pre') return 'pre';
-                return val;
-              };
 
               const normRowType = normalizeType(rawRowType, rowId);
-              const normItemType = normalizeType(rawItemType, item.id);
 
               const compositeMatched = Boolean(
                 itemDateNorm && itemSite && itemLeader && normItemType &&
@@ -518,16 +520,42 @@ function doPost(e) {
             const updatedRow = headers.map((h, colIdx) => {
               // TBM 구분 컬럼은 무조건 '업무 전' / '업무 후' / '추가 TBM' 한글로 완벽 보장
               if (sheetName === 'tbms' && (h === 'tbm_type' || h === 'tbmType' || h === '구분')) {
-                if (normItemType === 'additional' || String(item.id || '').startsWith('tbm_add_') || String(item.tbm_type || item.tbmType || item['구분'] || '').includes('추가') || String(item.work_title || item.workTitle || '').includes('추가')) {
+                const currentType = item[h] || item.tbm_type || item.tbmType || item['구분'] || '';
+                if (currentType === '추가 TBM' || currentType === 'additional' || String(item.id || '').startsWith('tbm_add_') || String(item.work_title || item.workTitle || '').includes('추가')) {
                   return '추가 TBM';
                 }
-                return (normItemType === 'post' || String(item.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
+                return (currentType === '업무 후' || currentType === 'post' || String(item.id || '').startsWith('tbm_post_')) ? '업무 후' : '업무 전';
               }
               const val = item[h];
               if (val !== undefined && val !== null && val !== '') {
                 return (typeof val === 'object') ? JSON.stringify(val) : val;
               }
-              // 새 값이 비어있고 기존 행에 값이 이미 채워져 있다면 기존 값 보존 (기본정보 증발 원천 방지)
+
+              // 클라이언트가 명시적으로 해당 필드를 전달했으나 빈 문자열인 경우(예: 미참석자 전원 완료되어 빈 목록, 메모 비움 등)는 빈 값 반영
+              const isExplicitInRaw = Boolean(
+                rawData && (
+                  h in rawData ||
+                  (h === 'site' && ('siteName' in rawData || 'site_name' in rawData)) ||
+                  (h === 'site_address' && ('siteAddress' in rawData || 'address' in rawData)) ||
+                  (h === 'work_title' && ('workTitle' in rawData || 'title' in rawData)) ||
+                  (h === 'work_category' && ('workCategory' in rawData)) ||
+                  (h === 'leader_division' && ('leaderDivision' in rawData || 'division' in rawData)) ||
+                  (h === 'leader_team' && ('leaderTeam' in rawData || 'team' in rawData || 'department' in rawData)) ||
+                  (h === 'leader_name' && ('leaderName' in rawData || 'leader' in rawData)) ||
+                  (h === 'leader_rank' && ('leaderRank' in rawData || 'rank' in rawData)) ||
+                  (h === 'leader_phone' && ('leaderPhone' in rawData || 'phone' in rawData)) ||
+                  (h === 'work_content' && ('workContent' in rawData || 'content' in rawData || 'notes' in rawData)) ||
+                  (h === 'check_list' && ('checkList' in rawData || 'checklist' in rawData)) ||
+                  (h === 'absentees' && ('absentees' in rawData || 'postCheck' in rawData)) ||
+                  (h === 'attendees' && ('attendees' in rawData)) ||
+                  (h === 'status' && ('status' in rawData))
+                )
+              );
+              if (isExplicitInRaw && (val === '' || val === null)) {
+                return '';
+              }
+
+              // 새 값이 비어있고 요청에 명시되지 않은 경우 기존 값 보존 (부분 업데이트 시 기본정보 증발 방지)
               const existingVal = currentRow[colIdx];
               if (existingVal !== undefined && existingVal !== null && existingVal !== '') {
                 return existingVal;
@@ -651,10 +679,10 @@ function doPost(e) {
     // [2] 데이터 수정 (Update)
     if (action === 'update') {
       const id = payload.id;
-      const patch = normalizeObjectForSheet(sheetName, payload.data || {});
-      const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'id' : (patch.log_id ? 'log_id' : 'id')));
+      const rawData = payload.data || {};
+      const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'id' : (rawData.log_id ? 'log_id' : 'id')));
 
-      const targetHeaders = SCHEMAS[sheetName] || Object.keys(patch);
+      const targetHeaders = SCHEMAS[sheetName] || Object.keys(rawData);
       const headers = ensureHeaders(sheet, targetHeaders);
       const keyColIdx = headers.indexOf(keyField);
       const idColIdx = headers.indexOf('id');
@@ -665,15 +693,72 @@ function doPost(e) {
         return jsonResponse({ success: false, error: 'Key field not found: ' + keyField });
       }
 
+      // 부분 업데이트용 패치 객체 정밀 구성: 요청에 포함된 필드만 선별 반영하고 스키마에 맞게 정규화
+      const patch = {};
+      for (const [k, v] of Object.entries(rawData)) {
+        if (v === undefined) continue;
+        let mappedKey = k;
+        let mappedVal = v;
+        if (sheetName === 'tbms') {
+          if (k === 'workTitle' || k === 'title') mappedKey = 'work_title';
+          else if (k === 'workCategory') mappedKey = 'work_category';
+          else if (k === 'siteName' || k === 'site_name') mappedKey = 'site';
+          else if (k === 'siteAddress' || k === 'address') mappedKey = 'site_address';
+          else if (k === 'leaderDivision' || k === 'division') mappedKey = 'leader_division';
+          else if (k === 'leaderTeam' || k === 'team' || k === 'department') mappedKey = 'leader_team';
+          else if (k === 'leaderName' || k === 'leader') mappedKey = 'leader_name';
+          else if (k === 'leaderRank' || k === 'rank') mappedKey = 'leader_rank';
+          else if (k === 'leaderPhone' || k === 'phone') mappedKey = 'leader_phone';
+          else if (k === 'workContent' || k === 'content') mappedKey = 'work_content';
+          else if (k === 'checkList' || k === 'checklist') mappedKey = 'check_list';
+          else if (k === 'photoUrl' || k === 'photo_urls' || k === 'photoUrls' || k === 'photos') mappedKey = 'photo_url';
+          else if (k === 'tbmType' || k === '구분') mappedKey = 'tbm_type';
+
+          if (mappedKey === 'tbm_type') {
+            const rawT = String(v).toLowerCase();
+            if (rawT.indexOf('추가') !== -1 || rawT === 'additional') mappedVal = '추가 TBM';
+            else if (rawT.indexOf('후') !== -1 || rawT === 'post') mappedVal = '업무 후';
+            else mappedVal = '업무 전';
+          } else if (mappedKey === 'attendees') {
+            mappedVal = formatAttendeesForSheet(v);
+          } else if (mappedKey === 'absentees') {
+            mappedVal = formatAbsenteesForSheet(v);
+          } else if (mappedKey === 'date' || mappedKey === 'log_date') {
+            mappedVal = formatKstDate(v, true);
+          }
+        }
+        patch[mappedKey] = mappedVal;
+      }
+      if (!patch.updated_at && !patch.updatedAt && headers.indexOf('updated_at') !== -1) {
+        patch.updated_at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+      }
+
       for (let i = 1; i < rows.length; i++) {
         const cellValue = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
         const idVal = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
         const logIdVal = logIdColIdx !== -1 ? String(rows[i][logIdColIdx] || '').trim() : '';
         const targetStr = String(id).trim();
 
-        const isMatch = (sheetName === 'users')
+        let isMatch = (sheetName === 'users')
           ? (cellValue.toLowerCase() === targetStr.toLowerCase())
           : (cellValue === targetStr || (idVal && idVal === targetStr) || (logIdVal && logIdVal === targetStr));
+
+        if (!isMatch && sheetName === 'tbms') {
+          const dateIdx = headers.indexOf('date');
+          const siteIdx = headers.indexOf('site');
+          const leaderIdx = headers.indexOf('leader_name');
+          const rowDateNorm = dateIdx !== -1 ? String(rows[i][dateIdx] || '').replace(/\D/g, '').slice(0, 8) : '';
+          const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
+          const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
+
+          const itemDateNorm = String(patch.date || rawData.date || '').replace(/\D/g, '').slice(0, 8);
+          const itemSite = String(patch.site || rawData.site || rawData.siteName || '').trim().toLowerCase();
+          const itemLeader = String(patch.leader_name || rawData.leader_name || rawData.leaderName || '').trim().toLowerCase();
+
+          if (itemDateNorm && itemSite && itemLeader && rowDateNorm === itemDateNorm && rowSite === itemSite && rowLeader === itemLeader) {
+            isMatch = true;
+          }
+        }
 
         if (isMatch) {
           const rowNum = i + 1;
@@ -711,7 +796,7 @@ function doPost(e) {
           patch.id = numId;
         }
       }
-      appendObjectRow(sheet, headers, { ...patch, [keyField]: id });
+      appendObjectRow(sheet, headers, normalizeObjectForSheet(sheetName, { ...patch, [keyField]: id }));
       SpreadsheetApp.flush();
       if (sheetName === 'users') {
         try { enforcePasswordHashingInSheet(); } catch (e) { }

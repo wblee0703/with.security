@@ -2233,7 +2233,7 @@ export default function TbmSection({
             isCompleted: false
           }
         };
-        await dbService.updateTbm(updated);
+        await dbService.updateTbm(targetDeleteTbm.id, updated);
         if (onTriggerToast) onTriggerToast('업무 후 TBM 기록이 성공적으로 삭제되었습니다.', 'success');
       } else {
         await dbService.deleteTbm(targetDeleteTbm.id, targetDeleteTbm);

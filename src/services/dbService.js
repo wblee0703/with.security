@@ -4926,19 +4926,46 @@ class SecurityDatabase {
                       mergedMap.set(idStr, this._normalizeTbm(loc));
                     } else {
                       const remoteItem = mergedMap.get(idStr);
-                      const locAdd = Array.isArray(loc.additionalTbms) ? loc.additionalTbms : [];
-                      const remAdd = Array.isArray(remoteItem.additionalTbms) ? remoteItem.additionalTbms : [];
-                      if (locAdd.length > 0) {
-                        const comb = new Map();
-                        remAdd.forEach(a => { if (a && (a.name || a.id)) comb.set(a.name || a.id, a); });
+                      const locTime = new Date(loc.updatedAt || loc.updated_at || loc.createdAt || loc.created_at || 0).getTime();
+                      const remTime = new Date(remoteItem.updatedAt || remoteItem.updated_at || remoteItem.createdAt || remoteItem.created_at || 0).getTime();
+
+                      if (locTime > remTime) {
+                        // 로컬 수정 내역이 원격 시트보다 최신인 경우 로컬 수정본 우선 유지
+                        const locAdd = Array.isArray(loc.additionalTbms) ? loc.additionalTbms : [];
+                        const remAdd = Array.isArray(remoteItem.additionalTbms) ? remoteItem.additionalTbms : [];
+                        const combinedAddMap = new Map();
+                        remAdd.forEach(a => { if (a && (a.name || a.id)) combinedAddMap.set(a.name || a.id, a); });
                         locAdd.forEach(a => {
                           if (a && (a.name || a.id)) {
                             const k = a.name || a.id;
-                            const ex = comb.get(k);
-                            comb.set(k, { ...(ex || {}), ...a });
+                            const ex = combinedAddMap.get(k);
+                            combinedAddMap.set(k, { ...(ex || {}), ...a });
                           }
                         });
-                        remoteItem.additionalTbms = Array.from(comb.values());
+
+                        const merged = this._normalizeTbm({
+                          ...remoteItem,
+                          ...loc,
+                          additionalTbms: Array.from(combinedAddMap.values()),
+                          photo_url: loc.photo_url || remoteItem.photo_url || '',
+                          photos: (Array.isArray(loc.photos) && loc.photos.length > 0) ? loc.photos : (remoteItem.photos || [])
+                        });
+                        mergedMap.set(idStr, merged);
+                      } else {
+                        const locAdd = Array.isArray(loc.additionalTbms) ? loc.additionalTbms : [];
+                        const remAdd = Array.isArray(remoteItem.additionalTbms) ? remoteItem.additionalTbms : [];
+                        if (locAdd.length > 0) {
+                          const comb = new Map();
+                          remAdd.forEach(a => { if (a && (a.name || a.id)) comb.set(a.name || a.id, a); });
+                          locAdd.forEach(a => {
+                            if (a && (a.name || a.id)) {
+                              const k = a.name || a.id;
+                              const ex = comb.get(k);
+                              comb.set(k, { ...(ex || {}), ...a });
+                            }
+                          });
+                          remoteItem.additionalTbms = Array.from(comb.values());
+                        }
                       }
                     }
                   }
@@ -5160,12 +5187,16 @@ class SecurityDatabase {
       updated_at: fullTbm.updated_at || fullTbm.updatedAt || new Date().toISOString()
     };
 
-    // 3. Non-blocking background sync with server (never stalls the UI!)
-    safeFetchApi('/api/tbms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(remotePayload)
-    }).catch(err => console.warn('Background TBM sync warning:', err));
+    // 3. Sync with server (await so subsequent reload has latest sheet state)
+    try {
+      await safeFetchApi('/api/tbms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(remotePayload)
+      });
+    } catch (err) {
+      console.warn('Background TBM sync warning:', err);
+    }
 
     notifyDataChanged();
     return fullTbm;
@@ -5210,14 +5241,24 @@ class SecurityDatabase {
 
   async updateTbm(id, patch) {
     if (!id) return null;
-    let existing = await this.getTbmById(id);
+    let targetId = id;
+    let patchObj = patch;
+    if (typeof id === 'object' && id !== null) {
+      targetId = id.id;
+      patchObj = id;
+    }
+    if (!patchObj || typeof patchObj !== 'object') {
+      patchObj = {};
+    }
+
+    let existing = await this.getTbmById(targetId);
     if (!existing) {
-      existing = { id, ...patch };
+      existing = { id: targetId, ...patchObj };
     }
 
     const updated = {
       ...existing,
-      ...patch,
+      ...patchObj,
       updatedAt: new Date().toISOString()
     };
 
