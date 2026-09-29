@@ -5295,9 +5295,10 @@ class SecurityDatabase {
     return await this.saveTbm(updated);
   }
 
-  async deleteTbm(id) {
+  async deleteTbm(id, targetObj = null) {
     if (!id) return false;
     const targetId = String(id).trim();
+    const meta = (targetObj && typeof targetObj === 'object') ? targetObj : {};
 
     // 1. Immediately delete from LocalStorage cache (0.1ms UI response)
     try {
@@ -5305,7 +5306,15 @@ class SecurityDatabase {
       if (raw) {
         let list = JSON.parse(raw);
         if (Array.isArray(list)) {
-          list = list.filter(item => String(item.id) !== targetId);
+          // 대상 ID 및 연관된 추가 TBM ID들 모두 필터링 제거
+          const addIds = Array.isArray(meta.additionalTbms) ? meta.additionalTbms.map(a => String(a.id || '')) : [];
+          list = list.filter(item => {
+            const curId = String(item.id || '');
+            if (curId === targetId) return false;
+            if (addIds.includes(curId)) return false;
+            if (item.parentTbmId && String(item.parentTbmId) === targetId) return false;
+            return true;
+          });
           localStorage.setItem('with_security_tbms_backup', JSON.stringify(list));
         }
       }
@@ -5314,11 +5323,23 @@ class SecurityDatabase {
     // 2. Delete from IndexedDB immediately
     try {
       await this.deleteItem('tbms', targetId);
+      if (Array.isArray(meta.additionalTbms)) {
+        for (const add of meta.additionalTbms) {
+          if (add.id) await this.deleteItem('tbms', String(add.id));
+        }
+      }
     } catch (e) { }
 
-    // 3. Non-blocking background sync with server
-    safeFetchApi(`/api/tbms/${encodeURIComponent(targetId)}`, { method: 'DELETE' })
-      .catch(err => console.warn('Background TBM delete warning:', err));
+    // 3. Await remote sync with Google Sheets (passing full meta for 100% accurate row matching)
+    try {
+      await safeFetchApi(`/api/tbms/${encodeURIComponent(targetId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(meta)
+      });
+    } catch (err) {
+      console.warn('Remote TBM delete warning:', err);
+    }
 
     notifyDataChanged();
     return true;

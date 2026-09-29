@@ -1648,14 +1648,14 @@ export default function TbmSection({
 
       for (const r of rowsToDelete) {
         try {
-          await dbService.deleteTbm(r.id);
+          await dbService.deleteTbm(r.id, r);
         } catch (delErr) {
           console.warn('Row deletion note:', r.id, delErr);
         }
       }
 
       if (onTriggerToast) onTriggerToast(`[${memberNames}] 님의 추가 TBM 기록이 삭제되었습니다.`, 'success');
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete additional TBM group:', err);
       if (onTriggerToast) onTriggerToast('추가 TBM 기록 삭제 실패: ' + (err.message || ''), 'error');
@@ -1729,7 +1729,7 @@ export default function TbmSection({
 
         for (const oldRow of rowsToDelete) {
           try {
-            await dbService.deleteTbm(oldRow.id);
+            await dbService.deleteTbm(oldRow.id, oldRow);
           } catch (delErr) {
             console.warn('Old additional row deletion note:', oldRow.id, delErr);
           }
@@ -2236,13 +2236,13 @@ export default function TbmSection({
         await dbService.updateTbm(updated);
         if (onTriggerToast) onTriggerToast('업무 후 TBM 기록이 성공적으로 삭제되었습니다.', 'success');
       } else {
-        await dbService.deleteTbm(targetDeleteTbm.id);
+        await dbService.deleteTbm(targetDeleteTbm.id, targetDeleteTbm);
         if (onTriggerToast) onTriggerToast('TBM 일지가 성공적으로 삭제되었습니다.', 'success');
       }
       setIsDeleteModalOpen(false);
       setTargetDeleteTbm(null);
       setDeletePassword('');
-      loadData();
+      await loadData();
     } catch (err) {
       console.error('Failed to delete TBM:', err);
       if (onTriggerToast) onTriggerToast('삭제 중 오류가 발생했습니다.', 'error');

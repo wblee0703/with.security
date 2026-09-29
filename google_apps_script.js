@@ -790,6 +790,64 @@ function doPost(e) {
           }
         }
 
+        // tbms의 경우 ID 불일치 시 (일자 + 사업장 + 주관자 + 구분) 복합 조건 및 ID 계열 매칭으로 확실한 삭제 지원
+        if (!isMatch && sheetName === 'tbms') {
+          const tDate = formatKstDate(meta.date || meta.log_date || meta.logDate || '', true);
+          const tSite = String(meta.site || meta.siteName || meta.site_name || '').trim().toLowerCase();
+          const tLeader = String(meta.leaderName || meta.leader_name || meta.leader || '').trim().toLowerCase();
+          const rawTargetType = String(meta.tbmType || meta.tbm_type || meta.displayType || meta['구분'] || '').trim().toLowerCase();
+          const isTargetAdd = rawTargetType.includes('추가') || rawTargetType === 'additional' || id.startsWith('tbm_add_');
+          const isTargetPost = !isTargetAdd && (rawTargetType.includes('후') || rawTargetType === 'post' || id.startsWith('tbm_post_'));
+          const targetTypeStr = isTargetAdd ? '추가 TBM' : (isTargetPost ? '업무 후' : '업무 전');
+
+          const dateIdx = headers.findIndex(h => {
+            const nh = String(h || '').trim().toLowerCase();
+            return nh === 'date' || nh === 'log_date' || nh === '일자';
+          });
+          const siteIdx = headers.findIndex(h => {
+            const nh = String(h || '').trim().toLowerCase();
+            return nh === 'site' || nh === 'site_name' || nh === 'sitename' || nh === '사업장';
+          });
+          const leaderIdx = headers.findIndex(h => {
+            const nh = String(h || '').trim().toLowerCase();
+            return nh === 'leader_name' || nh === 'leadername' || nh === 'leader' || nh === '주관자';
+          });
+          const typeIdx = headers.findIndex(h => {
+            const nh = String(h || '').trim().toLowerCase();
+            return nh === 'tbm_type' || nh === 'tbmtype' || nh === '구분';
+          });
+
+          const rowDate = dateIdx !== -1 ? formatKstDate(rows[i][dateIdx], true) : '';
+          const rowSite = siteIdx !== -1 ? String(rows[i][siteIdx] || '').trim().toLowerCase() : '';
+          const rowLeader = leaderIdx !== -1 ? String(rows[i][leaderIdx] || '').trim().toLowerCase() : '';
+          const rawRowType = typeIdx !== -1 ? String(rows[i][typeIdx] || '').trim().toLowerCase() : '';
+          const isRowAdd = rawRowType.includes('추가') || rawRowType === 'additional' || val1.startsWith('tbm_add_');
+          const isRowPost = !isRowAdd && (rawRowType.includes('후') || rawRowType === 'post' || val1.startsWith('tbm_post_'));
+          const rowTypeStr = isRowAdd ? '추가 TBM' : (isRowPost ? '업무 후' : '업무 전');
+
+          // 1. ID 계열 일치 (예: clean ID 매칭 또는 prefix 치환 매칭)
+          const cleanTargetId = id ? id.replace(/^tbm_(pre|post|add)_/, '').trim() : '';
+          const cleanRowId = val1 ? val1.replace(/^tbm_(pre|post|add)_/, '').trim() : '';
+          if (cleanTargetId && cleanRowId && cleanTargetId === cleanRowId && (targetTypeStr === rowTypeStr || isTargetAdd)) {
+            isMatch = true;
+          }
+
+          // 2. 부모 TBM 삭제 시 연관된 추가 TBM 행들도 시트에서 함께 삭제
+          if (!isMatch && isTargetAdd && val1 && id && (val1.includes(id) || id.includes(val1))) {
+            isMatch = true;
+          }
+
+          // 3. 일자 + 사업장 + 주관자 + 구분 복합 일치
+          if (!isMatch && tDate && rowDate && tDate === rowDate) {
+            const siteMatch = !tSite || !rowSite || rowSite === tSite || rowSite.includes(tSite) || tSite.includes(rowSite);
+            const leaderMatch = !tLeader || !rowLeader || rowLeader === tLeader || rowLeader.includes(tLeader) || tLeader.includes(rowLeader);
+            const typeMatch = (targetTypeStr === rowTypeStr);
+            if (siteMatch && leaderMatch && typeMatch) {
+              isMatch = true;
+            }
+          }
+        }
+
         if (isMatch) {
           sheet.deleteRow(i + 1);
           deletedCount++;
