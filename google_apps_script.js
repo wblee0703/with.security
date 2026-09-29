@@ -101,16 +101,16 @@ function initDatabase() {
 function syncDatabaseHeaders() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const report = {};
-  
+
   for (const [sheetName, targetHeaders] of Object.entries(SCHEMAS)) {
     let sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
     }
-    
+
     const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
-    
+
     if (lastRow <= 1) {
       // 데이터가 없는 경우: 1행 헤더만 갱신
       sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
@@ -119,56 +119,25 @@ function syncDatabaseHeaders() {
       // 필요없는 잉여 열(컬럼) 자동 삭제
       const maxCols = sheet.getMaxColumns();
       if (maxCols > targetHeaders.length) {
-        try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
+        try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) { }
       }
 
       report[sheetName] = '헤더 생성 완료';
       continue;
     }
-    
+
     // 기존 데이터가 있는 경우: 기존 행 데이터를 보존하면서 1행 헤더 및 열 안전 정렬
     const existingValues = sheet.getRange(1, 1, lastRow, Math.max(lastCol, 1)).getValues();
     const oldHeaders = existingValues[0].map(h => String(h || '').trim());
     const dataRows = existingValues.slice(1);
-    
+
     // 1행 헤더를 새 표준 스키마로 즉시 교체
     sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
     formatHeaderRow(sheet, targetHeaders.length);
 
-    // 컬럼 매핑: 구버전 헤더 위치에서 신규 헤더 위치로 값 재배치
+    // 컬럼 매핑: 구버전 헤더 위치에서 신규 표준 헤더 위치로 값 안전 재배치
     const reorderedRows = dataRows.map(row => {
-      // TBM 시트: 기존 pre_check / post_check 컬럼에 있던 사진 데이터가 있다면 photo_url 컬럼으로 자동 추출 이관
-      let tbmPhotos = [];
-      if (sheetName === 'tbms') {
-        const photoColIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('photo_url');
-        if (photoColIdx !== -1 && row[photoColIdx]) {
-          String(row[photoColIdx]).split(/[\n,]+/).map(s => s.trim()).filter(Boolean).forEach(u => {
-            if (tbmPhotos.indexOf(u) === -1) tbmPhotos.push(u);
-          });
-        }
-        const extractPhotos = function(cellVal) {
-          if (!cellVal || typeof cellVal !== 'string') return;
-          try {
-            if (cellVal.startsWith('{') || cellVal.startsWith('[')) {
-              const parsed = JSON.parse(cellVal);
-              const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.photos) ? parsed.photos : []);
-              list.forEach(p => {
-                const u = (typeof p === 'string') ? p : (p?.viewUrl || p?.url || '');
-                if (u && tbmPhotos.indexOf(u) === -1) tbmPhotos.push(u);
-              });
-            }
-          } catch (e) {}
-        };
-        const preIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('pre_check');
-        const postIdx = oldHeaders.map(h => h.toLowerCase()).indexOf('post_check');
-        if (preIdx !== -1) extractPhotos(row[preIdx]);
-        if (postIdx !== -1) extractPhotos(row[postIdx]);
-      }
-
       return targetHeaders.map(th => {
-        if (sheetName === 'tbms' && th === 'photo_url' && tbmPhotos.length > 0) {
-          return tbmPhotos.join('\n');
-        }
         const idx = oldHeaders.indexOf(th);
         if (idx !== -1) return row[idx];
         // 대소문자 무시 매칭
@@ -185,24 +154,24 @@ function syncDatabaseHeaders() {
     // 스키마 컬럼 수 이후의 잉여 열만 안전하게 삭제 (데이터 손실 없음)
     const maxCols = sheet.getMaxColumns();
     if (maxCols > targetHeaders.length) {
-      try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) {}
+      try { sheet.deleteColumns(targetHeaders.length + 1, maxCols - targetHeaders.length); } catch (e) { }
     }
-    
-    try { sheet.autoResizeColumns(1, targetHeaders.length); } catch (e) {}
+
+    try { sheet.autoResizeColumns(1, targetHeaders.length); } catch (e) { }
     report[sheetName] = `${reorderedRows.length}건 데이터 컬럼 안전 재정렬 완료`;
   }
-  
+
   // 기본 생성되었던 빈 '시트1' 또는 'Sheet1' 정리
   const defaultSheet = ss.getSheetByName('시트1') || ss.getSheetByName('Sheet1');
   if (defaultSheet && ss.getSheets().length > 1) {
-    try { ss.deleteSheet(defaultSheet); } catch (e) {}
+    try { ss.deleteSheet(defaultSheet); } catch (e) { }
   }
-  
+
   // 사용자 시트 비밀번호 단방향 암호화 및 순차 ID 일괄 점검
-  try { enforcePasswordHashingInSheet(); } catch (e) {}
-  try { enforceNumericUserIds(); } catch (e) {}
+  try { enforcePasswordHashingInSheet(); } catch (e) { }
+  try { enforceNumericUserIds(); } catch (e) { }
   // 시트 내 누적된 빈 행 및 중복 데이터 일괄 정리 자동 실행
-  try { cleanupDuplicates(); } catch (e) {}
+  try { cleanupDuplicates(); } catch (e) { }
 
   Logger.log('✅ Withsharing_DB 컬럼 헤더 100% 동기화 완료!');
   return {
@@ -215,10 +184,10 @@ function syncDatabaseHeaders() {
 function formatHeaderRow(sheet, numCols) {
   const headerRange = sheet.getRange(1, 1, 1, numCols);
   headerRange.setBackground('#1e293b')
-             .setFontColor('#ffffff')
-             .setFontWeight('bold')
-             .setHorizontalAlignment('center')
-             .setVerticalAlignment('middle');
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
   sheet.setRowHeight(1, 38);
   sheet.setFrozenRows(1); // 1행 틀 고정
 }
@@ -247,7 +216,7 @@ function doGet(e) {
     const action = params.action || 'get';
     let sheetName = params.sheet || 'work_logs';
     if (sheetName === 'tbm') sheetName = 'tbms';
-    
+
     // 1. 상태 핑(Ping) 테스트
     if (action === 'ping' || action === 'status') {
       const counts = getTableCounts();
@@ -258,13 +227,13 @@ function doGet(e) {
         counts: counts
       });
     }
-    
+
     // 2. 원격 자동 초기화 및 헤더 동기화 트리거
     if (action === 'init' || action === 'sync_headers') {
       const result = syncDatabaseHeaders();
       return jsonResponse(result);
     }
-    
+
     // 3. 중복 데이터 일괄 정리 트리거
     if (action === 'cleanup') {
       const result = cleanupDuplicates();
@@ -283,7 +252,7 @@ function doGet(e) {
         data: allData
       });
     }
-    
+
     // 5. 개별 시트 데이터 조회
     const data = readSheetData(sheetName);
     return jsonResponse({
@@ -307,7 +276,7 @@ function doPost(e) {
     } else {
       return jsonResponse({ success: false, error: 'Empty payload' });
     }
-    
+
     const action = payload.action || 'create';
     let sheetName = payload.sheet || 'work_logs';
     if (sheetName === 'tbm') sheetName = 'tbms';
@@ -334,13 +303,13 @@ function doPost(e) {
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(sheetName);
-    
+
     // 탭이 없으면 자동 생성
     if (!sheet) {
       initDatabase();
       sheet = ss.getSheetByName(sheetName);
     }
-    
+
     // [0] 중복 데이터 일괄 정리 (Cleanup Duplicates)
     if (action === 'cleanup') {
       const result = cleanupDuplicates();
@@ -491,7 +460,7 @@ function doPost(e) {
               const itemLeader = String(item.leader_name || '').trim().toLowerCase();
               const rawItemType = String(item.tbm_type || item.tbmType || item['구분'] || (String(item.id || '').startsWith('tbm_post_') ? 'post' : ((item.postCheck && item.postCheck.isCompleted) ? 'post' : 'pre'))).trim().toLowerCase();
 
-              const normalizeType = function(val, idHint) {
+              const normalizeType = function (val, idHint) {
                 if (idHint) {
                   if (String(idHint).startsWith('tbm_add_')) return 'additional';
                   if (String(idHint).startsWith('tbm_post_')) return 'post';
@@ -610,7 +579,7 @@ function doPost(e) {
 
               // 아래에서 위로 삭제하여 행 번호 변동 방지
               rowsToDelete.sort((a, b) => b - a).forEach(rNum => {
-                try { sheet.deleteRow(rNum); } catch (e) {}
+                try { sheet.deleteRow(rNum); } catch (e) { }
               });
             }
 
@@ -673,29 +642,29 @@ function doPost(e) {
       appendObjectRow(sheet, headers, item);
       SpreadsheetApp.flush();
       if (sheetName === 'users') {
-        try { enforcePasswordHashingInSheet(); } catch (e) {}
-        try { enforceNumericUserIds(); } catch (e) {}
+        try { enforcePasswordHashingInSheet(); } catch (e) { }
+        try { enforceNumericUserIds(); } catch (e) { }
       }
       return jsonResponse({ success: true, message: 'Row created', data: item });
     }
-    
+
     // [2] 데이터 수정 (Update)
     if (action === 'update') {
       const id = payload.id;
       const patch = normalizeObjectForSheet(sheetName, payload.data || {});
       const keyField = payload.key || (sheetName === 'users' ? 'username' : (sheetName === 'sites' ? 'id' : (patch.log_id ? 'log_id' : 'id')));
-      
+
       const targetHeaders = SCHEMAS[sheetName] || Object.keys(patch);
       const headers = ensureHeaders(sheet, targetHeaders);
       const keyColIdx = headers.indexOf(keyField);
       const idColIdx = headers.indexOf('id');
       const logIdColIdx = headers.indexOf('log_id');
       const rows = sheet.getLastRow() > 1 ? sheet.getDataRange().getValues() : [];
-      
+
       if (keyColIdx === -1 && idColIdx === -1 && logIdColIdx === -1) {
         return jsonResponse({ success: false, error: 'Key field not found: ' + keyField });
       }
-      
+
       for (let i = 1; i < rows.length; i++) {
         const cellValue = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
         const idVal = idColIdx !== -1 ? String(rows[i][idColIdx] || '').trim() : '';
@@ -726,13 +695,13 @@ function doPost(e) {
           sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
           SpreadsheetApp.flush();
           if (sheetName === 'users') {
-            try { enforcePasswordHashingInSheet(); } catch (e) {}
-            try { enforceNumericUserIds(); } catch (e) {}
+            try { enforcePasswordHashingInSheet(); } catch (e) { }
+            try { enforceNumericUserIds(); } catch (e) { }
           }
           return jsonResponse({ success: true, message: 'Row updated', id: id });
         }
       }
-      
+
       // 대상이 없으면 새로 추가
       if (sheetName === 'users') {
         const numId = parseInt(patch.id, 10);
@@ -745,12 +714,12 @@ function doPost(e) {
       appendObjectRow(sheet, headers, { ...patch, [keyField]: id });
       SpreadsheetApp.flush();
       if (sheetName === 'users') {
-        try { enforcePasswordHashingInSheet(); } catch (e) {}
-        try { enforceNumericUserIds(); } catch (e) {}
+        try { enforcePasswordHashingInSheet(); } catch (e) { }
+        try { enforceNumericUserIds(); } catch (e) { }
       }
       return jsonResponse({ success: true, message: 'Row inserted (upsert)', id: id });
     }
-    
+
     // [3] 데이터 삭제 (Delete)
     if (action === 'delete') {
       const id = String(payload.id || '').trim();
@@ -758,7 +727,7 @@ function doPost(e) {
       const meta = payload.meta || payload.data || {};
       const rows = sheet.getDataRange().getValues();
       if (rows.length <= 1) return jsonResponse({ success: true, message: 'Sheet is empty' });
-      
+
       const headers = rows[0];
       const keyColIdx = headers.indexOf(keyField);
       const altKeyColIdx = headers.indexOf('log_id');
@@ -772,7 +741,7 @@ function doPost(e) {
       const targetComp = formatKstDate(meta.completionDate || meta.completion_date || '', true);
       const targetUser = String(meta.userId || meta.user_id || meta.username || '').trim().toLowerCase();
       const targetName = String(meta.name || '').trim().toLowerCase();
-      
+
       let deletedCount = 0;
       for (let i = rows.length - 1; i >= 1; i--) {
         const val1 = keyColIdx !== -1 ? String(rows[i][keyColIdx] || '').trim() : '';
@@ -791,8 +760,8 @@ function doPost(e) {
           const titleMatched = (rowTitle === targetTitle);
           const compMatched = (rowComp === targetComp);
           const userMatched = (!targetUser && !targetName) ||
-                              (targetUser && (rowUser === targetUser || rowName === targetUser)) ||
-                              (targetName && (rowName === targetName || rowUser === targetName));
+            (targetUser && (rowUser === targetUser || rowName === targetUser)) ||
+            (targetName && (rowName === targetName || rowUser === targetName));
 
           if (titleMatched && compMatched && userMatched) {
             isMatch = true;
@@ -829,14 +798,14 @@ function doPost(e) {
       SpreadsheetApp.flush();
       return jsonResponse({ success: true, message: 'Rows deleted: ' + deletedCount, id: id, count: deletedCount });
     }
-    
+
     // [4] 일괄 데이터 덮어쓰기/마이그레이션 (Bulk Sync)
     if (action === 'bulk_sync' && Array.isArray(payload.data)) {
       const rawItems = payload.data;
       if (rawItems.length > 0) {
         const targetHeaders = SCHEMAS[sheetName] || Object.keys(rawItems[0]);
         const headers = ensureHeaders(sheet, targetHeaders);
-        
+
         // 기존 행 모두 지우고 새로 작성
         if (sheet.getLastRow() > 1) {
           sheet.deleteRows(2, sheet.getLastRow() - 1);
@@ -848,49 +817,49 @@ function doPost(e) {
       }
       return jsonResponse({ success: true, count: rawItems.length, message: 'Bulk sync completed' });
     }
-    
+
     // [5] 클라이언트(PC/스마트폰) 로컬 데이터 전체 일괄 업로드 (Upload All Collections from Client)
     if (action === 'upload_all' && payload.data && typeof payload.data === 'object') {
       const allData = payload.data;
       const results = {};
       let grandTotalAdded = 0;
       let grandTotalUpdated = 0;
-      
+
       for (const [tableKey, rawItems] of Object.entries(allData)) {
         if (!Array.isArray(rawItems) || rawItems.length === 0) continue;
-        
+
         let targetSheet = ss.getSheetByName(tableKey);
         if (!targetSheet) {
           targetSheet = ss.insertSheet(tableKey);
         }
-        
+
         const targetHeaders = SCHEMAS[tableKey] || Object.keys(rawItems[0]);
         if (targetSheet.getLastRow() === 0) {
           targetSheet.appendRow(targetHeaders);
           formatHeaderRow(targetSheet, targetHeaders.length);
         }
-        
+
         const headers = ensureHeaders(targetSheet, targetHeaders);
         const idColKey = (tableKey === 'users') ? 'username' : (headers.includes('log_id') ? 'log_id' : 'id');
         const idColIdx = headers.indexOf(idColKey);
         const existingRows = targetSheet.getDataRange().getValues();
         const existingIds = new Map();
-        
+
         if (existingRows.length > 1 && idColIdx !== -1) {
           for (let r = 1; r < existingRows.length; r++) {
             const rowId = String(existingRows[r][idColIdx] || '').trim();
             if (rowId) existingIds.set(rowId, r + 1);
           }
         }
-        
+
         let added = 0;
         let updated = 0;
-        
+
         rawItems.forEach(rawItem => {
           if (!rawItem || typeof rawItem !== 'object') return;
           const it = normalizeObjectForSheet(tableKey, rawItem);
           const itemId = String(it[idColKey] || it.id || it.log_id || '').trim();
-          
+
           if (itemId && existingIds.has(itemId)) {
             const rowNum = existingIds.get(itemId);
             for (const [k, val] of Object.entries(it)) {
@@ -909,13 +878,13 @@ function doPost(e) {
             grandTotalAdded++;
           }
         });
-        
+
         results[tableKey] = { added, updated, total: rawItems.length };
       }
-      
-      try { enforcePasswordHashingInSheet(); } catch (e) {}
-      try { enforceNumericUserIds(); } catch (e) {}
-      
+
+      try { enforcePasswordHashingInSheet(); } catch (e) { }
+      try { enforceNumericUserIds(); } catch (e) { }
+
       return jsonResponse({
         success: true,
         message: '로컬 데이터 구글 시트 일괄 업로드 완료 (MySQL 스키마 정규화 적용)',
@@ -924,7 +893,7 @@ function doPost(e) {
         results: results
       });
     }
-    
+
     return jsonResponse({ success: false, error: 'Unknown action: ' + action });
   } catch (err) {
     return jsonResponse({ success: false, error: err.toString() });
@@ -947,7 +916,7 @@ function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
     if (!dataUrl || typeof dataUrl !== 'string') {
       return null;
     }
-    
+
     // 1. 이미 http/https 웹 URL인 경우 그대로 반환
     if (dataUrl.startsWith('http://') || dataUrl.startsWith('https://')) {
       return {
@@ -969,47 +938,47 @@ function saveBase64ImageToDrive(dataUrl, fileName, folderName) {
     if (_driveSaveCache[cacheKey]) {
       return _driveSaveCache[cacheKey];
     }
-    
+
     // 3. DataURL 고속 안전 파싱 (정규식 대신 indexOf/substring 사용으로 대용량 Base64 문자열 파싱 100% 보장)
     var marker = ';base64,';
     var markerIdx = dataUrl.indexOf(marker);
     if (markerIdx === -1) {
       return null;
     }
-    
+
     var contentType = dataUrl.substring(5, markerIdx); // 'data:'.length === 5
     var rawBase64 = dataUrl.substring(markerIdx + marker.length);
     var cleanBase64 = rawBase64.replace(/\s+/g, '');
     var decodedBytes = Utilities.base64Decode(cleanBase64);
-    
+
     var ext = 'jpg';
     if (contentType.indexOf('png') !== -1) ext = 'png';
     else if (contentType.indexOf('webp') !== -1) ext = 'webp';
     else if (contentType.indexOf('gif') !== -1) ext = 'gif';
-    
+
     var timeStr = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyyMMdd_HHmmss');
     var randomSuffix = Math.floor(1000 + Math.random() * 9000);
     var safeName = fileName ? (fileName.replace(/\.[^/.]+$/, '') + '_' + timeStr + '.' + ext) : ('tbm_' + timeStr + '_' + randomSuffix + '.' + ext);
-    
+
     var blob = Utilities.newBlob(decodedBytes, contentType, safeName);
-    
+
     // 4. 구글 드라이브 전용 폴더 (WithSharing_TBM_Photos) 조회/생성
     if (!_targetDriveFolder) {
       _targetDriveFolder = getOrCreateDriveFolder(folderName || 'WithSharing_TBM_Photos');
     }
     var targetFolder = _targetDriveFolder;
-    
+
     // 5. 파일 생성 및 누구나 링크로 보기 권한 부여
     var file = targetFolder.createFile(blob);
     try {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     } catch (e) { }
-    
+
     var fileId = file.getId();
     var viewUrl = file.getUrl();
     var directCdnUrl = 'https://lh3.googleusercontent.com/d/' + fileId;
     var thumbnailUrl = directCdnUrl;
-    
+
     var resultInfo = {
       fileId: fileId,
       name: safeName,
@@ -1237,7 +1206,7 @@ function formatAttendeesForSheet(rawAtts) {
   }
   if (!Array.isArray(list)) list = [list];
 
-  return list.map(function(a) {
+  return list.map(function (a) {
     if (!a) return '';
     if (typeof a === 'string') return a.trim();
     var name = String(a.name || '').trim();
@@ -1263,7 +1232,7 @@ function formatAbsenteesForSheet(rawAbs) {
   }
   if (!Array.isArray(list)) list = [list];
 
-  return list.map(function(a) {
+  return list.map(function (a) {
     if (!a) return '';
     if (typeof a === 'string') return a.trim();
     var name = String(a.name || '').trim();
@@ -1392,12 +1361,12 @@ function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
     }
     if (preChk && typeof preChk === 'object') {
       if (Array.isArray(preChk.selectedItems)) {
-        preChk.selectedItems.forEach(function(item) {
+        preChk.selectedItems.forEach(function (item) {
           var label = getChecklistLabel(item);
           if (label && items.indexOf(label) === -1) items.push(label);
         });
       }
-      Object.keys(TBM_CHECKLIST_LABELS).forEach(function(k) {
+      Object.keys(TBM_CHECKLIST_LABELS).forEach(function (k) {
         if (preChk[k] === true || preChk[k] === 1 || preChk[k] === 'true') {
           var label = TBM_CHECKLIST_LABELS[k];
           if (label && items.indexOf(label) === -1) items.push(label);
@@ -1430,12 +1399,12 @@ function formatCheckListForSheet(preChk, postChk, isPost, isAdditional) {
         }
 
         if (Array.isArray(postChk.selectedItems)) {
-          postChk.selectedItems.forEach(function(item) {
+          postChk.selectedItems.forEach(function (item) {
             var label = getChecklistLabel(item);
             if (label && items.indexOf(label) === -1) items.push(label);
           });
         }
-        Object.keys(TBM_CHECKLIST_LABELS).forEach(function(k) {
+        Object.keys(TBM_CHECKLIST_LABELS).forEach(function (k) {
           if (postChk[k] === true || postChk[k] === 1 || postChk[k] === 'true') {
             var label = TBM_CHECKLIST_LABELS[k];
             if (label && items.indexOf(label) === -1) items.push(label);
@@ -1718,7 +1687,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (preChk && typeof preChk === 'object') {
       preChk = { ...preChk };
       if (Array.isArray(preChk.photos)) {
-        preChk.photos = preChk.photos.map(function(p, pIdx) {
+        preChk.photos = preChk.photos.map(function (p, pIdx) {
           return processPhotoItem(p, 'tbm_pre_' + dVal + '_' + (pIdx + 1) + '.jpg');
         }).filter(Boolean);
       }
@@ -1732,7 +1701,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (postChk && typeof postChk === 'object') {
       postChk = { ...postChk };
       if (Array.isArray(postChk.photos)) {
-        postChk.photos = postChk.photos.map(function(p, pIdx) {
+        postChk.photos = postChk.photos.map(function (p, pIdx) {
           return processPhotoItem(p, 'tbm_post_' + dVal + '_' + (pIdx + 1) + '.jpg');
         }).filter(Boolean);
       }
@@ -1744,12 +1713,12 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       try { addTbms = JSON.parse(addTbms); } catch (e) { addTbms = []; }
     }
     if (Array.isArray(addTbms)) {
-      addTbms = addTbms.map(function(a, aIdx) {
+      addTbms = addTbms.map(function (a, aIdx) {
         let photosList = Array.isArray(a.photos) ? a.photos : [];
         if (photosList.length === 0 && a.photo) {
           photosList = [a.photo];
         }
-        const mappedPhotos = photosList.map(function(p, pIdx) {
+        const mappedPhotos = photosList.map(function (p, pIdx) {
           return processPhotoItem(p, 'tbm_add_' + dVal + '_' + (aIdx + 1) + '_' + (pIdx + 1) + '.jpg');
         }).filter(Boolean);
 
@@ -1763,7 +1732,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
 
     // 4. root photos 구글 드라이브 자동 저장 및 URL 변환
     if (Array.isArray(obj.photos)) {
-      obj.photos.forEach(function(p, pIdx) {
+      obj.photos.forEach(function (p, pIdx) {
         processPhotoItem(p, 'tbm_photo_' + dVal + '_' + (pIdx + 1) + '.jpg');
       });
     }
@@ -1771,8 +1740,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     // 5. 이미 photo_url 또는 photo_urls가 전달된 경우 추가 합산
     const incomingPhotoStr = String(obj.photo_url || obj.photoUrl || obj.photo_urls || obj.photoUrls || obj.photo || '').trim();
     if (incomingPhotoStr) {
-      const rawUrls = incomingPhotoStr.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
-      rawUrls.forEach(function(u) {
+      const rawUrls = incomingPhotoStr.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      rawUrls.forEach(function (u) {
         if (u && allDriveUrls.indexOf(u) === -1) allDriveUrls.push(u);
       });
     }
@@ -1785,7 +1754,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       try {
         const copy = JSON.parse(JSON.stringify(dataObj));
         if (Array.isArray(copy.photos)) {
-          copy.photos = copy.photos.map(function(p) {
+          copy.photos = copy.photos.map(function (p) {
             return {
               id: p.id || '',
               name: p.name || '',
@@ -1806,7 +1775,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
           isCompleted: Boolean(dataObj.isCompleted),
           selectedItems: Array.isArray(dataObj.selectedItems) ? dataObj.selectedItems : [],
           photoCount: Array.isArray(dataObj.photos) ? dataObj.photos.length : 0,
-          photos: (Array.isArray(dataObj.photos) ? dataObj.photos : []).map(function(p) {
+          photos: (Array.isArray(dataObj.photos) ? dataObj.photos : []).map(function (p) {
             return { id: p.id || '', name: p.name || '', url: p.url || p.viewUrl || '' };
           })
         };
@@ -1873,10 +1842,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const computedCheckList = formatCheckListForSheet(preChk, postChk, isPost, isAdditional);
     const combinedValidLabels = [];
 
-    const addLabelTokens = function(str) {
+    const addLabelTokens = function (str) {
       if (!str) return;
-      const tokens = str.split(/[\n,]+/).map(function(s) { return s.trim(); }).filter(Boolean);
-      tokens.forEach(function(tok) {
+      const tokens = str.split(/[\n,]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+      tokens.forEach(function (tok) {
         const lbl = getChecklistLabel(tok) || tok;
         if (lbl && combinedValidLabels.indexOf(lbl) === -1) {
           combinedValidLabels.push(lbl);
@@ -2029,7 +1998,7 @@ function readSheetData(sheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() <= 1) return [];
-  
+
   const range = sheet.getDataRange();
   const rows = range.getValues();
   const displayRows = range.getDisplayValues();
@@ -2041,13 +2010,13 @@ function readSheetData(sheetName) {
     'log_date', 'due_date', 'date', 'weekly_monday', 'daily_date',
     'completion_date', 'expiry_date'
   ];
-  
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const displayRow = displayRows[i] || [];
     const obj = {};
     let hasData = false;
-    
+
     headers.forEach((h, colIdx) => {
       let val = row[colIdx];
       const isDateOnly = DATE_ONLY_COLS.includes(h);
@@ -2061,12 +2030,12 @@ function readSheetData(sheetName) {
 
       // JSON 객체/배열 형태 자동 역직렬화
       if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
-        try { val = JSON.parse(val); } catch (e) {}
+        try { val = JSON.parse(val); } catch (e) { }
       }
       obj[h] = val;
       if (val !== '' && val !== null && val !== undefined) hasData = true;
     });
-    
+
     if (hasData) {
       // ⭐ work_logs 조회 시 과거 혼입된 보안 서약(PASS-) 행은 업무 일지 목록에서 자동 제외
       if (sheetName === 'work_logs') {
@@ -2170,7 +2139,6 @@ function readSheetData(sheetName) {
         if (!obj.siteAddress && obj.address) obj.siteAddress = obj.address;
         if (!obj.workTitle && obj.work_title) obj.workTitle = obj.work_title;
         if (!obj.workTitle && obj.title) obj.workTitle = obj.title;
-        if (!obj.workArea && obj.work_area) obj.workArea = obj.work_area;
         if (!obj.workCategory && obj.work_category) obj.workCategory = obj.work_category;
         if (!obj.leaderDivision && obj.leader_division) obj.leaderDivision = obj.leader_division;
         if (!obj.leaderDivision && obj.division) obj.leaderDivision = obj.division;
@@ -2182,19 +2150,19 @@ function readSheetData(sheetName) {
         if (!obj.leaderPhone && obj.leader_phone) obj.leaderPhone = obj.leader_phone;
         if (!obj.leaderPhone && obj.phone) obj.leaderPhone = obj.phone;
         if (!obj.workContent && (obj.work_content || obj.content)) obj.workContent = obj.work_content || obj.content;
-        if (!obj.toolsUsed && obj.tools_used) obj.toolsUsed = obj.tools_used;
-        if (!obj.preCheck && obj.pre_check) obj.preCheck = obj.pre_check;
-        if (!obj.pre_check && obj.preCheck) obj.pre_check = obj.preCheck;
-        if (!obj.postCheck && obj.post_check) obj.postCheck = obj.post_check;
-        if (!obj.post_check && obj.postCheck) obj.post_check = obj.postCheck;
-        if (!obj.status && obj.postCheck && obj.postCheck.isCompleted) obj.status = 'ALL_COMPLETED';
-        if (!obj.status) obj.status = 'PRE_COMPLETED';
+
         const rawTypeStr = String(obj.tbm_type || obj.tbmType || obj['구분'] || '').trim().toLowerCase();
         const isAddType = rawTypeStr.indexOf('추가') !== -1 || rawTypeStr === 'additional' || String(obj.id || '').startsWith('tbm_add_') || String(obj.work_title || obj.workTitle || '').includes('추가');
-        const isPostType = !isAddType && (rawTypeStr.indexOf('후') !== -1 || rawTypeStr === 'post' || String(obj.id || '').startsWith('tbm_post_') || (obj.postCheck && obj.postCheck.isCompleted));
+        const isPostType = !isAddType && (rawTypeStr.indexOf('후') !== -1 || rawTypeStr === 'post' || String(obj.id || '').startsWith('tbm_post_'));
+
         obj.tbm_type = isAddType ? '추가 TBM' : (isPostType ? '업무 후' : '업무 전');
         obj.tbmType = isAddType ? 'additional' : (isPostType ? 'post' : 'pre');
         obj['구분'] = obj.tbm_type;
+
+        if (!obj.status) {
+          obj.status = isAddType ? 'ADDITIONAL_COMPLETED' : (isPostType ? 'ALL_COMPLETED' : 'PRE_COMPLETED');
+        }
+
         if (!obj.photo_url && obj.photo_urls) obj.photo_url = obj.photo_urls;
         if (!obj.photo_urls && obj.photo_url) obj.photo_urls = obj.photo_url;
         if (!obj.photoUrl && obj.photo_url) obj.photoUrl = obj.photo_url;
@@ -2204,6 +2172,18 @@ function readSheetData(sheetName) {
         }
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
+
+        // 불필요한 레거시 컬럼 속성 완전 제거 (클라이언트로의 누출 방지)
+        delete obj.work_area;
+        delete obj.workArea;
+        delete obj.tools_used;
+        delete obj.toolsUsed;
+        delete obj.pre_check;
+        delete obj.preCheck;
+        delete obj.post_check;
+        delete obj.postCheck;
+        delete obj.additional_tbms;
+        delete obj.additionalTbms;
       }
 
       // 키별 중복 방지: 시트에 기존에 누적된 중복 행이 있더라도 가장 최신(아래쪽) 행 데이터만 반환
@@ -2289,7 +2269,7 @@ function readSheetData(sheetName) {
   if (keyMap.size > 0) {
     let resultList = Array.from(keyMap.values()).concat(list);
     if (sheetName === 'edu_logs') {
-      resultList.sort(function(a, b) {
+      resultList.sort(function (a, b) {
         var expA = String(a.expiry_date || a.expiryDate || '').trim();
         var expB = String(b.expiry_date || b.expiryDate || '').trim();
         if (expA && !expB) return -1;
@@ -2301,7 +2281,7 @@ function readSheetData(sheetName) {
     return resultList;
   }
   if (sheetName === 'edu_logs' && Array.isArray(list)) {
-    list.sort(function(a, b) {
+    list.sort(function (a, b) {
       var expA = String(a.expiry_date || a.expiryDate || '').trim();
       var expB = String(b.expiry_date || b.expiryDate || '').trim();
       if (expA && !expB) return -1;
@@ -2473,7 +2453,7 @@ function cleanupDuplicates() {
       try {
         sheet.deleteRow(rowNum);
         deletedCount++;
-      } catch (e) {}
+      } catch (e) { }
     });
 
     results[sheetName] = deletedCount;
