@@ -316,11 +316,15 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         }
       }
 
-      // 3) 납기 예정 텍스트 생성
+      // 3) 납기 예정 텍스트 생성 (미완료 우선, 완료 시 [납기완료] 표기)
       let dueText = '';
       if (hasDueTask) {
-        const dueTitle = (dueLogs[0].workTitle || dueLogs[0].title || '업무 납기일').trim();
-        dueText = dueLogs.length > 1 ? `⏰ [납기] ${dueTitle} 외 ${dueLogs.length - 1}건` : `⏰ [납기] ${dueTitle}`;
+        const pendingDueLogs = dueLogs.filter(l => !Boolean(l.isCompleted || l.is_completed || l.status === 'completed'));
+        const targetDueLog = pendingDueLogs.length > 0 ? pendingDueLogs[0] : dueLogs[0];
+        const isTargetDone = Boolean(targetDueLog.isCompleted || targetDueLog.is_completed || targetDueLog.status === 'completed');
+        const dueTitle = (targetDueLog.workTitle || targetDueLog.title || '업무 납기일').trim();
+        const prefix = isTargetDone ? '✅ [납기완료]' : '⏰ [납기]';
+        dueText = dueLogs.length > 1 ? `${prefix} ${dueTitle} 외 ${dueLogs.length - 1}건` : `${prefix} ${dueTitle}`;
       }
 
       // 4) 2줄 구분(Line 1: 출장, Line 2: 사내) 및 상태 배지 결정

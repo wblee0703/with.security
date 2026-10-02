@@ -2506,6 +2506,16 @@ class SecurityDatabase {
     const dueDate = rawDueDate ? normalizeKstDate(rawDueDate) : '';
     const subCategory = String(item.sub_category || item.subCategory || '').trim();
 
+    const rawIsCompleted = item.isCompleted ?? item.is_completed;
+    const isCompletedVal = Boolean(
+      rawIsCompleted === true ||
+      rawIsCompleted === 1 ||
+      rawIsCompleted === '1' ||
+      String(rawIsCompleted).toLowerCase() === 'true' ||
+      item.status === 'completed' ||
+      item.status === 'COMPLETED'
+    );
+
     return {
       id: itemId,
       log_id: itemId,
@@ -2514,6 +2524,11 @@ class SecurityDatabase {
       sub_category: subCategory,
       dueDate: dueDate,
       due_date: dueDate,
+      isCompleted: isCompletedVal,
+      is_completed: isCompletedVal ? 1 : 0,
+      completedAt: item.completedAt || item.completed_at || '',
+      completed_at: item.completedAt || item.completed_at || '',
+      status: isCompletedVal ? 'completed' : (item.status || 'in_progress'),
       title: title,
       details: details,
       tasks_done: details,
@@ -3362,6 +3377,10 @@ class SecurityDatabase {
     const cleanDate = normalizeKstDate(logItem.date || logItem.log_date) || new Date().toLocaleDateString('sv-SE');
     const cleanDueDate = normalizeKstDate(logItem.dueDate || logItem.due_date);
 
+    const isCompletedVal = Boolean(
+      logItem.isCompleted ?? logItem.is_completed ?? (logItem.status === 'completed')
+    );
+
     const preparedLog = {
       ...logItem,
       id: targetId,
@@ -3370,6 +3389,11 @@ class SecurityDatabase {
       log_date: cleanDate,
       dueDate: cleanDueDate,
       due_date: cleanDueDate,
+      isCompleted: isCompletedVal,
+      is_completed: isCompletedVal ? 1 : 0,
+      completedAt: isCompletedVal ? (logItem.completedAt || logItem.completed_at || new Date().toISOString()) : null,
+      completed_at: isCompletedVal ? (logItem.completedAt || logItem.completed_at || new Date().toISOString()) : null,
+      status: isCompletedVal ? 'completed' : 'in_progress',
       sharedWith: cleanSharedWith,
       updatedAt: logItem.updatedAt || new Date().toISOString()
     };
@@ -3486,6 +3510,11 @@ class SecurityDatabase {
       subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
       due_date: cleanDueDate,
       dueDate: cleanDueDate,
+      is_completed: (preparedLog.isCompleted ?? preparedLog.is_completed) ? 1 : 0,
+      isCompleted: Boolean(preparedLog.isCompleted ?? preparedLog.is_completed),
+      completed_at: preparedLog.completedAt || preparedLog.completed_at || '',
+      completedAt: preparedLog.completedAt || preparedLog.completed_at || '',
+      status: preparedLog.status || (preparedLog.isCompleted ? 'completed' : 'in_progress'),
       site_name: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
       siteName: preparedLog.siteName || preparedLog.site_name || preparedLog.site || '',
       log_date: cleanDate,
@@ -3585,6 +3614,11 @@ class SecurityDatabase {
         subCategory: log.subCategory || log.sub_category || '',
         due_date: log.dueDate || log.due_date || '',
         dueDate: log.dueDate || log.due_date || '',
+        is_completed: (log.isCompleted ?? log.is_completed) ? 1 : 0,
+        isCompleted: Boolean(log.isCompleted ?? log.is_completed),
+        completed_at: log.completedAt || log.completed_at || '',
+        completedAt: log.completedAt || log.completed_at || '',
+        status: log.status || (log.isCompleted ? 'completed' : 'in_progress'),
         site_name: log.siteName || log.site_name || '',
         siteName: log.siteName || log.site_name || '',
         log_date: log.date || log.log_date || '',

@@ -663,6 +663,209 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
+  // Toggle Complete for a card group (납기 일자 버튼 클릭 시 완료 / 미완료 일괄 토글)
+  const handleToggleCompleteGroup = async (group) => {
+    if (!group || !group.items || group.items.length === 0) return;
+
+    // 본인 작성 업무 여부 및 수정 권한 체크
+    const hasModifiableItem = group.items.some(item => !group.isSharedToMe && canModifyLog(item));
+    if (!hasModifiableItem) {
+      if (onTriggerToast) {
+        onTriggerToast('본인이 작성한 업무만 작업 완료 처리할 수 있습니다.', 'warning');
+      } else {
+        alert('본인이 작성한 업무만 작업 완료 처리할 수 있습니다.');
+      }
+      return;
+    }
+
+    const isAllCompleted = group.items.every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
+    const nextCompleted = !isAllCompleted;
+    const nowIso = new Date().toISOString();
+    const targetIds = new Set(
+      group.items.flatMap(item => [String(item.id || '').trim(), String(item.log_id || '').trim()]).filter(Boolean)
+    );
+
+    const updatedItems = group.items.map(item => ({
+      ...item,
+      isCompleted: nextCompleted,
+      is_completed: nextCompleted ? 1 : 0,
+      status: nextCompleted ? 'completed' : 'in_progress',
+      completedAt: nextCompleted ? (item.completedAt || item.completed_at || nowIso) : null,
+      completed_at: nextCompleted ? (item.completedAt || item.completed_at || nowIso) : null,
+      updatedAt: nowIso
+    }));
+
+    // 1단계: 0ms 즉시 UI 상태 반영 (낙관적 갱신)
+    setWorkLogs(prev => prev.map(l => {
+      const lId = String(l.id || '').trim();
+      const lLogId = String(l.log_id || '').trim();
+      if ((lId && targetIds.has(lId)) || (lLogId && targetIds.has(lLogId))) {
+        return {
+          ...l,
+          isCompleted: nextCompleted,
+          is_completed: nextCompleted ? 1 : 0,
+          status: nextCompleted ? 'completed' : 'in_progress',
+          completedAt: nextCompleted ? (l.completedAt || l.completed_at || nowIso) : null,
+          completed_at: nextCompleted ? (l.completedAt || l.completed_at || nowIso) : null,
+          updatedAt: nowIso
+        };
+      }
+      return l;
+    }));
+
+    if (onTriggerToast) {
+      const countMsg = updatedItems.length > 1 ? ` (${updatedItems.length}건)` : '';
+      onTriggerToast(
+        nextCompleted
+          ? `납기 업무${countMsg}가 '작업 완료' 처리되었습니다.`
+          : `납기 업무${countMsg}가 '미완료'로 변경되었습니다.`,
+        nextCompleted ? 'success' : 'info'
+      );
+    }
+
+    // 2단계: 백그라운드 DB 및 원격 API 일괄 저장
+    try {
+      if (typeof dbService.saveWorkLogsBatch === 'function') {
+        const saved = await dbService.saveWorkLogsBatch(updatedItems);
+        if (saved && Array.isArray(saved)) {
+          setWorkLogs(saved);
+        }
+      } else {
+        for (const item of updatedItems) {
+          await dbService.saveWorkLog(item, { syncImmediate: true });
+        }
+      }
+    } catch (err) {
+      console.error('Work log completion toggle save error:', err);
+    }
+  };
+
+  // Card Header Due Date Complete Button Render Helper
+  const renderDueDateCompleteButton = (group) => {
+    if (!group || !group.dueDate) return null;
+    const isGroupCompleted = group.items.length > 0 && group.items.every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
+    const canModifyGroup = group.items.some(item => !group.isSharedToMe && canModifyLog(item));
+
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          handleToggleCompleteGroup(group);
+        }}
+        disabled={!canModifyGroup}
+        style={{
+          padding: '4px 10px',
+          borderRadius: '6px',
+          fontSize: '11px',
+          fontWeight: '800',
+          background: isGroupCompleted ? '#ecfdf5' : '#fff1f2',
+          color: isGroupCompleted ? '#059669' : '#e11d48',
+          border: `1.5px solid ${isGroupCompleted ? '#a7f3d0' : '#fecdd3'}`,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          cursor: canModifyGroup ? 'pointer' : 'default',
+          opacity: canModifyGroup ? 1 : 0.75,
+          transition: 'all 0.18s ease',
+          boxShadow: isGroupCompleted ? '0 1px 3px rgba(16, 185, 129, 0.12)' : '0 1px 3px rgba(225, 29, 72, 0.12)',
+          whiteSpace: 'nowrap',
+          userSelect: 'none'
+        }}
+        title={
+          !canModifyGroup
+            ? '조회 전용 업무입니다'
+            : (isGroupCompleted ? '작업 완료됨 (클릭 시 미완료로 변경)' : '클릭하여 작업 완료 처리')
+        }
+      >
+        {isGroupCompleted ? (
+          <>
+            <CheckCircle2 size={12} color="#059669" />
+            <span>납기: {group.dueDate}</span>
+            <span style={{
+              background: '#059669',
+              color: '#ffffff',
+              padding: '1px 5px',
+              borderRadius: '4px',
+              fontSize: '9.5px',
+              fontWeight: '900',
+              marginLeft: '2px'
+            }}>
+              완료
+            </span>
+          </>
+        ) : (
+          <>
+            <Clock size={12} color="#e11d48" />
+            <span>납기: {group.dueDate}</span>
+            <span style={{
+              background: '#ffe4e6',
+              color: '#e11d48',
+              padding: '1px 5px',
+              borderRadius: '4px',
+              fontSize: '9.5px',
+              fontWeight: '800',
+              marginLeft: '2px'
+            }}>
+              완료 처리
+            </span>
+          </>
+        )}
+      </button>
+    );
+  };
+
+  // Task Item Title with Completion Badge and Strikethrough
+  const renderTaskItemTitle = (item, itemIdx) => {
+    const isDone = Boolean(item.isCompleted || item.is_completed || item.status === 'completed');
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+        <span style={{
+          fontSize: '13.5px',
+          fontWeight: '800',
+          color: isDone ? '#059669' : '#0f172a',
+          flexShrink: 0,
+          marginTop: '2px'
+        }}>
+          {itemIdx + 1}.
+        </span>
+        <span style={{
+          fontSize: '13.5px',
+          fontWeight: '800',
+          color: isDone ? '#475569' : '#0f172a',
+          textDecoration: isDone ? 'line-through' : 'none',
+          textDecorationColor: '#059669',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          overflowWrap: 'anywhere',
+          lineHeight: '1.4',
+          flex: 1,
+          minWidth: 0
+        }}>
+          {item.title}
+        </span>
+        {isDone && (
+          <span style={{
+            fontSize: '10px',
+            fontWeight: '800',
+            color: '#059669',
+            background: '#dcfce7',
+            border: '1px solid #86efac',
+            padding: '1px 6px',
+            borderRadius: '4px',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '3px',
+            marginTop: '1px'
+          }}>
+            <CheckCircle2 size={11} color="#059669" /> 완료
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // Past Work Copy Helpers
   const handleOpenPastWorkModal = () => {
     setPastSearchQuery('');
@@ -2005,6 +2208,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                           })
                           .map(group => {
                             const isCardScheduled = group.date > getTodayIsoDate();
+                            const isGroupCompleted = group.items.length > 0 && group.items.every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
                             return (
                               <div
                                 key={group.key}
@@ -2015,17 +2219,20 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   boxSizing: 'border-box',
                                   padding: '16px 18px',
                                   borderRadius: '6px',
-                                  border: group.isSharedToMe ? '1.5px solid #ddd6fe' : (isCardScheduled ? '1.5px solid #fed7aa' : '1.5px solid #cbd5e1'),
+                                  border: group.isSharedToMe ? '1.5px solid #ddd6fe' : (isCardScheduled ? '1.5px solid #fed7aa' : (isGroupCompleted ? '1.5px solid #bbf7d0' : '1.5px solid #cbd5e1')),
                                   borderLeft: group.isSharedToMe
                                     ? '4px solid #7c3aed'
                                     : (isCardScheduled
                                         ? '4px solid #ea580c'
-                                        : (group.category === '출장 업무' ? '4px solid #7c3aed' : (group.dueDate ? '4px solid #e11d48' : '4px solid #1e3a8a'))),
-                                  background: group.isSharedToMe ? '#faf5ff' : (isCardScheduled ? '#fffbf5' : '#ffffff'),
-                                  boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
+                                        : (group.category === '출장 업무' ? '4px solid #7c3aed' : (group.dueDate ? (isGroupCompleted ? '4px solid #10b981' : '4px solid #e11d48') : '4px solid #1e3a8a'))),
+                                  background: group.isSharedToMe ? '#faf5ff' : (isGroupCompleted ? '#f0fdf4' : (isCardScheduled ? '#fffbf5' : '#ffffff')),
+                                  boxShadow: isGroupCompleted
+                                    ? '0 4px 20px -2px rgba(16, 185, 129, 0.08), 0 2px 6px -1px rgba(16, 185, 129, 0.04)'
+                                    : '0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
                                   display: 'flex',
                                   flexDirection: 'column',
-                                  gap: '10px'
+                                  gap: '10px',
+                                  transition: 'all 0.2s ease'
                                 }}
                               >
                                 {/* Log Header Row 1: Category Badge + SubCategory & DueDate (for 사내 업무) / Business Trip Site & SubCategory (for 출장 업무) + Group Action Button */}
@@ -2167,7 +2374,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                                     )}
 
                                     {/* 사내 업무인 경우: 구분 라벨 오른쪽에 납기 표기 */}
-                                    {group.category !== '출장 업무' && group.dueDate && (
+                                    {/* 사내 업무 납기 일자 완료 처리 버튼 */}
+                                    {group.category !== '출장 업무' && group.dueDate && renderDueDateCompleteButton(group)}
+                                    {/* Legacy span
+
                                       <span style={{
                                         padding: '4px 10px',
                                         borderRadius: '6px',
@@ -2183,7 +2393,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                         <Clock size={12} color="#e11d48" />
                                         납기: {group.dueDate}
                                       </span>
-                                    )}
+                                    */}
 
                                   </div>
 
@@ -2505,7 +2715,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             /* Normal View Mode */
                                             <>
                                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', width: '100%', minWidth: 0 }}>
-                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1, minWidth: 0 }}>
+                                                {renderTaskItemTitle(item, itemIdx)}
+                                                {false && (
                                                   <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '2px' }}>
                                                     {itemIdx + 1}.
                                                   </span>
@@ -2522,7 +2733,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   }}>
                                                     {item.title}
                                                   </span>
-                                                </div>
+                                                )}
 
                                                 {canModify ? (
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>

@@ -37,7 +37,7 @@ const SCHEMAS = {
   work_logs: [
     'id', 'log_id', 'name', 'writer_id', 'division', 'team', 'rank', 'role',
     'category', 'sub_category', 'due_date', 'site_name', 'log_date', 'title',
-    'tasks_done', 'is_shared', 'shared_with', 'shared_at', 'created_at'
+    'tasks_done', 'is_shared', 'shared_with', 'shared_at', 'is_completed', 'created_at'
   ],
   // 4. 보안 서약 관리 (MySQL: security_log)
   security_logs: [

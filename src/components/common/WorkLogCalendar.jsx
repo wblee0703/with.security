@@ -23,6 +23,7 @@ const getCalendarLabelColor = (token) => {
   if (token === '[교육]') return '#0891b2'; // 청록/사이언
   if (token === '[기타]') return '#64748b'; // 슬레이트 그레이
   if (token === '[납기]') return '#e11d48'; // 로즈 레드
+  if (token === '[완료]' || token === '[납기완료]') return '#16a34a'; // 완료 에메랄드 그린
   if (typeof token === 'string' && token.startsWith('[공유')) return '#6d28d9'; // 딥 퍼플
   return null;
 };
@@ -444,6 +445,9 @@ export default function WorkLogCalendar({
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#1d4ed8', fontWeight: '700', whiteSpace: 'nowrap' }}>
               <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#2563eb', boxShadow: '0 0 0 1px rgba(37, 99, 235, 0.3)' }} /> 오늘
             </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#16a34a', fontWeight: '700', whiteSpace: 'nowrap' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 0 1px rgba(22, 163, 74, 0.3)' }} /> 완료
+            </span>
             {showSharedInCalendar && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#6d28d9', fontWeight: '700', whiteSpace: 'nowrap' }}>
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#7c3aed', boxShadow: '0 0 0 1px rgba(124, 58, 237, 0.3)' }} /> 공유 업무
@@ -858,6 +862,7 @@ export default function WorkLogCalendar({
                     const log = item.log;
                     const isBusinessTrip = item.isTripGroup || log.category === '출장 업무';
                     const isDue = !item.isTripGroup && (log.isDueMarker || (log.dueDate && log.dueDate === cell.dateStr) || (log.due_date && log.due_date === cell.dateStr));
+                    const isCompleted = Boolean(log.isCompleted || log.is_completed || log.status === 'completed');
                     const isBeingDragged = draggedLog?.id === log.id || touchState?.log?.id === log.id;
                     const canEditThis = !isDue && (!canModifyLog || canModifyLog(log));
                     const subCat = item.isTripGroup ? item.subCategory : (log.subCategory || log.sub_category || '');
@@ -901,7 +906,11 @@ export default function WorkLogCalendar({
                     let borderColor = '#cbd5e1';
                     let textColor = '#1e3a8a'; // 기본 업무명 색상 (#1e3a8a)
 
-                    if (isReceivedShared) {
+                    if (isDue && isCompleted) {
+                      bg = '#f0fdf4';
+                      borderColor = '#bbf7d0';
+                      textColor = '#166534';
+                    } else if (isReceivedShared) {
                       bg = '#f5f3ff';
                       borderColor = '#c4b5fd';
                       textColor = '#6d28d9';
@@ -924,7 +933,7 @@ export default function WorkLogCalendar({
                         return base;
                       }
                       if (isDue) {
-                        return `[납기] ${log.title}`;
+                        return isCompleted ? `[납기] [완료] ${log.title}` : `[납기] ${log.title}`;
                       }
                       if (isBusinessTrip) {
                         return `[출장] ${log.title}`;
@@ -940,7 +949,7 @@ export default function WorkLogCalendar({
                       ? `[🔗 공유받은 업무]\n작성자: ${log.authorName || ''} (${log.authorTeam || ''} ${log.authorRank || ''})\n내용: ${log.title}${log.details ? `\n세부내용: ${log.details}` : ''}`
                       : (item.isTripGroup
                           ? `[출장 업무 - ${item.subCategory}] ${item.siteName} (${item.count}건 등록)\n${item.logs.map((l, i) => `${i + 1}. ${l.title}${l.details ? ` (${l.details})` : ''}`).join('\n')}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`
-                          : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`);
+                          : `[${log.category || '사내 업무'}${subCat ? ` - ${subCat}` : ''}] ${displayText}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.dueDate || log.due_date ? `\n납기일: ${log.dueDate || log.due_date}` : ''}\n세부내용: ${log.details || '없음'}${isCompleted ? '\n상태: ✅ 작업 완료' : ''}${canEditThis ? '\n💡 드래그하여 다른 날짜로 이동 가능' : ''}`);
 
                     const dragPayload = item.isTripGroup
                       ? { ...log, _allTripLogs: item.logs }
@@ -981,7 +990,11 @@ export default function WorkLogCalendar({
                         }}
                       >
                         {isDue ? (
-                          <Clock size={10} color="#e11d48" style={{ flexShrink: 0 }} />
+                          isCompleted ? (
+                            <CheckCircle2 size={10} color="#16a34a" style={{ flexShrink: 0 }} />
+                          ) : (
+                            <Clock size={10} color="#e11d48" style={{ flexShrink: 0 }} />
+                          )
                         ) : (
                           <span
                             style={{
