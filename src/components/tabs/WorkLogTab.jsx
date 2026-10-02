@@ -2716,7 +2716,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             <>
                                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', width: '100%', minWidth: 0 }}>
                                                 {renderTaskItemTitle(item, itemIdx)}
-                                                {false && (
+                                                {/* Legacy title superseded by renderTaskItemTitle
                                                   <span style={{ fontSize: '13.5px', fontWeight: '800', color: '#0f172a', flexShrink: 0, marginTop: '2px' }}>
                                                     {itemIdx + 1}.
                                                   </span>
@@ -2733,7 +2733,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                   }}>
                                                     {item.title}
                                                   </span>
-                                                )}
+                                                */}
 
                                                 {canModify ? (
                                                   <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, marginTop: '1px' }}>
