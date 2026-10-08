@@ -34,6 +34,9 @@ import { isSamePerson, isTargetMatchingUser, DIVISION_TEAMS_MAP } from '../../se
 import { Capacitor } from '@capacitor/core';
 import WorkLogCalendar from '../common/WorkLogCalendar';
 
+// 기타 사업장 판별 헬퍼 (기타 사업장 국내, 기타 사업장 해외 등)
+export const isOtherSite = (siteStr) => Boolean(siteStr && typeof siteStr === 'string' && siteStr.includes('기타'));
+
 export default function WorkLogTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
   const containerRef = useRef(null);
@@ -302,6 +305,11 @@ export default function WorkLogTab({ onTriggerToast }) {
       details: inlineNewForm.details.trim(),
       siteName: primaryLog.siteName || primaryLog.site_name || '',
       site_name: primaryLog.siteName || primaryLog.site_name || '',
+      siteDetail: primaryLog.siteDetail || primaryLog.site_detail || primaryLog.customSite || '',
+      site_detail: primaryLog.siteDetail || primaryLog.site_detail || primaryLog.customSite || '',
+      customSite: primaryLog.siteDetail || primaryLog.site_detail || primaryLog.customSite || '',
+      siteBaseName: primaryLog.siteBaseName || primaryLog.site_base_name || '',
+      site_base_name: primaryLog.siteBaseName || primaryLog.site_base_name || '',
       authorName: currentUser?.name || primaryLog.authorName || '작성자',
       authorTeam: currentUser?.team || currentUser?.department || primaryLog.authorTeam || '운영팀',
       authorRank: currentUser?.rank || primaryLog.authorRank || '대리',
@@ -1028,6 +1036,11 @@ export default function WorkLogTab({ onTriggerToast }) {
         tasksDone: pastLog.details || pastLog.tasksDone || pastLog.tasks_done || '',
         siteName: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
         site_name: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
+        siteDetail: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+        site_detail: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+        customSite: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+        siteBaseName: pastLog.category === '출장 업무' ? (pastLog.siteBaseName || pastLog.site_base_name || '') : '',
+        site_base_name: pastLog.category === '출장 업무' ? (pastLog.siteBaseName || pastLog.site_base_name || '') : '',
         authorName,
         authorTeam,
         authorRank,
@@ -1099,6 +1112,11 @@ export default function WorkLogTab({ onTriggerToast }) {
           tasksDone: pastLog.details || pastLog.tasksDone || pastLog.tasks_done || '',
           siteName: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
           site_name: pastLog.category === '출장 업무' ? (pastLog.siteName || pastLog.site_name || '') : '',
+          siteDetail: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+          site_detail: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+          customSite: pastLog.category === '출장 업무' ? (pastLog.siteDetail || pastLog.site_detail || pastLog.customSite || '') : '',
+          siteBaseName: pastLog.category === '출장 업무' ? (pastLog.siteBaseName || pastLog.site_base_name || '') : '',
+          site_base_name: pastLog.category === '출장 업무' ? (pastLog.siteBaseName || pastLog.site_base_name || '') : '',
           authorName,
           authorTeam,
           authorRank,
@@ -1184,7 +1202,8 @@ export default function WorkLogTab({ onTriggerToast }) {
     date: getTodayIsoDate(),
     title: '',
     details: '',
-    siteName: ''
+    siteName: '',
+    customSite: ''
   });
 
   const loadData = async () => {
@@ -1335,7 +1354,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       date: selectedDate || getTodayIsoDate(),
       title: '',
       details: '',
-      siteName: ''
+      siteName: '',
+      customSite: ''
     });
     setExtraTasks([]);
     setIsModalOpen(true);
@@ -1343,6 +1363,19 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleOpenAddModalForCard = (logItem) => {
     setEditingLogId(null);
+    const rawSite = String(logItem.siteName || logItem.site_name || '').trim();
+    let parsedBaseSite = String(logItem.siteBaseName || logItem.site_base_name || '').trim();
+    let parsedCustomSite = String(logItem.siteDetail || logItem.site_detail || logItem.customSite || '').trim();
+
+    if (!parsedCustomSite && rawSite.includes('기타')) {
+      const match = rawSite.match(/^(기타.*?)\s*\((.+?)\)$/);
+      if (match) {
+        parsedBaseSite = match[1].trim();
+        parsedCustomSite = match[2].trim();
+      }
+    }
+    if (!parsedBaseSite) parsedBaseSite = rawSite;
+
     setForm({
       category: logItem.category || '사내 업무',
       subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
@@ -1350,7 +1383,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       date: logItem.date || getTodayIsoDate(),
       title: '',
       details: '',
-      siteName: logItem.siteName || logItem.site_name || ''
+      siteName: parsedBaseSite,
+      customSite: parsedCustomSite
     });
     setExtraTasks([]);
     setIsModalOpen(true);
@@ -1359,6 +1393,19 @@ export default function WorkLogTab({ onTriggerToast }) {
   const handleOpenEditModal = (logItem) => {
     const editId = logItem.id || logItem.log_id || logItem.logId;
     setEditingLogId(editId);
+    const rawSite = String(logItem.siteName || logItem.site_name || '').trim();
+    let parsedBaseSite = String(logItem.siteBaseName || logItem.site_base_name || '').trim();
+    let parsedCustomSite = String(logItem.siteDetail || logItem.site_detail || logItem.customSite || '').trim();
+
+    if (!parsedCustomSite && rawSite.includes('기타')) {
+      const match = rawSite.match(/^(기타.*?)\s*\((.+?)\)$/);
+      if (match) {
+        parsedBaseSite = match[1].trim();
+        parsedCustomSite = match[2].trim();
+      }
+    }
+    if (!parsedBaseSite) parsedBaseSite = rawSite;
+
     setForm({
       category: logItem.category || '사내 업무',
       subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
@@ -1366,7 +1413,8 @@ export default function WorkLogTab({ onTriggerToast }) {
       date: normalizeKstDate(logItem.date || logItem.log_date) || getTodayIsoDate(),
       title: logItem.title || '',
       details: logItem.details || logItem.tasksDone || logItem.tasks_done || '',
-      siteName: logItem.siteName || logItem.site_name || ''
+      siteName: parsedBaseSite,
+      customSite: parsedCustomSite
     });
     setExtraTasks([]);
     setIsModalOpen(true);
@@ -1379,6 +1427,17 @@ export default function WorkLogTab({ onTriggerToast }) {
     if (!form.title.trim()) {
       if (onTriggerToast) onTriggerToast('업무명을 입력해 주세요.', 'warning');
       return;
+    }
+
+    if (form.category === '출장 업무') {
+      if (!form.siteName) {
+        if (onTriggerToast) onTriggerToast('출장 방문 사업장을 선택해 주세요.', 'warning');
+        return;
+      }
+      if (isOtherSite(form.siteName) && (!form.customSite || !form.customSite.trim())) {
+        if (onTriggerToast) onTriggerToast('기타 사업장의 상세 위치를 직접 입력해 주세요.', 'warning');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -1396,6 +1455,21 @@ export default function WorkLogTab({ onTriggerToast }) {
       const isInternal = form.category !== '출장 업무';
       const curSubCat = isInternal ? (form.subCategory || '일반') : (form.subCategory || '작업');
       const curDueDate = (isInternal && ['일반', '일반업무', '고객', '고객대응'].includes(curSubCat)) ? (form.dueDate || '') : '';
+
+      let finalSiteName = '';
+      let finalSiteDetail = '';
+      let finalSiteBaseName = '';
+
+      if (!isInternal) {
+        const baseSite = (form.siteName || siteOptions[0]?.site_name || siteOptions[0]?.name || '').trim();
+        finalSiteBaseName = baseSite;
+        if (isOtherSite(baseSite) && form.customSite && form.customSite.trim()) {
+          finalSiteDetail = form.customSite.trim();
+          finalSiteName = `${baseSite} (${finalSiteDetail})`;
+        } else {
+          finalSiteName = baseSite;
+        }
+      }
 
       const existingLog = editingLogId
         ? (Array.isArray(workLogs) ? workLogs : []).find(l => {
@@ -1425,7 +1499,13 @@ export default function WorkLogTab({ onTriggerToast }) {
         details: form.details.trim(),
         tasks_done: form.details.trim(),
         tasksDone: form.details.trim(),
-        siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
+        siteName: finalSiteName,
+        site_name: finalSiteName,
+        siteDetail: finalSiteDetail,
+        site_detail: finalSiteDetail,
+        customSite: finalSiteDetail,
+        siteBaseName: finalSiteBaseName,
+        site_base_name: finalSiteBaseName,
         authorName: existingLog?.authorName || authorName,
         authorTeam: existingLog?.authorTeam || authorTeam,
         authorRank: existingLog?.authorRank || authorRank,
@@ -1460,7 +1540,13 @@ export default function WorkLogTab({ onTriggerToast }) {
               details: (ext.details || '').trim(),
               tasks_done: (ext.details || '').trim(),
               tasksDone: (ext.details || '').trim(),
-              siteName: form.category === '출장 업무' ? (form.siteName || (siteOptions[0]?.site_name || siteOptions[0]?.name || '')) : '',
+              siteName: finalSiteName,
+              site_name: finalSiteName,
+              siteDetail: finalSiteDetail,
+              site_detail: finalSiteDetail,
+              customSite: finalSiteDetail,
+              siteBaseName: finalSiteBaseName,
+              site_base_name: finalSiteBaseName,
               authorName,
               authorTeam,
               authorRank,
@@ -3374,63 +3460,112 @@ export default function WorkLogTab({ onTriggerToast }) {
 
               {/* Site Selection & Trip SubCategory for Business Trip (출장 업무) */}
               {form.category === '출장 업무' && (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                      🚗 출장 방문 사업장 *
-                    </label>
-                    <select
-                      value={form.siteName}
-                      onChange={(e) => setForm({ ...form, siteName: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '4px',
-                        background: '#ffffff',
-                        border: '1px solid #cbd5e1',
-                        color: '#0f172a',
-                        fontSize: '13px',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="">-- 사업장 선택 --</option>
-                      {siteOptions.map(site => {
-                        const siteFullName = site.site_name || site.siteName || (site.address ? `${site.name} ${site.address}` : site.name);
-                        return (
-                          <option key={site.id} value={siteFullName}>
-                            {siteFullName}
-                          </option>
-                        );
-                      })}
-                    </select>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                        🚗 출장 방문 사업장 *
+                      </label>
+                      <select
+                        value={form.siteName}
+                        onChange={(e) => {
+                          const nextSite = e.target.value;
+                          setForm(prev => ({
+                            ...prev,
+                            siteName: nextSite,
+                            customSite: isOtherSite(nextSite) ? prev.customSite : ''
+                          }));
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          border: isOtherSite(form.siteName) ? '1.5px solid #8b5cf6' : '1px solid #cbd5e1',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="">-- 사업장 선택 --</option>
+                        {siteOptions.map(site => {
+                          const siteFullName = site.site_name || site.siteName || (site.address ? `${site.name} ${site.address}` : site.name);
+                          return (
+                            <option key={site.id} value={siteFullName}>
+                              {siteFullName}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                        📌 업무 구분 *
+                      </label>
+                      <select
+                        value={form.subCategory || '작업'}
+                        onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          border: '1.5px solid #c4b5fd',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          outline: 'none',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value="작업">작업</option>
+                        <option value="미팅">미팅</option>
+                        <option value="점검">점검</option>
+                        <option value="납품">납품</option>
+                      </select>
+                    </div>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#7c3aed', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                      📌 업무 구분 *
-                    </label>
-                    <select
-                      value={form.subCategory || '작업'}
-                      onChange={(e) => setForm({ ...form, subCategory: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '4px',
-                        background: '#ffffff',
-                        border: '1.5px solid #c4b5fd',
-                        color: '#0f172a',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="작업">작업</option>
-                      <option value="미팅">미팅</option>
-                      <option value="점검">점검</option>
-                      <option value="납품">납품</option>
-                    </select>
-                  </div>
+
+                  {/* 기타 사업장 선택 시 사업장 상세위치 직접 입력 필드 */}
+                  {isOtherSite(form.siteName) && (
+                    <div style={{
+                      background: '#faf5ff',
+                      border: '1.5px solid #ddd6fe',
+                      borderRadius: '6px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '6px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label style={{ fontSize: '12px', color: '#6d28d9', display: 'flex', alignItems: 'center', gap: '5px', fontWeight: '800' }}>
+                          <span>📍</span> 사업장 상세위치 (직접 입력) *
+                        </label>
+                        <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: '600' }}>
+                          캘린더 및 일지에 상세 표기
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={form.customSite || ''}
+                        onChange={(e) => setForm({ ...form, customSite: e.target.value })}
+                        placeholder="예: 판교 IDC 3층, 대전 연구소 등 상세 위치 입력"
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          border: '1.5px solid #8b5cf6',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          outline: 'none',
+                          boxShadow: '0 1px 3px rgba(124, 58, 237, 0.08)'
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

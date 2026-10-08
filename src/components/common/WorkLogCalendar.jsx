@@ -28,6 +28,20 @@ const getCalendarLabelColor = (token) => {
   return null;
 };
 
+// Helper for formatting calendar site name concisely (e.g. "기타 사업장 국내 (판교 IDC)" -> "기타(판교 IDC)")
+const formatCalendarSite = (siteName, log) => {
+  if (!siteName) return '출장';
+  const raw = String(siteName).trim();
+  const detail = String(log?.siteDetail || log?.site_detail || log?.customSite || '').trim() ||
+    (raw.match(/기타.*?\((.+?)\)/)?.[1] || '').trim();
+
+  if (detail) {
+    return `기타(${detail})`;
+  }
+  return raw;
+};
+
+
 export default function WorkLogCalendar({
   workLogs = [],
   selectedDate,
@@ -813,6 +827,10 @@ export default function WorkLogCalendar({
                       let baseSite = sName;
                       if (!baseSite && sAddr) baseSite = sAddr;
                       if (!baseSite) baseSite = '출장';
+                      const sDetail = String(log.siteDetail || log.site_detail || log.customSite || '').trim();
+                      if (sDetail && baseSite.includes('기타') && !baseSite.includes('(')) {
+                        baseSite = `${baseSite} (${sDetail})`;
+                      }
 
                       const subCat = String(log.subCategory || log.sub_category || '작업').trim();
                       const groupKey = `${baseSite}___${subCat}`;
@@ -920,13 +938,15 @@ export default function WorkLogCalendar({
                     const displayText = (() => {
                       if (isReceivedShared) {
                         if (item.isTripGroup) {
-                          const base = `[공유] [출장] ${item.siteName} ${item.subCategory}`.trim();
+                          const calSite = formatCalendarSite(item.siteName, item.log);
+                          const base = `[공유] [출장] ${calSite} ${item.subCategory}`.trim();
                           return item.count > 1 ? `${base} ${item.count}건` : base;
                         }
                         return `[공유] ${log.title}`;
                       }
                       if (item.isTripGroup) {
-                        const base = `[출장] ${item.siteName} ${item.subCategory}`.trim();
+                        const calSite = formatCalendarSite(item.siteName, item.log);
+                        const base = `[출장] ${calSite} ${item.subCategory}`.trim();
                         if (item.count > 1) {
                           return `${base} ${item.count}건`;
                         }
@@ -936,7 +956,8 @@ export default function WorkLogCalendar({
                         return isCompleted ? `[납기] [완료] ${log.title}` : `[납기] ${log.title}`;
                       }
                       if (isBusinessTrip) {
-                        return `[출장] ${log.title}`;
+                        const calSite = formatCalendarSite(log.siteName || log.site_name, log);
+                        return `[출장] ${calSite ? `${calSite} ` : ''}${log.title}`;
                       }
                       if (subCat) {
                         const normalizedSub = subCat === '일반업무' ? '일반' : (subCat === '고객대응' ? '고객' : subCat);
