@@ -269,7 +269,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       title: '',
       details: '',
       subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
-      dueDate: logItem.dueDate || logItem.due_date || ''
+      dueDate: ''
     });
   };
 
@@ -423,7 +423,7 @@ export default function WorkLogTab({ onTriggerToast }) {
         sharedAt: timeStr,
         shared_at: timeStr
       };
-      
+
       // 0ms 즉시 낙관적 UI 반영
       const targetId = String(updatedItem.id || updatedItem.log_id || '').trim();
       const altTargetId = String(updatedItem.log_id || updatedItem.id || '').trim();
@@ -740,7 +740,66 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
-  // Card Header Due Date Complete Button Render Helper
+  // Toggle Complete for an individual task item (개별 업무 항목 1, 2, 3... 단위 납기 완료 / 미완료 토글)
+  const handleToggleCompleteItem = async (item) => {
+    if (!item) return;
+
+    // 본인 작성 업무 여부 및 수정 권한 체크
+    const isShared = isSharedToMe(item, currentUser);
+    const canModify = !isShared && canModifyLog(item);
+    if (!canModify) {
+      if (onTriggerToast) {
+        onTriggerToast('본인이 작성한 업무만 작업 완료 처리할 수 있습니다.', 'warning');
+      } else {
+        alert('본인이 작성한 업무만 작업 완료 처리할 수 있습니다.');
+      }
+      return;
+    }
+
+    const isCurrentDone = Boolean(item.isCompleted || item.is_completed || item.status === 'completed');
+    const nextCompleted = !isCurrentDone;
+    const nowIso = new Date().toISOString();
+    const itemId = String(item.id || '').trim();
+    const itemLogId = String(item.log_id || '').trim();
+
+    const updatedItem = {
+      ...item,
+      isCompleted: nextCompleted,
+      is_completed: nextCompleted ? 1 : 0,
+      status: nextCompleted ? 'completed' : 'in_progress',
+      completedAt: nextCompleted ? (item.completedAt || item.completed_at || nowIso) : null,
+      completed_at: nextCompleted ? (item.completedAt || item.completed_at || nowIso) : null,
+      updatedAt: nowIso
+    };
+
+    // 1단계: 0ms 즉시 낙관적 UI 업데이트
+    setWorkLogs(prev => prev.map(l => {
+      const lId = String(l.id || '').trim();
+      const lLogId = String(l.log_id || '').trim();
+      if ((itemId && (lId === itemId || lLogId === itemId)) || (itemLogId && (lId === itemLogId || lLogId === itemLogId)) || l === item) {
+        return updatedItem;
+      }
+      return l;
+    }));
+
+    if (onTriggerToast) {
+      onTriggerToast(
+        nextCompleted
+          ? `'${item.title}' 업무가 '작업 완료' 처리되었습니다.`
+          : `'${item.title}' 업무가 '미완료'로 변경되었습니다.`,
+        nextCompleted ? 'success' : 'info'
+      );
+    }
+
+    // 2단계: 백그라운드 DB 및 원격 API 영구 저장
+    try {
+      await dbService.saveWorkLog(updatedItem, { syncImmediate: true });
+    } catch (err) {
+      console.error('Work log item completion toggle save error:', err);
+    }
+  };
+
+  // Card Header Due Date Complete Button Render Helper (Legacy fallback)
   const renderDueDateCompleteButton = (group) => {
     if (!group || !group.dueDate) return null;
     const isGroupCompleted = group.items.length > 0 && group.items.every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
@@ -798,34 +857,26 @@ export default function WorkLogTab({ onTriggerToast }) {
           <>
             <Clock size={12} color="#e11d48" />
             <span>납기: {group.dueDate}</span>
-            <span style={{
-              background: '#ffe4e6',
-              color: '#e11d48',
-              padding: '1px 5px',
-              borderRadius: '4px',
-              fontSize: '9.5px',
-              fontWeight: '800',
-              marginLeft: '2px'
-            }}>
-              완료 처리
-            </span>
           </>
         )}
       </button>
     );
   };
 
-  // Task Item Title with Completion Badge and Strikethrough
+  // Task Item Title with Individual Due Date Badge, Completion Toggle, and Strikethrough
   const renderTaskItemTitle = (item, itemIdx) => {
     const isDone = Boolean(item.isCompleted || item.is_completed || item.status === 'completed');
+    const itemDueDate = item.dueDate || item.due_date;
+    const isShared = isSharedToMe(item, currentUser);
+    const canModify = !isShared && canModifyLog(item);
+
     return (
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0, flexWrap: 'wrap' }}>
         <span style={{
           fontSize: '13.5px',
           fontWeight: '800',
           color: isDone ? '#059669' : '#0f172a',
-          flexShrink: 0,
-          marginTop: '2px'
+          flexShrink: 0
         }}>
           {itemIdx + 1}.
         </span>
@@ -838,13 +889,73 @@ export default function WorkLogTab({ onTriggerToast }) {
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
           overflowWrap: 'anywhere',
-          lineHeight: '1.4',
-          flex: 1,
-          minWidth: 0
+          lineHeight: '1.4'
         }}>
           {item.title}
         </span>
-        {isDone && (
+
+        {/* 1, 2, 3 개별 업무 항목별 납기 뱃지 및 클릭 완료 처리 버튼 */}
+        {itemDueDate && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleToggleCompleteItem(item);
+            }}
+            disabled={!canModify}
+            style={{
+              padding: '2.5px 8px',
+              borderRadius: '5px',
+              fontSize: '11px',
+              fontWeight: '800',
+              background: isDone ? '#ecfdf5' : '#fff1f2',
+              color: isDone ? '#059669' : '#e11d48',
+              border: `1.5px solid ${isDone ? '#a7f3d0' : '#fecdd3'}`,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              cursor: canModify ? 'pointer' : 'default',
+              opacity: canModify ? 1 : 0.75,
+              transition: 'all 0.18s ease',
+              boxShadow: isDone ? '0 1px 3px rgba(16, 185, 129, 0.12)' : '0 1px 3px rgba(225, 29, 72, 0.12)',
+              whiteSpace: 'nowrap',
+              userSelect: 'none',
+              lineHeight: '1.3',
+              flexShrink: 0
+            }}
+            title={
+              !canModify
+                ? '조회 전용 업무입니다'
+                : (isDone ? '작업 완료됨 (클릭 시 미완료로 변경)' : '클릭하여 작업 완료 처리')
+            }
+          >
+            {isDone ? (
+              <>
+                <CheckCircle2 size={11} color="#059669" />
+                <span>납기: {itemDueDate}</span>
+                <span style={{
+                  background: '#059669',
+                  color: '#ffffff',
+                  padding: '1px 4px',
+                  borderRadius: '3px',
+                  fontSize: '9px',
+                  fontWeight: '900',
+                  marginLeft: '2px'
+                }}>
+                  완료
+                </span>
+              </>
+            ) : (
+              <>
+                <Clock size={11} color="#e11d48" />
+                <span>납기: {itemDueDate}</span>
+              </>
+            )}
+          </button>
+        )}
+
+        {/* 납기일이 없으나 완료된 업무의 완료 뱃지 */}
+        {isDone && !itemDueDate && (
           <span style={{
             fontSize: '10px',
             fontWeight: '800',
@@ -856,8 +967,7 @@ export default function WorkLogTab({ onTriggerToast }) {
             flexShrink: 0,
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '3px',
-            marginTop: '1px'
+            gap: '3px'
           }}>
             <CheckCircle2 size={11} color="#059669" /> 완료
           </span>
@@ -1236,7 +1346,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     setForm({
       category: logItem.category || '사내 업무',
       subCategory: logItem.subCategory === '일반업무' ? '일반' : (logItem.subCategory === '고객대응' ? '고객' : (logItem.subCategory || logItem.sub_category || ((logItem.category || '사내 업무') === '출장 업무' ? '작업' : '일반'))),
-      dueDate: logItem.dueDate || logItem.due_date || '',
+      dueDate: '',
       date: logItem.date || getTodayIsoDate(),
       title: '',
       details: '',
@@ -1289,12 +1399,12 @@ export default function WorkLogTab({ onTriggerToast }) {
 
       const existingLog = editingLogId
         ? (Array.isArray(workLogs) ? workLogs : []).find(l => {
-            if (!l) return false;
-            const lId = String(l.id || '').trim();
-            const lLogId = String(l.log_id || l.logId || '').trim();
-            const eId = String(editingLogId).trim();
-            return lId === eId || lLogId === eId;
-          })
+          if (!l) return false;
+          const lId = String(l.id || '').trim();
+          const lLogId = String(l.log_id || l.logId || '').trim();
+          const eId = String(editingLogId).trim();
+          return lId === eId || lLogId === eId;
+        })
         : null;
 
       const origItemDate = existingLog ? normalizeKstDate(existingLog.date || existingLog.log_date) : null;
@@ -1344,6 +1454,7 @@ export default function WorkLogTab({ onTriggerToast }) {
               sub_category: extSubCat,
               dueDate: extDueDate,
               due_date: extDueDate,
+              sortOrder: i + 2,
               date: form.date,
               title: ext.title.trim(),
               details: (ext.details || '').trim(),
@@ -2153,15 +2264,14 @@ export default function WorkLogTab({ onTriggerToast }) {
                           const key = isShared
                             ? `SHARED___${log.category}___${sName}___${subCat}___${aName}_${aRank}_${aTeam}`
                             : (isInternal
-                                ? `${log.category}___${subCat}___${dDate}___${aName}`
-                                : `${log.category}___${sName}___${subCat}___${aName}`);
+                              ? `${log.category}___${subCat}___${aName}_${aRank}_${aTeam}`
+                              : `${log.category}___${sName}___${subCat}___${aName}`);
 
                           if (!acc[key]) {
                             acc[key] = {
                               key,
                               category: log.category,
                               subCategory: subCat,
-                              dueDate: dDate,
                               siteName: sName,
                               authorName: aName,
                               authorRank: aRank || '대리',
@@ -2209,6 +2319,10 @@ export default function WorkLogTab({ onTriggerToast }) {
                           .map(group => {
                             const isCardScheduled = group.date > getTodayIsoDate();
                             const isGroupCompleted = group.items.length > 0 && group.items.every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
+                            const hasGroupDueItems = group.items.some(item => Boolean(item.dueDate || item.due_date));
+                            const areAllGroupDueItemsCompleted = hasGroupDueItems && group.items
+                              .filter(item => Boolean(item.dueDate || item.due_date))
+                              .every(item => Boolean(item.isCompleted || item.is_completed || item.status === 'completed'));
                             return (
                               <div
                                 key={group.key}
@@ -2223,8 +2337,12 @@ export default function WorkLogTab({ onTriggerToast }) {
                                   borderLeft: group.isSharedToMe
                                     ? '4px solid #7c3aed'
                                     : (isCardScheduled
-                                        ? '4px solid #ea580c'
-                                        : (group.category === '출장 업무' ? '4px solid #7c3aed' : (group.dueDate ? (isGroupCompleted ? '4px solid #10b981' : '4px solid #e11d48') : '4px solid #1e3a8a'))),
+                                      ? '4px solid #ea580c'
+                                      : (group.category === '출장 업무'
+                                        ? '4px solid #7c3aed'
+                                        : (hasGroupDueItems
+                                          ? (areAllGroupDueItemsCompleted ? '4px solid #10b981' : '4px solid #e11d48')
+                                          : '4px solid #1e3a8a'))),
                                   background: group.isSharedToMe ? '#faf5ff' : (isGroupCompleted ? '#f0fdf4' : (isCardScheduled ? '#fffbf5' : '#ffffff')),
                                   boxShadow: isGroupCompleted
                                     ? '0 4px 20px -2px rgba(16, 185, 129, 0.08), 0 2px 6px -1px rgba(16, 185, 129, 0.04)'
@@ -2275,18 +2393,18 @@ export default function WorkLogTab({ onTriggerToast }) {
 
                                     {/* 업무 구분 뱃지 (출장 업무 / 사내 업무 - 공유받은 업무 시 2번째 줄에 위치) */}
                                     <span style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        fontSize: '11px',
-                                        fontWeight: '800',
-                                        background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(30, 58, 138, 0.08)',
-                                        color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
-                                        border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
-                                      }}>
-                                        {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
-                                      </span>
+                                      padding: '4px 10px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      background: group.category === '출장 업무' ? 'rgba(139, 92, 246, 0.12)' : 'rgba(30, 58, 138, 0.08)',
+                                      color: group.category === '출장 업무' ? '#7c3aed' : '#1e3a8a',
+                                      border: `1.5px solid ${group.category === '출장 업무' ? '#c4b5fd' : '#cbd5e1'}`
+                                    }}>
+                                      {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
+                                    </span>
 
-                                      {/* 출장 업무인 경우: 사업장명 표기 */}
+                                    {/* 출장 업무인 경우: 사업장명 표기 */}
                                     {group.category === '출장 업무' && group.siteName && (
                                       <span style={{
                                         padding: '4px 10px',
@@ -2373,9 +2491,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       </span>
                                     )}
 
-                                    {/* 사내 업무인 경우: 구분 라벨 오른쪽에 납기 표기 */}
-                                    {/* 사내 업무 납기 일자 완료 처리 버튼 */}
-                                    {group.category !== '출장 업무' && group.dueDate && renderDueDateCompleteButton(group)}
+                                    {/* 사내 업무인 경우: 구분 라벨 오른쪽에 개별 업무 1, 2, 3 납기는 항목별로 표시됨 */}
                                     {/* Legacy span
 
                                       <span style={{
@@ -2464,8 +2580,8 @@ export default function WorkLogTab({ onTriggerToast }) {
                                             border: isBeingDragged
                                               ? '1.5px dashed #2563eb'
                                               : (isDragOver
-                                                  ? '2px solid #2563eb'
-                                                  : (isEditingThis ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1')),
+                                                ? '2px solid #2563eb'
+                                                : (isEditingThis ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1')),
                                             borderRadius: '6px',
                                             padding: '12px 14px',
                                             display: 'flex',
@@ -3221,84 +3337,38 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
               </div>
 
-              {/* SubCategory Selection & Optional Due Date for 사내 업무 */}
+              {/* SubCategory Selection for 사내 업무 */}
               {form.category === '사내 업무' && (
-                <div style={{ display: 'grid', gridTemplateColumns: ['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') ? '1fr 1fr' : '1fr', gap: '12px' }}>
-                  <div>
-                    <label style={{ fontSize: '12px', color: '#1e3a8a', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                      🏢 사내 업무 구분 *
-                    </label>
-                    <select
-                      value={form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : (form.subCategory || '일반'))}
-                      onChange={(e) => setForm({
-                        ...form,
-                        subCategory: e.target.value,
-                        dueDate: ['일반', '일반업무', '고객', '고객대응'].includes(e.target.value) ? form.dueDate : ''
-                      })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '4px',
-                        background: '#ffffff',
-                        border: '1px solid #cbd5e1',
-                        color: '#0f172a',
-                        fontSize: '13px',
-                        fontWeight: '700',
-                        outline: 'none',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="일반">일반</option>
-                      <option value="고객">고객</option>
-                      <option value="미팅">미팅</option>
-                      <option value="교육">교육</option>
-                      <option value="기타">기타</option>
-                    </select>
-                  </div>
-
-                  {/* Due Date (납기) - Only for 일반 and 고객, Optional */}
-                  {['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') && (
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                        ⏰ 납기 (선택 입력)
-                      </label>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <input
-                          type="date"
-                          value={form.dueDate || ''}
-                          onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
-                          style={{
-                            flex: 1,
-                            padding: '10px 12px',
-                            borderRadius: '4px',
-                            background: '#ffffff',
-                            border: '1px solid #cbd5e1',
-                            color: '#0f172a',
-                            fontSize: '13px',
-                            outline: 'none'
-                          }}
-                        />
-                        {form.dueDate && (
-                          <button
-                            type="button"
-                            onClick={() => setForm({ ...form, dueDate: '' })}
-                            style={{
-                              padding: '0 8px',
-                              background: '#ffffff',
-                              border: '1px solid #cbd5e1',
-                              borderRadius: '4px',
-                              color: '#64748b',
-                              fontSize: '11px',
-                              cursor: 'pointer'
-                            }}
-                            title="납기 삭제"
-                          >
-                            초기화
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                <div>
+                  <label style={{ fontSize: '12px', color: '#1e3a8a', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                    🏢 사내 업무 구분 *
+                  </label>
+                  <select
+                    value={form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : (form.subCategory || '일반'))}
+                    onChange={(e) => setForm({
+                      ...form,
+                      subCategory: e.target.value,
+                      dueDate: ['일반', '일반업무', '고객', '고객대응'].includes(e.target.value) ? form.dueDate : ''
+                    })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      borderRadius: '4px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      outline: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="일반">일반</option>
+                    <option value="고객">고객</option>
+                    <option value="미팅">미팅</option>
+                    <option value="교육">교육</option>
+                    <option value="기타">기타</option>
+                  </select>
                 </div>
               )}
 
@@ -3364,60 +3434,121 @@ export default function WorkLogTab({ onTriggerToast }) {
                 </div>
               )}
 
-              {/* Title Input */}
-              <div>
-                <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                  업무명 *
-                </label>
-                <input
-                  type="text"
-                  placeholder="업무명을 작성해 주세요."
-                  value={form.title}
-                  onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '11px 14px',
-                    borderRadius: '4px',
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    color: '#0f172a',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                />
+              {/* Primary Task (업무 #1) Input Section */}
+              <div style={{
+                background: extraTasks.length > 0 ? '#f8fafc' : 'transparent',
+                border: extraTasks.length > 0 ? '1px solid #e2e8f0' : 'none',
+                borderRadius: extraTasks.length > 0 ? '6px' : '0px',
+                padding: extraTasks.length > 0 ? '12px' : '0px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                {extraTasks.length > 0 && (
+                  <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#1e3a8a' }}>
+                    업무 항목 #1
+                  </div>
+                )}
+
+                {/* Title Input */}
+                <div>
+                  <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                    업무명 {extraTasks.length > 0 ? '#1' : ''} *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="업무명을 작성해 주세요."
+                    value={form.title}
+                    onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: '4px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '14px',
+                      outline: 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Due Date (납기) for Primary Task - Individual per task */}
+                {form.category === '사내 업무' && ['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') && (
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                      ⏰ 납기일 {extraTasks.length > 0 ? '#1' : ''} (선택 입력)
+                    </label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input
+                        type="date"
+                        value={form.dueDate || ''}
+                        onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                        style={{
+                          flex: 1,
+                          padding: '10px 12px',
+                          borderRadius: '4px',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          color: '#0f172a',
+                          fontSize: '13px',
+                          outline: 'none'
+                        }}
+                      />
+                      {form.dueDate && (
+                        <button
+                          type="button"
+                          onClick={() => setForm({ ...form, dueDate: '' })}
+                          style={{
+                            padding: '0 8px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '4px',
+                            color: '#64748b',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                          title="납기 삭제"
+                        >
+                          초기화
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Details Textarea (Optional) */}
+                <div>
+                  <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
+                    세부 업무 기록 {extraTasks.length > 0 ? '#1' : ''} (선택)
+                  </label>
+                  <textarea
+                    rows={extraTasks.length > 0 ? 3 : 4}
+                    placeholder="진행한 업무 내용을 작성해 주세요."
+                    value={form.details}
+                    onChange={(e) => setForm({ ...form, details: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      borderRadius: '4px',
+                      background: '#ffffff',
+                      border: '1px solid #cbd5e1',
+                      color: '#0f172a',
+                      fontSize: '13.5px',
+                      outline: 'none',
+                      resize: 'vertical',
+                      lineHeight: '1.6'
+                    }}
+                  />
+                </div>
               </div>
 
-              {/* Details Textarea (Optional) */}
-              <div>
-                <label style={{ fontSize: '12.5px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' }}>
-                  세부 업무 기록 (선택)
-                </label>
-                <textarea
-                  rows={4}
-                  placeholder="진행한 업무 내용을 작성해 주세요."
-                  value={form.details}
-                  onChange={(e) => setForm({ ...form, details: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '12px 14px',
-                    borderRadius: '4px',
-                    background: '#ffffff',
-                    border: '1px solid #cbd5e1',
-                    color: '#0f172a',
-                    fontSize: '13.5px',
-                    outline: 'none',
-                    resize: 'vertical',
-                    lineHeight: '1.6'
-                  }}
-                />
-              </div>
-
-              {/* Dynamic Extra Tasks List (When adding 2 or more tasks at once) */}
+              {/* Dynamic Extra Tasks List (When adding 2 or more tasks at once - each with its own dueDate) */}
               {!editingLogId && extraTasks.map((tItem, idx) => (
                 <div key={idx} style={{
                   background: '#eff6ff',
                   border: '1px solid #cbd5e1',
-                  borderRadius: '4px',
+                  borderRadius: '6px',
                   padding: '14px',
                   display: 'flex',
                   flexDirection: 'column',
@@ -3440,51 +3571,140 @@ export default function WorkLogTab({ onTriggerToast }) {
                     </button>
                   </div>
 
-                  <input
-                    type="text"
-                    placeholder={`추가 업무명 입력 (예: ${form.category === '출장 업무' ? '2차 현장점검' : '문서 검토'})`}
-                    value={tItem.title}
-                    onChange={(e) => {
-                      const updated = [...extraTasks];
-                      updated[idx].title = e.target.value;
-                      setExtraTasks(updated);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '11px 14px',
-                      borderRadius: '4px',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      color: '#0f172a',
-                      fontSize: '14px',
-                      outline: 'none'
-                    }}
-                  />
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                      업무명 #{idx + 2} *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={`추가 업무명 입력 (예: ${form.category === '출장 업무' ? '2차 현장점검' : '문서 검토'})`}
+                      value={tItem.title}
+                      onChange={(e) => {
+                        const updated = [...extraTasks];
+                        updated[idx].title = e.target.value;
+                        setExtraTasks(updated);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '11px 14px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#0f172a',
+                        fontSize: '14px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
 
-                  <textarea
-                    rows={2}
-                    placeholder="추가 업무 세부내용 (선택)"
-                    value={tItem.details}
-                    onChange={(e) => {
-                      const updated = [...extraTasks];
-                      updated[idx].details = e.target.value;
-                      setExtraTasks(updated);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '4px',
-                      background: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      color: '#334155',
-                      fontSize: '13.5px',
-                      outline: 'none',
-                      resize: 'vertical',
-                      lineHeight: '1.5'
-                    }}
-                  />
+                  {/* Due Date for this extra task (if 사내 업무) */}
+                  {form.category === '사내 업무' && ['일반', '일반업무', '고객', '고객대응'].includes(form.subCategory || '일반') && (
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#0369a1', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                        ⏰ 납기일 #{idx + 2} (선택 입력)
+                      </label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <input
+                          type="date"
+                          value={tItem.dueDate || ''}
+                          onChange={(e) => {
+                            const updated = [...extraTasks];
+                            updated[idx].dueDate = e.target.value;
+                            setExtraTasks(updated);
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: '8px 10px',
+                            borderRadius: '4px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            color: '#0f172a',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                        {tItem.dueDate && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...extraTasks];
+                              updated[idx].dueDate = '';
+                              setExtraTasks(updated);
+                            }}
+                            style={{
+                              padding: '0 8px',
+                              background: '#ffffff',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '4px',
+                              color: '#64748b',
+                              fontSize: '11px',
+                              cursor: 'pointer'
+                            }}
+                            title="납기 삭제"
+                          >
+                            초기화
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ fontSize: '12px', color: '#475569', display: 'block', marginBottom: '4px', fontWeight: '700' }}>
+                      세부 업무 기록 #{idx + 2} (선택)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="추가 업무 세부내용 (선택)"
+                      value={tItem.details}
+                      onChange={(e) => {
+                        const updated = [...extraTasks];
+                        updated[idx].details = e.target.value;
+                        setExtraTasks(updated);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '4px',
+                        background: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        color: '#334155',
+                        fontSize: '13.5px',
+                        outline: 'none',
+                        resize: 'vertical',
+                        lineHeight: '1.5'
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
+
+              {/* Multi-task Add Button: allows easily adding 1, 2, 3 tasks at once in modal */}
+              {!editingLogId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExtraTasks(prev => [...prev, { title: '', details: '', dueDate: '' }]);
+                  }}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '6px',
+                    background: '#eff6ff',
+                    border: '1.5px dashed #3b82f6',
+                    color: '#1d4ed8',
+                    fontSize: '12.5px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Plus size={15} /> 업무 항목 추가 (1, 2, 3...)
+                </button>
+              )}
 
 
               {/* Submit / Cancel Buttons */}
