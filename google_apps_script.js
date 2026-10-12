@@ -1621,6 +1621,15 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     if (obj.is_shared !== undefined) isSh = obj.is_shared ? 1 : 0;
     else if (obj.isShared !== undefined) isSh = obj.isShared ? 1 : 0;
 
+    let isComp = 0;
+    if (obj.is_completed !== undefined) {
+      isComp = (obj.is_completed === 1 || obj.is_completed === '1' || obj.is_completed === true || String(obj.is_completed).toLowerCase() === 'true') ? 1 : 0;
+    } else if (obj.isCompleted !== undefined) {
+      isComp = (obj.isCompleted === true || obj.isCompleted === 'true' || obj.isCompleted === 1 || obj.isCompleted === '1') ? 1 : 0;
+    } else if (obj.status === 'completed' || obj.status === 'COMPLETED') {
+      isComp = 1;
+    }
+
     return {
       id: idVal,
       log_id: idVal,
@@ -1640,6 +1649,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       is_shared: isSh,
       shared_with: (typeof sWith === 'object' && sWith !== null) ? JSON.stringify(sWith) : String(sWith || ''),
       shared_at: obj.shared_at || obj.sharedAt || '',
+      is_completed: isComp,
+      completed_at: obj.completed_at || obj.completedAt || '',
       created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
     };
   }

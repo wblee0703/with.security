@@ -953,7 +953,7 @@ export default function WorkLogCalendar({
                         return base;
                       }
                       if (isDue) {
-                        return isCompleted ? `[납기] [완료] ${log.title}` : `[납기] ${log.title}`;
+                        return isCompleted ? `[완료] ${log.title}` : `[납기] ${log.title}`;
                       }
                       if (isBusinessTrip) {
                         const calSite = formatCalendarSite(log.siteName || log.site_name, log);

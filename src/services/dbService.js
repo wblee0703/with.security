@@ -3186,12 +3186,11 @@ class SecurityDatabase {
   }
 
   _isWorkLogRecentlyEdited(log, now = Date.now()) {
-    if (!log) return false;
-    const logId = String(log.id || log.log_id || '').trim();
-    if (this._recentLocalWorkLogEdits && logId && this._recentLocalWorkLogEdits.has(logId)) {
-      const editTime = this._recentLocalWorkLogEdits.get(logId);
-      if (now - editTime < 15000) return true; // only protected within 15 seconds on THIS device
-    }
+    if (!log || !this._recentLocalWorkLogEdits) return false;
+    const id1 = String(log.id || '').trim();
+    const id2 = String(log.log_id || '').trim();
+    const editTime = (id1 && this._recentLocalWorkLogEdits.get(id1)) || (id2 && this._recentLocalWorkLogEdits.get(id2));
+    if (editTime && (now - editTime < 60000)) return true; // 60초간 로컬 수정 우선 보호
     return false;
   }
 
@@ -3250,6 +3249,8 @@ class SecurityDatabase {
       if (isStaleGhost) continue;
 
       if (rId) mergedMap.set(rId, r);
+      const rLogId = String(r.log_id || '').trim();
+      if (rLogId && rLogId !== rId) mergedMap.set(rLogId, r);
     }
 
     // Map remote tasks to their current remote dates (to identify authoritative date of tasks on server)
@@ -3263,19 +3264,34 @@ class SecurityDatabase {
       }
     }
 
-    // 4. Incorporate local logs ONLY if actively edited on THIS device within the last 15s
+    // 4. Incorporate local logs with protection for recent edits and completed status
     for (const loc of normalizedLocal) {
       const locId = String(loc.id || loc.log_id || '').trim();
+      const locAltId = String(loc.log_id || loc.id || '').trim();
       if (!locId) continue;
 
       const isRecentlyEdited = this._isWorkLogRecentlyEdited(loc, now);
+      const existingRemoteKey = mergedMap.has(locId) ? locId : (mergedMap.has(locAltId) ? locAltId : null);
 
-      if (mergedMap.has(locId)) {
+      if (existingRemoteKey) {
+        const rItem = mergedMap.get(existingRemoteKey);
         if (isRecentlyEdited) {
           // Local in-flight edit takes precedence over remote until synced
-          mergedMap.set(locId, { ...mergedMap.get(locId), ...loc });
+          mergedMap.set(existingRemoteKey, { ...rItem, ...loc });
+        } else {
+          // ⭐ CRITICAL FIX: 로컬에서 완료(isCompleted) 처리된 업무가 원격(서버)의 미완료(false/0/빈값)로 인해
+          // 완료가 풀려버리는 현상 방지!
+          if (loc.isCompleted && !rItem.isCompleted) {
+            mergedMap.set(existingRemoteKey, {
+              ...rItem,
+              isCompleted: true,
+              is_completed: 1,
+              status: 'completed',
+              completedAt: loc.completedAt || loc.completed_at || rItem.completedAt || rItem.completed_at || '',
+              completed_at: loc.completedAt || loc.completed_at || rItem.completedAt || rItem.completed_at || ''
+            });
+          }
         }
-        // If not recently edited on this device, remote is authoritative! Do NOT overwrite remote with local!
       } else if (isRecentlyEdited) {
         // Newly created log on this device that is still in-flight
         const locWriter = String(loc.authorUsername || loc.writerId || loc.writer_id || loc.name || '').trim().toLowerCase();
@@ -3541,7 +3557,7 @@ class SecurityDatabase {
           this._recentLocalWorkLogEdits.delete(targetIdStr);
           if (targetLogIdStr) this._recentLocalWorkLogEdits.delete(targetLogIdStr);
         }
-      }, 15000);
+      }, 60000);
     }).catch(err => console.warn('Background work log save sync warning:', err));
 
     if (options && options.syncImmediate) {
@@ -3571,7 +3587,9 @@ class SecurityDatabase {
     for (const l of currentLocal) {
       if (!l) continue;
       const id = String(l.id || l.log_id || '').trim();
+      const logId = String(l.log_id || l.id || '').trim();
       if (id) localMap.set(id, l);
+      if (logId && logId !== id) localMap.set(logId, l);
     }
 
     const now = Date.now();
@@ -3582,9 +3600,14 @@ class SecurityDatabase {
       const normalized = this._normalizeWorkLog(logItem);
       if (!normalized) continue;
       const id = String(normalized.id || normalized.log_id || '').trim();
-      localMap.set(id, { ...(localMap.get(id) || {}), ...normalized });
-      preparedList.push(normalized);
+      const logId = String(normalized.log_id || normalized.id || '').trim();
+      const existing = localMap.get(id) || (logId ? localMap.get(logId) : null) || {};
+      const merged = { ...existing, ...normalized };
+      localMap.set(id, merged);
+      if (logId && logId !== id) localMap.set(logId, merged);
+      preparedList.push(merged);
       this._recentLocalWorkLogEdits.set(id, now);
+      if (logId) this._recentLocalWorkLogEdits.set(logId, now);
     }
 
     const pureUpdated = this._deduplicateWorkLogs(Array.from(localMap.values()));
@@ -3647,7 +3670,7 @@ class SecurityDatabase {
             if (id) this._recentLocalWorkLogEdits.delete(id);
           }
         }
-      }, 15000);
+      }, 60000);
     }).catch(err => console.warn('Batch work log sync warning:', err));
 
     notifyDataChanged();

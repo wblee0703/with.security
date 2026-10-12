@@ -801,7 +801,10 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     // 2단계: 백그라운드 DB 및 원격 API 영구 저장
     try {
-      await dbService.saveWorkLog(updatedItem, { syncImmediate: true });
+      const savedLogs = await dbService.saveWorkLog(updatedItem, { syncImmediate: true });
+      if (Array.isArray(savedLogs) && savedLogs.length > 0) {
+        setWorkLogs(savedLogs);
+      }
     } catch (err) {
       console.error('Work log item completion toggle save error:', err);
     }

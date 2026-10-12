@@ -323,7 +323,7 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         const targetDueLog = pendingDueLogs.length > 0 ? pendingDueLogs[0] : dueLogs[0];
         const isTargetDone = Boolean(targetDueLog.isCompleted || targetDueLog.is_completed || targetDueLog.status === 'completed');
         const dueTitle = (targetDueLog.workTitle || targetDueLog.title || '업무 납기일').trim();
-        const prefix = isTargetDone ? '✅ [납기완료]' : '⏰ [납기]';
+        const prefix = isTargetDone ? '✅ [완료]' : '⏰ [납기]';
         dueText = dueLogs.length > 1 ? `${prefix} ${dueTitle} 외 ${dueLogs.length - 1}건` : `${prefix} ${dueTitle}`;
       }
 
