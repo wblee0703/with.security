@@ -290,7 +290,9 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       if (tripLogs.length > 0) {
         const firstTrip = tripLogs[0];
         const rawSite = (firstTrip.siteName || firstTrip.site_name || tripSiteName || '출장지').trim();
-        const site = rawSite.replace(/\s*출장$/g, '').trim() || rawSite;
+        const otherMatch = rawSite.match(/기타.*?\((.+?)\)/);
+        const customDetail = String(firstTrip.siteDetail || firstTrip.site_detail || firstTrip.customSite || (otherMatch ? otherMatch[1] : '')).trim();
+        const site = customDetail || (rawSite.replace(/\s*출장$/g, '').trim() || rawSite);
         const sub = (firstTrip.subCategory || firstTrip.sub_category || '작업').trim();
         const tripTitle = (firstTrip.workTitle || firstTrip.title || '').trim();
         const detail = tripTitle && tripTitle !== sub && !tripTitle.includes(site) ? ` - ${tripTitle}` : '';

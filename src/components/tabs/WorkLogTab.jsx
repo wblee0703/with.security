@@ -37,6 +37,35 @@ import WorkLogCalendar from '../common/WorkLogCalendar';
 // 기타 사업장 판별 헬퍼 (기타 사업장 국내, 기타 사업장 해외 등)
 export const isOtherSite = (siteStr) => Boolean(siteStr && typeof siteStr === 'string' && siteStr.includes('기타'));
 
+// 기타 사업장 상세 위치 표기 헬퍼 (예: "기타 사업장 국내 (Onsemi 부천)" -> "Onsemi 부천")
+export const formatDisplaySiteName = (siteName, logOrGroup = null) => {
+  if (!siteName) return '';
+  const raw = String(siteName).trim();
+
+  // 1. logOrGroup 내의 siteDetail / customSite 확인
+  const detail = String(
+    logOrGroup?.siteDetail ||
+    logOrGroup?.site_detail ||
+    logOrGroup?.customSite ||
+    logOrGroup?.primaryLog?.siteDetail ||
+    logOrGroup?.primaryLog?.site_detail ||
+    logOrGroup?.primaryLog?.customSite ||
+    ''
+  ).trim();
+
+  // 2. 기타 사업장 판별
+  if (isOtherSite(raw)) {
+    if (detail) return detail;
+    // raw 문자열 자체에서 괄호 안의 상세위치 추출 (예: "기타 사업장 국내 (Onsemi 부천)" -> "Onsemi 부천")
+    const match = raw.match(/기타.*?\((.+?)\)/);
+    if (match && match[1] && match[1].trim()) {
+      return match[1].trim();
+    }
+  }
+
+  return raw;
+};
+
 export default function WorkLogTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
   const containerRef = useRef(null);
@@ -2493,21 +2522,24 @@ export default function WorkLogTab({ onTriggerToast }) {
                                       {group.category === '출장 업무' ? '출장 업무' : '사내 업무'}
                                     </span>
 
-                                    {/* 출장 업무인 경우: 사업장명 표기 */}
+                                    {/* 출장 업무인 경우: 사업장명 표기 (기타 사업장 상세 위치 입력 시 상세 위치만 표기) */}
                                     {group.category === '출장 업무' && group.siteName && (
-                                      <span style={{
-                                        padding: '4px 10px',
-                                        borderRadius: '6px',
-                                        fontSize: '11px',
-                                        fontWeight: '700',
-                                        background: 'rgba(167, 139, 250, 0.12)',
-                                        color: '#7c3aed',
-                                        border: '1.5px solid #c4b5fd',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                      }}>
-                                        {group.siteName}
+                                      <span
+                                        title={group.siteName}
+                                        style={{
+                                          padding: '4px 10px',
+                                          borderRadius: '6px',
+                                          fontSize: '11px',
+                                          fontWeight: '700',
+                                          background: 'rgba(167, 139, 250, 0.12)',
+                                          color: '#7c3aed',
+                                          border: '1.5px solid #c4b5fd',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '4px'
+                                        }}
+                                      >
+                                        {formatDisplaySiteName(group.siteName, group)}
                                       </span>
                                     )}
 
@@ -4091,19 +4123,21 @@ export default function WorkLogTab({ onTriggerToast }) {
                             </span>
 
                             {isBusinessTrip && siteLabel && (
-                              <span style={{
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                color: '#0f172a',
-                                background: '#fef3c7',
-                                padding: '2px 6px',
-                                borderRadius: '5px',
-                                maxWidth: '180px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}>
-                                {siteLabel}
+                              <span
+                                title={siteLabel}
+                                style={{
+                                  fontSize: '11px',
+                                  fontWeight: '700',
+                                  color: '#0f172a',
+                                  background: '#fef3c7',
+                                  padding: '2px 6px',
+                                  borderRadius: '5px',
+                                  maxWidth: '180px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                {formatDisplaySiteName(siteLabel, item)}
                               </span>
                             )}
                           </div>

@@ -28,7 +28,7 @@ const getCalendarLabelColor = (token) => {
   return null;
 };
 
-// Helper for formatting calendar site name concisely (e.g. "기타 사업장 국내 (판교 IDC)" -> "기타(판교 IDC)")
+// Helper for formatting calendar site name concisely (e.g. "기타 사업장 국내 (판교 IDC)" -> "판교 IDC")
 const formatCalendarSite = (siteName, log) => {
   if (!siteName) return '출장';
   const raw = String(siteName).trim();
@@ -36,7 +36,7 @@ const formatCalendarSite = (siteName, log) => {
     (raw.match(/기타.*?\((.+?)\)/)?.[1] || '').trim();
 
   if (detail) {
-    return `기타(${detail})`;
+    return detail;
   }
   return raw;
 };
