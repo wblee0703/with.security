@@ -309,6 +309,7 @@ export default function SecurityChecklistTab({
       email: inlineSignup.email.trim() || `${inlineSignup.username}@withsecurity.com`
     };
 
+    await dbService.registerUser(newUser);
     await dbService.saveUserProfile(newUser);
     setCurrentUser(newUser);
     setFormData(prev => ({
@@ -5267,23 +5268,22 @@ export default function SecurityChecklistTab({
                   </button>
                   <button
                     type="button"
-                    disabled
-                    title="신규 회원가입이 일시적으로 비활성화되었습니다."
+                    onClick={() => setInlineAuthMode('signup')}
                     style={{
                       flex: 1,
                       padding: '8px',
                       borderRadius: '10px',
-                      border: '1.5px solid #e2e8f0',
+                      border: inlineAuthMode === 'signup' ? '1.5px solid #1e3a8a' : '1.5px solid #cbd5e1',
                       fontSize: '12px',
                       fontWeight: '700',
-                      cursor: 'not-allowed',
-                      background: '#f1f5f9',
-                      color: '#94a3b8',
+                      cursor: 'pointer',
+                      background: inlineAuthMode === 'signup' ? 'rgba(30, 58, 138, 0.08)' : '#ffffff',
+                      color: inlineAuthMode === 'signup' ? '#1e3a8a' : '#64748b',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: '4px',
-                      opacity: 0.6
+                      transition: 'all 0.2s ease'
                     }}
                   >
                     <UserPlus size={14} /> 신규 회원가입 (계정 생성)

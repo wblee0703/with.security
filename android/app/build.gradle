@@ -16,6 +16,11 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java']
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
