@@ -2253,6 +2253,10 @@ function readSheetData(sheetName) {
         if (!obj.infoSharing && obj.info_sharing) obj.infoSharing = obj.info_sharing;
         if (!obj.workSupport && obj.work_support) obj.workSupport = obj.work_support;
         if (!obj.etcTasks && obj.etc_tasks) obj.etcTasks = obj.etc_tasks;
+        if (!obj.reportId && (obj.report_id || obj.id)) obj.reportId = obj.report_id || obj.id;
+        if (!obj.sharedWith && obj.shared_with) obj.sharedWith = obj.shared_with;
+        if (!obj.sharedAt && obj.shared_at) obj.sharedAt = obj.shared_at;
+        if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
       } else if (sheetName === 'daily_reports') {
         if (!obj.reportId && obj.id) obj.reportId = obj.id;
         if (!obj.id && obj.report_id) obj.id = obj.report_id;

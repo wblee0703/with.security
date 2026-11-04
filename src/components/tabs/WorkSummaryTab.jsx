@@ -32,7 +32,7 @@ import {
   Save,
   RotateCcw
 } from 'lucide-react';
-import { dbService } from '../../services/dbService';
+import { dbService, normalizeKstDate } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
@@ -287,11 +287,25 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     // 1. 사내 공유 대상자 조회 (한 번 지정해둔 대상자 목록 자동 불러오기)
     const userKey = getUserShareTargetsStorageKey(currentUser);
     let autoTargets = [];
+    let hasLocalTargetSetting = false;
     if (userKey) {
       try {
         const saved = localStorage.getItem(userKey);
-        if (saved) autoTargets = JSON.parse(saved);
+        if (saved !== null) {
+          hasLocalTargetSetting = true;
+          autoTargets = JSON.parse(saved) || [];
+        }
       } catch (e) { }
+    }
+
+    // 이 기기에서 공유 대상자를 지정한 적이 없으면(다른 기기에서 지정한 경우 등)
+    // 서버에 저장된 내 최근 주간 보고서의 공유 대상자를 그대로 이어서 사용
+    if (!hasLocalTargetSetting) {
+      const myLatestShared = (sharedWeeklyReports || [])
+        .filter(r => r && isMyAuthoredLog(r) && Array.isArray(r.sharedWith) && r.sharedWith.length > 0)
+        .sort((a, b) => String(b.weeklyMonday || '').localeCompare(String(a.weeklyMonday || '')) ||
+          String(b.sharedAt || '').localeCompare(String(a.sharedAt || '')))[0];
+      if (myLatestShared) autoTargets = myLatestShared.sharedWith;
     }
 
     // 대상자들을 '이름 직급 (소속)' 형식으로 정제
@@ -482,6 +496,42 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     setPendingAction(null);
   };
 
+  // 구글 시트에 저장된 내 주간 보고서(1~4번)를 입력 폼에 반영 (다른 기기 / 앱 재설치 / 캐시 삭제 후에도 내용 유지)
+  const hydrateWeeklyCustomFromServer = (weeklyReps, u) => {
+    if (!Array.isArray(weeklyReps) || weeklyReps.length === 0 || !u?.username) return;
+    const myUser = String(u.username).trim().toLowerCase();
+    setWeeklyCustomReports(prev => {
+      const updated = { ...prev };
+      let changed = false;
+      weeklyReps.forEach(rep => {
+        const author = String(rep.authorUsername || rep.author_username || '').trim().toLowerCase();
+        const wMon = normalizeKstDate(rep.weeklyMonday || rep.weekly_monday || '');
+        if (!wMon || author !== myUser) return;
+        // 현재 작성 중인 주차는 서버 값으로 덮어쓰지 않음
+        if (isWeeklyDirtyRef.current && wMon === weeklyMondayRef.current) return;
+        const local = updated[wMon];
+        const localHasText = Boolean(local && ['mainTasks', 'infoSharing', 'workSupport', 'teamCoop', 'etcTasks']
+          .some(k => String(local[k] || '').trim()));
+        // 이 기기에 내용이 없을 때만 서버 내용으로 채움 (이 기기에서 방금 저장한 내용 보호)
+        if (localHasText) return;
+        const ws = rep.workSupport || rep.work_support || rep.teamCoop || '';
+        updated[wMon] = {
+          mainTasks: rep.mainTasks || rep.main_tasks || '',
+          infoSharing: rep.infoSharing || rep.info_sharing || '',
+          teamCoop: ws,
+          workSupport: ws,
+          etcTasks: rep.etcTasks || rep.etc_tasks || ''
+        };
+        changed = true;
+      });
+      if (!changed) return prev;
+      try {
+        localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(updated));
+      } catch (e) { }
+      return updated;
+    });
+  };
+
   // Load Work Logs & User Profile (병렬 비동기 조회 및 화면 멈춤 없는 부드러운 갱신)
   const loadData = async (isInitial = false) => {
     if (isInitial) setIsLoading(true);
@@ -498,6 +548,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       setAllUsers(users || []);
       setSharedWeeklyReports(weeklyReps || []);
       setSharedDailyReports(dailyReps || []);
+      hydrateWeeklyCustomFromServer(weeklyReps, u);
 
       if (Array.isArray(dailyReps) && dailyReps.length > 0 && u?.username) {
         setDailyCustomReports(prev => {
@@ -545,6 +596,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       setAllUsers(users || []);
       setSharedWeeklyReports(weeklyReps || []);
       setSharedDailyReports(dailyReps || []);
+      hydrateWeeklyCustomFromServer(weeklyReps, u);
 
       if (Array.isArray(dailyReps) && dailyReps.length > 0 && u?.username) {
         setDailyCustomReports(prev => {
@@ -1360,7 +1412,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   // 이번 주에 다른 동료로부터 사내 공유받은 주간 직접 입력 1~4번 보고서 목록
   const receivedWeeklyCustomReports = (sharedWeeklyReports || []).filter(rep => {
-    if (!currentUser || !rep || rep.weeklyMonday !== weeklyMonday) return false;
+    if (!currentUser || !rep) return false;
+    // 시트에서 UTC ISO 형식으로 내려온 날짜도 KST 'yyyy-MM-dd'로 맞춰 비교
+    if (normalizeKstDate(rep.weeklyMonday || rep.weekly_monday || '') !== weeklyMonday) return false;
     if (isMyAuthoredLog(rep)) return false;
 
     let targets = [];

@@ -3804,8 +3804,6 @@ class SecurityDatabase {
   }
 
   async _fetchWeeklyReportsRemote(searchParams = {}, localOverrides = []) {
-    const localMap = new Map(localOverrides.map(r => [(r.id || r.reportId), r]));
-
     try {
       let queryStr = '';
       if (searchParams.weeklyMonday) queryStr += `?weeklyMonday=${encodeURIComponent(searchParams.weeklyMonday)}`;
@@ -3815,53 +3813,91 @@ class SecurityDatabase {
       if (res && res.ok) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-          const mapped = json.data.map(item => {
-            const itemId = item.id || item.reportId || item.report_id;
-            const localItem = localMap.get(itemId);
-
-            return {
-              id: itemId,
-              reportId: itemId,
-              weeklyMonday: item.weeklyMonday || item.weekly_monday || localItem?.weeklyMonday || '',
-              weekText: item.weekText || item.week_text || localItem?.weekText || '',
-              authorName: item.authorName || item.author_name || item.name || localItem?.authorName || '작성자',
-              authorUsername: item.authorUsername || item.author_username || item.writerId || localItem?.authorUsername || '',
-              authorTeam: item.authorTeam || item.author_team || item.team || localItem?.authorTeam || '',
-              authorRank: item.authorRank || item.author_rank || item.rank || localItem?.authorRank || '대리',
-              authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
-              authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
-              // ⭐ 컬럼별 명확한 분리
-              mainTasks: item.mainTasks || item.main_tasks || localItem?.mainTasks || '',
-              infoSharing: item.infoSharing || item.info_sharing || localItem?.infoSharing || '',
-              workSupport: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
-              teamCoop: item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '',
-              etcTasks: item.etcTasks || item.etc_tasks || localItem?.etcTasks || '',
-              sharedWith: this._cleanSharedWithList(item.sharedWith || item.shared_with || localItem?.sharedWith),
-              sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
-              createdAt: item.createdAt || item.created_at || localItem?.createdAt || ''
-            };
-          });
-
-          // Prepend local items ONLY if actively created/edited within 15s on THIS device
-          const now = Date.now();
-          const serverIds = new Set(mapped.map(m => m.id));
-          localOverrides.forEach(lo => {
-            const lId = lo.id || lo.reportId;
-            if (lId && !serverIds.has(lId)) {
-              const editTime = new Date(lo.updatedAt || lo.createdAt || 0).getTime();
-              if (now - editTime < 15000) {
-                mapped.push(lo);
-              }
-            }
-          });
-
-          localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(mapped));
-          return mapped;
+          const merged = this._mergeRemoteWeeklyReports(json.data, localOverrides);
+          localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(merged));
+          return merged;
         }
       }
     } catch (e) { }
 
     return localOverrides;
+  }
+
+  // 구글 시트 일시 값(ISO UTC, 따옴표 포함 문자열 등)을 한국 시간 'yyyy-MM-dd HH:mm' 형식으로 정규화
+  _normalizeKstDateTime(val) {
+    if (!val) return '';
+    let str = String(val).trim().replace(/^"+|"+$/g, '');
+    if (!str) return '';
+    if (str.includes('T') || str.endsWith('Z')) {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        try {
+          const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+          }).formatToParts(d).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+          return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+        } catch (e) { }
+      }
+    }
+    return str;
+  }
+
+  // 시트 행(snake_case / camelCase / ISO 날짜 혼재)을 화면용 주간 보고서 객체로 정규화
+  _mapWeeklyReport(item, localItem = null) {
+    const itemId = item.id || item.reportId || item.report_id || localItem?.id;
+    const workSupport = item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '';
+    return {
+      id: itemId,
+      reportId: itemId,
+      // ⭐ 시트가 날짜를 UTC ISO('2026-11-01T15:00:00.000Z')로 돌려줘도 KST 'yyyy-MM-dd'(월요일)로 정규화
+      weeklyMonday: normalizeKstDate(item.weekly_monday || item.weeklyMonday || localItem?.weeklyMonday || ''),
+      weekText: item.weekText || item.week_text || localItem?.weekText || '',
+      authorName: item.authorName || item.author_name || item.name || localItem?.authorName || '작성자',
+      authorUsername: item.authorUsername || item.author_username || item.writerId || localItem?.authorUsername || '',
+      authorTeam: item.authorTeam || item.author_team || item.team || localItem?.authorTeam || '',
+      authorRank: item.authorRank || item.author_rank || item.rank || localItem?.authorRank || '대리',
+      authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
+      authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
+      // ⭐ 컬럼별 명확한 분리
+      mainTasks: item.main_tasks ?? item.mainTasks ?? localItem?.mainTasks ?? '',
+      infoSharing: item.info_sharing ?? item.infoSharing ?? localItem?.infoSharing ?? '',
+      workSupport,
+      teamCoop: workSupport,
+      etcTasks: item.etc_tasks ?? item.etcTasks ?? localItem?.etcTasks ?? '',
+      sharedWith: this._cleanSharedWithList(item.shared_with || item.sharedWith || localItem?.sharedWith),
+      sharedAt: this._normalizeKstDateTime(item.shared_at || item.sharedAt || localItem?.sharedAt || ''),
+      createdAt: this._normalizeKstDateTime(item.created_at || item.createdAt || localItem?.createdAt || '')
+    };
+  }
+
+  // 서버 목록 + 로컬 목록 병합: 이 기기에서 방금 저장한(아직 시트에 반영 중인) 보고서는 서버의 이전 값으로 덮어쓰지 않음
+  _mergeRemoteWeeklyReports(remoteList = [], localList = []) {
+    const LOCAL_PRIORITY_MS = 3 * 60 * 1000;
+    const now = Date.now();
+    const localMap = new Map((localList || []).map(r => [(r.id || r.reportId), r]));
+    const isFreshLocal = (lo) => {
+      const t = lo && lo._localSavedAt ? Number(lo._localSavedAt) : 0;
+      return t > 0 && (now - t) < LOCAL_PRIORITY_MS;
+    };
+
+    const merged = (remoteList || [])
+      .map(item => {
+        const itemId = item.id || item.reportId || item.report_id;
+        const localItem = localMap.get(itemId);
+        if (localItem && isFreshLocal(localItem)) return localItem;
+        return this._mapWeeklyReport(item, localItem);
+      })
+      .filter(r => r && r.id);
+
+    const serverIds = new Set(merged.map(m => m.id));
+    (localList || []).forEach(lo => {
+      const lId = lo.id || lo.reportId;
+      if (lId && !serverIds.has(lId) && isFreshLocal(lo)) {
+        merged.unshift(lo);
+      }
+    });
+    return merged;
   }
 
   async saveWeeklyReport(report) {
@@ -3905,7 +3941,7 @@ class SecurityDatabase {
       ...report,
       id: targetId,
       reportId: targetId,
-      weeklyMonday: report.weeklyMonday || '',
+      weeklyMonday: normalizeKstDate(report.weeklyMonday || report.weekly_monday || ''),
       weekText: report.weekText || '',
       authorName: report.authorName || report.name || '작성자',
       authorUsername: report.authorUsername || report.writerId || '',
@@ -3920,7 +3956,9 @@ class SecurityDatabase {
       etcTasks: report.etcTasks || '',
       sharedWith: cleanSharedWith,
       sharedAt: report.sharedAt || '',
-      createdAt: report.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 16)
+      createdAt: report.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 16),
+      // 이 기기에서 저장한 시각 (시트 반영 전 백그라운드 동기화가 이전 서버 값으로 덮어쓰는 것을 방지)
+      _localSavedAt: Date.now()
     };
 
     const idx = current.findIndex(r => (r.id || r.reportId) === targetId || (r.weeklyMonday === normalized.weeklyMonday && (r.authorUsername || r.authorName) === (normalized.authorUsername || normalized.authorName)));
@@ -3942,7 +3980,27 @@ class SecurityDatabase {
     safeFetchApi('/api/weekly-reports', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      // ⭐ 시트 컬럼명(snake_case)으로 전송: Apps Script가 '요청에 명시된 빈 값'을 인식해야
+      //    내용을 지우거나 공유 대상을 비웠을 때 시트에서도 기존 값이 남지 않고 비워짐
       body: JSON.stringify({
+        id: targetId,
+        report_id: targetId,
+        weekly_monday: normalized.weeklyMonday,
+        week_text: normalized.weekText,
+        author_name: normalized.authorName,
+        author_username: normalized.authorUsername,
+        author_team: normalized.authorTeam,
+        author_rank: normalized.authorRank,
+        author_division: normalized.authorDivision,
+        author_role: normalized.authorRole,
+        main_tasks: normalized.mainTasks,
+        info_sharing: normalized.infoSharing,
+        work_support: normalized.workSupport,
+        etc_tasks: normalized.etcTasks,
+        shared_with: normalized.sharedWith,
+        shared_at: normalized.sharedAt,
+        created_at: normalized.createdAt,
+        // 구버전 Apps Script 배포본 호환용 camelCase 키 (최신 스크립트는 SCHEMAS 컬럼만 기록하므로 잉여 컬럼 생성 없음)
         reportId: targetId,
         weeklyMonday: normalized.weeklyMonday,
         weekText: normalized.weekText,
@@ -5596,8 +5654,15 @@ class SecurityDatabase {
 
     // 6. weekly_reports
     if (syncData.weekly_reports && Array.isArray(syncData.weekly_reports)) {
-      localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(syncData.weekly_reports));
-      await this.replaceCollection('weekly_reports', syncData.weekly_reports);
+      // 시트 원본(snake_case, UTC ISO 날짜)을 그대로 저장하면 주차 비교가 실패하므로 정규화 후 로컬 최신 저장분과 병합
+      let localWeekly = [];
+      try {
+        const raw = localStorage.getItem('with_sec_shared_weekly_reports');
+        localWeekly = raw ? JSON.parse(raw) : [];
+      } catch (e) { localWeekly = []; }
+      const mergedWeekly = this._mergeRemoteWeeklyReports(syncData.weekly_reports, localWeekly);
+      localStorage.setItem('with_sec_shared_weekly_reports', JSON.stringify(mergedWeekly));
+      await this.replaceCollection('weekly_reports', mergedWeekly);
     }
 
     // 6-1. daily_reports (일일 업무 기록 및 특이사항/금일/익일 분리 컬럼 동기화)
