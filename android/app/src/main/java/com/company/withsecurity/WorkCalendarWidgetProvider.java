@@ -35,6 +35,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     public static final String KEY_TODAY_LINE1 = "widget_today_line1";
     public static final String KEY_TODAY_LINE2 = "widget_today_line2";
     public static final String KEY_SELECTED_DATE = "widget_selected_date";
+    // 위젯이 마지막으로 '오늘'로 인식한 날짜 (자정 경과 감지용)
+    public static final String KEY_LAST_TODAY = "widget_last_today";
 
     public static final String ACTION_PREV_MONTH = "com.company.withsecurity.ACTION_PREV_MONTH";
     public static final String ACTION_NEXT_MONTH = "com.company.withsecurity.ACTION_NEXT_MONTH";
@@ -43,10 +45,13 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     public static final String ACTION_OPEN_APP = "com.company.withsecurity.ACTION_OPEN_APP";
     public static final String ACTION_OPEN_DATE = "com.company.withsecurity.ACTION_OPEN_DATE";
     public static final String ACTION_AUTO_RESET_TODAY = "com.company.withsecurity.ACTION_AUTO_RESET_TODAY";
+    public static final String ACTION_GO_TODAY = "com.company.withsecurity.ACTION_GO_TODAY";
+    public static final String ACTION_MIDNIGHT_ROLLOVER = "com.company.withsecurity.ACTION_MIDNIGHT_ROLLOVER";
     public static final String EXTRA_TARGET_DATE = "extra_target_date";
 
     public static final long AUTO_RESET_DELAY_MILLIS = 2 * 60 * 1000L; // 2분 (120초)
     private static final int RC_AUTO_RESET = 999;
+    private static final int RC_MIDNIGHT = 998;
 
     // Predefined static resource IDs for fast, crash-free RemoteViews mapping (42
     // cells)
@@ -122,6 +127,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        applyDateRollover(context);
+        scheduleMidnightUpdate(context);
         for (int appWidgetId : appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId);
         }
@@ -135,15 +142,38 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
     }
 
     @Override
+    public void onEnabled(Context context) {
+        super.onEnabled(context);
+        applyDateRollover(context);
+        scheduleMidnightUpdate(context);
+    }
+
+    @Override
+    public void onDisabled(Context context) {
+        super.onDisabled(context);
+        cancelAutoResetToToday(context);
+        cancelMidnightUpdate(context);
+    }
+
+    @Override
     public void onReceive(Context context, Intent intent) {
-        super.onReceive(context, intent);
         String action = intent.getAction();
+        // 어떤 이벤트든 처리 전에 날짜가 바뀌었는지 먼저 확인 (자정 알람이 지연된 경우 대비)
+        applyDateRollover(context);
+        super.onReceive(context, intent);
         if (action == null)
             return;
 
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-        if (ACTION_PREV_MONTH.equals(action)) {
+        if (ACTION_MIDNIGHT_ROLLOVER.equals(action)
+                || Intent.ACTION_DATE_CHANGED.equals(action)
+                || Intent.ACTION_TIME_CHANGED.equals(action)
+                || Intent.ACTION_TIMEZONE_CHANGED.equals(action)) {
+            // 자정 경과 / 시간·시간대 변경: 선택 날짜는 applyDateRollover에서 이미 오늘로 이동됨
+            scheduleMidnightUpdate(context);
+            updateAllWidgets(context);
+        } else if (ACTION_PREV_MONTH.equals(action)) {
             int offset = prefs.getInt(KEY_MONTH_OFFSET, 0);
             int newOffset = offset - 1;
             prefs.edit().putInt(KEY_MONTH_OFFSET, newOffset).apply();
@@ -155,7 +185,8 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             prefs.edit().putInt(KEY_MONTH_OFFSET, newOffset).apply();
             updateAllWidgets(context);
             checkAndScheduleReset(context, prefs, newOffset, null);
-        } else if (ACTION_REFRESH.equals(action)) {
+        } else if (ACTION_GO_TODAY.equals(action) || ACTION_REFRESH.equals(action)) {
+            // '오늘' 버튼: 이번 달로 이동하고 오늘 날짜 선택
             Calendar cal = Calendar.getInstance();
             String todayStr = String.format(Locale.KOREA, "%04d-%02d-%02d",
                     cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
@@ -200,6 +231,90 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             appIntent.addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             context.startActivity(appIntent);
+        }
+    }
+
+    private static String todayString() {
+        Calendar cal = Calendar.getInstance();
+        return String.format(Locale.KOREA, "%04d-%02d-%02d",
+                cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH));
+    }
+
+    /**
+     * 날짜가 바뀌었으면(자정 경과) 선택 날짜를 새 오늘 날짜로 옮기고 이번 달로 되돌림.
+     * 위젯이 갱신되거나 이벤트를 받을 때마다 호출되므로 자정 알람이 늦게 와도 결국 반영됨.
+     */
+    public static void applyDateRollover(Context context) {
+        if (context == null) return;
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            String todayStr = todayString();
+            String lastToday = prefs.getString(KEY_LAST_TODAY, "");
+            if (todayStr.equals(lastToday)) return;
+
+            SharedPreferences.Editor editor = prefs.edit().putString(KEY_LAST_TODAY, todayStr);
+            if (!lastToday.isEmpty()) {
+                editor.putString(KEY_SELECTED_DATE, todayStr).putInt(KEY_MONTH_OFFSET, 0);
+                cancelAutoResetToToday(context);
+                Log.d(TAG, "Date rolled over " + lastToday + " -> " + todayStr + ": selected date moved to today");
+            }
+            editor.apply();
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to apply date rollover", t);
+        }
+    }
+
+    private static PendingIntent midnightPendingIntent(Context context, int extraFlags) {
+        Intent intent = new Intent(context, WorkCalendarWidgetProvider.class);
+        intent.setAction(ACTION_MIDNIGHT_ROLLOVER);
+        return PendingIntent.getBroadcast(context, RC_MIDNIGHT, intent, extraFlags | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /**
+     * 다음 자정(00:00:05)에 위젯을 갱신하도록 알람 등록.
+     * 정확한 알람 권한이 있으면 정확히, 없으면 절전 중에도 동작하는 일반 알람으로 등록.
+     */
+    public static void scheduleMidnightUpdate(Context context) {
+        if (context == null) return;
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager == null) return;
+
+            Calendar next = Calendar.getInstance();
+            next.add(Calendar.DAY_OF_MONTH, 1);
+            next.set(Calendar.HOUR_OF_DAY, 0);
+            next.set(Calendar.MINUTE, 0);
+            next.set(Calendar.SECOND, 5);
+            next.set(Calendar.MILLISECOND, 0);
+            long triggerAt = next.getTimeInMillis();
+
+            PendingIntent pi = midnightPendingIntent(context, PendingIntent.FLAG_UPDATE_CURRENT);
+            boolean canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (canExact) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                } else {
+                    alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+                }
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pi);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to schedule midnight update", t);
+        }
+    }
+
+    public static void cancelMidnightUpdate(Context context) {
+        if (context == null) return;
+        try {
+            AlarmManager alarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            PendingIntent pi = midnightPendingIntent(context, PendingIntent.FLAG_NO_CREATE);
+            if (alarmManager != null && pi != null) {
+                alarmManager.cancel(pi);
+                pi.cancel();
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to cancel midnight update", t);
         }
     }
 
@@ -286,6 +401,7 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
 
     public static void updateAllWidgets(Context context) {
         try {
+            applyDateRollover(context);
             AppWidgetManager manager = AppWidgetManager.getInstance(context);
             ComponentName componentName = new ComponentName(context, WorkCalendarWidgetProvider.class);
             int[] appWidgetIds = manager.getAppWidgetIds(componentName);
@@ -705,9 +821,9 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
             // 7. Navigation Buttons PendingIntents
             setBroadcastPendingIntent(context, views, R.id.btn_prev_month, ACTION_PREV_MONTH, 101);
             setBroadcastPendingIntent(context, views, R.id.btn_next_month, ACTION_NEXT_MONTH, 102);
-            setBroadcastPendingIntent(context, views, R.id.btn_refresh, ACTION_REFRESH, 103);
+            setBroadcastPendingIntent(context, views, R.id.btn_today, ACTION_GO_TODAY, 103);
 
-            // 8. Top "📱 앱 열기" Button PendingIntent -> Launches App with targetDate
+            // 8. 상단 로고 클릭 -> 선택 날짜로 앱 열기
             Intent openAppIntent = new Intent(context, WorkCalendarWidgetProvider.class);
             openAppIntent.setAction(ACTION_OPEN_APP);
             openAppIntent.putExtra(EXTRA_TARGET_DATE, selectedDateStr);
@@ -716,7 +832,6 @@ public class WorkCalendarWidgetProvider extends AppWidgetProvider {
                     201,
                     openAppIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            views.setOnClickPendingIntent(R.id.btn_open_app, openAppPending);
             views.setOnClickPendingIntent(R.id.iv_widget_logo, openAppPending);
 
             // 9. Click Bottom Summary Box -> Open App to selected date

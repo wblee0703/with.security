@@ -49,6 +49,11 @@
                 <action android:name="com.company.withsecurity.ACTION_OPEN_DATE" />
                 <action android:name="com.company.withsecurity.ACTION_SELECT_DATE" />
                 <action android:name="com.company.withsecurity.ACTION_AUTO_RESET_TODAY" />
+                <action android:name="com.company.withsecurity.ACTION_GO_TODAY" />
+                <action android:name="com.company.withsecurity.ACTION_MIDNIGHT_ROLLOVER" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
