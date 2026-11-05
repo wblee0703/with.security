@@ -22,6 +22,9 @@
  * ==============================================================================
  */
 
+// 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
+const SCRIPT_VERSION = '2026-11-05-comments';
+
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
   // 1. 사용자 계정 정보 (MySQL: security_user)
@@ -232,6 +235,9 @@ function doGet(e) {
       return jsonResponse({
         success: true,
         app: 'Withsharing_DB',
+        // 배포된 스크립트 버전 확인용 (재배포가 실제로 반영되었는지 웹 앱 URL?action=ping 으로 확인)
+        scriptVersion: SCRIPT_VERSION,
+        features: ['share_targets2', 'report_comments'],
         message: '구글 스프레드시트 데이터베이스 통신 정상',
         counts: counts
       });
