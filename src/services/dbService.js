@@ -96,6 +96,15 @@ export function notifyDataChanged(immediate = false) {
   }, 250);
 }
 
+// 업무 정리(일일/주간 보고) 작성 내용 로컬 저장 키 - 로그인 계정별로 완전히 분리
+// (같은 기기에서 다른 계정으로 로그인해도 이전 사용자의 작성 내용이 보이지 않도록)
+export const LEGACY_REPORT_DRAFT_KEYS = ['with_sec_weekly_custom_reports', 'with_sec_daily_custom_reports'];
+export function getReportDraftKey(type, username) {
+  const uname = String(username || '').trim().toLowerCase();
+  if (!uname) return null;
+  return `with_sec_${type === 'weekly' ? 'weekly' : 'daily'}_custom_reports__${uname}`;
+}
+
 // 보고서 본문(주요 내용·정보 공유·특이사항 등) 값을 항상 문자열로 정규화
 // (시트 셀에 숫자만 입력되었거나 '['/'{'로 시작하는 내용이 JSON 배열·객체로 변환된 경우 .trim() 오류 방지)
 export function toReportText(val) {
@@ -4365,20 +4374,23 @@ class SecurityDatabase {
     // Instant local save (0.1ms)
     localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(updated));
 
-    // Also update with_sec_daily_custom_reports keyed by dailyDate for immediate UI display
+    // 작성자 본인 계정의 일일 보고 작성 내용 저장소에만 반영 (다른 계정 저장소와 완전 분리)
     try {
-      const customReports = (() => {
-        try {
-          const raw = localStorage.getItem('with_sec_daily_custom_reports');
-          return raw ? JSON.parse(raw) : {};
-        } catch (e) { return {}; }
-      })();
-      customReports[normalized.dailyDate] = {
-        issues: normalized.issues,
-        todayTasks: normalized.todayTasks,
-        tomorrowPlan: normalized.tomorrowPlan
-      };
-      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(customReports));
+      const draftKey = getReportDraftKey('daily', normalized.authorUsername);
+      if (draftKey) {
+        const customReports = (() => {
+          try {
+            const raw = localStorage.getItem(draftKey);
+            return raw ? JSON.parse(raw) : {};
+          } catch (e) { return {}; }
+        })();
+        customReports[normalized.dailyDate] = {
+          issues: normalized.issues,
+          todayTasks: normalized.todayTasks,
+          tomorrowPlan: normalized.tomorrowPlan
+        };
+        localStorage.setItem(draftKey, JSON.stringify(customReports));
+      }
     } catch (e) { }
 
     // Background IndexedDB write
@@ -5842,27 +5854,8 @@ class SecurityDatabase {
     // 6-1. daily_reports (일일 업무 기록 및 특이사항/금일/익일 분리 컬럼 동기화)
     if (syncData.daily_reports && Array.isArray(syncData.daily_reports)) {
       try {
-        const customMap = {};
-        syncData.daily_reports.forEach(r => {
-          const u = r.author_username || r.authorUsername;
-          const d = r.daily_date || r.dailyDate;
-          if (u && d) {
-            const k = `${u}_${d}`;
-            customMap[k] = {
-              issues: toReportText(r.issues),
-              todayTasks: toReportText(r.today_tasks || r.todayTasks),
-              tomorrowPlan: toReportText(r.tomorrow_plan || r.tomorrowPlan),
-              updatedAt: r.updated_at || r.updatedAt || new Date().toISOString()
-            };
-          }
-        });
-        if (isSheet) {
-          localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(customMap));
-        } else {
-          const currentCustom = JSON.parse(localStorage.getItem('with_sec_daily_custom_reports') || '{}');
-          const mergedCustom = { ...currentCustom, ...customMap };
-          localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(mergedCustom));
-        }
+        // ※ 입력칸 작성 내용 저장소(계정별)는 건드리지 않음: 업무 정리 화면이 daily_reports 목록에서
+        //    로그인 계정 본인이 작성한 보고서만 골라 입력칸에 채움 (타인 보고서 자동 입력 방지)
         localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(syncData.daily_reports));
       } catch (e) {
         console.warn('Failed to merge daily_reports into localStorage', e);

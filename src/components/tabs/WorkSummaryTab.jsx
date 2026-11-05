@@ -32,11 +32,35 @@ import {
   Save,
   RotateCcw
 } from 'lucide-react';
-import { dbService, normalizeKstDate, toReportText } from '../../services/dbService';
+import { dbService, normalizeKstDate, toReportText, getReportDraftKey, LEGACY_REPORT_DRAFT_KEYS } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
 import { getHolidayName } from '../../data/holidays.js';
+
+// ---- 업무 정리 작성 내용(일일/주간 보고 입력칸) 계정별 로컬 저장 헬퍼 ----
+const getActiveUsername = () => {
+  try {
+    const raw = localStorage.getItem('with_security_active_user');
+    return raw ? String(JSON.parse(raw)?.username || '').trim().toLowerCase() : '';
+  } catch (e) { return ''; }
+};
+const readReportDraft = (type, username) => {
+  const key = getReportDraftKey(type, username);
+  if (!key) return {};
+  try {
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) { return {}; }
+};
+const writeReportDraft = (type, username, data) => {
+  const key = getReportDraftKey(type, username);
+  if (!key) return;
+  try { localStorage.setItem(key, JSON.stringify(data || {})); } catch (e) { }
+};
+// 계정 구분 없이 저장되던 예전 공용 저장소 삭제 (작성자를 알 수 없어 다른 계정에 노출되던 원인)
+try { LEGACY_REPORT_DRAFT_KEYS.forEach(k => localStorage.removeItem(k)); } catch (e) { }
 
 export default function WorkSummaryTab({ onTriggerToast }) {
   const isNative = Capacitor.isNativePlatform();
@@ -137,25 +161,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [weeklyMonday, setWeeklyMonday] = useState(formatIso(getMonday(new Date())));
 
   // Weekly Custom Section State (주차별 1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무)
-  const [weeklyCustomReports, setWeeklyCustomReports] = useState(() => {
-    try {
-      const saved = localStorage.getItem('with_sec_weekly_custom_reports');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  // 로그인 계정별로 분리 저장된 작성 내용만 불러옴 (다른 계정 내용 자동 표시 방지)
+  const draftUserRef = useRef(getActiveUsername());
+  const [weeklyCustomReports, setWeeklyCustomReports] = useState(() => readReportDraft('weekly', draftUserRef.current));
   const [isWeeklyDirty, setIsWeeklyDirty] = useState(false);
 
   // Daily Custom Section State (일자별 1. 특이사항, 2. 금일 진행 내역, 3. 익일 예정 업무)
-  const [dailyCustomReports, setDailyCustomReports] = useState(() => {
-    try {
-      const saved = localStorage.getItem('with_sec_daily_custom_reports');
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
+  const [dailyCustomReports, setDailyCustomReports] = useState(() => readReportDraft('daily', draftUserRef.current));
   const [isDailyDirty, setIsDailyDirty] = useState(false);
   const [isDailyOwnCollapsed, setIsDailyOwnCollapsed] = useState(false);
 
@@ -206,9 +218,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           [field]: value
         }
       };
-      try {
-        localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(updated));
-      } catch (e) { }
+      writeReportDraft('weekly', draftUserRef.current, updated);
       return updated;
     });
   };
@@ -334,11 +344,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     };
 
     // 2. LocalStorage 즉시 저장 및 dirty 플래그 리셋 (0ms 즉각 반응)
-    try {
-      localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(weeklyCustomReports));
-    } catch (e) {
-      console.error('Failed to save to localStorage', e);
-    }
+    writeReportDraft('weekly', draftUserRef.current, weeklyCustomReports);
     setIsWeeklyDirty(false);
 
     // 3. UI 즉시 낙관적 갱신 (0ms 지연)
@@ -405,7 +411,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         [dailyDate]: dataToSave
       };
       setDailyCustomReports(updatedReports);
-      localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(updatedReports));
+      writeReportDraft('daily', draftUserRef.current, updatedReports);
       setIsDailyDirty(false);
 
       // 구글 스프레드시트 daily_reports 시트 비동기 백그라운드 전송
@@ -469,10 +475,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 미저장 팝업 - 저장하지 않고 그냥 이동 (원래 저장본으로 롤백)
   const handleDiscardAndNavigate = () => {
     try {
-      const savedWeekly = localStorage.getItem('with_sec_weekly_custom_reports');
-      setWeeklyCustomReports(savedWeekly ? JSON.parse(savedWeekly) : {});
-      const savedDaily = localStorage.getItem('with_sec_daily_custom_reports');
-      setDailyCustomReports(savedDaily ? JSON.parse(savedDaily) : {});
+      setWeeklyCustomReports(readReportDraft('weekly', draftUserRef.current));
+      setDailyCustomReports(readReportDraft('daily', draftUserRef.current));
     } catch (e) { }
     setIsWeeklyDirty(false);
     setIsDailyDirty(false);
@@ -487,6 +491,17 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const handleCancelNavigate = () => {
     setIsUnsavedPromptOpen(false);
     setPendingAction(null);
+  };
+
+  // 로그인 계정이 바뀌면(같은 기기에서 다른 계정 로그인) 입력칸을 해당 계정의 작성 내용으로 즉시 교체
+  const ensureDraftsForUser = (u) => {
+    const uname = String(u?.username || '').trim().toLowerCase();
+    if (uname === draftUserRef.current) return;
+    draftUserRef.current = uname;
+    setWeeklyCustomReports(readReportDraft('weekly', uname));
+    setDailyCustomReports(readReportDraft('daily', uname));
+    setIsWeeklyDirty(false);
+    setIsDailyDirty(false);
   };
 
   // 구글 시트에 저장된 내 주간 보고서(1~4번)를 입력 폼에 반영 (다른 기기 / 앱 재설치 / 캐시 삭제 후에도 내용 유지)
@@ -518,9 +533,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         changed = true;
       });
       if (!changed) return prev;
-      try {
-        localStorage.setItem('with_sec_weekly_custom_reports', JSON.stringify(updated));
-      } catch (e) { }
+      writeReportDraft('weekly', myUser, updated);
       return updated;
     });
   };
@@ -536,6 +549,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         dbService.getWeeklyReports(),
         dbService.getDailyReports()
       ]);
+      ensureDraftsForUser(u);
       setCurrentUser(u);
       setWorkLogs(logs || []);
       setAllUsers(users || []);
@@ -585,6 +599,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         dbService.getWeeklyReports({}, true),
         dbService.getDailyReports({}, true)
       ]);
+      ensureDraftsForUser(u);
       setCurrentUser(u);
       setAllUsers(users || []);
       setSharedWeeklyReports(weeklyReps || []);
@@ -1720,9 +1735,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         }
       };
       // 실시간 로컬 드래프트 임시 보호 (동기화 및 새로고침 유실 원천 방지)
-      try {
-        localStorage.setItem('with_sec_daily_custom_reports', JSON.stringify(updated));
-      } catch (e) { }
+      writeReportDraft('daily', draftUserRef.current, updated);
       return updated;
     });
   };
