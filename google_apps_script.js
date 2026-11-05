@@ -27,7 +27,9 @@ const SCHEMAS = {
   // 1. 사용자 계정 정보 (MySQL: security_user)
   users: [
     'id', 'username', 'password', 'name', 'role', 'division', 'team',
-    'rank', 'siteId', 'phone', 'email', 'created_at'
+    'rank', 'siteId', 'phone', 'email', 'created_at',
+    // 업무 일지 · 업무 정리 보고서 공유 대상자 (모든 기기/환경 공통 적용)
+    'share_targets', 'share_targets_updated_at'
   ],
   // 2. 작업 현장 정보 (MySQL: security_site)
   sites: [
@@ -269,6 +271,24 @@ function doGet(e) {
  * POST 요청 핸들러 (데이터 추가, 수정, 삭제, 일괄 동기화)
  */
 function doPost(e) {
+  // ⚡ 동시 저장 보호: 여러 사용자가 동시에 저장할 때 같은 행을 중복 생성하거나 서로 덮어쓰지 않도록
+  //    스크립트 잠금으로 쓰기 요청을 순서대로 처리 (최대 30초 대기)
+  const lock = LockService.getScriptLock();
+  let locked = false;
+  try {
+    locked = lock.tryLock(30000);
+  } catch (err) { }
+  if (!locked) {
+    return jsonResponse({ success: false, error: 'Server busy (lock timeout). Please retry.' });
+  }
+  try {
+    return doPostInternal(e);
+  } finally {
+    try { lock.releaseLock(); } catch (err) { }
+  }
+}
+
+function doPostInternal(e) {
   try {
     let payload = {};
     if (e && e.postData && e.postData.contents) {
@@ -516,6 +536,7 @@ function doPost(e) {
               if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
                 item.id = parseInt(currentRow[idCol], 10);
               }
+              keepNewerShareTargets(headers, currentRow, item);
             }
             const updatedRow = headers.map((h, colIdx) => {
               // TBM 구분 컬럼은 무조건 '업무 전' / '업무 후' / '추가 TBM' 한글로 완벽 보장
@@ -768,6 +789,7 @@ function doPost(e) {
             if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
               patch.id = parseInt(currentRow[idCol], 10);
             }
+            keepNewerShareTargets(headers, currentRow, patch);
           }
           const updatedRow = [...rows[i]];
           for (const [k, val] of Object.entries(patch)) {
@@ -779,7 +801,8 @@ function doPost(e) {
           }
           sheet.getRange(rowNum, 1, 1, headers.length).setValues([updatedRow]);
           SpreadsheetApp.flush();
-          if (sheetName === 'users') {
+          // ⚡ 비밀번호 변경이 포함된 경우에만 users 시트 전체 검사 수행 (공유 대상자 등 부분 수정 시 생략)
+          if (sheetName === 'users' && (rawData.password || rawData.passwordHash || rawData.passward)) {
             try { enforcePasswordHashingInSheet(); } catch (e) { }
             try { enforceNumericUserIds(); } catch (e) { }
           }
@@ -788,6 +811,10 @@ function doPost(e) {
       }
 
       // 대상이 없으면 새로 추가
+      if (sheetName === 'users' && (!rawData.username || !rawData.name)) {
+        // 공유 대상자 등 부분 필드만 담긴 요청으로 불완전한 사용자 행이 생성되지 않도록 차단
+        return jsonResponse({ success: false, error: 'User not found for partial update: ' + id });
+      }
       if (sheetName === 'users') {
         const numId = parseInt(patch.id, 10);
         if (isNaN(numId) || numId <= 0 || String(patch.id).trim() !== String(numId)) {
@@ -1591,7 +1618,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       siteId: obj.siteId || obj.site_id || '',
       phone: obj.phone || '',
       email: obj.email || '',
-      created_at: obj.created_at || obj.createdAt || new Date().toISOString()
+      created_at: obj.created_at || obj.createdAt || new Date().toISOString(),
+      share_targets: Array.isArray(obj.share_targets) ? JSON.stringify(obj.share_targets) : (obj.share_targets || ''),
+      share_targets_updated_at: obj.share_targets_updated_at || ''
     };
   }
 
@@ -2615,6 +2644,23 @@ function cleanupDuplicates() {
   };
 }
 
+/**
+ * 사용자 공유 대상자(share_targets) 보호: 요청 값이 시트에 저장된 값보다 오래된 경우
+ * (다른 기기에서 받아둔 예전 사용자 정보로 프로필 저장 등) 최신 설정을 덮어쓰지 않도록 기존 값 유지
+ */
+function keepNewerShareTargets(headers, currentRow, obj) {
+  if (!obj || !('share_targets' in obj)) return;
+  const tsIdx = headers.indexOf('share_targets_updated_at');
+  const valIdx = headers.indexOf('share_targets');
+  if (tsIdx === -1 || valIdx === -1) return;
+  const existingTs = Number(currentRow[tsIdx]) || 0;
+  const incomingTs = Number(obj.share_targets_updated_at) || 0;
+  if (existingTs > 0 && incomingTs < existingTs) {
+    obj.share_targets = currentRow[valIdx];
+    obj.share_targets_updated_at = existingTs;
+  }
+}
+
 function appendObjectRow(sheet, headers, rawObj) {
   const sheetName = sheet.getName();
   const obj = (rawObj && rawObj._isNormalized) ? rawObj : normalizeObjectForSheet(sheetName, rawObj);
@@ -2655,6 +2701,20 @@ function ensureHeaders(sheet, keys) {
 
   // 스키마가 정의된 시트의 경우: 1행 헤더를 무조건 표준 스키마로 강제 정렬하고 잉여 컬럼(U~Y 등) 즉시 완전 삭제
   if (schema) {
+    // ⚡ 성능 개선: 1행 헤더가 이미 표준 스키마와 동일하고 잉여 열이 없으면 쓰기/서식 작업을 생략
+    //    (매 저장 요청마다 헤더 재기록·서식 지정·열 정리를 반복하여 발생하던 지연 제거)
+    const maxColsNow = sheet.getMaxColumns();
+    if (maxColsNow === schema.length) {
+      const currentHeaders = sheet.getRange(1, 1, 1, schema.length).getValues()[0];
+      const isSame = schema.every((h, idx) => String(currentHeaders[idx] || '').trim() === h);
+      if (isSame) return schema;
+    }
+
+    // 스키마에 새 컬럼이 추가된 경우(예: users.share_targets) 시트 열 수가 부족하면 먼저 확장
+    if (maxColsNow < schema.length) {
+      sheet.insertColumnsAfter(maxColsNow, schema.length - maxColsNow);
+    }
+
     sheet.getRange(1, 1, 1, schema.length).setValues([schema]);
     formatHeaderRow(sheet, schema.length);
     const maxCols = sheet.getMaxColumns();

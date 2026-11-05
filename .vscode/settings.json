@@ -7,5 +7,6 @@
     "**/.git/**",
     "**/dist/**",
     "**/android/**"
-  ]
+  ],
+  "python.terminal.useEnvFile": true
 }

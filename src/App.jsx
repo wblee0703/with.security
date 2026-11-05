@@ -217,6 +217,26 @@ export default function App() {
     };
   }, []);
 
+  // ⚡ 공유 업무 빠른 반영: 업무 일지 / 업무 정리 화면을 보고 있는 동안에만 30초마다
+  //    업무 일지·주간/일일 보고서 시트만 가볍게 확인 (전체 동기화 2분 주기와 별개, 변경 시에만 화면 갱신)
+  useEffect(() => {
+    if (activeTab !== 'workLog' && activeTab !== 'workSummary') return;
+
+    const refreshShared = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (isSyncingRef.current) return; // 전체 동기화 진행 중이면 생략
+      if (window.__WITH_SECURITY_UNSAVED_CHANGES__) return;
+      const activeTag = document.activeElement?.tagName?.toUpperCase();
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+      if (document.querySelector('.modal, [role="dialog"]')) return; // 팝업 편집 중에는 생략
+      if (!dbService.getGoogleSheetsUrl() && !dbService.getServerUrl()) return;
+      dbService.refreshSharedData().catch(() => { });
+    };
+
+    const interval = setInterval(refreshShared, 30000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
   // Listen to Back Button Exit Request (웹 브라우저 모바일 모드에서만 종료 확인 팝업창 노출)
   useEffect(() => {
     const handleRequestExit = () => {

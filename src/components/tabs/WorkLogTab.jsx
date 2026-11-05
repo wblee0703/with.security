@@ -134,6 +134,8 @@ export default function WorkLogTab({ onTriggerToast }) {
   const [shareTargetSearchQuery, setShareTargetSearchQuery] = useState('');
   const [allUsers, setAllUsers] = useState([]);
   const [shareTargets, setShareTargets] = useState([]); // [{ username, name, team, rank, division }]
+  const isShareTargetModalOpenRef = useRef(false);
+  useEffect(() => { isShareTargetModalOpenRef.current = isShareTargetModalOpen; }, [isShareTargetModalOpen]);
   const [pendingShareLogItem, setPendingShareLogItem] = useState(null);
   const [optimisticShares, setOptimisticShares] = useState({}); // 0ms 즉각 반응용 로컬 토글 상태 { [logId]: boolean }
 
@@ -432,19 +434,11 @@ export default function WorkLogTab({ onTriggerToast }) {
     setShareTargets([]);
   };
 
-  const getUserShareTargetsStorageKey = (user) => {
-    if (!user) return null;
-    const uid = user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`;
-    return `with_security_worklog_share_targets_${uid.trim()}`;
-  };
-
   const handleSaveShareTargetModal = async () => {
-    const userKey = getUserShareTargetsStorageKey(currentUser);
-    if (userKey) {
-      localStorage.setItem(userKey, JSON.stringify(shareTargets));
-    }
-    // 레거시 전역 키 삭제 (타 사용자 간 강제 동기화 방지)
-    try { localStorage.removeItem('with_security_worklog_share_targets'); } catch (e) { }
+    // 공유 대상자 저장: 로컬 즉시 반영 + 서버 동기화 (PC/모바일/앱 모든 환경에서 동일하게 적용)
+    dbService.saveShareTargets(currentUser, shareTargets).catch(err => {
+      console.error('Failed to sync share targets:', err);
+    });
 
     setIsShareTargetModalOpen(false);
 
@@ -612,16 +606,11 @@ export default function WorkLogTab({ onTriggerToast }) {
     } else {
       // [공유 활성화 처리]
       // 최신 설정된 공유 대상자 목록 확인
-      const userKey = getUserShareTargetsStorageKey(currentUser);
       let latestTargets = shareTargets;
-      if (userKey) {
-        try {
-          const stored = localStorage.getItem(userKey);
-          if (stored) {
-            latestTargets = JSON.parse(stored);
-            setShareTargets(latestTargets);
-          }
-        } catch (e) { }
+      const storedTargets = dbService.getShareTargets(currentUser);
+      if (storedTargets) {
+        latestTargets = storedTargets;
+        setShareTargets(latestTargets);
       }
 
       // 만약 설정된 공유 대상자가 아직 없다면, 같은 사업부 동료를 기본 대상자로 자동 스마트 할당
@@ -639,11 +628,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
         if (latestTargets.length > 0) {
           setShareTargets(latestTargets);
-          if (userKey) {
-            try {
-              localStorage.setItem(userKey, JSON.stringify(latestTargets));
-            } catch (e) { }
-          }
+          dbService.saveShareTargets(currentUser, latestTargets).catch(() => { });
         }
       }
 
@@ -1251,20 +1236,13 @@ export default function WorkLogTab({ onTriggerToast }) {
       setSiteOptions(sites || []);
       setAllUsers(users || []);
 
-      // Load saved share targets strictly for current user (개별 일방향 독립 관리)
-      try {
-        const userKey = getUserShareTargetsStorageKey(u);
-        if (userKey) {
-          const storedTargets = localStorage.getItem(userKey);
-          if (storedTargets) {
-            setShareTargets(JSON.parse(storedTargets));
-          } else {
-            setShareTargets([]);
-          }
-        } else {
-          setShareTargets([]);
-        }
-      } catch (e) { }
+      // Load saved share targets for current user (서버 동기화 값 우선 - 모든 환경 동일 적용)
+      // 공유 대상 지정 창이 열려 편집 중일 때는 선택 내용을 덮어쓰지 않음
+      if (!isShareTargetModalOpenRef.current) {
+        try {
+          setShareTargets(dbService.getShareTargets(u) || []);
+        } catch (e) { }
+      }
     } catch (err) {
       console.error('Failed to load work logs:', err);
     }

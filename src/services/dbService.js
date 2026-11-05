@@ -2889,6 +2889,161 @@ class SecurityDatabase {
     return this.getRegisteredUsers();
   }
 
+  /**
+   * ⚡ 공유 데이터 경량 새로고침 (업무 일지 · 주간/일일 보고서만 조회)
+   * - 전체 시트 동기화(syncAllWithServer) 대신 공유 화면에 필요한 3개 시트만 확인하여
+   *   다른 사용자가 공유한 내용을 빠르게 반영 (실제 변경이 있을 때만 화면 갱신)
+   */
+  async refreshSharedData() {
+    if (this._isRefreshingShared) return;
+    this._isRefreshingShared = true;
+    try {
+      this._lastWorkLogsRevalidate = 0;
+      this._lastWeeklyRevalidate = 0;
+      this._lastDailyRevalidate = 0;
+      recentResponseCache.clear();
+      await Promise.all([
+        this._revalidateWorkLogsInBackground().catch(() => { }),
+        this._revalidateWeeklyReportsInBackground({}).catch(() => { }),
+        this._revalidateDailyReportsInBackground({}).catch(() => { })
+      ]);
+    } finally {
+      this._isRefreshingShared = false;
+    }
+  }
+
+  // ==========================================================================
+  // 업무 공유 대상자 설정 (업무 일지 · 업무 정리 보고서 공통)
+  // - 서버(users 시트 share_targets / share_targets_updated_at 컬럼)에 사용자별로 저장하여
+  //   PC 웹 / 모바일 웹 / 앱 등 어느 환경에서 설정해도 동일한 대상자 목록이 적용되도록 동기화
+  // - localStorage 는 오프라인·즉시 반영용 캐시로만 사용하며, 변경 시각이 더 최신인 쪽을 채택
+  // ==========================================================================
+  _getShareTargetsStorageKey(user) {
+    if (!user) return null;
+    const uid = String(user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`).trim();
+    if (!uid) return null;
+    return `with_security_worklog_share_targets_${uid}`;
+  }
+
+  _parseShareTargets(raw) {
+    if (raw === undefined || raw === null || raw === '') return null;
+    let val = raw;
+    if (typeof val === 'string') {
+      try { val = JSON.parse(val); } catch (e) { return null; }
+    }
+    return Array.isArray(val) ? val : null;
+  }
+
+  _findStoredUserRecord(user) {
+    const uname = String(user?.username || '').trim().toLowerCase();
+    if (!uname) return null;
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      const list = lsRaw ? JSON.parse(lsRaw) : [];
+      if (Array.isArray(list)) {
+        return list.find(u => u && String(u.username || '').trim().toLowerCase() === uname) || null;
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  /**
+   * 현재 사용자의 공유 대상자 목록 조회 (동기)
+   * @returns {Array|null} 대상자 배열, 어느 환경에서도 지정한 적이 없으면 null
+   */
+  getShareTargets(user) {
+    const key = this._getShareTargetsStorageKey(user);
+    if (!key) return null;
+
+    // 1. 이 기기에 캐시된 값
+    let localTargets = null;
+    let localTs = 0;
+    try {
+      localTargets = this._parseShareTargets(localStorage.getItem(key));
+      localTs = Number(localStorage.getItem(`${key}_updated_at`)) || 0;
+    } catch (e) { }
+
+    // 2. 서버(users 시트)에서 내려받은 값
+    const record = this._findStoredUserRecord(user) || user;
+    const serverTargets = this._parseShareTargets(record?.share_targets ?? record?.shareTargets);
+    const serverTs = Number(record?.share_targets_updated_at ?? record?.shareTargetsUpdatedAt) || 0;
+
+    // 3. 더 최근에 변경된 쪽을 채택
+    if (serverTargets && serverTs > 0 && serverTs >= localTs) {
+      if (serverTs > localTs) {
+        try {
+          localStorage.setItem(key, JSON.stringify(serverTargets));
+          localStorage.setItem(`${key}_updated_at`, String(serverTs));
+        } catch (e) { }
+      }
+      return serverTargets;
+    }
+
+    // 로컬 값이 서버보다 최신(또는 서버 미등록 레거시 값)이면 서버로 1회 업로드하여 다른 환경과 맞춤
+    if (localTargets) {
+      if (!this._shareTargetsPushed) this._shareTargetsPushed = new Set();
+      if (!this._shareTargetsPushed.has(key)) {
+        this._shareTargetsPushed.add(key);
+        this._pushShareTargetsRemote(user, localTargets, localTs || Date.now()).catch(() => { });
+      }
+      return localTargets;
+    }
+
+    return serverTargets;
+  }
+
+  /**
+   * 공유 대상자 목록 저장 (로컬 즉시 반영 + 서버 동기화)
+   */
+  async saveShareTargets(user, targets) {
+    const key = this._getShareTargetsStorageKey(user);
+    if (!key) return [];
+    const list = Array.isArray(targets) ? targets : [];
+    const ts = Date.now();
+
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+      localStorage.setItem(`${key}_updated_at`, String(ts));
+      // 레거시 전역 키 삭제 (타 사용자 간 강제 동기화 방지)
+      localStorage.removeItem('with_security_worklog_share_targets');
+    } catch (e) { }
+
+    await this._pushShareTargetsRemote(user, list, ts);
+    return list;
+  }
+
+  async _pushShareTargetsRemote(user, list, ts) {
+    const uname = String(user?.username || '').trim();
+    if (!uname) return;
+
+    // 로컬 사용자 DB 캐시에도 반영 (다음 조회 시 서버 값과 비교 기준)
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      const users = lsRaw ? JSON.parse(lsRaw) : [];
+      if (Array.isArray(users)) {
+        const idx = users.findIndex(u => u && String(u.username || '').trim().toLowerCase() === uname.toLowerCase());
+        if (idx >= 0) {
+          users[idx] = { ...users[idx], share_targets: list, share_targets_updated_at: ts };
+          localStorage.setItem('with_security_users_db', JSON.stringify(users));
+          try { await this.putItem('users', users[idx]); } catch (e) { }
+        }
+      }
+    } catch (e) { }
+
+    // 서버에는 공유 대상 필드만 부분 업데이트 (비밀번호 등 다른 계정 정보는 전송하지 않음)
+    try {
+      await safeFetchApi(`/api/security-users/${encodeURIComponent(uname)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: uname,
+          share_targets: list,
+          share_targets_updated_at: ts
+        })
+      });
+    } catch (e) { }
+  }
+
   async deleteUser(username) {
     if (!username || username === 'admin') return false;
 
@@ -3198,10 +3353,8 @@ class SecurityDatabase {
     const now = Date.now();
     if (this._lastWorkLogsRevalidate && (now - this._lastWorkLogsRevalidate < 30000)) return;
     this._lastWorkLogsRevalidate = now;
-    const remoteLogs = await this._fetchWorkLogsRemote();
-    if (Array.isArray(remoteLogs)) {
-      this.notifyDataChanged(true);
-    }
+    // 변경이 있으면 _fetchWorkLogsRemote 내부에서 화면 갱신 이벤트를 발생시킴
+    await this._fetchWorkLogsRemote();
   }
 
   _mergeRemoteWithLocalWorkLogs(remoteLogs, currentLocal, deletedSet) {
@@ -3330,11 +3483,16 @@ class SecurityDatabase {
         })();
 
         const mapped = this._mergeRemoteWithLocalWorkLogs(filteredServerLogs, currentLocal, deletedSet);
-        localStorage.setItem('with_security_work_logs', JSON.stringify(mapped));
-        try {
-          await this.replaceCollection('work_logs', mapped);
-        } catch (e) { }
-        this.notifyDataChanged(true);
+        const mappedStr = JSON.stringify(mapped);
+        const prevStr = localStorage.getItem('with_security_work_logs');
+        // ⚡ 서버 데이터에 실제 변경이 있을 때만 저장·화면 갱신 (주기적 확인 시 불필요한 재렌더링 방지)
+        if (prevStr !== mappedStr) {
+          localStorage.setItem('with_security_work_logs', mappedStr);
+          try {
+            await this.replaceCollection('work_logs', mapped);
+          } catch (e) { }
+          this.notifyDataChanged(true);
+        }
         return mapped;
       }
     } catch (e) { }
@@ -3798,7 +3956,7 @@ class SecurityDatabase {
       }
     })();
     const remote = await this._fetchWeeklyReportsRemote(searchParams, local);
-    if (Array.isArray(remote) && remote.length > 0) {
+    if (Array.isArray(remote) && remote.length > 0 && JSON.stringify(remote) !== JSON.stringify(local)) {
       notifyDataChanged();
     }
   }
@@ -4069,7 +4227,7 @@ class SecurityDatabase {
       }
     })();
     const remote = await this._fetchDailyReportsRemote(searchParams, local);
-    if (Array.isArray(remote) && remote.length > 0) {
+    if (Array.isArray(remote) && remote.length > 0 && JSON.stringify(remote) !== JSON.stringify(local)) {
       notifyDataChanged();
     }
   }

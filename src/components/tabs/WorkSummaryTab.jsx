@@ -285,22 +285,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const timeStr = `${formatIso(new Date())} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
 
     // 1. 사내 공유 대상자 조회 (한 번 지정해둔 대상자 목록 자동 불러오기)
-    const userKey = getUserShareTargetsStorageKey(currentUser);
+    // (서버에 동기화된 설정 우선 - PC/모바일/앱 모든 환경에서 동일하게 적용)
     let autoTargets = [];
-    let hasLocalTargetSetting = false;
-    if (userKey) {
-      try {
-        const saved = localStorage.getItem(userKey);
-        if (saved !== null) {
-          hasLocalTargetSetting = true;
-          autoTargets = JSON.parse(saved) || [];
-        }
-      } catch (e) { }
-    }
+    const savedTargets = dbService.getShareTargets(currentUser);
+    const hasSavedTargetSetting = Array.isArray(savedTargets);
+    if (hasSavedTargetSetting) autoTargets = savedTargets;
 
-    // 이 기기에서 공유 대상자를 지정한 적이 없으면(다른 기기에서 지정한 경우 등)
+    // 어느 환경에서도 공유 대상자를 지정한 적이 없으면
     // 서버에 저장된 내 최근 주간 보고서의 공유 대상자를 그대로 이어서 사용
-    if (!hasLocalTargetSetting) {
+    if (!hasSavedTargetSetting) {
       const myLatestShared = (sharedWeeklyReports || [])
         .filter(r => r && isMyAuthoredLog(r) && Array.isArray(r.sharedWith) && r.sharedWith.length > 0)
         .sort((a, b) => String(b.weeklyMonday || '').localeCompare(String(a.weeklyMonday || '')) ||
@@ -646,21 +639,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }, []);
 
   // --- Weekly Share Target Helpers ---
-  const getUserShareTargetsStorageKey = (user) => {
-    if (!user) return null;
-    const uid = user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`;
-    return `with_security_worklog_share_targets_${uid.trim()}`;
-  };
-
   const handleOpenWeeklyShareModal = () => {
-    const userKey = getUserShareTargetsStorageKey(currentUser);
-    let initialTargets = [];
-    if (userKey) {
-      try {
-        const saved = localStorage.getItem(userKey);
-        if (saved) initialTargets = JSON.parse(saved);
-      } catch (e) { }
-    }
+    // 서버 동기화된 공유 대상자 설정 로드 (업무 일지 공유 대상과 공통)
+    const initialTargets = dbService.getShareTargets(currentUser) || [];
     setWeeklyShareTargets(initialTargets);
     setWeeklyShareSearchQuery('');
     setIsWeeklyShareModalOpen(true);
@@ -749,11 +730,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const handleConfirmWeeklyShare = async () => {
-    // 기본 대상자 저장 (0명이면 빈 배열 저장)
-    const userKey = getUserShareTargetsStorageKey(currentUser);
-    if (userKey) {
-      localStorage.setItem(userKey, JSON.stringify(weeklyShareTargets));
-    }
+    // 기본 대상자 저장 (0명이면 빈 배열 저장) - 로컬 즉시 반영 + 서버 동기화
+    dbService.saveShareTargets(currentUser, weeklyShareTargets).catch(() => { });
 
     const hasCustomText = Boolean(
       (currentWeeklyCustom.mainTasks && currentWeeklyCustom.mainTasks.trim()) ||
@@ -1110,13 +1088,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         return { name: targetStr };
       });
     } else {
-      const userKey = getUserShareTargetsStorageKey(currentUser);
-      if (userKey) {
-        try {
-          const saved = localStorage.getItem(userKey);
-          if (saved) initialTargets = JSON.parse(saved);
-        } catch (e) { }
-      }
+      initialTargets = dbService.getShareTargets(currentUser) || [];
     }
     setDailyShareTargets(initialTargets);
     setDailyShareSearchQuery('');
@@ -1159,10 +1131,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const handleConfirmDailyShare = async () => {
-    const userKey = getUserShareTargetsStorageKey(currentUser);
-    if (userKey) {
-      localStorage.setItem(userKey, JSON.stringify(dailyShareTargets));
-    }
+    // 공유 대상자 저장 - 로컬 즉시 반영 + 서버 동기화
+    dbService.saveShareTargets(currentUser, dailyShareTargets).catch(() => { });
 
     const hasCustomText = Boolean(
       (currentDailyCustom.issues && currentDailyCustom.issues.trim()) ||
