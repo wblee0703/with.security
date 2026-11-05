@@ -336,6 +336,22 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   return { targetUrl, fetchOptions };
 }
 
+// 쓰기 요청 결과 판정
+// - 구글 시트 쓰기 요청은 CORS 회피를 위해 mode: 'no-cors'로 전송되므로 응답이 불투명(opaque, status 0)하여
+//   성공/실패 본문을 읽을 수 없음 → 요청이 전송되었으면 성공으로 간주 (네트워크 오류로 전송 자체가 안 된 경우만 실패)
+// - 응답을 읽을 수 있는 경우(일반 서버)에는 success:false 여부까지 확인
+async function isWriteRequestAccepted(res) {
+  if (!res) return false;
+  if (res.type === 'opaque' || res.status === 0) return true;
+  if (!res.ok) return false;
+  try {
+    const json = await res.clone().json();
+    return !(json && json.success === false);
+  } catch (e) {
+    return true;
+  }
+}
+
 // 사용자 id 유효성: 1 이상의 순차 정수 (예: 1, 2, 3 ...)
 function isValidNumericUserId(val) {
   if (val === undefined || val === null || val === '') return false;
@@ -2272,11 +2288,7 @@ class SecurityDatabase {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(safeUser)
         });
-        if (res && res.ok) {
-          let json = null;
-          try { json = await res.clone().json(); } catch (e) { }
-          this._lastProfileSyncOk = !(json && json.success === false);
-        }
+        this._lastProfileSyncOk = await isWriteRequestAccepted(res);
       } catch (e) { }
     }
 
@@ -2953,6 +2965,31 @@ class SecurityDatabase {
 
   async getAllUsers() {
     return this.getRegisteredUsers();
+  }
+
+  /**
+   * 사용자 정보가 서버(users 시트)에 실제로 반영되었는지 다시 읽어서 확인
+   * (구글 시트 쓰기 요청은 no-cors 전송이라 응답으로 성공 여부를 알 수 없으므로 재조회로 검증)
+   * @returns {Promise<boolean|null>} true: 반영 확인 / false: 서버 값과 불일치 / null: 서버 조회 불가(판단 보류)
+   */
+  async verifyUserSavedOnServer(user) {
+    const uname = String(user?.username || '').trim().toLowerCase();
+    if (!uname) return null;
+    const norm = (v) => String(v ?? '').trim();
+    const fields = ['name', 'division', 'team', 'rank', 'phone', 'email'];
+    try {
+      recentResponseCache.clear();
+      const res = await safeFetchApi('/api/security-users');
+      if (!res || !res.ok) return null;
+      const json = await res.json();
+      const list = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : null);
+      if (!list) return null;
+      const remote = list.find(u => u && String(u.username || '').trim().toLowerCase() === uname);
+      if (!remote) return false;
+      return fields.every(f => norm(remote[f]) === norm(user[f]));
+    } catch (e) {
+      return null;
+    }
   }
 
   // ---- 사용자 정보 수정 직후 보호 (서버 동기화가 예전 값으로 되돌리는 현상 방지) ----
@@ -4290,11 +4327,7 @@ class SecurityDatabase {
           comment
         })
       });
-      if (res && res.ok) {
-        let json = null;
-        try { json = await res.clone().json(); } catch (e) { }
-        ok = !(json && json.success === false);
-      }
+      ok = await isWriteRequestAccepted(res);
     } catch (e) { }
     return { ok, comment };
   }
@@ -4322,11 +4355,7 @@ class SecurityDatabase {
           username: user.username || ''
         })
       });
-      if (res && res.ok) {
-        let json = null;
-        try { json = await res.clone().json(); } catch (e) { }
-        ok = !(json && json.success === false);
-      }
+      ok = await isWriteRequestAccepted(res);
     } catch (e) { }
     return { ok };
   }

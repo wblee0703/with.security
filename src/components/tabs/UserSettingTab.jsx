@@ -1236,11 +1236,20 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     setIsEditUnlocked(false); // Lock back after update
     if (onTriggerToast) {
       if (dbService._lastProfileSyncOk === false) {
-        onTriggerToast('이 기기에는 저장되었지만 서버 저장에 실패했습니다. 네트워크 확인 후 다시 저장해 주세요.', 'warning');
-      } else {
-        onTriggerToast('사용자 정보가 성공적으로 수정/저장되었습니다.', 'success');
+        // 네트워크 오류로 서버에 전송 자체가 되지 않은 경우
+        onTriggerToast('이 기기에는 저장되었지만 서버로 전송하지 못했습니다. 네트워크 확인 후 다시 저장해 주세요.', 'warning');
+        return;
       }
+      onTriggerToast('사용자 정보가 성공적으로 수정/저장되었습니다.', 'success');
     }
+
+    // 서버(구글 시트)에 실제 반영되었는지 백그라운드에서 재조회하여 확인 (불일치 시에만 안내)
+    const savedForVerify = savedUser || updatedUser;
+    dbService.verifyUserSavedOnServer(savedForVerify).then(verified => {
+      if (verified === false && onTriggerToast) {
+        onTriggerToast('서버(구글 시트)에 사용자 정보가 반영되지 않았습니다. 잠시 후 다시 저장해 주세요.', 'warning');
+      }
+    }).catch(() => { });
   };
 
   // Handle Account Management Modal Open
