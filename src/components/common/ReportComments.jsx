@@ -63,7 +63,13 @@ export default function ReportComments({
       </div>
 
       {list.map(c => {
-        const isMine = myUsername && String(c.author_username || '').trim().toLowerCase() === myUsername;
+        const norm = (v) => String(v || '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+        const isMine = Boolean(
+          (myUsername && c.author_username && String(c.author_username).trim().toLowerCase() === myUsername) ||
+          (currentUser && norm(c.author_name) && norm(c.author_name) === norm(currentUser.name) &&
+            norm(c.author_rank) === norm(currentUser.rank) &&
+            (!norm(c.author_team) || norm(c.author_team) === norm(currentUser.team || currentUser.department)))
+        );
         const authorLabel = [c.author_name, c.author_rank].filter(Boolean).join(' ') || c.author_username || '작성자';
         return (
           <div

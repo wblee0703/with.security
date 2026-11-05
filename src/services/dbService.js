@@ -249,6 +249,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
       id: bodyData?.reportId || '',
       commentId: bodyData?.commentId || '',
       username: bodyData?.username || '',
+      authorName: bodyData?.authorName || '',
       data: bodyData?.comment || {}
     });
     fetchOptions.timeout = Math.max(fetchOptions.timeout || 0, 35000);
@@ -4229,25 +4230,64 @@ class SecurityDatabase {
   // - 시트: weekly_reports.comments / daily_reports.comments (JSON 배열)
   // - 서버 반영 전에도 이 기기에서 작성한 댓글이 바로 보이도록 로컬 캐시에 먼저 반영(_pending)
   // ==========================================================================
+  // 댓글 고유 키: 작성 날짜 + 이름 + 직급 + 내용 (Apps Script reportCommentKey 와 동일 규칙)
+  _reportCommentKey(c) {
+    return [c.created_at || '', c.author_name || '', c.author_rank || '', String(c.text || '').trim()].join('|');
+  }
+
+  /**
+   * 시트 comments 칸 → 댓글 목록
+   * - 시트 기록 형식: 한 줄에 1건 "작성 날짜, 소속팀, 이름 직급, 내용" (여러 줄 내용은 다음 줄로 이어짐)
+   * - 이전 JSON 배열 형식 및 이 기기 캐시(객체 배열)도 지원
+   */
   _parseReportComments(raw) {
-    if (!raw) return [];
-    let val = raw;
-    if (typeof val === 'string') {
-      try { val = JSON.parse(val); } catch (e) { return []; }
+    if (raw === undefined || raw === null || raw === '') return [];
+    let items = [];
+    const str = typeof raw === 'string' ? raw.trim() : '';
+    if (Array.isArray(raw) || str.startsWith('[')) {
+      let arr = raw;
+      if (!Array.isArray(arr)) {
+        try { arr = JSON.parse(str); } catch (e) { arr = []; }
+      }
+      if (Array.isArray(arr)) {
+        items = arr.filter(c => c && typeof c === 'object').map(c => ({
+          author_username: String(c.author_username || c.authorUsername || '').trim(),
+          author_name: String(c.author_name || c.authorName || '').trim(),
+          author_rank: String(c.author_rank || c.authorRank || '').trim(),
+          author_team: String(c.author_team || c.authorTeam || '').trim(),
+          text: String(c.text || ''),
+          created_at: this._normalizeKstDateTime(c.created_at || c.createdAt || ''),
+          ...(c._pending ? { _pending: c._pending } : {})
+        }));
+      }
+    } else if (typeof raw === 'string') {
+      const lineRe = /^(\d{4}-\d{2}-\d{2}(?: \d{1,2}:\d{2}(?::\d{2})?)?), ([^,\n]*), ([^,\n]*), ?(.*)$/;
+      raw.replace(/\r\n?/g, '\n').split('\n').forEach(line => {
+        const m = line.match(lineRe);
+        if (m) {
+          const nameParts = m[3].trim().split(/\s+/).filter(Boolean);
+          const rank = nameParts.length > 1 ? nameParts.pop() : '';
+          items.push({
+            author_username: '',
+            author_name: nameParts.join(' '),
+            author_rank: rank,
+            author_team: m[2].trim(),
+            text: m[4],
+            created_at: m[1].trim()
+          });
+        } else if (items.length > 0) {
+          items[items.length - 1].text += '\n' + line;
+        }
+      });
     }
-    if (!Array.isArray(val)) return [];
-    return val
-      .filter(c => c && c.id && String(c.text || '').trim())
-      .map(c => ({
-        id: String(c.id),
-        author_username: String(c.author_username || c.authorUsername || '').trim(),
-        author_name: String(c.author_name || c.authorName || '').trim(),
-        author_rank: String(c.author_rank || c.authorRank || '').trim(),
-        author_team: String(c.author_team || c.authorTeam || '').trim(),
-        text: String(c.text || ''),
-        created_at: this._normalizeKstDateTime(c.created_at || c.createdAt || ''),
-        ...(c._pending ? { _pending: c._pending } : {})
-      }));
+    return items
+      .map(c => {
+        const text = String(c.text || '').replace(/\r\n?/g, '\n').trim();
+        const item = { ...c, text };
+        item.id = this._reportCommentKey(item);
+        return item;
+      })
+      .filter(c => c.text);
   }
 
   // 서버 댓글 + 이 기기에서 방금 작성(서버 반영 대기)한 댓글 병합, 방금 삭제한 댓글은 제외
@@ -4297,18 +4337,20 @@ class SecurityDatabase {
    * @returns {Promise<{ok: boolean, comment: object}>}
    */
   async addReportComment(type, reportId, user, text) {
-    const body = String(text || '').trim();
+    const body = String(text || '').replace(/\r\n?/g, '\n').trim().slice(0, 2000);
     if (!reportId || !body || !user) return { ok: false, comment: null };
     const nowStr = this._normalizeKstDateTime(new Date().toISOString());
+    // 시트 기록 형식("작성 날짜, 소속팀, 이름 직급, 내용")과 동일하게 구성 (쉼표는 구분자이므로 이름/팀에서 제거)
+    const clean = (v) => String(v || '').replace(/,/g, ' ').trim();
     const comment = {
-      id: `cmt-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       author_username: String(user.username || '').trim(),
-      author_name: String(user.name || '').trim(),
-      author_rank: String(user.rank || '').trim(),
-      author_team: String(user.team || user.department || '').trim(),
-      text: body.slice(0, 2000),
+      author_name: clean(user.name),
+      author_rank: clean(user.rank),
+      author_team: clean(user.team || user.department),
+      text: body,
       created_at: nowStr
     };
+    comment.id = this._reportCommentKey(comment);
 
     // 1. 이 기기 화면에 즉시 반영
     this._updateLocalReportComments(type, reportId, list => [...list, { ...comment, _pending: Date.now() }]);
@@ -4352,7 +4394,8 @@ class SecurityDatabase {
           sheet: type === 'daily' ? 'daily_reports' : 'weekly_reports',
           reportId,
           commentId,
-          username: user.username || ''
+          username: user.username || '',
+          authorName: String(user.name || '').replace(/,/g, ' ').trim()
         })
       });
       ok = await isWriteRequestAccepted(res);

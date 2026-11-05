@@ -23,7 +23,7 @@
  */
 
 // 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
-const SCRIPT_VERSION = '2026-11-05-comments';
+const SCRIPT_VERSION = '2026-11-05-comments-v2';
 
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
@@ -58,7 +58,7 @@ const SCHEMAS = {
     'id', 'report_id', 'weekly_monday', 'week_text', 'author_name', 'author_username',
     'author_team', 'author_rank', 'author_division', 'author_role', 'main_tasks',
     'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at',
-    // 공유받은 사람/작성자 피드백 댓글 (JSON 배열: [{id, author_username, author_name, author_rank, author_team, text, created_at}])
+    // 공유받은 사람/작성자 피드백 댓글 (한 줄에 1건: "작성 날짜, 소속팀, 이름 직급, 내용")
     'comments'
   ],
   // 5-1. 일일 업무 보고서 (daily_reports) - id 단일화 및 공유자/공유대상 분리 컬럼 관리
@@ -68,7 +68,7 @@ const SCHEMAS = {
     'issues', 'today_tasks', 'tomorrow_plan',
     'shared_by', 'shared_with', 'shared_at',
     'created_at', 'updated_at',
-    // 공유받은 사람/작성자 피드백 댓글 (JSON 배열)
+    // 공유받은 사람/작성자 피드백 댓글 (한 줄에 1건: "작성 날짜, 소속팀, 이름 직급, 내용")
     'comments'
   ],
   // 6. 교육 수료 관리 (MySQL: edu_log)
@@ -2697,8 +2697,9 @@ function cleanupDuplicates() {
 /**
  * 💬 보고서 피드백 댓글 추가/삭제
  * - payload.id: 보고서 id (weekly_reports: id 또는 report_id, daily_reports: id)
- * - add_comment: payload.data = { id, author_username, author_name, author_rank, author_team, text, created_at }
- * - delete_comment: payload.commentId, payload.username (본인이 작성한 댓글만 삭제 가능)
+ * - 시트 기록 형식: 한 줄에 1건 "작성 날짜, 소속팀, 이름 직급, 내용"
+ * - add_comment: payload.data = { author_name, author_rank, author_team, text, created_at }
+ * - delete_comment: payload.commentId(작성 날짜|이름|직급|내용), payload.authorName (본인 댓글만 삭제)
  */
 function handleReportComment(sheet, sheetName, action, payload) {
   if (sheetName !== 'weekly_reports' && sheetName !== 'daily_reports') {
@@ -2725,41 +2726,98 @@ function handleReportComment(sheet, sheetName, action, payload) {
   }
   if (rowIdx === -1) return jsonResponse({ success: false, error: 'Report not found: ' + reportId });
 
-  let list = [];
-  const raw = rows[rowIdx][commentsIdx];
-  if (raw) {
-    try {
-      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      if (Array.isArray(parsed)) list = parsed;
-    } catch (e) { }
-  }
+  let list = parseReportComments(rows[rowIdx][commentsIdx]);
 
   if (action === 'add_comment') {
     const c = payload.data || {};
-    const text = String(c.text || '').trim();
+    const text = String(c.text || '').replace(/\r\n?/g, '\n').trim().slice(0, 2000);
     if (!text) return jsonResponse({ success: false, error: 'Empty comment' });
-    const commentId = String(c.id || ('cmt-' + Date.now() + '-' + Math.floor(Math.random() * 10000)));
-    if (!list.some(x => x && String(x.id) === commentId)) {
-      list.push({
-        id: commentId,
-        author_username: String(c.author_username || '').trim(),
-        author_name: String(c.author_name || '').trim(),
-        author_rank: String(c.author_rank || '').trim(),
-        author_team: String(c.author_team || '').trim(),
-        text: text.slice(0, 2000),
-        created_at: c.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')
-      });
-    }
+    const comment = {
+      created_at: String(c.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')).trim(),
+      author_team: String(c.author_team || '').replace(/,/g, ' ').trim(),
+      author_name: String(c.author_name || '').replace(/,/g, ' ').trim(),
+      author_rank: String(c.author_rank || '').replace(/,/g, ' ').trim(),
+      text: text
+    };
+    comment.id = reportCommentKey(comment);
+    if (!list.some(x => x.id === comment.id)) list.push(comment);
   } else {
     const commentId = String(payload.commentId || '').trim();
-    const username = String(payload.username || '').trim().toLowerCase();
-    list = list.filter(x => !(x && String(x.id) === commentId &&
-      (!username || String(x.author_username || '').trim().toLowerCase() === username)));
+    const authorName = String(payload.authorName || '').trim();
+    list = list.filter(x => !(x.id === commentId && (!authorName || x.author_name === authorName)));
   }
 
-  sheet.getRange(rowIdx + 1, commentsIdx + 1).setValue(list.length > 0 ? JSON.stringify(list) : '');
+  const cellText = formatReportComments(list);
+  // '='로 시작하는 등 수식으로 해석되지 않도록 텍스트 서식 지정 후 기록
+  const cell = sheet.getRange(rowIdx + 1, commentsIdx + 1);
+  cell.setNumberFormat('@').setValue(cellText).setWrap(true);
   SpreadsheetApp.flush();
   return jsonResponse({ success: true, id: reportId, comments: list });
+}
+
+/**
+ * 피드백 댓글 고유 키 (작성 날짜 + 이름 + 직급 + 내용) - 앱(dbService)과 동일한 규칙
+ */
+function reportCommentKey(c) {
+  return [c.created_at || '', c.author_name || '', c.author_rank || '', String(c.text || '').trim()].join('|');
+}
+
+/**
+ * 시트 comments 칸 → 댓글 목록
+ * - 기본 형식: 한 줄에 1건 "작성 날짜, 소속팀, 이름 직급, 내용" (여러 줄 내용은 다음 줄로 이어짐)
+ * - 이전 JSON 배열 형식도 호환
+ */
+function parseReportComments(raw) {
+  if (raw === undefined || raw === null || raw === '') return [];
+  let items = [];
+  const str = (typeof raw === 'string') ? raw.trim() : '';
+  if (Array.isArray(raw) || str.charAt(0) === '[') {
+    try {
+      const arr = Array.isArray(raw) ? raw : JSON.parse(str);
+      if (Array.isArray(arr)) {
+        items = arr.filter(Boolean).map(c => ({
+          created_at: String(c.created_at || c.createdAt || '').trim(),
+          author_team: String(c.author_team || c.authorTeam || '').trim(),
+          author_name: String(c.author_name || c.authorName || '').trim(),
+          author_rank: String(c.author_rank || c.authorRank || '').trim(),
+          text: String(c.text || '').trim()
+        }));
+      }
+    } catch (e) { items = []; }
+  } else {
+    const lineRe = /^(\d{4}-\d{2}-\d{2}(?: \d{1,2}:\d{2}(?::\d{2})?)?), ([^,\n]*), ([^,\n]*), ?(.*)$/;
+    String(raw).replace(/\r\n?/g, '\n').split('\n').forEach(line => {
+      const m = line.match(lineRe);
+      if (m) {
+        const nameParts = m[3].trim().split(/\s+/).filter(Boolean);
+        const rank = nameParts.length > 1 ? nameParts.pop() : '';
+        items.push({
+          created_at: m[1].trim(),
+          author_team: m[2].trim(),
+          author_name: nameParts.join(' '),
+          author_rank: rank,
+          text: m[4]
+        });
+      } else if (items.length > 0) {
+        items[items.length - 1].text += '\n' + line;
+      }
+    });
+  }
+  return items
+    .map(c => { c.text = String(c.text || '').trim(); c.id = reportCommentKey(c); return c; })
+    .filter(c => c.text);
+}
+
+/**
+ * 댓글 목록 → 시트 comments 칸 텍스트 ("작성 날짜, 소속팀, 이름 직급, 내용" 한 줄씩)
+ */
+function formatReportComments(list) {
+  return (list || []).map(c => [
+    c.created_at || '',
+    c.author_team || '',
+    [c.author_name, c.author_rank].filter(Boolean).join(' '),
+    String(c.text || '').trim()
+  ].join(', ')).join('\n');
 }
 
 /**
