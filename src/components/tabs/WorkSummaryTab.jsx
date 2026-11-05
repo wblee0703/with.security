@@ -2345,6 +2345,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                   <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
                     <textarea
+                      spellCheck={false}
+                      autoCorrect="off"
                       ref={dailyIssuesRef}
                       className="borderless-textarea"
                       value={currentDailyCustom.issues}
@@ -2381,6 +2383,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                   <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
                     <textarea
+                      spellCheck={false}
+                      autoCorrect="off"
                       ref={dailyTodayTasksRef}
                       className="borderless-textarea"
                       value={currentDailyCustom.todayTasks}
@@ -2417,6 +2421,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                   <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
                     <textarea
+                      spellCheck={false}
+                      autoCorrect="off"
                       ref={dailyTomorrowPlanRef}
                       className="borderless-textarea"
                       value={currentDailyCustom.tomorrowPlan}
@@ -3374,6 +3380,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
                 <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
                   <textarea
+                    spellCheck={false}
+                    autoCorrect="off"
                     ref={mainTasksRef}
                     className="borderless-textarea"
                     value={currentWeeklyCustom.mainTasks}
@@ -3410,6 +3418,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
                 <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
                   <textarea
+                    spellCheck={false}
+                    autoCorrect="off"
                     ref={infoSharingRef}
                     className="borderless-textarea"
                     value={currentWeeklyCustom.infoSharing}
@@ -3446,6 +3456,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
                 <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
                   <textarea
+                    spellCheck={false}
+                    autoCorrect="off"
                     ref={teamCoopRef}
                     className="borderless-textarea"
                     value={currentWeeklyCustom.teamCoop}
@@ -3482,6 +3494,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
                 <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
                   <textarea
+                    spellCheck={false}
+                    autoCorrect="off"
                     ref={etcTasksRef}
                     className="borderless-textarea"
                     value={currentWeeklyCustom.etcTasks}
