@@ -96,6 +96,22 @@ export function notifyDataChanged(immediate = false) {
   }, 250);
 }
 
+// 보고서 본문(주요 내용·정보 공유·특이사항 등) 값을 항상 문자열로 정규화
+// (시트 셀에 숫자만 입력되었거나 '['/'{'로 시작하는 내용이 JSON 배열·객체로 변환된 경우 .trim() 오류 방지)
+export function toReportText(val) {
+  if (val === undefined || val === null) return '';
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) {
+    return val.every(v => typeof v !== 'object' || v === null)
+      ? val.map(v => (v === null || v === undefined) ? '' : String(v)).join('\n')
+      : JSON.stringify(val);
+  }
+  if (typeof val === 'object') {
+    try { return JSON.stringify(val); } catch (e) { return ''; }
+  }
+  return String(val);
+}
+
 // 한국 표준시(KST) 기준 YYYY-MM-DD 날짜 문자열 정규화 헬퍼 (타임존 시차로 인한 날짜 밀림/왜곡 원천 방지)
 export function normalizeKstDate(val) {
   if (!val && val !== 0) return '';
@@ -4004,7 +4020,7 @@ class SecurityDatabase {
   // 시트 행(snake_case / camelCase / ISO 날짜 혼재)을 화면용 주간 보고서 객체로 정규화
   _mapWeeklyReport(item, localItem = null) {
     const itemId = item.id || item.reportId || item.report_id || localItem?.id;
-    const workSupport = item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '';
+    const workSupport = toReportText(item.workSupport || item.work_support || item.teamCoop || item.team_coop || localItem?.workSupport || localItem?.teamCoop || '');
     return {
       id: itemId,
       reportId: itemId,
@@ -4018,11 +4034,11 @@ class SecurityDatabase {
       authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
       authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
       // ⭐ 컬럼별 명확한 분리
-      mainTasks: item.main_tasks ?? item.mainTasks ?? localItem?.mainTasks ?? '',
-      infoSharing: item.info_sharing ?? item.infoSharing ?? localItem?.infoSharing ?? '',
+      mainTasks: toReportText(item.main_tasks ?? item.mainTasks ?? localItem?.mainTasks ?? ''),
+      infoSharing: toReportText(item.info_sharing ?? item.infoSharing ?? localItem?.infoSharing ?? ''),
       workSupport,
       teamCoop: workSupport,
-      etcTasks: item.etc_tasks ?? item.etcTasks ?? localItem?.etcTasks ?? '',
+      etcTasks: toReportText(item.etc_tasks ?? item.etcTasks ?? localItem?.etcTasks ?? ''),
       sharedWith: this._cleanSharedWithList(item.shared_with || item.sharedWith || localItem?.sharedWith),
       sharedAt: this._normalizeKstDateTime(item.shared_at || item.sharedAt || localItem?.sharedAt || ''),
       createdAt: this._normalizeKstDateTime(item.created_at || item.createdAt || localItem?.createdAt || '')
@@ -4107,11 +4123,11 @@ class SecurityDatabase {
       authorRank: report.authorRank || report.rank || '대리',
       authorDivision: report.authorDivision || report.division || '',
       authorRole: report.authorRole || report.role || '일반',
-      mainTasks: report.mainTasks || '',
-      infoSharing: report.infoSharing || '',
-      workSupport: report.workSupport || report.teamCoop || '',
-      teamCoop: report.workSupport || report.teamCoop || '',
-      etcTasks: report.etcTasks || '',
+      mainTasks: toReportText(report.mainTasks),
+      infoSharing: toReportText(report.infoSharing),
+      workSupport: toReportText(report.workSupport || report.teamCoop),
+      teamCoop: toReportText(report.workSupport || report.teamCoop),
+      etcTasks: toReportText(report.etcTasks),
       sharedWith: cleanSharedWith,
       sharedAt: report.sharedAt || '',
       createdAt: report.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 16),
@@ -4264,9 +4280,9 @@ class SecurityDatabase {
               authorDivision: item.authorDivision || item.author_division || item.division || localItem?.authorDivision || '',
               authorRole: item.authorRole || item.author_role || item.role || localItem?.authorRole || '일반',
               // ⭐ 특이사항, 금일 진행 내역, 익일 예정 업무 컬럼별 분리
-              issues: item.issues || item.special_notes || item.specialNotes || localItem?.issues || '',
-              todayTasks: item.todayTasks || item.today_tasks || localItem?.todayTasks || '',
-              tomorrowPlan: item.tomorrowPlan || item.tomorrow_plan || localItem?.tomorrowPlan || '',
+              issues: toReportText(item.issues || item.special_notes || item.specialNotes || localItem?.issues || ''),
+              todayTasks: toReportText(item.todayTasks || item.today_tasks || localItem?.todayTasks || ''),
+              tomorrowPlan: toReportText(item.tomorrowPlan || item.tomorrow_plan || localItem?.tomorrowPlan || ''),
               sharedBy: item.sharedBy || item.shared_by || localItem?.sharedBy || '',
               sharedWith: parsedSharedWith,
               sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
@@ -4323,9 +4339,9 @@ class SecurityDatabase {
       authorRank: report.authorRank || report.rank || '대리',
       authorDivision: report.authorDivision || report.division || '',
       authorRole: report.authorRole || report.role || '일반',
-      issues: report.issues || '',
-      todayTasks: report.todayTasks || '',
-      tomorrowPlan: report.tomorrowPlan || '',
+      issues: toReportText(report.issues),
+      todayTasks: toReportText(report.todayTasks),
+      tomorrowPlan: toReportText(report.tomorrowPlan),
       sharedBy: report.sharedBy || report.shared_by || '',
       sharedWith: Array.isArray(report.sharedWith || report.shared_with)
         ? (report.sharedWith || report.shared_with)
@@ -5833,9 +5849,9 @@ class SecurityDatabase {
           if (u && d) {
             const k = `${u}_${d}`;
             customMap[k] = {
-              issues: r.issues || '',
-              todayTasks: r.today_tasks || r.todayTasks || '',
-              tomorrowPlan: r.tomorrow_plan || r.tomorrowPlan || '',
+              issues: toReportText(r.issues),
+              todayTasks: toReportText(r.today_tasks || r.todayTasks),
+              tomorrowPlan: toReportText(r.tomorrow_plan || r.tomorrowPlan),
               updatedAt: r.updated_at || r.updatedAt || new Date().toISOString()
             };
           }

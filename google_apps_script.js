@@ -2189,6 +2189,14 @@ function readSheetData(sheetName) {
   const list = [];
   const keyMap = new Map();
 
+  // 사용자가 직접 입력하는 본문 텍스트 컬럼: '[현장] ...', '[1, 2]' 등으로 시작해도 배열로 변환하지 않음
+  // (숫자만 입력된 셀도 문자열로 반환하여 앱의 .trim() 오류 방지)
+  const TEXT_ONLY_COLS = [
+    'main_tasks', 'info_sharing', 'work_support', 'etc_tasks',
+    'issues', 'today_tasks', 'tomorrow_plan',
+    'title', 'tasks_done', 'memo', 'work_content', 'content'
+  ];
+
   const DATE_ONLY_COLS = [
     'log_date', 'due_date', 'date', 'weekly_monday', 'daily_date',
     'completion_date', 'expiry_date'
@@ -2211,9 +2219,12 @@ function readSheetData(sheetName) {
         val = formatKstDate(val, true);
       }
 
-      // JSON 객체/배열 형태 자동 역직렬화
-      if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
+      // JSON 객체/배열 형태 자동 역직렬화 (단, 사용자가 직접 입력한 본문 텍스트 컬럼은 문자열 그대로 유지)
+      if (typeof val === 'string' && TEXT_ONLY_COLS.indexOf(h) === -1 && (val.startsWith('{') || val.startsWith('['))) {
         try { val = JSON.parse(val); } catch (e) { }
+      }
+      if (TEXT_ONLY_COLS.indexOf(h) !== -1 && val !== '' && val !== null && val !== undefined && typeof val !== 'string') {
+        val = String(displayRow[colIdx] !== undefined && displayRow[colIdx] !== '' ? displayRow[colIdx] : val);
       }
       obj[h] = val;
       if (val !== '' && val !== null && val !== undefined) hasData = true;

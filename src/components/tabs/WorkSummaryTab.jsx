@@ -32,7 +32,7 @@ import {
   Save,
   RotateCcw
 } from 'lucide-react';
-import { dbService, normalizeKstDate } from '../../services/dbService';
+import { dbService, normalizeKstDate, toReportText } from '../../services/dbService';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
@@ -507,13 +507,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           .some(k => String(local[k] || '').trim()));
         // 이 기기에 내용이 없을 때만 서버 내용으로 채움 (이 기기에서 방금 저장한 내용 보호)
         if (localHasText) return;
-        const ws = rep.workSupport || rep.work_support || rep.teamCoop || '';
+        const ws = toReportText(rep.workSupport || rep.work_support || rep.teamCoop);
         updated[wMon] = {
-          mainTasks: rep.mainTasks || rep.main_tasks || '',
-          infoSharing: rep.infoSharing || rep.info_sharing || '',
+          mainTasks: toReportText(rep.mainTasks || rep.main_tasks),
+          infoSharing: toReportText(rep.infoSharing || rep.info_sharing),
           teamCoop: ws,
           workSupport: ws,
-          etcTasks: rep.etcTasks || rep.etc_tasks || ''
+          etcTasks: toReportText(rep.etcTasks || rep.etc_tasks)
         };
         changed = true;
       });
@@ -554,9 +554,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               if (isDailyDirtyRef.current && dDate === dailyDateRef.current) return;
               if (!updated[dDate] || !isDailyDirtyRef.current) {
                 updated[dDate] = {
-                  issues: rep.issues || '',
-                  todayTasks: rep.today_tasks || rep.todayTasks || '',
-                  tomorrowPlan: rep.tomorrow_plan || rep.tomorrowPlan || '',
+                  issues: toReportText(rep.issues),
+                  todayTasks: toReportText(rep.today_tasks || rep.todayTasks),
+                  tomorrowPlan: toReportText(rep.tomorrow_plan || rep.tomorrowPlan),
                   updatedAt: rep.updated_at || rep.updatedAt || new Date().toISOString()
                 };
               }
@@ -600,9 +600,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             if (authorUser === u.username && dDate) {
               if (!updated[dDate] || !isDailyDirty) {
                 updated[dDate] = {
-                  issues: rep.issues || '',
-                  todayTasks: rep.today_tasks || rep.todayTasks || '',
-                  tomorrowPlan: rep.tomorrow_plan || rep.tomorrowPlan || '',
+                  issues: toReportText(rep.issues),
+                  todayTasks: toReportText(rep.today_tasks || rep.todayTasks),
+                  tomorrowPlan: toReportText(rep.tomorrow_plan || rep.tomorrowPlan),
                   updatedAt: rep.updated_at || rep.updatedAt || new Date().toISOString()
                 };
               }
@@ -734,10 +734,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     dbService.saveShareTargets(currentUser, weeklyShareTargets).catch(() => { });
 
     const hasCustomText = Boolean(
-      (currentWeeklyCustom.mainTasks && currentWeeklyCustom.mainTasks.trim()) ||
-      (currentWeeklyCustom.infoSharing && currentWeeklyCustom.infoSharing.trim()) ||
-      (currentWeeklyCustom.teamCoop && currentWeeklyCustom.teamCoop.trim()) ||
-      (currentWeeklyCustom.etcTasks && currentWeeklyCustom.etcTasks.trim())
+      (currentWeeklyCustom.mainTasks && toReportText(currentWeeklyCustom.mainTasks).trim()) ||
+      (currentWeeklyCustom.infoSharing && toReportText(currentWeeklyCustom.infoSharing).trim()) ||
+      (currentWeeklyCustom.teamCoop && toReportText(currentWeeklyCustom.teamCoop).trim()) ||
+      (currentWeeklyCustom.etcTasks && toReportText(currentWeeklyCustom.etcTasks).trim())
     );
 
     if (!hasCustomText && weeklyOwnLogs.length === 0) {
@@ -1135,9 +1135,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     dbService.saveShareTargets(currentUser, dailyShareTargets).catch(() => { });
 
     const hasCustomText = Boolean(
-      (currentDailyCustom.issues && currentDailyCustom.issues.trim()) ||
-      (currentDailyCustom.todayTasks && currentDailyCustom.todayTasks.trim()) ||
-      (currentDailyCustom.tomorrowPlan && currentDailyCustom.tomorrowPlan.trim())
+      (currentDailyCustom.issues && toReportText(currentDailyCustom.issues).trim()) ||
+      (currentDailyCustom.todayTasks && toReportText(currentDailyCustom.todayTasks).trim()) ||
+      (currentDailyCustom.tomorrowPlan && toReportText(currentDailyCustom.tomorrowPlan).trim())
     );
 
     if (!hasCustomText && dailyOwnLogs.length === 0) {
@@ -1590,9 +1590,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const rep = group?.dailyReport;
     const hasRep = Boolean(
       rep && (
-        (rep.issues && rep.issues.trim()) ||
-        (rep.todayTasks && rep.todayTasks.trim()) ||
-        (rep.tomorrowPlan && rep.tomorrowPlan.trim())
+        (rep.issues && toReportText(rep.issues).trim()) ||
+        (rep.todayTasks && toReportText(rep.todayTasks).trim()) ||
+        (rep.tomorrowPlan && toReportText(rep.tomorrowPlan).trim())
       )
     );
 
@@ -1603,14 +1603,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     let text = `[공유 업무: ${group.authorLabel} (${getFormattedKoreanDate(dailyDate)})]\n`;
 
-    if (rep.issues && rep.issues.trim()) {
-      text += `\n[특이사항]\n${rep.issues.trim()}\n`;
+    if (rep.issues && toReportText(rep.issues).trim()) {
+      text += `\n[특이사항]\n${toReportText(rep.issues).trim()}\n`;
     }
-    if (rep.todayTasks && rep.todayTasks.trim()) {
-      text += `\n[금일 진행 내역]\n${rep.todayTasks.trim()}\n`;
+    if (rep.todayTasks && toReportText(rep.todayTasks).trim()) {
+      text += `\n[금일 진행 내역]\n${toReportText(rep.todayTasks).trim()}\n`;
     }
-    if (rep.tomorrowPlan && rep.tomorrowPlan.trim()) {
-      text += `\n[내일 예정 업무]\n${rep.tomorrowPlan.trim()}\n`;
+    if (rep.tomorrowPlan && toReportText(rep.tomorrowPlan).trim()) {
+      text += `\n[내일 예정 업무]\n${toReportText(rep.tomorrowPlan).trim()}\n`;
     }
 
     handleCopyText(text.trim(), `${group.authorLabel} 공유 업무`);
@@ -1632,14 +1632,14 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
       const rep = group?.dailyReport;
       if (rep) {
-        if (rep.issues && rep.issues.trim()) {
-          text += `[특이사항]\n${rep.issues.trim()}\n`;
+        if (rep.issues && toReportText(rep.issues).trim()) {
+          text += `[특이사항]\n${toReportText(rep.issues).trim()}\n`;
         }
-        if (rep.todayTasks && rep.todayTasks.trim()) {
-          text += `[금일 진행 내역]\n${rep.todayTasks.trim()}\n`;
+        if (rep.todayTasks && toReportText(rep.todayTasks).trim()) {
+          text += `[금일 진행 내역]\n${toReportText(rep.todayTasks).trim()}\n`;
         }
-        if (rep.tomorrowPlan && rep.tomorrowPlan.trim()) {
-          text += `[내일 예정 업무]\n${rep.tomorrowPlan.trim()}\n`;
+        if (rep.tomorrowPlan && toReportText(rep.tomorrowPlan).trim()) {
+          text += `[내일 예정 업무]\n${toReportText(rep.tomorrowPlan).trim()}\n`;
         }
       }
     });
@@ -1755,29 +1755,29 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const custom = currentWeeklyCustom;
 
     t += `1. 주요 내용\n`;
-    if (custom.mainTasks && custom.mainTasks.trim()) {
-      t += `  ${custom.mainTasks.trim()}\n\n`;
+    if (custom.mainTasks && toReportText(custom.mainTasks).trim()) {
+      t += `  ${toReportText(custom.mainTasks).trim()}\n\n`;
     } else {
       t += `  - 해당 내역 없음\n\n`;
     }
 
     t += `2. 정보 공유\n`;
-    if (custom.infoSharing && custom.infoSharing.trim()) {
-      t += `  ${custom.infoSharing.trim()}\n\n`;
+    if (custom.infoSharing && toReportText(custom.infoSharing).trim()) {
+      t += `  ${toReportText(custom.infoSharing).trim()}\n\n`;
     } else {
       t += `  - 해당 내역 없음\n\n`;
     }
 
     t += `3. 업무 지원\n`;
-    if (custom.teamCoop && custom.teamCoop.trim()) {
-      t += `  ${custom.teamCoop.trim()}\n\n`;
+    if (custom.teamCoop && toReportText(custom.teamCoop).trim()) {
+      t += `  ${toReportText(custom.teamCoop).trim()}\n\n`;
     } else {
       t += `  - 해당 내역 없음\n\n`;
     }
 
     t += `4. 기타 업무\n`;
-    if (custom.etcTasks && custom.etcTasks.trim()) {
-      t += `  ${custom.etcTasks.trim()}\n\n`;
+    if (custom.etcTasks && toReportText(custom.etcTasks).trim()) {
+      t += `  ${toReportText(custom.etcTasks).trim()}\n\n`;
     } else {
       t += `  - 해당 내역 없음\n\n`;
     }
@@ -1921,7 +1921,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           {/* Header Bar Row */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-              {/* Row 1: Title (Icon + 일일 업무 / 내일 예정 업무) on Left, Action Buttons (오늘, 복사, 공유) on Right */}
+              {/* Row 1: Title (Icon + 일일 업무 / 내일 예정 업무) on Left, Action Buttons (오늘) on Right */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{
@@ -1946,7 +1946,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
                 </div>
 
-                {/* Action Buttons: 오늘, 공유 */}
+                {/* Action Buttons: 오늘 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {/* 오늘 버튼 */}
                   <button
@@ -1972,30 +1972,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   >
                     오늘
                   </button>
-                  {isNative && (
-                    <button
-                      type="button"
-                      onClick={() => handleShareText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
-                      style={{
-                        background: isFuture ? '#ea580c' : '#1e3a8a',
-                        border: isFuture ? '1.5px solid #ea580c' : '1.5px solid #1e3a8a',
-                        color: '#ffffff',
-                        padding: '7px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
-                      }}
-                      title="업무 보고서 공유 (카카오톡, 메신저 등)"
-                    >
-                      <Share2 size={13} />
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -2216,33 +2192,6 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </button>
                 </div>
 
-                {/* Action Buttons: Share */}
-                {isNative && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleShareText(generateDailyReportText(), isFuture ? '예정 업무 보고서' : '일일 업무 일지')}
-                      style={{
-                        background: '#1e3a8a',
-                        border: '1.5px solid #1e3a8a',
-                        color: '#ffffff',
-                        padding: '6px 12px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
-                      }}
-                      title="업무 보고서 공유 (카카오톡, 메신저 등)"
-                    >
-                      <Share2 size={13} />
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -2782,9 +2731,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                         const isCollapsed = collapsedDailySharedCards[cardKey] !== false;
 
                         const rep = group?.dailyReport;
-                        const hasIssues = Boolean(rep?.issues && rep.issues.trim());
-                        const hasTodayTasks = Boolean(rep?.todayTasks && rep.todayTasks.trim());
-                        const hasTomorrowPlan = Boolean(rep?.tomorrowPlan && rep.tomorrowPlan.trim());
+                        const hasIssues = Boolean(rep?.issues && toReportText(rep.issues).trim());
+                        const hasTodayTasks = Boolean(rep?.todayTasks && toReportText(rep.todayTasks).trim());
+                        const hasTomorrowPlan = Boolean(rep?.tomorrowPlan && toReportText(rep.tomorrowPlan).trim());
                         const hasDailyReportContent = hasIssues || hasTodayTasks || hasTomorrowPlan;
 
 
@@ -3632,10 +3581,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     const cardKey = rep.id || `shared-rep-${rIdx}`;
                     const isCollapsed = collapsedSharedCards[cardKey] !== false;
 
-                    const hasMain = Boolean(rep.mainTasks && rep.mainTasks.trim());
-                    const hasInfo = Boolean(rep.infoSharing && rep.infoSharing.trim());
-                    const hasTeam = Boolean(rep.teamCoop && rep.teamCoop.trim());
-                    const hasEtc = Boolean(rep.etcTasks && rep.etcTasks.trim());
+                    const hasMain = Boolean(rep.mainTasks && toReportText(rep.mainTasks).trim());
+                    const hasInfo = Boolean(rep.infoSharing && toReportText(rep.infoSharing).trim());
+                    const hasTeam = Boolean(rep.teamCoop && toReportText(rep.teamCoop).trim());
+                    const hasEtc = Boolean(rep.etcTasks && toReportText(rep.etcTasks).trim());
 
                     return (
                       <div key={cardKey} style={{
