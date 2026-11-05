@@ -212,7 +212,42 @@ function onOpen() {
     .createMenu('🛡️ Withsharing DB 관리')
     .addItem('🔄 전체 시트 헤더 & 스키마 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
+    .addItem('💬 피드백 기록 형식 정리 (convertReportCommentsToReadable)', 'convertReportCommentsToReadable')
     .addToUi();
+}
+
+/**
+ * 💬 기존에 JSON 형식으로 저장된 피드백(comments 칸)을
+ *    "작성 날짜, 소속팀, 이름 직급, 내용" 한 줄 형식으로 일괄 변환
+ */
+function convertReportCommentsToReadable() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let converted = 0;
+  ['weekly_reports', 'daily_reports'].forEach(sheetName => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+    const cIdx = headers.indexOf('comments');
+    if (cIdx === -1) return;
+    const range = sheet.getRange(2, cIdx + 1, sheet.getLastRow() - 1, 1);
+    const values = range.getValues();
+    let changed = false;
+    const out = values.map(r => {
+      const raw = r[0];
+      if (typeof raw === 'string' && raw.trim().charAt(0) === '[') {
+        const text = formatReportComments(parseReportComments(raw));
+        if (text !== raw) { changed = true; converted++; }
+        return [text];
+      }
+      return [raw];
+    });
+    if (changed) {
+      range.setNumberFormat('@').setValues(out).setWrap(true);
+    }
+  });
+  SpreadsheetApp.flush();
+  Logger.log('💬 피드백 기록 형식 변환 완료: ' + converted + '건');
+  return { success: true, converted: converted };
 }
 
 // -------------------------------------------------------------
