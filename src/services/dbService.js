@@ -2141,6 +2141,7 @@ class SecurityDatabase {
     } catch (e) { }
 
     // 3. Send to Server if available (PUT for update)
+    this._markRecentUserEdit(safeUser);
     try {
       await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
         method: 'PUT',
@@ -2230,12 +2231,20 @@ class SecurityDatabase {
     } catch (e) { }
 
     if (syncRemote && safeUser.username) {
+      // 방금 수정한 내용을 일정 시간 보호: 서버 반영 전에 시작된 동기화가 예전 정보로 덮어쓰지 않도록
+      this._markRecentUserEdit(safeUser);
+      this._lastProfileSyncOk = false;
       try {
-        await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
+        const res = await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(safeUser)
         });
+        if (res && res.ok) {
+          let json = null;
+          try { json = await res.clone().json(); } catch (e) { }
+          this._lastProfileSyncOk = !(json && json.success === false);
+        }
       } catch (e) { }
     }
 
@@ -2840,7 +2849,7 @@ class SecurityDatabase {
               };
             });
 
-          usersList = this._deduplicateUsers(usersList);
+          usersList = this._applyRecentUserEdits(this._deduplicateUsers(usersList));
           localStorage.setItem('with_security_users_db', JSON.stringify(usersList));
           try {
             await this.replaceCollection('users', usersList);
@@ -2912,6 +2921,38 @@ class SecurityDatabase {
 
   async getAllUsers() {
     return this.getRegisteredUsers();
+  }
+
+  // ---- 사용자 정보 수정 직후 보호 (서버 동기화가 예전 값으로 되돌리는 현상 방지) ----
+  static get USER_EDIT_FIELDS() {
+    return ['name', 'role', 'division', 'team', 'rank', 'siteId', 'phone', 'email', 'password', 'passwordHash', 'passward'];
+  }
+
+  _markRecentUserEdit(user) {
+    const uname = String(user?.username || '').trim().toLowerCase();
+    if (!uname) return;
+    if (!this._recentUserEdits) this._recentUserEdits = new Map();
+    const fields = {};
+    SecurityDatabase.USER_EDIT_FIELDS.forEach(f => {
+      if (user[f] !== undefined) fields[f] = user[f];
+    });
+    this._recentUserEdits.set(uname, { fields, ts: Date.now() });
+  }
+
+  _applyRecentUserEdits(usersList) {
+    if (!Array.isArray(usersList) || !this._recentUserEdits || this._recentUserEdits.size === 0) return usersList;
+    const now = Date.now();
+    const PROTECT_MS = 3 * 60 * 1000; // 수정 후 3분간 이 기기에서 저장한 값 우선
+    return usersList.map(u => {
+      const uname = String(u?.username || '').trim().toLowerCase();
+      const edit = uname && this._recentUserEdits.get(uname);
+      if (!edit) return u;
+      if (now - edit.ts > PROTECT_MS) {
+        this._recentUserEdits.delete(uname);
+        return u;
+      }
+      return { ...u, ...edit.fields };
+    });
   }
 
   /**
@@ -5758,7 +5799,7 @@ class SecurityDatabase {
           trainings: Array.isArray(trainings) ? trainings : []
         };
       });
-      const normalizedUsers = this._deduplicateUsers(rawNormalized);
+      const normalizedUsers = this._applyRecentUserEdits(this._deduplicateUsers(rawNormalized));
       usersCount = normalizedUsers.length;
       localStorage.setItem('with_security_users_cloud_cache', JSON.stringify(normalizedUsers));
       localStorage.setItem('with_security_users_db', JSON.stringify(normalizedUsers));

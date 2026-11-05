@@ -154,6 +154,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   // Profile Edit State & Edit Mode Lock
   const [editForm, setEditForm] = useState(null);
   const [isEditUnlocked, setIsEditUnlocked] = useState(false);
+  // 정보 수정 중 여부 (백그라운드 동기화 이벤트가 입력 중인 내용을 저장된 값으로 덮어쓰지 않도록 보호)
+  const isEditUnlockedRef = useRef(false);
+  isEditUnlockedRef.current = isEditUnlocked;
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [verifyPassword, setVerifyPassword] = useState('');
   const [passwordForm, setPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
@@ -304,7 +307,10 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       const active = await dbService.getUserProfile();
       if (active) {
         setCurrentUser(active);
-        setEditForm(active);
+        // 정보 수정 중(인증 후 편집 모드)에는 입력 폼을 덮어쓰지 않음 → 입력한 내용이 그대로 저장되도록 보장
+        if (!isEditUnlockedRef.current) {
+          setEditForm(active);
+        }
         let userTrainings = Array.isArray(active.trainings) ? active.trainings : [];
         userTrainings = userTrainings.filter(t =>
           !String(t.id || t.eduId || '').startsWith('EDU-INIT-') &&
@@ -1222,12 +1228,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       passward: finalPasswordHash || ''
     };
 
-    await dbService.saveUserProfile(updatedUser);
-    setCurrentUser(updatedUser);
-    setEditForm(updatedUser);
+    const savedUser = await dbService.saveUserProfile(updatedUser);
+    setCurrentUser(savedUser || updatedUser);
+    setEditForm(savedUser || updatedUser);
     setPasswordForm({ newPassword: '', confirmPassword: '' });
+    isEditUnlockedRef.current = false;
     setIsEditUnlocked(false); // Lock back after update
-    if (onTriggerToast) onTriggerToast('사용자 정보가 성공적으로 수정/저장되었습니다.', 'success');
+    if (onTriggerToast) {
+      if (dbService._lastProfileSyncOk === false) {
+        onTriggerToast('이 기기에는 저장되었지만 서버 저장에 실패했습니다. 네트워크 확인 후 다시 저장해 주세요.', 'warning');
+      } else {
+        onTriggerToast('사용자 정보가 성공적으로 수정/저장되었습니다.', 'success');
+      }
+    }
   };
 
   // Handle Account Management Modal Open
