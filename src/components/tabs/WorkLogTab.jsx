@@ -442,6 +442,13 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     setIsShareTargetModalOpen(false);
 
+    // 대상 0명으로 저장한 경우 대기 중이던 업무는 공유하지 않음 (대상 없는 공유 방지)
+    if (pendingShareLogItem && shareTargets.length === 0) {
+      setPendingShareLogItem(null);
+      if (onTriggerToast) onTriggerToast('공유 대상이 0명으로 저장되어 업무를 공유하지 않았습니다.', 'info');
+      return;
+    }
+
     if (pendingShareLogItem) {
       const now = new Date();
       const timeStr = `${selectedDate} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -613,7 +620,15 @@ export default function WorkLogTab({ onTriggerToast }) {
         setShareTargets(latestTargets);
       }
 
-      // 만약 설정된 공유 대상자가 아직 없다면, 같은 사업부 동료를 기본 대상자로 자동 스마트 할당
+      // 사용자가 공유 대상을 직접 0명으로 지정해 둔 경우: 임의로 대상자를 채우지 않고 지정 창을 열어 선택하게 함
+      if (Array.isArray(storedTargets) && storedTargets.length === 0) {
+        setPendingShareLogItem(item);
+        setIsShareTargetModalOpen(true);
+        if (onTriggerToast) onTriggerToast('공유 대상이 0명으로 설정되어 있습니다. 공유할 대상을 먼저 선택해 주세요.', 'warning');
+        return;
+      }
+
+      // 공유 대상을 한 번도 지정한 적이 없을 때만 같은 사업부 동료를 기본 대상자로 자동 할당
       if (!latestTargets || latestTargets.length === 0) {
         const divisionUsers = allUsers.filter(u =>
           u && !isSamePerson(u, currentUser) && isSameDivisionUser(u, currentUser)
@@ -629,6 +644,12 @@ export default function WorkLogTab({ onTriggerToast }) {
         if (latestTargets.length > 0) {
           setShareTargets(latestTargets);
           dbService.saveShareTargets(currentUser, latestTargets, 'worklog').catch(() => { });
+        } else {
+          // 기본 대상자도 없으면 공유하지 않고 지정 창 열기 (대상 없는 공유 = 아무도 볼 수 없음)
+          setPendingShareLogItem(item);
+          setIsShareTargetModalOpen(true);
+          if (onTriggerToast) onTriggerToast('공유할 대상을 먼저 선택해 주세요.', 'warning');
+          return;
         }
       }
 
@@ -1811,8 +1832,8 @@ export default function WorkLogTab({ onTriggerToast }) {
 
     const matchesTarget = targets.some(t => isTargetMatchingUser(t, user));
 
-    // 타인이 작성한 업무: 공유 대상자에 내가 포함되었거나, 공유 대상자가 미지정된 전체 공유인 경우
-    return matchesTarget || (isSharedFlag && targets.length === 0);
+    // 타인이 작성한 업무: 공유 대상자로 지정된 경우에만 표시 (대상자 미지정 시 아무에게도 노출하지 않음)
+    return matchesTarget;
   };
 
   // Filter logs by visibility, selectedDate (unless viewAllDates is true), category, and search query

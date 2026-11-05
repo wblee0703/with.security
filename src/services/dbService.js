@@ -235,6 +235,26 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
     sheetName = 'security_logs';
   }
 
+  // 보고서 피드백 댓글 추가/삭제 (서버에서 원자적으로 처리하여 보고서 저장과 충돌 없음)
+  if (endpoint.includes('report-comments')) {
+    fetchOptions.method = 'POST';
+    fetchOptions.redirect = 'follow';
+    fetchOptions.headers = {
+      ...(fetchOptions.headers || {}),
+      'Content-Type': 'text/plain;charset=utf-8'
+    };
+    fetchOptions.body = JSON.stringify({
+      action: bodyData?.action === 'delete_comment' ? 'delete_comment' : 'add_comment',
+      sheet: bodyData?.sheet === 'daily_reports' ? 'daily_reports' : 'weekly_reports',
+      id: bodyData?.reportId || '',
+      commentId: bodyData?.commentId || '',
+      username: bodyData?.username || '',
+      data: bodyData?.comment || {}
+    });
+    fetchOptions.timeout = Math.max(fetchOptions.timeout || 0, 35000);
+    return { targetUrl: baseUrl, fetchOptions };
+  }
+
   if (endpoint.includes('/login')) {
     // Google Sheets is a database, not an authentication endpoint. Never convert login into create!
     return { targetUrl: `${baseUrl}?action=ping`, fetchOptions: { method: 'GET' } };
@@ -4131,7 +4151,8 @@ class SecurityDatabase {
       etcTasks: toReportText(item.etc_tasks ?? item.etcTasks ?? localItem?.etcTasks ?? ''),
       sharedWith: this._cleanSharedWithList(item.shared_with || item.sharedWith || localItem?.sharedWith),
       sharedAt: this._normalizeKstDateTime(item.shared_at || item.sharedAt || localItem?.sharedAt || ''),
-      createdAt: this._normalizeKstDateTime(item.created_at || item.createdAt || localItem?.createdAt || '')
+      createdAt: this._normalizeKstDateTime(item.created_at || item.createdAt || localItem?.createdAt || ''),
+      comments: this._mergeReportComments(item.comments, localItem?.comments)
     };
   }
 
@@ -4149,7 +4170,9 @@ class SecurityDatabase {
       .map(item => {
         const itemId = item.id || item.reportId || item.report_id;
         const localItem = localMap.get(itemId);
-        if (localItem && isFreshLocal(localItem)) return localItem;
+        if (localItem && isFreshLocal(localItem)) {
+          return { ...localItem, comments: this._mergeReportComments(item.comments, localItem.comments) };
+        }
         return this._mapWeeklyReport(item, localItem);
       })
       .filter(r => r && r.id);
@@ -4162,6 +4185,150 @@ class SecurityDatabase {
       }
     });
     return merged;
+  }
+
+  // ==========================================================================
+  // 💬 일일/주간 업무 보고 피드백 댓글
+  // - 시트: weekly_reports.comments / daily_reports.comments (JSON 배열)
+  // - 서버 반영 전에도 이 기기에서 작성한 댓글이 바로 보이도록 로컬 캐시에 먼저 반영(_pending)
+  // ==========================================================================
+  _parseReportComments(raw) {
+    if (!raw) return [];
+    let val = raw;
+    if (typeof val === 'string') {
+      try { val = JSON.parse(val); } catch (e) { return []; }
+    }
+    if (!Array.isArray(val)) return [];
+    return val
+      .filter(c => c && c.id && String(c.text || '').trim())
+      .map(c => ({
+        id: String(c.id),
+        author_username: String(c.author_username || c.authorUsername || '').trim(),
+        author_name: String(c.author_name || c.authorName || '').trim(),
+        author_rank: String(c.author_rank || c.authorRank || '').trim(),
+        author_team: String(c.author_team || c.authorTeam || '').trim(),
+        text: String(c.text || ''),
+        created_at: this._normalizeKstDateTime(c.created_at || c.createdAt || ''),
+        ...(c._pending ? { _pending: c._pending } : {})
+      }));
+  }
+
+  // 서버 댓글 + 이 기기에서 방금 작성(서버 반영 대기)한 댓글 병합, 방금 삭제한 댓글은 제외
+  _mergeReportComments(remoteRaw, localRaw) {
+    const PENDING_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    const deleted = this._deletedCommentIds || new Map();
+    const map = new Map();
+    this._parseReportComments(remoteRaw).forEach(c => {
+      const delAt = deleted.get(c.id);
+      if (delAt && now - delAt < PENDING_MS) return;
+      map.set(c.id, c);
+    });
+    this._parseReportComments(localRaw).forEach(c => {
+      if (map.has(c.id)) return;
+      if (c._pending && now - Number(c._pending) < PENDING_MS) map.set(c.id, c);
+    });
+    return Array.from(map.values()).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  }
+
+  _reportCommentStore(type) {
+    return type === 'daily' ? 'with_sec_daily_reports_list' : 'with_sec_shared_weekly_reports';
+  }
+
+  _updateLocalReportComments(type, reportId, updater) {
+    const key = this._reportCommentStore(type);
+    try {
+      const raw = localStorage.getItem(key);
+      const list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) return;
+      let changed = false;
+      const updated = list.map(r => {
+        if (!r || String(r.id || r.reportId || '') !== String(reportId)) return r;
+        changed = true;
+        return { ...r, comments: updater(this._parseReportComments(r.comments)) };
+      });
+      if (changed) {
+        localStorage.setItem(key, JSON.stringify(updated));
+        this.replaceCollection(type === 'daily' ? 'daily_reports' : 'weekly_reports', updated).catch(() => { });
+      }
+    } catch (e) { }
+  }
+
+  /**
+   * 보고서에 피드백 댓글 추가
+   * @param {'weekly'|'daily'} type
+   * @returns {Promise<{ok: boolean, comment: object}>}
+   */
+  async addReportComment(type, reportId, user, text) {
+    const body = String(text || '').trim();
+    if (!reportId || !body || !user) return { ok: false, comment: null };
+    const nowStr = this._normalizeKstDateTime(new Date().toISOString());
+    const comment = {
+      id: `cmt-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      author_username: String(user.username || '').trim(),
+      author_name: String(user.name || '').trim(),
+      author_rank: String(user.rank || '').trim(),
+      author_team: String(user.team || user.department || '').trim(),
+      text: body.slice(0, 2000),
+      created_at: nowStr
+    };
+
+    // 1. 이 기기 화면에 즉시 반영
+    this._updateLocalReportComments(type, reportId, list => [...list, { ...comment, _pending: Date.now() }]);
+    notifyDataChanged(true);
+
+    // 2. 서버에 원자적으로 추가
+    let ok = false;
+    try {
+      const res = await safeFetchApi('/api/report-comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add_comment',
+          sheet: type === 'daily' ? 'daily_reports' : 'weekly_reports',
+          reportId,
+          comment
+        })
+      });
+      if (res && res.ok) {
+        let json = null;
+        try { json = await res.clone().json(); } catch (e) { }
+        ok = !(json && json.success === false);
+      }
+    } catch (e) { }
+    return { ok, comment };
+  }
+
+  /**
+   * 본인이 작성한 피드백 댓글 삭제
+   */
+  async deleteReportComment(type, reportId, user, commentId) {
+    if (!reportId || !commentId || !user) return { ok: false };
+    if (!this._deletedCommentIds) this._deletedCommentIds = new Map();
+    this._deletedCommentIds.set(String(commentId), Date.now());
+    this._updateLocalReportComments(type, reportId, list => list.filter(c => c.id !== String(commentId)));
+    notifyDataChanged(true);
+
+    let ok = false;
+    try {
+      const res = await safeFetchApi('/api/report-comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete_comment',
+          sheet: type === 'daily' ? 'daily_reports' : 'weekly_reports',
+          reportId,
+          commentId,
+          username: user.username || ''
+        })
+      });
+      if (res && res.ok) {
+        let json = null;
+        try { json = await res.clone().json(); } catch (e) { }
+        ok = !(json && json.success === false);
+      }
+    } catch (e) { }
+    return { ok };
   }
 
   async saveWeeklyReport(report) {
@@ -4377,7 +4544,8 @@ class SecurityDatabase {
               sharedWith: parsedSharedWith,
               sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
               createdAt: item.createdAt || item.created_at || localItem?.createdAt || '',
-              updatedAt: item.updatedAt || item.updated_at || localItem?.updatedAt || ''
+              updatedAt: item.updatedAt || item.updated_at || localItem?.updatedAt || '',
+              comments: this._mergeReportComments(item.comments, localItem?.comments)
             };
           });
 
@@ -5938,7 +6106,18 @@ class SecurityDatabase {
       try {
         // ※ 입력칸 작성 내용 저장소(계정별)는 건드리지 않음: 업무 정리 화면이 daily_reports 목록에서
         //    로그인 계정 본인이 작성한 보고서만 골라 입력칸에 채움 (타인 보고서 자동 입력 방지)
-        localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(syncData.daily_reports));
+        // 이 기기에서 방금 작성한(서버 반영 대기 중인) 피드백 댓글은 유지하여 병합
+        let localDaily = [];
+        try {
+          const rawLocal = localStorage.getItem('with_sec_daily_reports_list');
+          localDaily = rawLocal ? JSON.parse(rawLocal) : [];
+        } catch (e) { localDaily = []; }
+        const localDailyMap = new Map((Array.isArray(localDaily) ? localDaily : []).map(r => [String(r?.id || r?.reportId || ''), r]));
+        const mergedDaily = syncData.daily_reports.map(r => {
+          const lo = localDailyMap.get(String(r?.id || r?.reportId || ''));
+          return { ...r, comments: this._mergeReportComments(r?.comments, lo?.comments) };
+        });
+        localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(mergedDaily));
       } catch (e) {
         console.warn('Failed to merge daily_reports into localStorage', e);
       }

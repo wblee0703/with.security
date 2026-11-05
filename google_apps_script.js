@@ -54,7 +54,9 @@ const SCHEMAS = {
   weekly_reports: [
     'id', 'report_id', 'weekly_monday', 'week_text', 'author_name', 'author_username',
     'author_team', 'author_rank', 'author_division', 'author_role', 'main_tasks',
-    'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at'
+    'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at',
+    // 공유받은 사람/작성자 피드백 댓글 (JSON 배열: [{id, author_username, author_name, author_rank, author_team, text, created_at}])
+    'comments'
   ],
   // 5-1. 일일 업무 보고서 (daily_reports) - id 단일화 및 공유자/공유대상 분리 컬럼 관리
   daily_reports: [
@@ -62,7 +64,9 @@ const SCHEMAS = {
     'author_team', 'author_rank', 'author_division', 'author_role',
     'issues', 'today_tasks', 'tomorrow_plan',
     'shared_by', 'shared_with', 'shared_at',
-    'created_at', 'updated_at'
+    'created_at', 'updated_at',
+    // 공유받은 사람/작성자 피드백 댓글 (JSON 배열)
+    'comments'
   ],
   // 6. 교육 수료 관리 (MySQL: edu_log)
   edu_logs: [
@@ -343,6 +347,11 @@ function doPostInternal(e) {
     if (action === 'sync_headers' || action === 'init') {
       const result = syncDatabaseHeaders();
       return jsonResponse(result);
+    }
+
+    // [0-2] 보고서 피드백 댓글 추가 / 삭제 (weekly_reports, daily_reports 전용)
+    if (action === 'add_comment' || action === 'delete_comment') {
+      return handleReportComment(sheet, sheetName, action, payload);
     }
 
     // [1] 데이터 추가 (Create / Upsert - 중복 생성 방지)
@@ -759,6 +768,9 @@ function doPostInternal(e) {
           }
         }
         patch[mappedKey] = mappedVal;
+      }
+      if (sheetName === 'weekly_reports' || sheetName === 'daily_reports') {
+        delete patch.comments;
       }
       if (!patch.updated_at && !patch.updatedAt && headers.indexOf('updated_at') !== -1) {
         patch.updated_at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
@@ -2674,6 +2686,74 @@ function cleanupDuplicates() {
     totalDeleted: grandTotalDeleted,
     details: results
   };
+}
+
+/**
+ * 💬 보고서 피드백 댓글 추가/삭제
+ * - payload.id: 보고서 id (weekly_reports: id 또는 report_id, daily_reports: id)
+ * - add_comment: payload.data = { id, author_username, author_name, author_rank, author_team, text, created_at }
+ * - delete_comment: payload.commentId, payload.username (본인이 작성한 댓글만 삭제 가능)
+ */
+function handleReportComment(sheet, sheetName, action, payload) {
+  if (sheetName !== 'weekly_reports' && sheetName !== 'daily_reports') {
+    return jsonResponse({ success: false, error: 'Comments are only supported for weekly_reports / daily_reports' });
+  }
+  const reportId = String(payload.id || '').trim();
+  if (!reportId) return jsonResponse({ success: false, error: 'Report id is required' });
+
+  const headers = ensureHeaders(sheet, SCHEMAS[sheetName]);
+  const commentsIdx = headers.indexOf('comments');
+  const idIdx = headers.indexOf('id');
+  const reportIdIdx = headers.indexOf('report_id');
+  if (commentsIdx === -1 || sheet.getLastRow() <= 1) {
+    return jsonResponse({ success: false, error: 'Report not found: ' + reportId });
+  }
+
+  const rows = sheet.getRange(1, 1, sheet.getLastRow(), headers.length).getValues();
+  // 중복 행이 있으면 가장 아래(최신) 행 기준
+  let rowIdx = -1;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    const v1 = idIdx !== -1 ? String(rows[i][idIdx] || '').trim() : '';
+    const v2 = reportIdIdx !== -1 ? String(rows[i][reportIdIdx] || '').trim() : '';
+    if (v1 === reportId || v2 === reportId) { rowIdx = i; break; }
+  }
+  if (rowIdx === -1) return jsonResponse({ success: false, error: 'Report not found: ' + reportId });
+
+  let list = [];
+  const raw = rows[rowIdx][commentsIdx];
+  if (raw) {
+    try {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(parsed)) list = parsed;
+    } catch (e) { }
+  }
+
+  if (action === 'add_comment') {
+    const c = payload.data || {};
+    const text = String(c.text || '').trim();
+    if (!text) return jsonResponse({ success: false, error: 'Empty comment' });
+    const commentId = String(c.id || ('cmt-' + Date.now() + '-' + Math.floor(Math.random() * 10000)));
+    if (!list.some(x => x && String(x.id) === commentId)) {
+      list.push({
+        id: commentId,
+        author_username: String(c.author_username || '').trim(),
+        author_name: String(c.author_name || '').trim(),
+        author_rank: String(c.author_rank || '').trim(),
+        author_team: String(c.author_team || '').trim(),
+        text: text.slice(0, 2000),
+        created_at: c.created_at || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm')
+      });
+    }
+  } else {
+    const commentId = String(payload.commentId || '').trim();
+    const username = String(payload.username || '').trim().toLowerCase();
+    list = list.filter(x => !(x && String(x.id) === commentId &&
+      (!username || String(x.author_username || '').trim().toLowerCase() === username)));
+  }
+
+  sheet.getRange(rowIdx + 1, commentsIdx + 1).setValue(list.length > 0 ? JSON.stringify(list) : '');
+  SpreadsheetApp.flush();
+  return jsonResponse({ success: true, id: reportId, comments: list });
 }
 
 /**

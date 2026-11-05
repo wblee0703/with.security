@@ -33,6 +33,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { dbService, normalizeKstDate, toReportText, getReportDraftKey, LEGACY_REPORT_DRAFT_KEYS } from '../../services/dbService';
+import ReportComments from '../common/ReportComments';
 import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
@@ -1026,8 +1027,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     // 본인이 직접 작성한 보고서는 사내 공유받은 내역에서 제외 (내 업무 보고서로만 관리)
     if (isOwn) return false;
 
-    // 타인이 작성한 보고서: 공유 대상자에 내가 포함되어 있거나, 공유 대상자 미지정 전체 공유인 경우
-    return matchesMe || targets.length === 0;
+    // 타인이 작성한 보고서: 공유 대상자로 지정된 경우에만 표시
+    // (공유하지 않고 저장만 한 보고서 = 대상자 없음 → 다른 사람에게 노출하지 않음)
+    return matchesMe;
   });
 
   // Group daily custom reports by author (일일 업무 보고 사내 공유받은 내역 - 동일 공유자별 카드 묶음)
@@ -1401,6 +1403,48 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }, {});
 
   // 이번 주에 다른 동료로부터 사내 공유받은 주간 직접 입력 1~4번 보고서 목록
+  // ---- 💬 일일/주간 보고 피드백 댓글 ----
+  // 현재 선택한 주/일자의 내 보고서 (받은 피드백 확인 및 답글용)
+  const myWeeklyReport = (sharedWeeklyReports || []).find(r =>
+    r && currentUser && normalizeKstDate(r.weeklyMonday || r.weekly_monday || '') === weeklyMonday && isMyAuthoredLog(r)
+  );
+  const myDailyReport = (sharedDailyReports || []).find(r =>
+    r && currentUser && (normalizeKstDate(r.dailyDate || r.daily_date || '') || '') === (normalizeKstDate(dailyDate) || dailyDate) && isMyAuthoredLog(r)
+  );
+  const getReportComments = (r) => (Array.isArray(r?.comments) ? r.comments : []);
+  const shouldShowMyReportFeedback = (r) => Boolean(
+    r && (r.id || r.reportId) && (getReportComments(r).length > 0 || (Array.isArray(r.sharedWith) && r.sharedWith.length > 0))
+  );
+
+  const handleAddReportComment = async (type, report, text) => {
+    const reportId = report?.id || report?.reportId;
+    if (!reportId) return;
+    const result = await dbService.addReportComment(type, reportId, currentUser, text);
+    if (!result.ok && onTriggerToast) {
+      onTriggerToast('피드백이 이 기기에는 표시되었지만 서버 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.', 'warning');
+    }
+  };
+
+  const handleDeleteReportComment = async (type, report, comment) => {
+    const reportId = report?.id || report?.reportId;
+    if (!reportId || !comment?.id) return;
+    const result = await dbService.deleteReportComment(type, reportId, currentUser, comment.id);
+    if (!result.ok && onTriggerToast) {
+      onTriggerToast('피드백 삭제가 서버에 반영되지 않았습니다. 잠시 후 다시 시도해 주세요.', 'warning');
+    }
+  };
+
+  const renderCommentCountBadge = (r) => {
+    const n = getReportComments(r).length;
+    if (!n) return null;
+    return (
+      <span style={{ fontSize: '11px', fontWeight: '800', background: '#dbeafe', color: '#1d4ed8', borderRadius: '10px', padding: '2px 7px', whiteSpace: 'nowrap' }}
+        title={`피드백 ${n}건`}>
+        💬 {n}
+      </span>
+    );
+  };
+
   const receivedWeeklyCustomReports = (sharedWeeklyReports || []).filter(rep => {
     if (!currentUser || !rep) return false;
     // 시트에서 UTC ISO 형식으로 내려온 날짜도 KST 'yyyy-MM-dd'로 맞춰 비교
@@ -2469,6 +2513,17 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     />
                   </div>
                 </div>
+
+                {/* 💬 내 일일 업무 보고에 받은 피드백 (확인 및 답글) */}
+                {shouldShowMyReportFeedback(myDailyReport) && (
+                  <ReportComments
+                    comments={getReportComments(myDailyReport)}
+                    currentUser={currentUser}
+                    onAdd={(text) => handleAddReportComment('daily', myDailyReport, text)}
+                    onDelete={(c) => handleDeleteReportComment('daily', myDailyReport, c)}
+                    placeholder="받은 피드백에 답글을 입력하세요"
+                  />
+                )}
               </div>
 
               {/* RIGHT: 내 업무 & 공유받은 업무 */}
@@ -2795,6 +2850,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                 <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                   👤 공유자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{group.authorLabel}</strong>
                                 </span>
+                                {renderCommentCountBadge(rep)}
                               </div>
 
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2893,6 +2949,18 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                   <div style={{ fontSize: '13px', color: '#94a3b8', padding: '6px 4px' }}>
                                     - 등록된 공유 내용 없음
                                   </div>
+                                )}
+
+                                {/* 💬 피드백 댓글 (공유받은 일일 업무 보고가 있을 때) */}
+                                {(rep?.id || rep?.reportId) && (
+                                  <ReportComments
+                                    comments={getReportComments(rep)}
+                                    currentUser={currentUser}
+                                    onAdd={(text) => handleAddReportComment('daily', rep, text)}
+                                    onDelete={(c) => handleDeleteReportComment('daily', rep, c)}
+                                    placeholder={`${group.authorName || '공유자'}님 일일 업무에 대한 피드백을 입력하세요`}
+                                    compact
+                                  />
                                 )}
                               </div>
                             )}
@@ -3543,6 +3611,16 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 </div>
               </div>
 
+              {/* 💬 내 주간 업무 보고에 받은 피드백 (확인 및 답글) */}
+              {shouldShowMyReportFeedback(myWeeklyReport) && (
+                <ReportComments
+                  comments={getReportComments(myWeeklyReport)}
+                  currentUser={currentUser}
+                  onAdd={(text) => handleAddReportComment('weekly', myWeeklyReport, text)}
+                  onDelete={(c) => handleDeleteReportComment('weekly', myWeeklyReport, c)}
+                  placeholder="받은 피드백에 답글을 입력하세요"
+                />
+              )}
             </div>
 
             {/* RIGHT: 2. 주간 공유받은 업무 실적 */}
@@ -3649,6 +3727,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                             <span style={{ fontSize: '13.5px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>
                               👤 공유자: <strong style={{ color: '#0f172a' }}>{authorLabel}</strong>
                             </span>
+                            {renderCommentCountBadge(rep)}
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -3723,6 +3802,15 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                 </div>
                               </div>
                             )}
+
+                            {/* 💬 피드백 댓글 */}
+                            <ReportComments
+                              comments={getReportComments(rep)}
+                              currentUser={currentUser}
+                              onAdd={(text) => handleAddReportComment('weekly', rep, text)}
+                              onDelete={(c) => handleDeleteReportComment('weekly', rep, c)}
+                              placeholder={`${rep.authorName || '공유자'}님 주간 업무에 대한 피드백을 입력하세요`}
+                            />
                           </div>
                         )}
                       </div>

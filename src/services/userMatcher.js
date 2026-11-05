@@ -224,7 +224,14 @@ export function isTargetMatchingUser(target, user) {
   if (targetStr === expectedFull) return true;
 
   // 2-4. 이름 매칭 + 동명이인 검증
-  if (myName && targetStr.includes(myName)) {
+  // '이름 직급 (소속)' 형식에서 이름이 맨 앞의 독립된 단어로 일치할 때만 인정
+  // (예: '김도' 계정이 '김도환 대리'에 잘못 매칭되는 부분 문자열 오탐 방지)
+  const startsWithMyName = Boolean(myName) && (
+    targetStr === myName ||
+    targetStr.startsWith(myName + ' ') ||
+    targetStr.startsWith(myName + '(')
+  );
+  if (startsWithMyName) {
     // 만약 targetStr에 괄호로 소속팀이 명시되어 있다면 (예: "홍길동 대리 (운영팀)" vs "운영1팀(본사)")
     const teamMatch = targetStr.match(/\(([^)]+)\)/);
     if (teamMatch && teamMatch[1]) {
@@ -247,11 +254,13 @@ export function isTargetMatchingUser(target, user) {
     return true;
   }
 
-  // 2-5. 소속팀 일치 검사 (팀 전체 공유: 예: "인프라보안운영팀" 또는 "운영1팀")
+  // 2-5. 소속팀 일치 검사 (대상이 팀 이름 자체인 '팀 전체 공유'일 때만: 예: "운영1팀(본사)")
+  // ※ '홍길동 대리 (운영1팀(본사))'처럼 특정 개인 대상 문자열에 내 팀명이 포함된 것만으로는 매칭하지 않음
+  //    (팀원 1명에게 공유한 내용이 같은 팀 전원에게 노출되던 문제 방지)
   if (myTeam) {
     const cleanMyTeam = myTeam.replace(/\s+/g, '').toLowerCase();
     const cleanTarget = targetStr.replace(/\s+/g, '').toLowerCase();
-    if (cleanMyTeam === cleanTarget || (cleanMyTeam.length >= 3 && cleanTarget.includes(cleanMyTeam))) {
+    if (cleanMyTeam === cleanTarget) {
       return true;
     }
   }
