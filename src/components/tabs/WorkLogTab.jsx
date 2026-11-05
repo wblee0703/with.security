@@ -436,7 +436,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
   const handleSaveShareTargetModal = async () => {
     // 공유 대상자 저장: 로컬 즉시 반영 + 서버 동기화 (PC/모바일/앱 모든 환경에서 동일하게 적용)
-    dbService.saveShareTargets(currentUser, shareTargets).catch(err => {
+    dbService.saveShareTargets(currentUser, shareTargets, 'worklog').catch(err => {
       console.error('Failed to sync share targets:', err);
     });
 
@@ -607,7 +607,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       // [공유 활성화 처리]
       // 최신 설정된 공유 대상자 목록 확인
       let latestTargets = shareTargets;
-      const storedTargets = dbService.getShareTargets(currentUser);
+      const storedTargets = dbService.getShareTargets(currentUser, 'worklog');
       if (storedTargets) {
         latestTargets = storedTargets;
         setShareTargets(latestTargets);
@@ -628,7 +628,7 @@ export default function WorkLogTab({ onTriggerToast }) {
 
         if (latestTargets.length > 0) {
           setShareTargets(latestTargets);
-          dbService.saveShareTargets(currentUser, latestTargets).catch(() => { });
+          dbService.saveShareTargets(currentUser, latestTargets, 'worklog').catch(() => { });
         }
       }
 
@@ -1240,7 +1240,7 @@ export default function WorkLogTab({ onTriggerToast }) {
       // 공유 대상 지정 창이 열려 편집 중일 때는 선택 내용을 덮어쓰지 않음
       if (!isShareTargetModalOpenRef.current) {
         try {
-          setShareTargets(dbService.getShareTargets(u) || []);
+          setShareTargets(dbService.getShareTargets(u, 'worklog') || []);
         } catch (e) { }
       }
     } catch (err) {

@@ -2991,16 +2991,29 @@ class SecurityDatabase {
   }
 
   // ==========================================================================
-  // 업무 공유 대상자 설정 (업무 일지 · 업무 정리 보고서 공통)
-  // - 서버(users 시트 share_targets / share_targets_updated_at 컬럼)에 사용자별로 저장하여
-  //   PC 웹 / 모바일 웹 / 앱 등 어느 환경에서 설정해도 동일한 대상자 목록이 적용되도록 동기화
+  // 업무 공유 대상자 설정 (업무 정리 / 업무 일지 각각 독립 관리)
+  // - 업무 정리(일일·주간 보고): users 시트 share_targets  / share_targets_updated_at
+  // - 업무 일지:                 users 시트 share_targets2 / share_targets2_updated_at
+  // - 서버에 사용자별로 저장하여 PC 웹 / 모바일 웹 / 앱 어디서 설정해도 동일하게 적용
   // - localStorage 는 오프라인·즉시 반영용 캐시로만 사용하며, 변경 시각이 더 최신인 쪽을 채택
   // ==========================================================================
-  _getShareTargetsStorageKey(user) {
-    if (!user) return null;
-    const uid = String(user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`).trim();
+  static get SHARE_TARGET_TYPES() {
+    return {
+      summary: { field: 'share_targets', tsField: 'share_targets_updated_at', localPrefix: 'with_security_summary_share_targets_' },
+      worklog: { field: 'share_targets2', tsField: 'share_targets2_updated_at', localPrefix: 'with_security_worklog2_share_targets_' }
+    };
+  }
+
+  _getShareTargetUid(user) {
+    if (!user) return '';
+    return String(user.username || user.id || `${user.name || ''}_${user.rank || ''}_${user.team || ''}`).trim();
+  }
+
+  _getShareTargetsStorageKey(user, type = 'summary') {
+    const uid = this._getShareTargetUid(user);
     if (!uid) return null;
-    return `with_security_worklog_share_targets_${uid}`;
+    const conf = SecurityDatabase.SHARE_TARGET_TYPES[type] || SecurityDatabase.SHARE_TARGET_TYPES.summary;
+    return `${conf.localPrefix}${uid}`;
   }
 
   _parseShareTargets(raw) {
@@ -3027,10 +3040,13 @@ class SecurityDatabase {
 
   /**
    * 현재 사용자의 공유 대상자 목록 조회 (동기)
+   * @param {object} user 로그인 사용자
+   * @param {'summary'|'worklog'} type 업무 정리(summary) / 업무 일지(worklog)
    * @returns {Array|null} 대상자 배열, 어느 환경에서도 지정한 적이 없으면 null
    */
-  getShareTargets(user) {
-    const key = this._getShareTargetsStorageKey(user);
+  getShareTargets(user, type = 'summary') {
+    const conf = SecurityDatabase.SHARE_TARGET_TYPES[type] || SecurityDatabase.SHARE_TARGET_TYPES.summary;
+    const key = this._getShareTargetsStorageKey(user, type);
     if (!key) return null;
 
     // 1. 이 기기에 캐시된 값
@@ -3043,8 +3059,8 @@ class SecurityDatabase {
 
     // 2. 서버(users 시트)에서 내려받은 값
     const record = this._findStoredUserRecord(user) || user;
-    const serverTargets = this._parseShareTargets(record?.share_targets ?? record?.shareTargets);
-    const serverTs = Number(record?.share_targets_updated_at ?? record?.shareTargetsUpdatedAt) || 0;
+    const serverTargets = this._parseShareTargets(record?.[conf.field]);
+    const serverTs = Number(record?.[conf.tsField]) || 0;
 
     // 3. 더 최근에 변경된 쪽을 채택
     if (serverTargets && serverTs > 0 && serverTs >= localTs) {
@@ -3057,24 +3073,35 @@ class SecurityDatabase {
       return serverTargets;
     }
 
-    // 로컬 값이 서버보다 최신(또는 서버 미등록 레거시 값)이면 서버로 1회 업로드하여 다른 환경과 맞춤
+    // 로컬 값이 서버보다 최신이면 서버로 1회 업로드하여 다른 환경과 맞춤
     if (localTargets) {
       if (!this._shareTargetsPushed) this._shareTargetsPushed = new Set();
       if (!this._shareTargetsPushed.has(key)) {
         this._shareTargetsPushed.add(key);
-        this._pushShareTargetsRemote(user, localTargets, localTs || Date.now()).catch(() => { });
+        this._pushShareTargetsRemote(user, localTargets, localTs || Date.now(), type).catch(() => { });
       }
       return localTargets;
     }
+    if (serverTargets) return serverTargets;
 
-    return serverTargets;
+    // 4. 분리 이전에 두 화면이 함께 쓰던 공유 대상 목록을 초기값으로 이어받음 (각 화면에서 처음 지정하기 전까지)
+    try {
+      const legacyServer = this._parseShareTargets(record?.share_targets);
+      if (type === 'worklog' && legacyServer) return legacyServer;
+      const uid = this._getShareTargetUid(user);
+      const legacyLocal = this._parseShareTargets(localStorage.getItem(`with_security_worklog_share_targets_${uid}`));
+      if (legacyLocal) return legacyLocal;
+    } catch (e) { }
+
+    return null;
   }
 
   /**
    * 공유 대상자 목록 저장 (로컬 즉시 반영 + 서버 동기화)
+   * @param {'summary'|'worklog'} type 업무 정리(summary) / 업무 일지(worklog)
    */
-  async saveShareTargets(user, targets) {
-    const key = this._getShareTargetsStorageKey(user);
+  async saveShareTargets(user, targets, type = 'summary') {
+    const key = this._getShareTargetsStorageKey(user, type);
     if (!key) return [];
     const list = Array.isArray(targets) ? targets : [];
     const ts = Date.now();
@@ -3086,11 +3113,12 @@ class SecurityDatabase {
       localStorage.removeItem('with_security_worklog_share_targets');
     } catch (e) { }
 
-    await this._pushShareTargetsRemote(user, list, ts);
+    await this._pushShareTargetsRemote(user, list, ts, type);
     return list;
   }
 
-  async _pushShareTargetsRemote(user, list, ts) {
+  async _pushShareTargetsRemote(user, list, ts, type = 'summary') {
+    const conf = SecurityDatabase.SHARE_TARGET_TYPES[type] || SecurityDatabase.SHARE_TARGET_TYPES.summary;
     const uname = String(user?.username || '').trim();
     if (!uname) return;
 
@@ -3101,22 +3129,22 @@ class SecurityDatabase {
       if (Array.isArray(users)) {
         const idx = users.findIndex(u => u && String(u.username || '').trim().toLowerCase() === uname.toLowerCase());
         if (idx >= 0) {
-          users[idx] = { ...users[idx], share_targets: list, share_targets_updated_at: ts };
+          users[idx] = { ...users[idx], [conf.field]: list, [conf.tsField]: ts };
           localStorage.setItem('with_security_users_db', JSON.stringify(users));
           try { await this.putItem('users', users[idx]); } catch (e) { }
         }
       }
     } catch (e) { }
 
-    // 서버에는 공유 대상 필드만 부분 업데이트 (비밀번호 등 다른 계정 정보는 전송하지 않음)
+    // 서버에는 해당 공유 대상 필드만 부분 업데이트 (비밀번호 등 다른 계정 정보는 전송하지 않음)
     try {
       await safeFetchApi(`/api/security-users/${encodeURIComponent(uname)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           username: uname,
-          share_targets: list,
-          share_targets_updated_at: ts
+          [conf.field]: list,
+          [conf.tsField]: ts
         })
       });
     } catch (e) { }

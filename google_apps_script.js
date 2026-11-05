@@ -28,8 +28,11 @@ const SCHEMAS = {
   users: [
     'id', 'username', 'password', 'name', 'role', 'division', 'team',
     'rank', 'siteId', 'phone', 'email', 'created_at',
-    // 업무 일지 · 업무 정리 보고서 공유 대상자 (모든 기기/환경 공통 적용)
-    'share_targets', 'share_targets_updated_at'
+    // 공유 대상자 (모든 기기/환경 공통 적용)
+    // share_targets  : 업무 정리(일일·주간 보고) 공유 대상
+    // share_targets2 : 업무 일지 공유 대상
+    'share_targets', 'share_targets_updated_at',
+    'share_targets2', 'share_targets2_updated_at'
   ],
   // 2. 작업 현장 정보 (MySQL: security_site)
   sites: [
@@ -1636,7 +1639,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       email: obj.email || '',
       created_at: obj.created_at || obj.createdAt || new Date().toISOString(),
       share_targets: Array.isArray(obj.share_targets) ? JSON.stringify(obj.share_targets) : (obj.share_targets || ''),
-      share_targets_updated_at: obj.share_targets_updated_at || ''
+      share_targets_updated_at: obj.share_targets_updated_at || '',
+      share_targets2: Array.isArray(obj.share_targets2) ? JSON.stringify(obj.share_targets2) : (obj.share_targets2 || ''),
+      share_targets2_updated_at: obj.share_targets2_updated_at || ''
     };
   }
 
@@ -2676,16 +2681,22 @@ function cleanupDuplicates() {
  * (다른 기기에서 받아둔 예전 사용자 정보로 프로필 저장 등) 최신 설정을 덮어쓰지 않도록 기존 값 유지
  */
 function keepNewerShareTargets(headers, currentRow, obj) {
-  if (!obj || !('share_targets' in obj)) return;
-  const tsIdx = headers.indexOf('share_targets_updated_at');
-  const valIdx = headers.indexOf('share_targets');
-  if (tsIdx === -1 || valIdx === -1) return;
-  const existingTs = Number(currentRow[tsIdx]) || 0;
-  const incomingTs = Number(obj.share_targets_updated_at) || 0;
-  if (existingTs > 0 && incomingTs < existingTs) {
-    obj.share_targets = currentRow[valIdx];
-    obj.share_targets_updated_at = existingTs;
-  }
+  if (!obj) return;
+  // share_targets(업무 정리) / share_targets2(업무 일지) 각각 독립적으로 최신 값 보호
+  [['share_targets', 'share_targets_updated_at'], ['share_targets2', 'share_targets2_updated_at']].forEach(function (pair) {
+    const field = pair[0];
+    const tsField = pair[1];
+    if (!(field in obj)) return;
+    const tsIdx = headers.indexOf(tsField);
+    const valIdx = headers.indexOf(field);
+    if (tsIdx === -1 || valIdx === -1) return;
+    const existingTs = Number(currentRow[tsIdx]) || 0;
+    const incomingTs = Number(obj[tsField]) || 0;
+    if (existingTs > 0 && incomingTs < existingTs) {
+      obj[field] = currentRow[valIdx];
+      obj[tsField] = existingTs;
+    }
+  });
 }
 
 function appendObjectRow(sheet, headers, rawObj) {

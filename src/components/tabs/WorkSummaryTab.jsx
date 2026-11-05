@@ -297,7 +297,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     // 1. 사내 공유 대상자 조회 (한 번 지정해둔 대상자 목록 자동 불러오기)
     // (서버에 동기화된 설정 우선 - PC/모바일/앱 모든 환경에서 동일하게 적용)
     let autoTargets = [];
-    const savedTargets = dbService.getShareTargets(currentUser);
+    const savedTargets = dbService.getShareTargets(currentUser, 'summary');
     const hasSavedTargetSetting = Array.isArray(savedTargets);
     if (hasSavedTargetSetting) autoTargets = savedTargets;
 
@@ -656,7 +656,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // --- Weekly Share Target Helpers ---
   const handleOpenWeeklyShareModal = () => {
     // 서버 동기화된 공유 대상자 설정 로드 (업무 일지 공유 대상과 공통)
-    const initialTargets = dbService.getShareTargets(currentUser) || [];
+    const initialTargets = dbService.getShareTargets(currentUser, 'summary') || [];
     setWeeklyShareTargets(initialTargets);
     setWeeklyShareSearchQuery('');
     setIsWeeklyShareModalOpen(true);
@@ -746,7 +746,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const handleConfirmWeeklyShare = async () => {
     // 기본 대상자 저장 (0명이면 빈 배열 저장) - 로컬 즉시 반영 + 서버 동기화
-    dbService.saveShareTargets(currentUser, weeklyShareTargets).catch(() => { });
+    dbService.saveShareTargets(currentUser, weeklyShareTargets, 'summary').catch(() => { });
 
     const hasCustomText = Boolean(
       (currentWeeklyCustom.mainTasks && toReportText(currentWeeklyCustom.mainTasks).trim()) ||
@@ -1103,7 +1103,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         return { name: targetStr };
       });
     } else {
-      initialTargets = dbService.getShareTargets(currentUser) || [];
+      initialTargets = dbService.getShareTargets(currentUser, 'summary') || [];
     }
     setDailyShareTargets(initialTargets);
     setDailyShareSearchQuery('');
@@ -1147,7 +1147,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const handleConfirmDailyShare = async () => {
     // 공유 대상자 저장 - 로컬 즉시 반영 + 서버 동기화
-    dbService.saveShareTargets(currentUser, dailyShareTargets).catch(() => { });
+    dbService.saveShareTargets(currentUser, dailyShareTargets, 'summary').catch(() => { });
 
     const hasCustomText = Boolean(
       (currentDailyCustom.issues && toReportText(currentDailyCustom.issues).trim()) ||
