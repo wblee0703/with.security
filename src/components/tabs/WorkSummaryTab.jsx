@@ -1346,7 +1346,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   // ISO 8601 주차 표기: 주는 월요일에 시작하며, 그 주의 목요일이 속한 연도·월을 기준으로 주차를 정함
   // - 월 주차: 목요일이 속한 달의 몇 번째 주인지 (예: 6/29(월)~7/5(일) 주는 목요일이 7/2 → 7월 1주차)
-  // - 연 주차: ISO 주 번호 (예: 2026-W45), 연말·연초 주는 목요일이 속한 연도로 계산
+  // - 연말·연초 주는 목요일이 속한 연도로 표기 (예: 2025-12-29(월) 주 → 2026년 1월 1주차)
   const getWeekText = (monIso) => {
     const [y, m, d] = String(monIso || '').split('-').map(Number);
     if (!y || !m || !d) return '';
@@ -1354,10 +1354,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const isoYear = thursday.getFullYear();
     const month = thursday.getMonth() + 1;
     const monthWeek = Math.ceil(thursday.getDate() / 7);
-    const jan1 = new Date(isoYear, 0, 1);
-    const dayOfYear = Math.round((thursday - jan1) / 86400000) + 1;
-    const isoWeek = Math.floor((dayOfYear - 1) / 7) + 1;
-    return `${isoYear}년 ${month}월 ${monthWeek}주차 (W${String(isoWeek).padStart(2, '0')})`;
+    return `${isoYear}년 ${month}월 ${monthWeek}주차`;
   };
 
   const weeklyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {

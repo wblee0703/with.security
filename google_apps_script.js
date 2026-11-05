@@ -633,6 +633,13 @@ function doPostInternal(e) {
             }
 
             SpreadsheetApp.flush();
+            // 사용자 행의 id가 비었거나 숫자가 아니면 순차 번호로 자동 교정
+            if (sheetName === 'users') {
+              const idNum = parseInt(item.id, 10);
+              if (isNaN(idNum) || idNum <= 0 || String(item.id).trim() !== String(idNum)) {
+                try { enforceNumericUserIds(); } catch (e) { }
+              }
+            }
             return jsonResponse({ success: true, message: 'Row updated in-place (deduplicated upsert)', data: item });
           }
         }
@@ -784,10 +791,17 @@ function doPostInternal(e) {
         if (isMatch) {
           const rowNum = i + 1;
           const currentRow = rows[i];
+          let needsUserIdFix = false;
           if (sheetName === 'users') {
+            // id는 시트의 순차 숫자만 유지: 기존 행의 숫자 id를 그대로 쓰고, 요청에 담긴 username 등 숫자가 아닌 id는 무시
             const idCol = headers.indexOf('id');
-            if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
-              patch.id = parseInt(currentRow[idCol], 10);
+            const rowIdRaw = idCol !== -1 ? currentRow[idCol] : '';
+            const rowIdNum = parseInt(rowIdRaw, 10);
+            if (!isNaN(rowIdNum) && rowIdNum > 0 && String(rowIdRaw).trim() === String(rowIdNum)) {
+              patch.id = rowIdNum;
+            } else {
+              delete patch.id;
+              needsUserIdFix = true; // 기존 행 id가 비었거나 잘못된 경우 저장 후 순차 번호로 자동 교정
             }
             keepNewerShareTargets(headers, currentRow, patch);
           }
@@ -804,6 +818,8 @@ function doPostInternal(e) {
           // ⚡ 비밀번호 변경이 포함된 경우에만 users 시트 전체 검사 수행 (공유 대상자 등 부분 수정 시 생략)
           if (sheetName === 'users' && (rawData.password || rawData.passwordHash || rawData.passward)) {
             try { enforcePasswordHashingInSheet(); } catch (e) { }
+          }
+          if (sheetName === 'users' && (needsUserIdFix || (rawData.password || rawData.passwordHash || rawData.passward))) {
             try { enforceNumericUserIds(); } catch (e) { }
           }
           return jsonResponse({ success: true, message: 'Row updated', id: id });

@@ -316,6 +316,13 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   return { targetUrl, fetchOptions };
 }
 
+// 사용자 id 유효성: 1 이상의 순차 정수 (예: 1, 2, 3 ...)
+function isValidNumericUserId(val) {
+  if (val === undefined || val === null || val === '') return false;
+  const num = parseInt(val, 10);
+  return !isNaN(num) && num > 0 && String(val).trim() === String(num);
+}
+
 async function safeFetchApi(endpoint, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
   const baseUrl = getApiServerUrl();
@@ -326,6 +333,11 @@ async function safeFetchApi(endpoint, options = {}) {
     try {
       const parsedBody = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
       if (parsedBody && typeof parsedBody === 'object') {
+        // 사용자 id는 시트의 순차 숫자만 허용: 숫자가 아니면(username 등) 전송하지 않아 시트 id 열 오염 방지
+        if ('id' in parsedBody && !isValidNumericUserId(parsedBody.id)) {
+          delete parsedBody.id;
+          options.body = JSON.stringify(parsedBody);
+        }
         const rawPass = String(parsedBody.password || parsedBody.passwordHash || parsedBody.passward || '').trim();
         if (rawPass) {
           const isHash = /^[a-f0-9]{64}$/i.test(rawPass);
@@ -5787,7 +5799,8 @@ class SecurityDatabase {
         }
         return {
           ...u,
-          id: u.id || u.username,
+          // id는 시트의 순차 숫자만 사용 (username으로 대체하면 저장 시 시트 id 열이 username으로 덮어써짐)
+          id: isValidNumericUserId(u.id) ? parseInt(u.id, 10) : '',
           username: String(u.username || '').trim(),
           name: String(u.name || '').trim(),
           role: u.role || '일반',
