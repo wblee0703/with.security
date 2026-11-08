@@ -592,7 +592,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       educationName: updatedList[0]?.title || ''
     };
 
-    await dbService.saveUserProfile(updatedUser);
+    // 교육 이력은 edu_logs 시트에 별도 저장됨 → 계정(users 시트)은 다시 전송하지 않음 (예전 계정 정보로 덮어쓰기 방지)
+    await dbService.saveUserProfile(updatedUser, false);
     setCurrentUser(updatedUser);
     setEditForm(updatedUser);
 
@@ -688,7 +689,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       educationExpiryDate: updatedList[0]?.expiryDate || '',
       educationName: updatedList[0]?.title || ''
     };
-    await dbService.saveUserProfile(updatedUser);
+    // 교육 이력은 edu_logs 시트에 별도 저장됨 → 계정(users 시트)은 다시 전송하지 않음 (예전 계정 정보로 덮어쓰기 방지)
+    await dbService.saveUserProfile(updatedUser, false);
     setCurrentUser(updatedUser);
     setEditForm(updatedUser);
 
@@ -729,7 +731,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       educationName: updatedList[0]?.title || ''
     };
 
-    await dbService.saveUserProfile(updatedUser);
+    // 교육 이력은 edu_logs 시트에 별도 저장됨 → 계정(users 시트)은 다시 전송하지 않음 (예전 계정 정보로 덮어쓰기 방지)
+    await dbService.saveUserProfile(updatedUser, false);
     setCurrentUser(updatedUser);
     setEditForm(updatedUser);
 
@@ -1223,9 +1226,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     const updatedUser = {
       ...editForm,
       role: isAdmin ? (editForm.role || '일반') : (currentUser?.role || '일반'),
-      password: finalPasswordHash || '',
-      passwordHash: finalPasswordHash || '',
-      passward: finalPasswordHash || ''
+      // 비밀번호를 확인할 수 없으면 필드 자체를 빼서 서버 비밀번호가 빈 값으로 초기화되지 않도록 함
+      ...(finalPasswordHash ? { password: finalPasswordHash, passwordHash: finalPasswordHash, passward: finalPasswordHash } : {})
     };
 
     const savedUser = await dbService.saveUserProfile(updatedUser);
@@ -1297,7 +1299,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
       role: newRole
     };
 
-    await dbService.updateUserAccount(updatedUser);
+    // 직책(role)만 서버에 부분 업데이트 → 목록 캐시의 예전 정보로 계정이 덮어써지지 않도록
+    await dbService.updateUserAccount(updatedUser, ['role']);
 
     // Update modal state in real-time
     setMgmtUsers(prevUsers => prevUsers.map(u => u.username === targetUser.username ? updatedUser : u));

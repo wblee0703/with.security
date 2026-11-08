@@ -23,7 +23,7 @@
  */
 
 // 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
-const SCRIPT_VERSION = '2026-11-05-comments-v2';
+const SCRIPT_VERSION = '2026-11-09-user-update-fix';
 
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
@@ -589,6 +589,15 @@ function doPostInternal(e) {
               if (idCol !== -1 && currentRow[idCol] && !isNaN(parseInt(currentRow[idCol], 10)) && parseInt(currentRow[idCol], 10) > 0) {
                 item.id = parseInt(currentRow[idCol], 10);
               }
+              // 기존 계정 덮어쓰기 시 요청에 없는 직책(role)·가입일(created_at)이 기본값('일반'/현재 시각)으로 초기화되지 않도록 기존 값 유지
+              const roleCol = headers.indexOf('role');
+              if (roleCol !== -1 && !('role' in rawData) && currentRow[roleCol]) {
+                item.role = currentRow[roleCol];
+              }
+              const createdCol = headers.indexOf('created_at');
+              if (createdCol !== -1 && currentRow[createdCol]) {
+                item.created_at = currentRow[createdCol];
+              }
               keepNewerShareTargets(headers, currentRow, item);
             }
             const updatedRow = headers.map((h, colIdx) => {
@@ -812,6 +821,15 @@ function doPostInternal(e) {
       }
       if (sheetName === 'weekly_reports' || sheetName === 'daily_reports') {
         delete patch.comments;
+      }
+      if (sheetName === 'users') {
+        // 계정 정보 수정 시 빈 비밀번호로 기존 비밀번호가 초기화되지 않도록 제외
+        ['password', 'passwordHash', 'passward'].forEach(function (pk) {
+          if (pk in patch && String(patch[pk] || '').trim() === '') delete patch[pk];
+        });
+        // 가입일은 최초 값 유지
+        delete patch.created_at;
+        delete patch.createdAt;
       }
       if (!patch.updated_at && !patch.updatedAt && headers.indexOf('updated_at') !== -1) {
         patch.updated_at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');

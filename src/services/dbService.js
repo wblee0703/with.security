@@ -2156,7 +2156,39 @@ class SecurityDatabase {
     return safeUser;
   }
 
-  async updateUserAccount(targetUser) {
+  /**
+   * users 시트로 보낼 계정 정보 페이로드 구성
+   * - 시트 계정 정보 컬럼만 전송 (교육 이력 등 로컬 전용 필드, id, created_at 제외)
+   * - 공유 대상자(share_targets*)는 saveShareTargets 전용 경로로만 갱신 → 프로필 저장 시 예전 값으로 덮어쓰지 않도록 제외
+   * - 비밀번호가 비어 있으면 전송하지 않음 → 시트 비밀번호가 빈 값으로 초기화되는 현상 방지
+   * @param {string[]|null} fields 지정 시 해당 필드만 전송
+   */
+  _buildUserRemotePayload(user, fields = null) {
+    const allowed = Array.isArray(fields) && fields.length > 0
+      ? fields
+      : ['name', 'role', 'division', 'team', 'rank', 'siteId', 'phone', 'email', 'password'];
+    const payload = { username: String(user?.username || '').trim() };
+    allowed.forEach(f => {
+      if (f === 'password') {
+        const pass = String(user?.password || user?.passwordHash || user?.passward || '').trim();
+        if (pass) {
+          payload.password = pass;
+          payload.passwordHash = pass;
+          payload.passward = pass;
+        }
+        return;
+      }
+      if (f === 'team') {
+        const team = user?.team !== undefined ? user.team : user?.department;
+        if (team !== undefined && team !== null) payload.team = team;
+        return;
+      }
+      if (user && user[f] !== undefined && user[f] !== null) payload[f] = user[f];
+    });
+    return payload;
+  }
+
+  async updateUserAccount(targetUser, remoteFields = null) {
     let safeUser = { ...targetUser };
     if (safeUser.password || safeUser.passwordHash || safeUser.passward) {
       const raw = String(safeUser.password || safeUser.passwordHash || safeUser.passward || '').trim();
@@ -2190,12 +2222,13 @@ class SecurityDatabase {
     } catch (e) { }
 
     // 3. Send to Server if available (PUT for update)
-    this._markRecentUserEdit(safeUser);
+    //    remoteFields 지정 시 해당 필드만 부분 업데이트 (예: 직책 변경 시 role만 전송 → 캐시된 예전 이름/연락처/비밀번호로 시트를 덮어쓰지 않음)
+    this._markRecentUserEdit(remoteFields ? this._buildUserRemotePayload(safeUser, remoteFields) : safeUser);
     try {
       await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(safeUser)
+        body: JSON.stringify(this._buildUserRemotePayload(safeUser, remoteFields))
       });
     } catch (e) { }
 
@@ -2287,7 +2320,7 @@ class SecurityDatabase {
         const res = await safeFetchApi(`/api/security-users/${encodeURIComponent(safeUser.username)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(safeUser)
+          body: JSON.stringify(this._buildUserRemotePayload(safeUser))
         });
         this._lastProfileSyncOk = await isWriteRequestAccepted(res);
       } catch (e) { }
