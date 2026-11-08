@@ -23,7 +23,7 @@
  */
 
 // 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
-const SCRIPT_VERSION = '2026-11-09-user-update-fix';
+const SCRIPT_VERSION = '2026-11-09-share-targets-text';
 
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
@@ -213,6 +213,7 @@ function onOpen() {
     .addItem('🔄 전체 시트 헤더 & 스키마 동기화 (syncDatabaseHeaders)', 'syncDatabaseHeaders')
     .addItem('🧹 중복 데이터 자동 정리 (cleanupDuplicates)', 'cleanupDuplicates')
     .addItem('💬 피드백 기록 형식 정리 (convertReportCommentsToReadable)', 'convertReportCommentsToReadable')
+    .addItem('👥 공유 대상자 기록 형식 정리 (convertShareTargetsToReadable)', 'convertShareTargetsToReadable')
     .addToUi();
 }
 
@@ -830,6 +831,10 @@ function doPostInternal(e) {
         // 가입일은 최초 값 유지
         delete patch.created_at;
         delete patch.createdAt;
+        // 공유 대상자는 "이름 직급(소속팀), ..." 텍스트로 기록
+        ['share_targets', 'share_targets2'].forEach(function (sk) {
+          if (sk in patch) patch[sk] = formatShareTargetsForSheet(patch[sk]);
+        });
       }
       if (!patch.updated_at && !patch.updatedAt && headers.indexOf('updated_at') !== -1) {
         patch.updated_at = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
@@ -1709,9 +1714,10 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       phone: obj.phone || '',
       email: obj.email || '',
       created_at: obj.created_at || obj.createdAt || new Date().toISOString(),
-      share_targets: Array.isArray(obj.share_targets) ? JSON.stringify(obj.share_targets) : (obj.share_targets || ''),
+      // 공유 대상자는 "이름 직급(소속팀), ..." 텍스트로 기록
+      share_targets: formatShareTargetsForSheet(obj.share_targets),
       share_targets_updated_at: obj.share_targets_updated_at || '',
-      share_targets2: Array.isArray(obj.share_targets2) ? JSON.stringify(obj.share_targets2) : (obj.share_targets2 || ''),
+      share_targets2: formatShareTargetsForSheet(obj.share_targets2),
       share_targets2_updated_at: obj.share_targets2_updated_at || ''
     };
   }
@@ -2544,6 +2550,23 @@ function readSheetData(sheetName) {
     }
   }
 
+  // users: 시트의 공유 대상자 텍스트("이름 직급(소속팀), ...")를 앱용 대상자 객체 배열로 변환
+  if (sheetName === 'users') {
+    const allUsers = Array.from(keyMap.values()).concat(list);
+    allUsers.forEach(function (u) {
+      [['share_targets', 'share_targets_updated_at'], ['share_targets2', 'share_targets2_updated_at']].forEach(function (pair) {
+        const raw = u[pair[0]];
+        const hasTs = Number(u[pair[1]]) > 0;
+        if (raw === '' || raw === null || raw === undefined) {
+          // 빈 칸: 지정 기록(updated_at)이 있으면 '0명 지정', 없으면 '미지정' 유지
+          u[pair[0]] = hasTs ? [] : '';
+        } else {
+          u[pair[0]] = parseShareTargetsFromSheet(raw, allUsers);
+        }
+      });
+    });
+  }
+
   if (keyMap.size > 0) {
     let resultList = Array.from(keyMap.values()).concat(list);
     if (sheetName === 'edu_logs') {
@@ -2894,6 +2917,115 @@ function keepNewerShareTargets(headers, currentRow, obj) {
       obj[tsField] = existingTs;
     }
   });
+}
+
+/**
+ * 👥 공유 대상자 목록 → 시트 기록용 텍스트
+ * - 형식: "이름 직급(소속팀)" 을 ", " 로 연결 (예: "이윤석 과장(운영1팀(본사)), 홍길동 대리(영업팀)")
+ * - 입력: 대상자 객체 배열, JSON 문자열, 이미 텍스트 형식인 문자열 모두 허용
+ */
+function formatShareTargetsForSheet(value) {
+  if (value === undefined || value === null || value === '') return '';
+  let list = value;
+  if (typeof list === 'string') {
+    const trimmed = list.trim();
+    if (!trimmed) return '';
+    if (trimmed.charAt(0) !== '[' && trimmed.charAt(0) !== '{') return trimmed; // 이미 텍스트 형식
+    try { list = JSON.parse(trimmed); } catch (e) { return trimmed; }
+  }
+  if (!Array.isArray(list)) list = [list];
+  return list.map(function (t) {
+    if (!t) return '';
+    if (typeof t === 'string') return t.replace(/,/g, ' ').trim();
+    const name = String(t.name || t.username || '').replace(/,/g, ' ').trim();
+    if (!name) return '';
+    const rank = String(t.rank || '').replace(/,/g, ' ').trim();
+    const team = String(t.team || t.department || '').replace(/,/g, ' ').trim();
+    const nameRank = rank ? (name + ' ' + rank) : name;
+    return team ? (nameRank + '(' + team + ')') : nameRank;
+  }).filter(Boolean).join(', ');
+}
+
+/**
+ * 👥 시트의 공유 대상자 텍스트 → 앱에서 쓰는 대상자 객체 배열
+ * - "이름 직급(소속팀)" 목록을 해석하고 users 시트에서 아이디(username)·사업부를 찾아 채움
+ * - 이전 JSON 배열 형식도 그대로 호환
+ */
+function parseShareTargetsFromSheet(raw, allUsers) {
+  if (Array.isArray(raw)) return raw;
+  if (raw === undefined || raw === null) return [];
+  const str = String(raw).trim();
+  if (!str) return [];
+  if (str.charAt(0) === '[') {
+    try {
+      const arr = JSON.parse(str);
+      if (Array.isArray(arr)) return arr;
+    } catch (e) { }
+  }
+  const norm = function (s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); };
+  const users = Array.isArray(allUsers) ? allUsers : [];
+  return str.split(/\s*,\s*/).map(function (token) {
+    token = token.trim();
+    if (!token) return null;
+    let head = token;
+    let team = '';
+    const pIdx = token.indexOf('(');
+    if (pIdx > 0 && token.charAt(token.length - 1) === ')') {
+      head = token.substring(0, pIdx).trim();
+      team = token.substring(pIdx + 1, token.length - 1).trim();
+    }
+    const parts = head.split(/\s+/).filter(Boolean);
+    const name = parts.shift() || '';
+    const rank = parts.join(' ');
+    if (!name) return null;
+
+    // users 시트에서 동일인 찾기 (이름+직급+팀 → 이름+팀 → 이름+직급 → 이름 유일)
+    const sameName = users.filter(function (u) { return norm(u.name) === norm(name); });
+    let match = sameName.find(function (u) { return norm(u.rank) === norm(rank) && norm(u.team) === norm(team); }) ||
+      (team ? sameName.find(function (u) { return norm(u.team) === norm(team); }) : null) ||
+      (rank ? sameName.find(function (u) { return norm(u.rank) === norm(rank); }) : null) ||
+      (sameName.length === 1 ? sameName[0] : null);
+
+    return {
+      username: match ? String(match.username || '').trim() : '',
+      name: name,
+      team: team || (match ? String(match.team || '') : ''),
+      rank: rank || (match ? String(match.rank || '') : ''),
+      division: match ? String(match.division || '') : ''
+    };
+  }).filter(Boolean);
+}
+
+/**
+ * 🔁 users 시트에 JSON 형식으로 저장된 공유 대상자(share_targets, share_targets2)를
+ *    "이름 직급(소속팀)" 텍스트 형식으로 일괄 변환
+ */
+function convertShareTargetsToReadable() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('users');
+  if (!sheet || sheet.getLastRow() <= 1) return { success: true, converted: 0 };
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h || '').trim());
+  let converted = 0;
+  ['share_targets', 'share_targets2'].forEach(function (field) {
+    const cIdx = headers.indexOf(field);
+    if (cIdx === -1) return;
+    const range = sheet.getRange(2, cIdx + 1, sheet.getLastRow() - 1, 1);
+    const values = range.getValues();
+    let changed = false;
+    const out = values.map(function (r) {
+      const raw = r[0];
+      if (typeof raw === 'string' && raw.trim().charAt(0) === '[') {
+        const text = formatShareTargetsForSheet(raw);
+        if (text !== raw) { changed = true; converted++; }
+        return [text];
+      }
+      return [raw];
+    });
+    if (changed) range.setNumberFormat('@').setValues(out);
+  });
+  SpreadsheetApp.flush();
+  Logger.log('👥 공유 대상자 기록 형식 변환 완료: ' + converted + '건');
+  return { success: true, converted: converted };
 }
 
 function appendObjectRow(sheet, headers, rawObj) {

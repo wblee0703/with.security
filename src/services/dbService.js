@@ -3126,9 +3126,53 @@ class SecurityDatabase {
     if (raw === undefined || raw === null || raw === '') return null;
     let val = raw;
     if (typeof val === 'string') {
-      try { val = JSON.parse(val); } catch (e) { return null; }
+      const trimmed = val.trim();
+      if (!trimmed) return null;
+      if (trimmed.charAt(0) !== '[') return this._parseReadableShareTargets(trimmed);
+      try { val = JSON.parse(trimmed); } catch (e) { return null; }
     }
     return Array.isArray(val) ? val : null;
+  }
+
+  /**
+   * 시트 텍스트 형식 공유 대상자("이윤석 과장(운영1팀(본사)), 홍길동 대리(영업팀)") → 대상자 객체 배열
+   * (아이디·사업부는 이 기기의 사용자 목록에서 찾아 채움)
+   */
+  _parseReadableShareTargets(str) {
+    let users = [];
+    try {
+      const lsRaw = localStorage.getItem('with_security_users_db');
+      const parsed = lsRaw ? JSON.parse(lsRaw) : [];
+      if (Array.isArray(parsed)) users = parsed;
+    } catch (e) { }
+    const norm = (s) => String(s || '').replace(/\s+/g, '').toLowerCase();
+    return String(str).split(/\s*,\s*/).map(token => {
+      token = token.trim();
+      if (!token) return null;
+      let head = token;
+      let team = '';
+      const pIdx = token.indexOf('(');
+      if (pIdx > 0 && token.endsWith(')')) {
+        head = token.substring(0, pIdx).trim();
+        team = token.substring(pIdx + 1, token.length - 1).trim();
+      }
+      const parts = head.split(/\s+/).filter(Boolean);
+      const name = parts.shift() || '';
+      const rank = parts.join(' ');
+      if (!name) return null;
+      const sameName = users.filter(u => u && norm(u.name) === norm(name));
+      const match = sameName.find(u => norm(u.rank) === norm(rank) && norm(u.team) === norm(team)) ||
+        (team ? sameName.find(u => norm(u.team) === norm(team)) : null) ||
+        (rank ? sameName.find(u => norm(u.rank) === norm(rank)) : null) ||
+        (sameName.length === 1 ? sameName[0] : null);
+      return {
+        username: match ? String(match.username || '').trim() : '',
+        name,
+        team: team || match?.team || '',
+        rank: rank || match?.rank || '',
+        division: match?.division || ''
+      };
+    }).filter(Boolean);
   }
 
   _findStoredUserRecord(user) {
