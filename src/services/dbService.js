@@ -1923,8 +1923,23 @@ class SecurityDatabase {
     const uName = username.trim();
     const pass = password.trim();
 
-    // 1. Local-first verification (0.1ms)
-    let users = await this.getRegisteredUsers();
+    // 1. 서버(구글 시트)의 최신 계정 정보로 우선 검증
+    //    - 다른 PC에서 로그인할 때 그 PC에 남아있던 예전 계정 정보(이름·소속·비밀번호 등)로 로그인되어
+    //      계정이 초기화된 것처럼 보이거나, 이후 저장 시 예전 값이 시트를 덮어쓰는 현상 방지
+    //    - 서버 응답이 늦거나 오프라인이면 이 기기의 저장 정보로 검증 (기존 동작)
+    let users = null;
+    if (getApiServerUrl()) {
+      recentResponseCache.clear();
+      try {
+        users = await Promise.race([
+          this._fetchUsersRemote(),
+          new Promise(resolve => setTimeout(() => resolve(null), 12000))
+        ]);
+      } catch (e) { users = null; }
+    }
+    if (!Array.isArray(users) || users.length === 0) {
+      users = await this.getRegisteredUsers();
+    }
     let foundUser = null;
     let isPasswordCorrect = false;
 

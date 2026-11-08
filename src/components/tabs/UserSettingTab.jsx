@@ -1177,6 +1177,17 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
 
     if (isPasswordCorrect) {
+      // 수정 폼을 서버(구글 시트)의 최신 계정 정보로 갱신 → 이 기기에 남은 예전 정보로 시트를 덮어쓰지 않도록
+      try {
+        const freshUsers = await dbService.getRegisteredUsers(true);
+        const uname = String(currentUser?.username || '').trim().toLowerCase();
+        const fresh = (freshUsers || []).find(u => String(u?.username || '').trim().toLowerCase() === uname);
+        if (fresh) {
+          const merged = { ...currentUser, ...fresh, trainings: currentUser?.trainings || fresh.trainings || [] };
+          setCurrentUser(merged);
+          setEditForm(merged);
+        }
+      } catch (err) { }
       setIsEditUnlocked(true);
       setIsVerifyModalOpen(false);
       setVerifyPassword('');
