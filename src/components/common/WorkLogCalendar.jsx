@@ -937,12 +937,18 @@ export default function WorkLogCalendar({
                     // Format display text:
                     const displayText = (() => {
                       if (isReceivedShared) {
+                        // 공유받은 업무: [공유자 이름] 작업명 / 출장 업무는 [공유자 이름] 출장지
+                        const sharerName = String(log.authorName || log.name || log.writerName || '').trim() || '공유';
                         if (item.isTripGroup) {
                           const calSite = formatCalendarSite(item.siteName, item.log);
-                          const base = `[공유] [출장] ${calSite} ${item.subCategory}`.trim();
+                          const base = `[${sharerName}] ${calSite || log.title}`.trim();
                           return item.count > 1 ? `${base} ${item.count}건` : base;
                         }
-                        return `[공유] ${log.title}`;
+                        if (isBusinessTrip) {
+                          const calSite = formatCalendarSite(log.siteName || log.site_name, log);
+                          return `[${sharerName}] ${calSite || log.title}`;
+                        }
+                        return `[${sharerName}] ${log.title}`;
                       }
                       if (item.isTripGroup) {
                         const calSite = formatCalendarSite(item.siteName, item.log);
