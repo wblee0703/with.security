@@ -7,11 +7,12 @@ let cachedDefaultAdminHash = null;
 // Server Base URL Management Helper (Default to GitHub Pages before Gabia Hosting)
 export const DEFAULT_PUBLIC_URL = 'https://wblee0703.github.io/with.security';
 // 구글 스프레드시트(Withsharing_DB) 배포 웹 앱 URL (기본 클라우드 DB)
-export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwud1BdjfcfAF2XeDIz6DZQQqakYAMRkueYtWBqsviwacCklw6USFfKs-kDJdeGQjxF/exec';
+export const DEFAULT_GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwYieLez8pD80jshBus-_Mf_cP09rx2Z17KYjKmO1EOxeaj4Vb6HgijSbX9BNGPfSN2/exec';
 
 // 이전 기본 URL 목록 (새 기본 URL로 자동 전환용)
 const LEGACY_DEFAULT_GOOGLE_SHEETS_URLS = [
-  'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec'
+  'https://script.google.com/macros/s/AKfycby5rP1xxjFtz0v3OUoK3l18jrEtyqD5pkn8cXkocktdH1yqkPc1_MXd099t1q0QSpPy/exec',
+  'https://script.google.com/macros/s/AKfycbwud1BdjfcfAF2XeDIz6DZQQqakYAMRkueYtWBqsviwacCklw6USFfKs-kDJdeGQjxF/exec'
 ];
 
 // 1. 구글 스프레드시트 클라우드 DB 전용 URL 관리
