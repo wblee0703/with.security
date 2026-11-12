@@ -348,7 +348,7 @@ export default function MobileContainer({
           className={`nav-item ${activeTab === 'tripCalendar' ? 'active' : ''}`}
         >
           <Car size={18} />
-          <span>출장</span>
+          <span>업무 관리</span>
         </button>
 
         <button

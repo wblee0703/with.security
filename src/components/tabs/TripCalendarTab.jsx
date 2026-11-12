@@ -916,7 +916,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
           }}>
             <Car size={isMobile ? 20 : 22} />
           </div>
-          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>출장 캘린더</div>
+          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>업무 관리</div>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
@@ -1469,7 +1469,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
                   <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 20, background: '#ffffff', border: '1.5px solid #86efac', borderRadius: '6px', boxShadow: '0 12px 28px rgba(15, 23, 42, 0.18)', overflow: 'hidden' }}>
                     {pool.length === 0 ? (
                       <div style={{ padding: '14px 12px', fontSize: '12.5px', color: '#64748b', fontWeight: '600' }}>
-                        설정된 가용 인원이 없습니다. 출장 캘린더 상단의 [가용 인원] 버튼에서 먼저 인원을 등록하세요.
+                        설정된 가용 인원이 없습니다. 업무 관리 상단의 [가용 인원] 버튼에서 먼저 인원을 등록하세요.
                       </div>
                     ) : (
                       <>

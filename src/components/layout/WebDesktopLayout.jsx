@@ -100,7 +100,7 @@ export default function WebDesktopLayout({
 
   const navItems = [
     { id: 'entryCheck', label: 'TBM', icon: HardHat },
-    { id: 'tripCalendar', label: '출장 캘린더', icon: Car },
+    { id: 'tripCalendar', label: '업무 관리', icon: Car },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList },
     { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet },
     { id: 'admin', label: 'Admin', icon: Settings }
