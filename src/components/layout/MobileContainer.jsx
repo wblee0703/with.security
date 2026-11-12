@@ -11,7 +11,8 @@ import {
   RefreshCw,
   ArrowDown,
   HardHat,
-  WifiOff
+  WifiOff,
+  Car
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
@@ -78,6 +79,12 @@ export default function MobileContainer({
 
   const handleNavClick = (targetTabId) => {
     if (!currentUser) {
+      setActiveTab('userProfile');
+      return;
+    }
+    // Admin 메뉴: 진입 시 사용자 정보 먼저 표시, 재클릭 시 현재 하위 화면(사업장/사용자 정보) 유지
+    if (targetTabId === 'admin') {
+      if (activeTab === 'admin' || activeTab === 'userProfile') return;
       setActiveTab('userProfile');
       return;
     }
@@ -337,6 +344,14 @@ export default function MobileContainer({
         </button>
 
         <button
+          onClick={() => handleNavClick('tripCalendar')}
+          className={`nav-item ${activeTab === 'tripCalendar' ? 'active' : ''}`}
+        >
+          <Car size={18} />
+          <span>출장</span>
+        </button>
+
+        <button
           onClick={() => handleNavClick('workLog')}
           className={`nav-item ${activeTab === 'workLog' ? 'active' : ''}`}
         >
@@ -354,18 +369,10 @@ export default function MobileContainer({
 
         <button
           onClick={() => handleNavClick('admin')}
-          className={`nav-item ${activeTab === 'admin' ? 'active' : ''}`}
+          className={`nav-item ${activeTab === 'admin' || activeTab === 'userProfile' ? 'active' : ''}`}
         >
-          <Building2 size={18} />
-          <span>사업장</span>
-        </button>
-
-        <button
-          onClick={() => handleNavClick('userProfile')}
-          className={`nav-item ${activeTab === 'userProfile' ? 'active' : ''}`}
-        >
-          <UserCheck size={18} />
-          <span>사용자</span>
+          <Settings size={18} />
+          <span>Admin</span>
         </button>
       </nav>
 

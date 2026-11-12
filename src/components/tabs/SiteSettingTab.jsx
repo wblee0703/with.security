@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Settings, Building2, Plus, Trash2, Edit3, Shield, Lock, X, Smartphone } from 'lucide-react';
 import { dbService } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
@@ -14,7 +15,18 @@ const SECURITY_APP_CATALOG = [
 export default function SiteSettingTab({ onTriggerToast }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [sites, setSites] = useState([]);
-  const [newSiteForm, setNewSiteForm] = useState({ type: '보안앱O', name: '', address: '', appUrl: '' });
+  const [newSiteForm, setNewSiteForm] = useState({ type: '보안앱X', name: '', address: '', appUrl: '' });
+
+  // 웹 모드(넓은 화면)에서는 사업장 목록을 1줄에 3개씩 표시
+  const siteListRef = useRef(null);
+  const [siteListWidth, setSiteListWidth] = useState(0);
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined' || !siteListRef.current) return;
+    const observer = new ResizeObserver((entries) => setSiteListWidth(entries[0].contentRect.width));
+    observer.observe(siteListRef.current);
+    return () => observer.disconnect();
+  }, []);
+  const isWideSiteList = !Capacitor.isNativePlatform() && siteListWidth >= 760;
 
   // Edit Site Modal State
   const [editingSite, setEditingSite] = useState(null);
@@ -158,7 +170,7 @@ export default function SiteSettingTab({ onTriggerToast }) {
     }
 
     await loadSites();
-    setNewSiteForm({ type: '보안앱O', name: '', address: '', appUrl: '', appName: '' });
+    setNewSiteForm({ type: '보안앱X', name: '', address: '', appUrl: '', appName: '' });
     if (onTriggerToast) onTriggerToast(`'${newSite.name}' (${newSite.address || '위치 미지정'}) 사업장이 성공적으로 등록되었습니다.`, 'success');
   };
 
@@ -290,19 +302,19 @@ export default function SiteSettingTab({ onTriggerToast }) {
       <div className="glass-panel" style={{ padding: '14px 18px', borderRadius: '6px', border: '1.5px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '40px',
-            height: '40px',
+            width: '38px',
+            height: '38px',
             borderRadius: '6px',
-            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-            border: '1.5px solid #1e3a8a',
+            background: '#475569',
+            border: '1.5px solid #475569',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#ffffff',
-            boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+            boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
             flexShrink: 0
           }}>
-            <Building2 size={22} />
+            <Building2 size={20} />
           </div>
           <div>
             <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
@@ -498,7 +510,12 @@ export default function SiteSettingTab({ onTriggerToast }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div
+          ref={siteListRef}
+          style={isWideSiteList
+            ? { display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px', alignItems: 'stretch' }
+            : { display: 'flex', flexDirection: 'column', gap: '10px' }}
+        >
           {sortSitesList(sites).map((s) => {
             const isSecAppO = s.type === '보안앱O' || s.type === '보안어플O' || !s.type;
             const displayType = isSecAppO ? '보안앱O' : '보안앱X';

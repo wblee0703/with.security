@@ -21,14 +21,14 @@ import {
   LockKeyhole,
   Settings
 } from 'lucide-react';
-import SiteSettingTab from '../tabs/SiteSettingTab';
 import SecurityChecklistTab from '../tabs/SecurityChecklistTab';
 import TbmSection from '../tabs/TbmSection';
-import UserSettingTab from '../tabs/UserSettingTab';
+import AdminTab from '../tabs/AdminTab';
+import TripCalendarTab from '../tabs/TripCalendarTab';
 import WorkLogTab from '../tabs/WorkLogTab';
 import WorkSummaryTab from '../tabs/WorkSummaryTab';
 import { dbService } from '../../services/dbService';
-import { ClipboardList, FileSpreadsheet, HardHat, WifiOff } from 'lucide-react';
+import { ClipboardList, FileSpreadsheet, HardHat, WifiOff, Car } from 'lucide-react';
 import TrainingHeaderNotice from '../common/TrainingHeaderNotice';
 import AppNoticeHeaderBtn from '../common/AppNoticeHeaderBtn';
 
@@ -89,15 +89,21 @@ export default function WebDesktopLayout({
       if (onTriggerToast) onTriggerToast('❌ 로그인이 필요합니다. 먼저 로그인해 주세요.', 'warning');
       return;
     }
+    // Admin 메뉴: 진입 시 사용자 정보 먼저 표시, 재클릭 시 현재 하위 화면(사업장/사용자 정보) 유지
+    if (targetTabId === 'admin') {
+      if (activeTab === 'admin' || activeTab === 'userProfile') return;
+      setActiveTab('userProfile');
+      return;
+    }
     setActiveTab(targetTabId);
   };
 
   const navItems = [
     { id: 'entryCheck', label: 'TBM', icon: HardHat },
+    { id: 'tripCalendar', label: '출장 캘린더', icon: Car },
     { id: 'workLog', label: '업무 일지', icon: ClipboardList },
     { id: 'workSummary', label: '업무 정리', icon: FileSpreadsheet },
-    { id: 'admin', label: '사업장', icon: Building2 },
-    { id: 'userProfile', label: '사용자 정보', icon: User }
+    { id: 'admin', label: 'Admin', icon: Settings }
   ];
 
   return (
@@ -319,7 +325,7 @@ export default function WebDesktopLayout({
 
           {navItems.map((item) => {
             const IconComp = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = activeTab === item.id || (item.id === 'admin' && activeTab === 'userProfile');
 
             return (
               <button
@@ -381,10 +387,12 @@ export default function WebDesktopLayout({
                 </div>
               </div>
             )}
+            {activeTab === 'tripCalendar' && <TripCalendarTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={onTriggerToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'admin' && <SiteSettingTab onTriggerToast={onTriggerToast} />}
-            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={onTriggerToast} setActiveTab={setActiveTab} />}
+            {(activeTab === 'admin' || activeTab === 'userProfile') && (
+              <AdminTab activeTab={activeTab} setActiveTab={setActiveTab} onTriggerToast={onTriggerToast} />
+            )}
           </div>
         </main>
 

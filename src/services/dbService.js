@@ -216,6 +216,7 @@ function adaptGoogleScriptRequest(baseUrl, endpoint, options) {
   else if (endpoint.includes('vault')) sheetName = 'vault';
   else if (endpoint.includes('incidents')) sheetName = 'incidents';
   else if (endpoint.includes('notices') || endpoint.includes('app-notices')) sheetName = 'notices';
+  else if (endpoint.includes('business-trips') || endpoint.includes('business_trips')) sheetName = 'business_trips';
 
   // ⭐ 보안 서약(PASS-) 데이터는 절대로 work_logs에 저장되지 않고 오직 security_logs에만 저장되도록 강제
   const isSecurityPledgeData = Boolean(
@@ -6720,6 +6721,318 @@ class SecurityDatabase {
    * 등록된 시스템 업데이트 공지 목록 조회
    * @param {boolean} forceRemote - 클라우드 강제 재동기화 여부
    */
+  // ==========================================================================
+  // ✈️ 출장 캘린더 (business_trips) - 사업장별 출장 일정 통합 관리 (전 사용자 공유)
+  // ==========================================================================
+  _normalizeTrip(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    let travelers = raw.travelers;
+    if (typeof travelers === 'string') {
+      const t = travelers.trim();
+      if (t.startsWith('[')) {
+        try { travelers = JSON.parse(t); } catch (e) { travelers = []; }
+      } else {
+        travelers = t ? t.split(',').map(n => ({ name: n.trim() })).filter(x => x.name) : [];
+      }
+    }
+    if (!Array.isArray(travelers)) travelers = [];
+    travelers = travelers
+      .map(tr => (typeof tr === 'string' ? { name: tr } : tr))
+      .filter(tr => tr && String(tr.name || '').trim())
+      .map(tr => ({
+        name: String(tr.name || '').trim(),
+        rank: String(tr.rank || '').trim(),
+        team: String(tr.team || '').trim(),
+        division: String(tr.division || '').trim(),
+        username: String(tr.username || '').trim()
+      }));
+    const start = normalizeKstDate(raw.start_date || raw.startDate || '') || '';
+    let end = normalizeKstDate(raw.end_date || raw.endDate || '') || start;
+    if (end && start && end < start) end = start;
+    return {
+      id: String(raw.id || `TRIP-${Date.now()}`),
+      site_id: String(raw.site_id || raw.siteId || ''),
+      site_name: String(raw.site_name || raw.siteName || '').trim(),
+      site_address: String(raw.site_address || raw.siteAddress || '').trim(),
+      title: String(raw.title || '').trim(),
+      start_date: start,
+      end_date: end,
+      travelers,
+      status: String(raw.status || '').trim(),
+      memo: String(raw.memo || ''),
+      color: String(raw.color || '').trim(),
+      team: String(raw.team || '').trim(),
+      division: String(raw.division || '').trim(),
+      author_name: String(raw.author_name || raw.authorName || ''),
+      author_username: String(raw.author_username || raw.authorUsername || ''),
+      updated_by: String(raw.updated_by || raw.updatedBy || ''),
+      created_at: String(raw.created_at || raw.createdAt || ''),
+      updated_at: String(raw.updated_at || raw.updatedAt || '')
+    };
+  }
+
+  _readTripCache() {
+    try {
+      const list = JSON.parse(localStorage.getItem('with_security_business_trips') || '[]');
+      return Array.isArray(list) ? list.map(t => this._normalizeTrip(t)).filter(Boolean) : [];
+    } catch (e) { return []; }
+  }
+
+  _writeTripCache(list) {
+    try { localStorage.setItem('with_security_business_trips', JSON.stringify(list)); } catch (e) { }
+  }
+
+  // 서버 전송에 실패한 저장/삭제 건 (재시도 대상) 관리
+  _readTripPending() {
+    try {
+      const p = JSON.parse(localStorage.getItem('with_security_business_trips_pending') || '{}');
+      return { saves: Array.isArray(p.saves) ? p.saves : [], deletes: Array.isArray(p.deletes) ? p.deletes : [] };
+    } catch (e) { return { saves: [], deletes: [] }; }
+  }
+
+  _writeTripPending(p) {
+    try { localStorage.setItem('with_security_business_trips_pending', JSON.stringify(p)); } catch (e) { }
+  }
+
+  _tripToSheet(trip) {
+    return { ...trip, travelers: JSON.stringify(trip.travelers || []) };
+  }
+
+  async _pushTripRemote(trip) {
+    const res = await safeFetchApi('/api/business-trips', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(this._tripToSheet(trip))
+    });
+    return isWriteRequestAccepted(res);
+  }
+
+  async _deleteTripRemote(id) {
+    const res = await safeFetchApi(`/api/business-trips/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return isWriteRequestAccepted(res);
+  }
+
+  async _flushTripPending() {
+    const pending = this._readTripPending();
+    if (pending.saves.length === 0 && pending.deletes.length === 0) return;
+    const cache = this._readTripCache();
+    const remainSaves = [];
+    for (const id of pending.saves) {
+      const trip = cache.find(t => t.id === id);
+      if (!trip) continue;
+      if (!(await this._pushTripRemote(trip).catch(() => false))) remainSaves.push(id);
+    }
+    const remainDeletes = [];
+    for (const id of pending.deletes) {
+      if (!(await this._deleteTripRemote(id).catch(() => false))) remainDeletes.push(id);
+    }
+    this._writeTripPending({ saves: remainSaves, deletes: remainDeletes });
+  }
+
+  // --------------------------------------------------------------------------
+  // 👥 출장 캘린더 가용 인원 설정 (사용자별, business_trips 시트에 'POOL-아이디' 설정 행으로 저장)
+  // --------------------------------------------------------------------------
+  _readPools() {
+    try {
+      const m = JSON.parse(localStorage.getItem('with_security_trip_pools') || '{}');
+      return (m && typeof m === 'object') ? m : {};
+    } catch (e) { return {}; }
+  }
+
+  _writePools(m) {
+    try { localStorage.setItem('with_security_trip_pools', JSON.stringify(m)); } catch (e) { }
+  }
+
+  _absorbRemotePools(remote) {
+    const pools = this._readPools();
+    remote.forEach(raw => {
+      const id = String(raw?.id || '');
+      if (!id.startsWith('POOL-')) return;
+      if (pools[id]?.pending) return; // 아직 서버 전송 전인 로컬 변경은 유지
+      const norm = this._normalizeTrip({ ...raw, start_date: '' });
+      pools[id] = { members: norm ? norm.travelers : [], updated_at: String(raw.updated_at || '') };
+    });
+    this._writePools(pools);
+  }
+
+  _poolId(user) {
+    const key = String(user?.username || user?.name || '').trim().toLowerCase();
+    return key ? `POOL-${key}` : '';
+  }
+
+  // 팀 단위 가용 인원 ID (사업부 + 소속팀 조합으로 동명 팀 구분)
+  teamPoolId(division, team) {
+    const t = String(team || '').trim();
+    if (!t) return '';
+    const d = String(division || '').trim();
+    return `POOL-TEAM-${d}-${t}`.replace(/\s+/g, '_');
+  }
+
+  getTripPool(user) {
+    const id = this._poolId(user);
+    if (!id) return [];
+    const p = this._readPools()[id];
+    return Array.isArray(p?.members) ? p.members : [];
+  }
+
+  getTeamTripPool(division, team) {
+    const id = this.teamPoolId(division, team);
+    if (!id) return [];
+    const p = this._readPools()[id];
+    return Array.isArray(p?.members) ? p.members : [];
+  }
+
+  async saveTeamTripPool(division, team, user, members) {
+    const id = this.teamPoolId(division, team);
+    if (!id) throw new Error('소속팀 정보가 없어 가용 인원을 저장할 수 없습니다.');
+    return this._saveTripPoolById(id, { name: String(team).trim(), username: user?.username || '' }, members, user);
+  }
+
+  _poolRow(id, user, members, nowStr) {
+    return {
+      id,
+      site_name: '[가용 인원 설정]',
+      title: `${user?.name || ''} 가용 인원`,
+      start_date: '',
+      end_date: '',
+      travelers: JSON.stringify(members),
+      status: '설정',
+      memo: '',
+      color: '',
+      author_name: user?.name || '',
+      author_username: user?.username || '',
+      updated_by: user?.name || '',
+      created_at: nowStr,
+      updated_at: nowStr
+    };
+  }
+
+  async saveTripPool(user, members) {
+    const id = this._poolId(user);
+    if (!id) throw new Error('로그인 후 이용해 주세요.');
+    return this._saveTripPoolById(id, user, members, user);
+  }
+
+  async _saveTripPoolById(id, owner, members, editor) {
+    const user = { name: owner?.name || '', username: owner?.username || '' };
+    const clean = (this._normalizeTrip({ travelers: members, start_date: '' })?.travelers) || [];
+    const nowStr = UtilitiesSafeDate();
+    const pools = this._readPools();
+    pools[id] = { members: clean, updated_at: nowStr, pending: true, user };
+    this._writePools(pools);
+
+    const res = await safeFetchApi('/api/business-trips', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...this._poolRow(id, user, clean, nowStr), updated_by: editor?.name || '' })
+    }).catch(() => null);
+    const ok = await isWriteRequestAccepted(res);
+    if (ok) {
+      const latest = this._readPools();
+      if (latest[id]) { delete latest[id].pending; this._writePools(latest); }
+    }
+    notifyDataChanged(true);
+    return { members: clean, synced: ok };
+  }
+
+  async _flushPoolPending() {
+    const pools = this._readPools();
+    for (const [id, p] of Object.entries(pools)) {
+      if (!p?.pending) continue;
+      const res = await safeFetchApi('/api/business-trips', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this._poolRow(id, p.user || {}, p.members || [], p.updated_at || UtilitiesSafeDate()))
+      }).catch(() => null);
+      if (await isWriteRequestAccepted(res)) {
+        const latest = this._readPools();
+        if (latest[id]) { delete latest[id].pending; this._writePools(latest); }
+      }
+    }
+  }
+
+  /**
+   * 출장 일정 목록 조회 (서버 우선, 실패 시 로컬 캐시)
+   * - 서버 목록을 기준으로 하되, 아직 서버 반영 전인 로컬 저장/삭제 건은 그대로 유지
+   */
+  async getBusinessTrips() {
+    let list = this._readTripCache();
+    try {
+      await this._flushTripPending();
+      await this._flushPoolPending();
+      const res = await safeFetchApi('/api/business-trips', { method: 'GET' });
+      if (res && res.ok) {
+        const json = await res.json();
+        const remote = Array.isArray(json?.data) ? json.data : (Array.isArray(json) ? json : null);
+        if (remote) {
+          this._absorbRemotePools(remote);
+          const pending = this._readTripPending();
+          const map = new Map();
+          remote.map(t => this._normalizeTrip(t)).filter(t => t && t.start_date && !String(t.id).startsWith('POOL-')).forEach(t => map.set(t.id, t));
+          list.filter(t => pending.saves.includes(t.id)).forEach(t => map.set(t.id, t));
+          pending.deletes.forEach(id => map.delete(id));
+          list = Array.from(map.values());
+          this._writeTripCache(list);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch business trips:', e);
+    }
+    return list.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || '') || (a.site_name || '').localeCompare(b.site_name || ''));
+  }
+
+  /**
+   * 출장 일정 등록 / 수정 (전 사용자 공유)
+   */
+  async saveBusinessTrip(tripData, user = null) {
+    const nowStr = UtilitiesSafeDate();
+    const isNew = !tripData.id;
+    const trip = this._normalizeTrip({
+      ...tripData,
+      id: tripData.id || `TRIP-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      author_name: tripData.author_name || (isNew ? (user?.name || '') : ''),
+      author_username: tripData.author_username || (isNew ? (user?.username || '') : ''),
+      updated_by: user?.name || tripData.updated_by || '',
+      created_at: tripData.created_at || nowStr,
+      updated_at: nowStr
+    });
+    if (!trip.start_date) throw new Error('출장 시작일을 입력해 주세요.');
+
+    const cache = this._readTripCache();
+    const idx = cache.findIndex(t => t.id === trip.id);
+    if (idx !== -1) cache[idx] = trip; else cache.push(trip);
+    this._writeTripCache(cache);
+
+    const ok = await this._pushTripRemote(trip).catch(() => false);
+    const pending = this._readTripPending();
+    pending.deletes = pending.deletes.filter(id => id !== trip.id);
+    pending.saves = pending.saves.filter(id => id !== trip.id);
+    if (!ok) pending.saves.push(trip.id);
+    this._writeTripPending(pending);
+
+    notifyDataChanged(true);
+    return { trip, synced: ok };
+  }
+
+  /**
+   * 출장 일정 삭제
+   */
+  async deleteBusinessTrip(id) {
+    if (!id) return false;
+    const targetId = String(id);
+    this._writeTripCache(this._readTripCache().filter(t => t.id !== targetId));
+
+    const ok = await this._deleteTripRemote(targetId).catch(() => false);
+    const pending = this._readTripPending();
+    pending.saves = pending.saves.filter(x => x !== targetId);
+    pending.deletes = pending.deletes.filter(x => x !== targetId);
+    if (!ok) pending.deletes.push(targetId);
+    this._writeTripPending(pending);
+
+    notifyDataChanged(true);
+    return true;
+  }
+
   async getAppNotices(forceRemote = false) {
     let notices = [];
 

@@ -23,7 +23,7 @@
  */
 
 // 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
-const SCRIPT_VERSION = '2026-11-09-share-targets-text';
+const SCRIPT_VERSION = '2026-11-12-business-trips-team';
 
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
@@ -95,6 +95,15 @@ const SCHEMAS = {
   // 8. 시스템 업데이트 공지사항 (notices)
   notices: [
     'id', 'title', 'version', 'content', 'author_name', 'author_username', 'is_active', 'created_at', 'updated_at'
+  ],
+  // 9. 출장 캘린더 (business_trips) - 사업장별 출장 일정 통합 관리
+  //    travelers: 출장자 목록 JSON 배열 ([{"name","rank","team","division","username"}])
+  business_trips: [
+    'id', 'site_id', 'site_name', 'site_address', 'title', 'start_date', 'end_date',
+    'travelers', 'status', 'memo', 'color',
+    'author_name', 'author_username', 'updated_by', 'created_at', 'updated_at',
+    // 소속팀별 관리 (출장 등록 팀)
+    'team', 'division'
   ]
 };
 
@@ -273,7 +282,7 @@ function doGet(e) {
         app: 'Withsharing_DB',
         // 배포된 스크립트 버전 확인용 (재배포가 실제로 반영되었는지 웹 앱 URL?action=ping 으로 확인)
         scriptVersion: SCRIPT_VERSION,
-        features: ['share_targets2', 'report_comments'],
+        features: ['share_targets2', 'report_comments', 'business_trips'],
         message: '구글 스프레드시트 데이터베이스 통신 정상',
         counts: counts
       });
@@ -2297,7 +2306,7 @@ function readSheetData(sheetName) {
 
   const DATE_ONLY_COLS = [
     'log_date', 'due_date', 'date', 'weekly_monday', 'daily_date',
-    'completion_date', 'expiry_date'
+    'completion_date', 'expiry_date', 'start_date', 'end_date'
   ];
 
   for (let i = 1; i < rows.length; i++) {

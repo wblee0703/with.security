@@ -2007,57 +2007,6 @@ export default function WorkLogTab({ onTriggerToast }) {
               </button>
             </div>
 
-            {/* Row 2: 1:1 Equal Width Action Buttons (50% : 50%) */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
-              <button
-                type="button"
-                onClick={handleOpenPastWorkModal}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12.5px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  background: '#eff6ff',
-                  border: '1.5px solid #cbd5e1',
-                  color: '#1e3a8a',
-                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
-                  transition: 'all 0.2s ease',
-                  whiteSpace: 'nowrap'
-                }}
-                title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
-              >
-                <Copy size={14} /> 불러오기
-              </button>
-
-              <button
-                type="button"
-                onClick={handleOpenAddModal}
-                className="glass-button-primary"
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12.5px',
-                  fontWeight: '800',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  border: '1px solid #1e3a8a',
-                  boxShadow: '0 3px 10px rgba(15, 23, 42, 0.25)',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                <Plus size={15} /> 추가
-              </button>
-            </div>
           </div>
 
           {/* Interactive Date Selector Navigation Bar (2-Row Layout) */}
@@ -2255,6 +2204,58 @@ export default function WorkLogTab({ onTriggerToast }) {
                 {viewAllDates ? '날짜별 보기' : '전체 보기'}
               </button>
             </div>
+          </div>
+
+          {/* 불러오기 / 추가 버튼 (필터 바 위, 1:1 동일 폭) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+            <button
+              type="button"
+              onClick={handleOpenPastWorkModal}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                background: '#eff6ff',
+                border: '1.5px solid #cbd5e1',
+                color: '#1e3a8a',
+                boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+              title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
+            >
+              <Copy size={14} /> 불러오기
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenAddModal}
+              className="glass-button-primary"
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                border: '1px solid #1e3a8a',
+                boxShadow: '0 3px 10px rgba(15, 23, 42, 0.25)',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Plus size={15} /> 추가
+            </button>
           </div>
 
           {/* Filter Bar */}

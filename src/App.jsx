@@ -3,9 +3,9 @@ import { Capacitor } from '@capacitor/core';
 import MobileContainer from './components/layout/MobileContainer';
 import WebDesktopLayout from './components/layout/WebDesktopLayout';
 import PinLockModal from './components/layout/PinLockModal';
-import SiteSettingTab from './components/tabs/SiteSettingTab';
 import SecurityChecklistTab from './components/tabs/SecurityChecklistTab';
-import UserSettingTab from './components/tabs/UserSettingTab';
+import AdminTab from './components/tabs/AdminTab';
+import TripCalendarTab from './components/tabs/TripCalendarTab';
 import WorkLogTab from './components/tabs/WorkLogTab';
 import WorkSummaryTab from './components/tabs/WorkSummaryTab';
 import TrainingExpiryModal from './components/common/TrainingExpiryModal';
@@ -15,6 +15,7 @@ import { Bell, Monitor, Smartphone, Globe, Server, CheckCircle2, RefreshCw, LogO
 import { dbService, normalizeKstDate } from './services/dbService';
 import { syncCalendarWidget, checkWidgetLaunchIntent } from './services/appLauncherService';
 import { isSamePerson } from './services/userMatcher';
+import { modalBackHandler } from './services/modalBackHandler';
 
 export default function App() {
   const [isLocked, setIsLocked] = useState(false);
@@ -28,7 +29,7 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState(() => {
     const savedTab = typeof localStorage !== 'undefined' ? localStorage.getItem('with_security_active_tab') : null;
-    const validTabs = ['entryCheck', 'workLog', 'workSummary', 'admin', 'userProfile'];
+    const validTabs = ['entryCheck', 'tripCalendar', 'workLog', 'workSummary', 'admin', 'userProfile'];
     if (savedTab && validTabs.includes(savedTab)) {
       return savedTab;
     }
@@ -37,7 +38,7 @@ export default function App() {
 
   // Intercept tab switching when unsaved changes exist in WorkSummaryTab & persist active tab
   const handleSafeTabChange = (newTab) => {
-    const validTabs = ['entryCheck', 'workLog', 'workSummary', 'admin', 'userProfile'];
+    const validTabs = ['entryCheck', 'tripCalendar', 'workLog', 'workSummary', 'admin', 'userProfile'];
     if (activeTab === 'workSummary' && newTab !== 'workSummary' && typeof window !== 'undefined' && window.__WITH_SECURITY_UNSAVED_CHANGES__) {
       window.dispatchEvent(new CustomEvent('with_security_prompt_unsaved_tab', {
         detail: {
@@ -178,7 +179,8 @@ export default function App() {
         if (window.__WITH_SECURITY_UNSAVED_CHANGES__) return;
         const activeTag = document.activeElement?.tagName?.toUpperCase();
         if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
-        if (document.querySelector('.modal, [role="dialog"]')) return;
+        // 팝업(등록/수정 창 등)이 열려 있으면 동기화 보류 (useModalBack으로 등록된 모든 팝업 감지)
+        if (document.querySelector('.modal, [role="dialog"]') || modalBackHandler.hasOpenModals()) return;
       }
 
       const hasSheet = Boolean(dbService.getGoogleSheetsUrl());
@@ -228,7 +230,7 @@ export default function App() {
       if (window.__WITH_SECURITY_UNSAVED_CHANGES__) return;
       const activeTag = document.activeElement?.tagName?.toUpperCase();
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
-      if (document.querySelector('.modal, [role="dialog"]')) return; // 팝업 편집 중에는 생략
+      if (document.querySelector('.modal, [role="dialog"]') || modalBackHandler.hasOpenModals()) return; // 팝업 편집 중에는 생략
       if (!dbService.getGoogleSheetsUrl() && !dbService.getServerUrl()) return;
       dbService.refreshSharedData().catch(() => { });
     };
@@ -684,10 +686,12 @@ export default function App() {
             setIsLocked={setIsLocked}
           >
             {activeTab === 'entryCheck' && <SecurityChecklistTab onTriggerToast={showToast} />}
+            {activeTab === 'tripCalendar' && <TripCalendarTab onTriggerToast={showToast} />}
             {activeTab === 'workLog' && <WorkLogTab onTriggerToast={showToast} />}
             {activeTab === 'workSummary' && <WorkSummaryTab onTriggerToast={showToast} />}
-            {activeTab === 'admin' && <SiteSettingTab onTriggerToast={showToast} />}
-            {activeTab === 'userProfile' && <UserSettingTab onTriggerToast={showToast} setActiveTab={handleSafeTabChange} />}
+            {(activeTab === 'admin' || activeTab === 'userProfile') && (
+              <AdminTab activeTab={activeTab} setActiveTab={handleSafeTabChange} onTriggerToast={showToast} />
+            )}
           </MobileContainer>
         </div>
       )}

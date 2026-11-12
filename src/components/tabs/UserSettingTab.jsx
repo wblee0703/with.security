@@ -1390,19 +1390,19 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         {/* Title & Icon & Subtext */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '40px',
-            height: '40px',
+            width: '38px',
+            height: '38px',
             borderRadius: '6px',
-            background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)',
-            border: '1.5px solid #1e3a8a',
+            background: '#475569',
+            border: '1.5px solid #475569',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             color: '#ffffff',
-            boxShadow: '0 2px 10px rgba(15, 23, 42, 0.25)',
+            boxShadow: '0 2px 8px rgba(71, 85, 105, 0.2)',
             flexShrink: 0
           }}>
-            <UserCheck size={22} />
+            <UserCheck size={20} />
           </div>
           <div>
             <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>
