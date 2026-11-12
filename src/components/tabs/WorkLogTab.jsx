@@ -25,7 +25,8 @@ import {
   Share2,
   Users,
   UserCheck,
-  RefreshCw
+  RefreshCw,
+  Palmtree
 } from 'lucide-react';
 import { dbService, normalizeKstDate } from '../../services/dbService';
 import { hashPassword } from '../../services/cryptoUtil';
@@ -1189,6 +1190,159 @@ export default function WorkLogTab({ onTriggerToast }) {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // 휴가 등록 (시작일~종료일 기간 단위로 하루씩 '사내 업무 / 휴가' 일지 생성)
+  // ---------------------------------------------------------------------------
+  const VACATION_TYPES = ['연차', '오전 반차', '오후 반차', '병가', '경조사', '기타'];
+  const VACATION_MAX_DAYS = 366;
+  // 기간(시작일~종료일) 설정이 가능한 휴가 종류. 나머지(반차·병가·기타)는 시작일 하루만 기록
+  const VACATION_RANGE_TYPES = ['연차', '경조사'];
+  const isVacationRangeType = (t) => VACATION_RANGE_TYPES.includes(t);
+  const [isVacationModalOpen, setIsVacationModalOpen] = useState(false);
+  const [isSavingVacation, setIsSavingVacation] = useState(false);
+  const [vacationForm, setVacationForm] = useState({ type: '연차', startDate: '', endDate: '', excludeWeekends: true, memo: '' });
+  useModalBack(isVacationModalOpen, () => setIsVacationModalOpen(false), 'worklog-vacation-modal');
+
+  const handleOpenVacationModal = () => {
+    const base = selectedDate || getTodayIsoDate();
+    setVacationForm({ type: '연차', startDate: base, endDate: base, excludeWeekends: true, memo: '' });
+    setIsVacationModalOpen(true);
+  };
+
+  // 기간 내 날짜 목록 (YYYY-MM-DD), 주말 제외 옵션 적용
+  const getVacationDates = (startDate, endDate, excludeWeekends) => {
+    if (!startDate || !endDate || endDate < startDate) return [];
+    const [sy, sm, sd] = startDate.split('-').map(Number);
+    const [ey, em, ed] = endDate.split('-').map(Number);
+    const cur = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
+    const dates = [];
+    while (cur <= end && dates.length <= VACATION_MAX_DAYS) {
+      const dow = cur.getDay();
+      if (!(excludeWeekends && (dow === 0 || dow === 6))) {
+        dates.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`);
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return dates;
+  };
+
+  // 휴가 종류에 따라 실제 등록될 날짜 목록 (하루짜리 휴가는 주말 제외와 상관없이 시작일 그대로 기록)
+  const getVacationDatesForForm = (f) => (isVacationRangeType(f.type)
+    ? getVacationDates(f.startDate, f.endDate, f.excludeWeekends)
+    : (f.startDate ? [f.startDate] : []));
+
+  const vacationDates = isVacationModalOpen ? getVacationDatesForForm(vacationForm) : [];
+
+  const handleSaveVacation = async () => {
+    if (isSavingVacation) return;
+    const { type, startDate, memo } = vacationForm;
+    const isRange = isVacationRangeType(type);
+    const endDate = isRange ? vacationForm.endDate : startDate;
+    if (!startDate || !endDate) {
+      if (onTriggerToast) onTriggerToast(isRange ? '휴가 시작일과 종료일을 선택해 주세요.' : '휴가 날짜를 선택해 주세요.', 'warning');
+      return;
+    }
+    if (endDate < startDate) {
+      if (onTriggerToast) onTriggerToast('종료일은 시작일보다 빠를 수 없습니다.', 'warning');
+      return;
+    }
+    const dates = getVacationDatesForForm({ ...vacationForm, endDate });
+    if (dates.length === 0) {
+      if (onTriggerToast) onTriggerToast('선택한 기간에 등록할 날짜가 없습니다. (주말 제외 확인)', 'warning');
+      return;
+    }
+    if (dates.length > VACATION_MAX_DAYS) {
+      if (onTriggerToast) onTriggerToast(`휴가 기간은 최대 ${VACATION_MAX_DAYS}일까지 등록할 수 있습니다.`, 'warning');
+      return;
+    }
+
+    const authorName = currentUser?.name || '작성자';
+    const authorTeam = currentUser?.team || currentUser?.department || '운영팀';
+    const authorRank = currentUser?.rank || '대리';
+    const authorUsername = currentUser?.username || '';
+    const authorDivision = currentUser?.division || '';
+    const authorRole = currentUser?.role || '일반';
+    const title = ({ '연차': '연차 휴가', '경조사': '경조사 휴가', '기타': '휴가' })[type] || type;
+
+    // 같은 날짜에 이미 등록된 본인 휴가(동일 제목)는 중복 생성하지 않음
+    const isMine = (l) => (authorUsername ? (l.authorUsername === authorUsername) : (l.authorName === authorName));
+    const existingKeys = new Set(
+      workLogs
+        .filter(l => isMine(l) && (l.subCategory || l.sub_category) === '휴가')
+        .map(l => `${normalizeKstDate(l.date || l.log_date)}|${l.title}`)
+    );
+    const targetDates = dates.filter(d => !existingKeys.has(`${d}|${title}`));
+    if (targetDates.length === 0) {
+      if (onTriggerToast) onTriggerToast('선택한 기간에는 이미 같은 휴가가 등록되어 있습니다.', 'info');
+      return;
+    }
+
+    setIsSavingVacation(true);
+    try {
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const periodText = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`;
+      const detailText = [`휴가 기간: ${periodText}`, memo.trim()].filter(Boolean).join('\n');
+
+      const newItems = targetDates.map((d, i) => ({
+        id: `LOG-${Date.now() + i}-${Math.floor(100 + Math.random() * 900)}`,
+        category: '사내 업무',
+        subCategory: '휴가',
+        sub_category: '휴가',
+        dueDate: '',
+        due_date: '',
+        date: d,
+        title,
+        details: detailText,
+        tasks_done: detailText,
+        tasksDone: detailText,
+        siteName: '',
+        site_name: '',
+        siteDetail: '',
+        site_detail: '',
+        customSite: '',
+        siteBaseName: '',
+        site_base_name: '',
+        authorName,
+        authorTeam,
+        authorRank,
+        authorUsername,
+        authorDivision,
+        authorRole,
+        division: authorDivision,
+        role: authorRole,
+        createdAt: `${d} ${hhmm}`
+      }));
+
+      let saved = null;
+      if (typeof dbService.saveWorkLogsBatch === 'function') {
+        saved = await dbService.saveWorkLogsBatch(newItems);
+      } else {
+        for (const item of newItems) {
+          saved = await dbService.saveWorkLog(item);
+        }
+      }
+      if (Array.isArray(saved) && saved.length > 0) {
+        setWorkLogs(saved);
+      } else {
+        const freshLogs = await dbService.getWorkLogs();
+        setWorkLogs(Array.isArray(freshLogs) ? freshLogs : []);
+      }
+
+      setIsVacationModalOpen(false);
+      if (onTriggerToast) {
+        const skipped = dates.length - targetDates.length;
+        onTriggerToast(`${title} ${targetDates.length}일(${periodText})이 등록되었습니다.${skipped > 0 ? ` (이미 등록된 ${skipped}일 제외)` : ''}`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to save vacation logs:', err);
+      if (onTriggerToast) onTriggerToast('휴가 등록 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsSavingVacation(false);
+    }
+  };
+
   // Deletion Modal State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTargetLog, setDeleteTargetLog] = useState(null);
@@ -2206,8 +2360,8 @@ export default function WorkLogTab({ onTriggerToast }) {
             </div>
           </div>
 
-          {/* 불러오기 / 추가 버튼 (필터 바 위, 1:1 동일 폭) */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', width: '100%' }}>
+          {/* 불러오기 / 휴가 / 추가 버튼 (필터 바 위, 1:1:1 동일 폭) */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', width: '100%' }}>
             <button
               type="button"
               onClick={handleOpenPastWorkModal}
@@ -2232,6 +2386,32 @@ export default function WorkLogTab({ onTriggerToast }) {
               title="이전에 작성된 업무 일지 목록에서 선택하여 현재 날짜로 복사 등록"
             >
               <Copy size={14} /> 불러오기
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenVacationModal}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                background: '#fdf2f8',
+                border: '1.5px solid #fbcfe8',
+                color: '#be185d',
+                boxShadow: '0 2px 6px rgba(15, 23, 42, 0.08)',
+                transition: 'all 0.2s ease',
+                whiteSpace: 'nowrap'
+              }}
+              title="휴가 기간(시작일~종료일)을 선택하여 날짜별로 휴가 일지 등록"
+            >
+              <Palmtree size={14} /> 휴가
             </button>
 
             <button
@@ -2324,6 +2504,27 @@ export default function WorkLogTab({ onTriggerToast }) {
                     }}
                   >
                     <Copy size={14} /> 불러오기
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenVacationModal}
+                    style={{
+                      padding: '9px 16px',
+                      borderRadius: '6px',
+                      fontSize: '12.5px',
+                      fontWeight: '800',
+                      background: '#fdf2f8',
+                      border: '1.5px solid #fbcfe8',
+                      color: '#be185d',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
+                    }}
+                  >
+                    <Palmtree size={14} /> 휴가
                   </button>
 
                   <button
@@ -2427,7 +2628,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                             }
                             // 사내 업무는 구분 순서(일반, 고객, 미팅, 교육, 기타)로 정렬
                             if (!isATrip && !isBTrip && a.subCategory !== b.subCategory) {
-                              const order = { '일반': 1, '일반업무': 1, '고객': 2, '고객대응': 2, '미팅': 3, '교육': 4, '기타': 5 };
+                              const order = { '휴가': 0, '일반': 1, '일반업무': 1, '고객': 2, '고객대응': 2, '미팅': 3, '교육': 4, '기타': 5 };
                               const oA = order[a.subCategory] || 9;
                               const oB = order[b.subCategory] || 9;
                               if (oA !== oB) return oA - oB;
@@ -2588,6 +2789,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           if (group.subCategory === '미팅') return '#fff7ed';
                                           if (group.subCategory === '교육') return '#ecfeff';
                                           if (group.subCategory === '기타') return '#f1f5f9';
+                                          if (group.subCategory === '휴가') return '#fdf2f8';
                                           return '#eff6ff'; // 일반 / 일반업무
                                         })(),
                                         color: (() => {
@@ -2595,6 +2797,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           if (group.subCategory === '미팅') return '#ea580c';
                                           if (group.subCategory === '교육') return '#0891b2';
                                           if (group.subCategory === '기타') return '#475569';
+                                          if (group.subCategory === '휴가') return '#be185d';
                                           return '#1e3a8a'; // 일반 / 일반업무
                                         })(),
                                         border: (() => {
@@ -2602,6 +2805,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                           if (group.subCategory === '미팅') return '1.5px solid #fed7aa';
                                           if (group.subCategory === '교육') return '1.5px solid #a5f3fc';
                                           if (group.subCategory === '기타') return '1.5px solid #cbd5e1';
+                                          if (group.subCategory === '휴가') return '1.5px solid #fbcfe8';
                                           return '1.5px solid #bfdbfe'; // 일반 / 일반업무
                                         })(),
                                         display: 'inline-flex',
@@ -2848,6 +3052,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                                       <option value="미팅">미팅</option>
                                                       <option value="교육">교육</option>
                                                       <option value="기타">기타</option>
+                                                      <option value="휴가">휴가</option>
                                                     </select>
                                                   </div>
 
@@ -3196,6 +3401,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                                               <option value="미팅">미팅</option>
                                               <option value="교육">교육</option>
                                               <option value="기타">기타</option>
+                                              <option value="휴가">휴가</option>
                                             </select>
                                           </div>
 
@@ -3414,7 +3620,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                         ...form,
                         category: newCat,
                         subCategory: newCat === '사내 업무'
-                          ? (['일반', '일반업무', '고객', '고객대응', '미팅', '교육', '기타'].includes(form.subCategory) ? (form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : form.subCategory)) : '일반')
+                          ? (['일반', '일반업무', '고객', '고객대응', '미팅', '교육', '기타', '휴가'].includes(form.subCategory) ? (form.subCategory === '일반업무' ? '일반' : (form.subCategory === '고객대응' ? '고객' : form.subCategory)) : '일반')
                           : (['작업', '미팅', '점검', '납품'].includes(form.subCategory) ? form.subCategory : '작업'),
                         dueDate: newCat === '사내 업무' ? form.dueDate : ''
                       });
@@ -3489,6 +3695,7 @@ export default function WorkLogTab({ onTriggerToast }) {
                     <option value="미팅">미팅</option>
                     <option value="교육">교육</option>
                     <option value="기타">기타</option>
+                    <option value="휴가">휴가</option>
                   </select>
                 </div>
               )}
@@ -3912,6 +4119,174 @@ export default function WorkLogTab({ onTriggerToast }) {
           </div>
         </div>
       )}
+
+      {/* Modal: 휴가 등록 (기간 선택) */}
+      {isVacationModalOpen && (() => {
+        const labelSt = { fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' };
+        const inputSt = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '4px', background: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '13px', outline: 'none' };
+        const invalidRange = isRange && vacationForm.startDate && vacationForm.endDate && vacationForm.endDate < vacationForm.startDate;
+        const tooLong = vacationDates.length > VACATION_MAX_DAYS;
+        const isRange = isVacationRangeType(vacationForm.type);
+        return (
+          <div
+            onClick={() => !isSavingVacation && setIsVacationModalOpen(false)}
+            style={{ position: 'fixed', inset: 0, zIndex: 250, background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(14px)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px' }}
+          >
+            <div className="glass-panel" onClick={e => e.stopPropagation()} style={{
+              width: '100%', maxWidth: '440px', maxHeight: '85vh', overflowY: 'auto', padding: '22px', borderRadius: '14px',
+              border: '1.5px solid #cbd5e1', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '16px',
+              boxShadow: '0 20px 60px rgba(15, 23, 42, 0.2)', boxSizing: 'border-box'
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1.5px solid #e2e8f0', paddingBottom: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '4px', background: '#fdf2f8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fbcfe8', color: '#be185d' }}>
+                    <Palmtree size={21} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a' }}>휴가 등록</div>
+                    <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>선택한 기간의 날짜마다 휴가 일지가 등록됩니다.</div>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setIsVacationModalOpen(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: '4px' }}>
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* 휴가 종류 */}
+              <div>
+                <span style={labelSt}>휴가 종류 *</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                  {VACATION_TYPES.map(t => {
+                    const active = vacationForm.type === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setVacationForm(prev => ({
+                          ...prev,
+                          type: t,
+                          // 하루짜리 휴가(반차·병가·기타)는 종료일을 시작일로 맞춤
+                          endDate: isVacationRangeType(t) ? prev.endDate : prev.startDate
+                        }))}
+                        style={{
+                          padding: '8px 6px', borderRadius: '5px', fontSize: '12px', fontWeight: '800', cursor: 'pointer', whiteSpace: 'nowrap',
+                          background: active ? '#be185d' : '#ffffff',
+                          color: active ? '#ffffff' : '#334155',
+                          border: active ? '1.5px solid #be185d' : '1.5px solid #cbd5e1'
+                        }}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 기간: 연차·경조사는 시작일~종료일, 그 외는 날짜 하루만 */}
+              <div style={{ display: 'grid', gridTemplateColumns: isRange ? '1fr 1fr' : '1fr', gap: '10px' }}>
+                <div>
+                  <label style={labelSt}>{isRange ? '시작일 *' : '날짜 *'}</label>
+                  <input
+                    type="date"
+                    value={vacationForm.startDate}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setVacationForm(prev => ({
+                        ...prev,
+                        startDate: v,
+                        // 종료일이 비었거나 시작일보다 앞서면(또는 하루짜리 휴가면) 시작일로 맞춤
+                        endDate: (!prev.endDate || prev.endDate < v || !isVacationRangeType(prev.type)) ? v : prev.endDate
+                      }));
+                    }}
+                    style={inputSt}
+                  />
+                </div>
+                {isRange && (
+                <div>
+                  <label style={labelSt}>종료일 *</label>
+                  <input
+                    type="date"
+                    value={vacationForm.endDate}
+                    min={vacationForm.startDate || undefined}
+                    onChange={(e) => setVacationForm(prev => ({ ...prev, endDate: e.target.value }))}
+                    style={{ ...inputSt, borderColor: invalidRange ? '#e11d48' : '#cbd5e1' }}
+                  />
+                </div>
+                )}
+              </div>
+
+              {/* 주말 제외 (기간 설정 휴가만) */}
+              {isRange && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', fontWeight: '700', color: '#334155', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={vacationForm.excludeWeekends}
+                  onChange={(e) => setVacationForm(prev => ({ ...prev, excludeWeekends: e.target.checked }))}
+                  style={{ width: '16px', height: '16px', accentColor: '#be185d', cursor: 'pointer' }}
+                />
+                주말(토·일) 제외
+              </label>
+              )}
+
+              {/* 메모 */}
+              <div>
+                <label style={labelSt}>메모 (선택)</label>
+                <textarea
+                  value={vacationForm.memo}
+                  onChange={(e) => setVacationForm(prev => ({ ...prev, memo: e.target.value }))}
+                  placeholder="예: 가족 여행, 비상 연락처 등"
+                  rows={2}
+                  style={{ ...inputSt, resize: 'vertical', fontFamily: 'inherit' }}
+                />
+              </div>
+
+              {/* 요약 */}
+              <div style={{
+                padding: '10px 12px', borderRadius: '6px', fontSize: '12.5px', fontWeight: '700',
+                background: invalidRange || tooLong ? '#fff1f2' : '#fdf2f8',
+                border: `1.5px solid ${invalidRange || tooLong ? '#fecdd3' : '#fbcfe8'}`,
+                color: invalidRange || tooLong ? '#be123c' : '#9d174d'
+              }}>
+                {invalidRange
+                  ? '종료일은 시작일보다 빠를 수 없습니다.'
+                  : tooLong
+                    ? `휴가 기간은 최대 ${VACATION_MAX_DAYS}일까지 등록할 수 있습니다.`
+                    : vacationDates.length === 0
+                      ? '등록할 날짜가 없습니다.'
+                      : isRange
+                        ? `${vacationForm.startDate}${vacationForm.endDate !== vacationForm.startDate ? ` ~ ${vacationForm.endDate}` : ''} · 총 ${vacationDates.length}일 등록`
+                        : `${vacationForm.startDate} · ${vacationForm.type} 1일 등록`}
+              </div>
+
+              {/* 버튼 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsVacationModalOpen(false)}
+                  disabled={isSavingVacation}
+                  style={{ padding: '11px', borderRadius: '6px', fontSize: '13px', fontWeight: '800', background: '#ffffff', border: '1.5px solid #cbd5e1', color: '#334155', cursor: 'pointer' }}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveVacation}
+                  disabled={isSavingVacation || invalidRange || tooLong || vacationDates.length === 0}
+                  style={{
+                    padding: '11px', borderRadius: '6px', fontSize: '13px', fontWeight: '800', border: 'none', color: '#ffffff',
+                    background: (isSavingVacation || invalidRange || tooLong || vacationDates.length === 0) ? '#f9a8d4' : '#be185d',
+                    cursor: (isSavingVacation || invalidRange || tooLong || vacationDates.length === 0) ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px'
+                  }}
+                >
+                  <Palmtree size={15} /> {isSavingVacation ? '등록 중...' : '휴가 등록'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal: Past Work Copy and Import Modal */}
       {isPastWorkModalOpen && (

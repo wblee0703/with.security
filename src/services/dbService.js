@@ -3552,6 +3552,79 @@ class SecurityDatabase {
     return false;
   }
 
+  // 업무 일지 원격 쓰기(저장·삭제) 요청을 보낸 순서대로 하나씩 처리하는 직렬 큐
+  // - 구글 Apps Script는 동시에 들어온 요청을 도착 순서대로 처리하므로, 저장 직후 삭제하면
+  //   삭제가 먼저 처리되고(대상 없음) 뒤늦게 저장이 행을 다시 만드는 경합이 생길 수 있음
+  // - 순서대로 보내면 '저장 → 삭제'가 반드시 그 순서로 시트에 반영됨
+  _enqueueWorkLogWrite(task) {
+    const run = () => Promise.resolve().then(task).catch(err => {
+      console.warn('Work log remote write warning:', err);
+      return null;
+    });
+    this._workLogWriteChain = (this._workLogWriteChain || Promise.resolve()).then(run, run);
+    return this._workLogWriteChain;
+  }
+
+  // 시트에서 업무 일지 행 삭제 요청 (실패 시 최대 3회 재시도)
+  _sendWorkLogDelete(targetId, matchedLog) {
+    const qs = new URLSearchParams();
+    if (matchedLog) {
+      if (matchedLog.title) qs.set('title', matchedLog.title);
+      const mDate = normalizeKstDate(matchedLog.date || matchedLog.log_date || matchedLog.dueDate || matchedLog.due_date);
+      if (mDate) qs.set('date', mDate);
+      const mWriter = matchedLog.authorUsername || matchedLog.writer_id || matchedLog.writerId || matchedLog.name || matchedLog.authorName;
+      if (mWriter) qs.set('writer_id', mWriter);
+      const mName = matchedLog.authorName || matchedLog.name || matchedLog.writerName;
+      if (mName) qs.set('name', mName);
+      if (matchedLog.log_id || matchedLog.id) qs.set('log_id', matchedLog.log_id || matchedLog.id);
+    }
+    const deleteUrl = `/api/work-logs/${encodeURIComponent(targetId)}${qs.toString() ? '?' + qs.toString() : ''}`;
+    // 삭제 요청 본문에는 식별에 필요한 값만 전송 (불필요한 필드로 다른 시트로 잘못 분류되는 것 방지)
+    const body = matchedLog ? JSON.stringify({
+      id: matchedLog.id || matchedLog.log_id || targetId,
+      log_id: matchedLog.log_id || matchedLog.id || targetId,
+      title: matchedLog.title || '',
+      date: qs.get('date') || '',
+      log_date: qs.get('date') || '',
+      writer_id: qs.get('writer_id') || '',
+      name: qs.get('name') || ''
+    }) : undefined;
+
+    return this._enqueueWorkLogWrite(async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await safeFetchApi(deleteUrl, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        });
+        if (await isWriteRequestAccepted(res)) return true;
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      }
+      console.warn(`[WorkLog] 시트 삭제 요청 실패: ${targetId} (다음 동기화 시 다시 시도)`);
+      return false;
+    });
+  }
+
+  // 이 기기에서 삭제했는데 서버(시트)에 아직 남아 있는 업무 일지를 찾아 삭제 요청을 다시 보냄
+  // (앱 종료·네트워크 끊김·서버 잠금 대기 초과 등으로 삭제가 반영되지 않은 경우 자동 복구)
+  _resendStaleWorkLogDeletes(serverLogs, deletedSet) {
+    if (!Array.isArray(serverLogs) || !deletedSet || deletedSet.size === 0) return;
+    if (!this._staleDeleteResentAt) this._staleDeleteResentAt = new Map();
+    const now = Date.now();
+    for (const l of serverLogs) {
+      if (!l) continue;
+      // 오탐 방지: ID가 블랙리스트에 정확히 있는 행만 재삭제 (제목·날짜 조합 일치만으로는 재삭제하지 않음)
+      const id = String(l.id || l.log_id || l.logId || '').trim();
+      const altId = String(l.log_id || '').trim();
+      const hitId = (id && deletedSet.has(id)) ? id : ((altId && deletedSet.has(altId)) ? altId : '');
+      if (!hitId) continue;
+      const last = this._staleDeleteResentAt.get(hitId) || 0;
+      if (now - last < 120000) continue; // 같은 행은 2분에 한 번만 재요청
+      this._staleDeleteResentAt.set(hitId, now);
+      this._sendWorkLogDelete(hitId, l);
+    }
+  }
+
   _getDeletedWorkLogsSet() {
     try {
       const raw = localStorage.getItem('with_security_deleted_work_logs');
@@ -3729,6 +3802,8 @@ class SecurityDatabase {
         const json = await res.json();
         const serverLogs = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
         const filteredServerLogs = serverLogs.filter(l => !this._isWorkLogDeleted(l, deletedSet));
+        // 삭제했는데 시트에 아직 남아 있는 행은 삭제 요청을 다시 보냄
+        this._resendStaleWorkLogDeletes(serverLogs, deletedSet);
 
         // Read current local cache to merge and protect recent local additions & edits
         const currentLocal = (() => {
@@ -3963,11 +4038,11 @@ class SecurityDatabase {
       created_at: preparedLog.createdAt || new Date().toISOString()
     };
 
-    const syncPromise = safeFetchApi('/api/work-logs', {
+    const syncPromise = this._enqueueWorkLogWrite(() => safeFetchApi('/api/work-logs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(syncPayload)
-    }).then(() => {
+    })).then(() => {
       setTimeout(() => {
         if (this._recentLocalWorkLogEdits) {
           this._recentLocalWorkLogEdits.delete(targetIdStr);
@@ -4035,7 +4110,7 @@ class SecurityDatabase {
     recentResponseCache.clear();
     this._lastWorkLogsRevalidate = Date.now() + 8000;
 
-    // Parallel background server sync without blocking UI
+    // Background server sync without blocking UI (requests are serialized by the work log write queue)
     Promise.all(preparedList.map(log => {
       const syncPayload = {
         id: log.id,
@@ -4073,11 +4148,12 @@ class SecurityDatabase {
         sharedAt: log.sharedAt || '',
         created_at: log.createdAt || new Date().toISOString()
       };
-      return safeFetchApi('/api/work-logs', {
+      // 직렬 큐로 순서대로 전송 (동시 다발 요청으로 서버 잠금 대기 초과 → 저장/삭제 누락 방지)
+      return this._enqueueWorkLogWrite(() => safeFetchApi('/api/work-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(syncPayload)
-      });
+      }));
     })).then(() => {
       setTimeout(() => {
         if (this._recentLocalWorkLogEdits) {
@@ -4157,23 +4233,8 @@ class SecurityDatabase {
     }
 
     // 6. Safe remote API delete (non-blocking, eliminates UI freeze/lag)
-    const qs = new URLSearchParams();
-    if (matchedLog) {
-      if (matchedLog.title) qs.set('title', matchedLog.title);
-      const mDate = normalizeKstDate(matchedLog.date || matchedLog.log_date || matchedLog.dueDate || matchedLog.due_date);
-      if (mDate) qs.set('date', mDate);
-      const mWriter = matchedLog.authorUsername || matchedLog.writer_id || matchedLog.writerId || matchedLog.name || matchedLog.authorName;
-      if (mWriter) qs.set('writer_id', mWriter);
-      const mName = matchedLog.authorName || matchedLog.name || matchedLog.writerName;
-      if (mName) qs.set('name', mName);
-      if (matchedLog.log_id || matchedLog.id) qs.set('log_id', matchedLog.log_id || matchedLog.id);
-    }
-    const deleteUrl = `/api/work-logs/${encodeURIComponent(targetId)}${qs.toString() ? '?' + qs.toString() : ''}`;
-    safeFetchApi(deleteUrl, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: matchedLog ? JSON.stringify(matchedLog) : undefined
-    }).catch(err => console.warn('Background work log delete sync warning:', err));
+    //    직렬 큐로 보내 앞서 보낸 저장 요청이 먼저 처리된 뒤 삭제되도록 보장 + 실패 시 재시도
+    this._sendWorkLogDelete(targetId, matchedLog);
 
     notifyDataChanged();
     return updated;

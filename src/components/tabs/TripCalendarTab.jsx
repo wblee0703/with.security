@@ -85,7 +85,7 @@ const siteDisplayName = (name) => String(name || '')
   .trim();
 
 
-const emptyForm = (date, user) => ({
+const emptyForm = (date) => ({
   id: '',
   site_id: '',
   site_name: '',
@@ -93,7 +93,8 @@ const emptyForm = (date, user) => ({
   title: '',
   start_date: date || todayIso(),
   end_date: date || todayIso(),
-  travelers: user?.name ? [{ name: user.name, rank: user.rank || '', team: user.team || '', division: user.division || '', username: user.username || '' }] : [],
+  // 신규 등록 시 출장자는 비워두고 사용자가 직접 선택
+  travelers: [],
   status: '확정',
   memo: '',
   color: ''
@@ -190,6 +191,45 @@ export default function TripCalendarTab({ onTriggerToast }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // 휴가자: 업무 일지에 '휴가'(사내 업무 > 휴가)로 등록된 일지 → 해당 날짜 가용 인원에서 제외
+  // ---------------------------------------------------------------------------
+  const [vacationLogs, setVacationLogs] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const loadVacations = async () => {
+      try {
+        const logs = await dbService.getWorkLogs();
+        if (!alive || !Array.isArray(logs)) return;
+        setVacationLogs(logs
+          .filter(l => l && String(l.subCategory || l.sub_category || '').trim() === '휴가')
+          .map(l => ({
+            date: String(l.date || l.log_date || '').slice(0, 10),
+            title: String(l.title || '휴가').trim(),
+            member: {
+              name: String(l.authorName || l.name || '').trim(),
+              rank: l.authorRank || l.rank || '',
+              team: l.authorTeam || l.team || '',
+              username: l.authorUsername || l.writer_id || l.username || ''
+            }
+          }))
+          .filter(v => v.date && v.member.name));
+      } catch (e) {
+        console.warn('Failed to load vacation logs:', e);
+      }
+    };
+    loadVacations();
+    // 업무 일지에서 휴가 등록·삭제 시 즉시 반영
+    window.addEventListener('with_security_data_changed', loadVacations);
+    return () => {
+      alive = false;
+      window.removeEventListener('with_security_data_changed', loadVacations);
+    };
+  }, []);
+
+  // 해당 날짜에 휴가인 인원의 휴가 정보 (없으면 null)
+  const vacationOf = (m, date) => vacationLogs.find(v => v.date === date && samePerson(v.member, m)) || null;
 
   // ---------------------------------------------------------------------------
   // 사업장 색상 매핑 (등록 사업장 순서 고정 → 항상 같은 색)
@@ -478,15 +518,15 @@ export default function TripCalendarTab({ onTriggerToast }) {
     .filter(s => s.name), [sites]);
 
   const openCreate = (date) => {
-    const f = emptyForm(date || selectedDate || todayIso(), currentUser);
+    const f = emptyForm(date || selectedDate || todayIso());
     setForm(f);
     setSiteMode(siteOptions.length > 0 ? 'select' : 'manual');
     setTravelerInput('');
     setConfirmDelete(false);
     setIsSiteListOpen(false);
     setSiteQuery('');
-    // 신규 등록 시 출장자는 가용 인원 드롭다운을 먼저 펼쳐서 보여줌 (기본 출장자는 체크 상태)
-    setPoolPick(pool.map((m, i) => (f.travelers.some(tr => samePerson(tr, m)) ? i : -1)).filter(i => i >= 0));
+    // 신규 등록 시 출장자는 가용 인원 드롭다운을 먼저 펼쳐서 보여줌 (초기에는 아무도 선택되지 않음)
+    setPoolPick([]);
     setIsPoolPickerOpen(pool.length > 0);
     setIsModalOpen(true);
   };
@@ -576,28 +616,43 @@ export default function TripCalendarTab({ onTriggerToast }) {
   }, [travelerInput, users, form.travelers]);
 
   // ---------------------------------------------------------------------------
-  // 가용 인원: 해당 날짜에 출장(취소 제외)이 없는 인원
+  // 가용 인원: 해당 날짜에 휴가·출장(취소 제외)이 없는 인원
   // ---------------------------------------------------------------------------
   const availabilityOn = (date) => {
     const active = trips.filter(t => t.status !== '취소' && t.start_date <= date && (t.end_date || t.start_date) >= date);
     const available = [];
     const busy = [];
+    const onVacation = [];
     pool.forEach(m => {
+      // 휴가가 우선: 휴가자는 가용 인원에서 제외하고 휴가자로 분류
+      const vac = vacationOf(m, date);
+      if (vac) { onVacation.push({ member: m, vacation: vac }); return; }
       const trip = active.find(t => t.travelers.some(tr => samePerson(tr, m)));
       if (trip) busy.push({ member: m, trip }); else available.push(m);
     });
-    return { available, busy };
+    return { available, busy, onVacation };
   };
 
-  const availCountByDay = useMemo(() => {
-    const map = {};
-    if (pool.length === 0) return map;
-    weeks.forEach(days => days.forEach(d => { map[d] = availabilityOn(d).available.length; }));
-    return map;
-  }, [weeks, trips, pool]);
+  // 날짜별 가용 인원 수 + 휴가자 목록 (캘린더 날짜 칸 표시용)
+  const { availCountByDay, vacationByDay } = useMemo(() => {
+    const counts = {};
+    const vacs = {};
+    if (pool.length === 0) return { availCountByDay: counts, vacationByDay: vacs };
+    weeks.forEach(days => days.forEach(d => {
+      const info = availabilityOn(d);
+      counts[d] = info.available.length;
+      vacs[d] = info.onVacation;
+    }));
+    return { availCountByDay: counts, vacationByDay: vacs };
+  }, [weeks, trips, pool, vacationLogs]);
+
+  // 휴가 종류 짧은 표기: '연차 휴가' → '연차', '경조사 휴가' → '경조사', '오전 반차' → '오전 반차'
+  const vacationShort = (title) => String(title || '휴가').replace(/\s*휴가$/, '').trim() || '휴가';
+  // 예: "이원배 (오전 반차)"
+  const vacationLabel = ({ member, vacation }) => `${member.name} (${vacationShort(vacation.title)})`;
 
   const availDate = selectedDate || todayIso();
-  const availInfo = useMemo(() => availabilityOn(availDate), [availDate, trips, pool]);
+  const availInfo = useMemo(() => availabilityOn(availDate), [availDate, trips, pool, vacationLogs]);
 
   // 가용 인원 설정 팝업
   const openPoolModal = () => {
@@ -651,6 +706,17 @@ export default function TripCalendarTab({ onTriggerToast }) {
     } finally {
       setIsPoolSaving(false);
     }
+  };
+
+  // 가용 인원 드롭다운: 출장 기간 중 휴가가 있는 인원 확인 (가장 이른 휴가 1건 + 휴가 일수)
+  const vacationInRange = (m) => {
+    if (!form.start_date) return null;
+    const fs = form.start_date;
+    const fe = form.end_date || form.start_date;
+    const hits = vacationLogs
+      .filter(v => v.date >= fs && v.date <= fe && samePerson(v.member, m))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return hits.length > 0 ? { first: hits[0], days: new Set(hits.map(h => h.date)).size } : null;
   };
 
   // 가용 인원 드롭다운: 출장 기간 중 다른 출장(취소 제외)이 있는 인원 확인
@@ -1031,10 +1097,30 @@ export default function TripCalendarTab({ onTriggerToast }) {
                             <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{holiday}</span>
                           )}
                           {inMonth && pool.length > 0 && availCountByDay[d] !== undefined && (
+                            <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: isMobile ? '2px' : '3px' }}>
+                            {/* 휴가 인원 (마우스를 올리면 휴가자 이름과 종류 표시) */}
+                            {(vacationByDay[d] || []).length > 0 && (
+                              <span
+                                title={`휴가 ${vacationByDay[d].length}명\n${vacationByDay[d].map(vacationLabel).join('\n')}`}
+                                style={{
+                                  flexShrink: 0,
+                                  fontSize: isMobile ? '9.5px' : '10.5px',
+                                  fontWeight: '800',
+                                  padding: isMobile ? '0 4px' : '0 6px',
+                                  borderRadius: '8px',
+                                  lineHeight: isMobile ? '14px' : '16px',
+                                  background: '#fdf2f8',
+                                  color: '#be185d',
+                                  border: '1px solid #fbcfe8',
+                                  cursor: 'help'
+                                }}
+                              >
+                                {isMobile ? `휴${vacationByDay[d].length}` : `휴가 ${vacationByDay[d].length}`}
+                              </span>
+                            )}
                             <span
-                              title={`출장 없는 인원 ${availCountByDay[d]}명 / 가용 인원 ${pool.length}명`}
+                              title={`출장·휴가 없는 인원 ${availCountByDay[d]}명 / 가용 인원 ${pool.length}명${(vacationByDay[d] || []).length > 0 ? `\n\n휴가 ${vacationByDay[d].length}명\n${vacationByDay[d].map(vacationLabel).join('\n')}` : ''}`}
                               style={{
-                                marginLeft: 'auto',
                                 flexShrink: 0,
                                 fontSize: isMobile ? '9.5px' : '10.5px',
                                 fontWeight: '800',
@@ -1047,6 +1133,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
                               }}
                             >
                               {isMobile ? availCountByDay[d] : `가용 ${availCountByDay[d]}`}
+                            </span>
                             </span>
                           )}
                         </div>
@@ -1135,9 +1222,9 @@ export default function TripCalendarTab({ onTriggerToast }) {
           ) : (
             <>
               <div>
-                <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#15803d', marginBottom: '4px' }}>출장 없음 {availInfo.available.length}명</div>
+                <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#15803d', marginBottom: '4px' }}>출장·휴가 없음 {availInfo.available.length}명</div>
                 {availInfo.available.length === 0 ? (
-                  <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>모든 인원이 출장 중입니다.</div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>가용 인원이 없습니다. (모든 인원 출장·휴가)</div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '4px' }}>
                     {availInfo.available.map((m, i) => (
@@ -1148,6 +1235,19 @@ export default function TripCalendarTab({ onTriggerToast }) {
                   </div>
                 )}
               </div>
+              {/* 휴가자 (업무 일지에 휴가 등록된 인원, 가용 인원에서 제외) */}
+              {availInfo.onVacation.length > 0 && (
+                <div style={{ borderTop: '1px dashed #e2e8f0', paddingTop: '8px' }}>
+                  <div style={{ fontSize: '11.5px', fontWeight: '800', color: '#be185d', marginBottom: '4px' }}>휴가 {availInfo.onVacation.length}명</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '4px' }}>
+                    {availInfo.onVacation.map(({ member: m, vacation }, i) => (
+                      <span key={i} title={`${travelerLabel(m)}${m.team ? ` · ${m.team}` : ''} - ${vacation.title}`} style={{ fontSize: '11.5px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: '#fdf2f8', color: '#9d174d', border: '1px solid #fbcfe8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                        {travelerLabel(m)} <span style={{ color: '#db2777', fontWeight: '600' }}>· {vacation.title}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1477,21 +1577,27 @@ export default function TripCalendarTab({ onTriggerToast }) {
                           {pool.map((m, i) => {
                             const checked = poolPick.includes(i);
                             const busy = busyTripOf(m);
+                            const vac = vacationInRange(m);
                             return (
                               <button
                                 key={i}
                                 type="button"
                                 onClick={() => togglePick(i)}
-                                title={busy ? `${travelerLabel(m)} - 해당 기간 ${placeLabel(busy)} 출장` : travelerLabel(m)}
+                                title={vac ? `${travelerLabel(m)} - 해당 기간 휴가 (${fmtShort(vac.first.date)} ${vac.first.title}${vac.days > 1 ? ` 외 ${vac.days - 1}일` : ''})` : (busy ? `${travelerLabel(m)} - 해당 기간 ${placeLabel(busy)} 출장` : travelerLabel(m))}
                                 style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '8px 10px', border: 'none', borderBottom: '1px solid #f1f5f9', background: checked ? '#eff6ff' : '#ffffff', cursor: 'pointer', textAlign: 'left', minWidth: 0 }}
                               >
                                 <span style={{ width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0, border: checked ? '1.5px solid #1e3a8a' : '1.5px solid #94a3b8', background: checked ? '#1e3a8a' : '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                   {checked && <Check size={12} color="#ffffff" strokeWidth={3} />}
                                 </span>
                                 <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                                  <span style={{ fontSize: '12.5px', fontWeight: '800', color: busy ? '#94a3b8' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  <span style={{ fontSize: '12.5px', fontWeight: '800', color: (busy || vac) ? '#94a3b8' : '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {travelerLabel(m)}{m.team && <span style={{ fontWeight: '600', color: '#94a3b8', fontSize: '11px' }}> · {m.team}</span>}
                                   </span>
+                                  {vac && (
+                                    <span style={{ fontSize: '10.5px', fontWeight: '700', color: '#be185d', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                      휴가 · {fmtShort(vac.first.date)} {vac.first.title}{vac.days > 1 ? ` 외 ${vac.days - 1}일` : ''}
+                                    </span>
+                                  )}
                                   {busy && (
                                     <span style={{ fontSize: '10.5px', fontWeight: '700', color: '#b45309', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                       출장 중 · {placeLabel(busy)}
