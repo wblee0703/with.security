@@ -6955,6 +6955,15 @@ class SecurityDatabase {
    * 출장 일정 목록 조회 (서버 우선, 실패 시 로컬 캐시)
    * - 서버 목록을 기준으로 하되, 아직 서버 반영 전인 로컬 저장/삭제 건은 그대로 유지
    */
+  // 로컬에 저장된 출장 일정 즉시 반환 (서버 대기 없음 → 화면 먼저 표시용)
+  getCachedBusinessTrips() {
+    return this._sortTrips(this._readTripCache());
+  }
+
+  _sortTrips(list) {
+    return [...list].sort((a, b) => (a.start_date || '').localeCompare(b.start_date || '') || (a.site_name || '').localeCompare(b.site_name || ''));
+  }
+
   async getBusinessTrips() {
     let list = this._readTripCache();
     try {
@@ -6978,7 +6987,7 @@ class SecurityDatabase {
     } catch (e) {
       console.warn('Failed to fetch business trips:', e);
     }
-    return list.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || '') || (a.site_name || '').localeCompare(b.site_name || ''));
+    return this._sortTrips(list);
   }
 
   /**

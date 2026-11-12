@@ -159,22 +159,30 @@ export default function TripCalendarTab({ onTriggerToast }) {
     return () => observer.disconnect();
   }, []);
 
+  // 로딩 순서: 저장된 출장 일정(캐시)을 먼저 그리고, 서버 최신 목록은 뒤에서 받아 갱신
   const loadData = async () => {
     setIsLoading(true);
+    // 서버 조회는 바로 시작하되 화면 표시는 기다리지 않음
+    const remoteTrips = dbService.getBusinessTrips().catch(() => null);
     try {
-      const [u, s, us, t] = await Promise.all([
+      setTrips(dbService.getCachedBusinessTrips());
+      const [u, s, us] = await Promise.all([
         dbService.getUserProfile(),
         dbService.getSites(),
-        dbService.getUsers(),
-        dbService.getBusinessTrips()
+        dbService.getUsers()
       ]);
       setCurrentUser(u || null);
       setSites(Array.isArray(s) ? s : []);
       setUsers(Array.isArray(us) ? us : []);
-      setTrips(Array.isArray(t) ? t : []);
       setPersonalPool(dbService.getTripPool(u));
     } catch (e) {
       console.warn('Failed to load trip calendar:', e);
+    }
+    try {
+      const t = await remoteTrips;
+      if (Array.isArray(t)) setTrips(t);
+    } catch (e) {
+      console.warn('Failed to refresh trip calendar:', e);
     } finally {
       setIsLoading(false);
     }
