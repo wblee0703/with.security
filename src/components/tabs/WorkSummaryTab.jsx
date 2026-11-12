@@ -1896,21 +1896,21 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           </div>
         </div>
 
-        {/* 모바일 / 앱 전용 일일업무 & 주간업무 전환 버튼 (TBM 스타일, 헤더 카드 내부) */}
-        {isMobile && (
+        {/* 일일업무 & 주간업무 전환 버튼 (모바일: 제목 아래 전체 폭 / 데스크톱: 제목과 같은 줄 오른쪽) */}
+        {(
           <div style={{
             display: 'flex',
             gap: '6px',
-            width: '100%'
+            width: isMobile ? '100%' : 'auto'
           }}>
             <button
               type="button"
               onClick={() => setMobileReportTab('DAILY')}
               style={{
-                flex: 1,
-                padding: '9px 12px',
+                flex: isMobile ? 1 : 'none',
+                padding: isMobile ? '9px 12px' : '9px 18px',
                 borderRadius: '6px',
-                fontSize: '13px',
+                fontSize: isMobile ? '13px' : '14px',
                 fontWeight: mobileReportTab === 'DAILY' ? '800' : '600',
                 background: mobileReportTab === 'DAILY' ? '#1e3a8a' : '#f8fafc',
                 color: mobileReportTab === 'DAILY' ? '#ffffff' : '#475569',
@@ -1924,7 +1924,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 boxShadow: mobileReportTab === 'DAILY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
               }}
             >
-              <CalendarDays size={15} color={mobileReportTab === 'DAILY' ? '#ffffff' : '#64748b'} />
+              <CalendarDays size={isMobile ? 15 : 17} color={mobileReportTab === 'DAILY' ? '#ffffff' : '#64748b'} />
               <span>일일업무</span>
             </button>
 
@@ -1932,10 +1932,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               type="button"
               onClick={() => setMobileReportTab('WEEKLY')}
               style={{
-                flex: 1,
-                padding: '9px 12px',
+                flex: isMobile ? 1 : 'none',
+                padding: isMobile ? '9px 12px' : '9px 18px',
                 borderRadius: '6px',
-                fontSize: '13px',
+                fontSize: isMobile ? '13px' : '14px',
                 fontWeight: mobileReportTab === 'WEEKLY' ? '800' : '600',
                 background: mobileReportTab === 'WEEKLY' ? '#1e3a8a' : '#f8fafc',
                 color: mobileReportTab === 'WEEKLY' ? '#ffffff' : '#475569',
@@ -1949,7 +1949,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                 boxShadow: mobileReportTab === 'WEEKLY' ? '0 2px 6px rgba(30, 58, 138, 0.2)' : '0 1px 2px rgba(0,0,0,0.03)'
               }}
             >
-              <FileSpreadsheet size={15} color={mobileReportTab === 'WEEKLY' ? '#ffffff' : '#64748b'} />
+              <FileSpreadsheet size={isMobile ? 15 : 17} color={mobileReportTab === 'WEEKLY' ? '#ffffff' : '#64748b'} />
               <span>주간업무</span>
             </button>
           </div>
@@ -1972,7 +1972,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           borderRadius: '6px',
           border: '1.5px solid #cbd5e1',
           background: '#ffffff',
-          display: (!isMobile || mobileReportTab === 'DAILY') ? 'flex' : 'none',
+          display: mobileReportTab === 'DAILY' ? 'flex' : 'none',
           flexDirection: 'column',
           gap: '12px',
           boxShadow: '0 4px 20px -2px rgba(15, 23, 42, 0.06), 0 2px 6px -1px rgba(15, 23, 42, 0.02)',
@@ -2983,7 +2983,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
           borderRadius: '6px',
           border: '1.5px solid #cbd5e1',
           background: '#ffffff',
-          display: (!isMobile || mobileReportTab === 'WEEKLY') ? 'flex' : 'none',
+          display: mobileReportTab === 'WEEKLY' ? 'flex' : 'none',
           flexDirection: 'column',
           gap: '14px',
           flex: 1,
