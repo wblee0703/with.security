@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarDays,
-  RefreshCw,
   X,
   Trash2,
   Copy,
@@ -354,17 +353,6 @@ export default function TripCalendarTab({ onTriggerToast }) {
       .sort((a, b) => counts[b] - counts[a] || a.localeCompare(b))
       .map(name => ({ name, count: counts[name], color: siteColorMap[name] || '#475569' }));
   }, [teamTrips, monthIso, monthEndIso, siteColorMap]);
-
-  const monthStats = useMemo(() => {
-    const people = new Set();
-    const siteSet = new Set();
-    monthTrips.forEach(t => {
-      if (t.status === '취소') return;
-      siteSet.add(siteKeyName(t));
-      t.travelers.forEach(tr => people.add(`${tr.name}|${tr.rank}|${tr.team}`));
-    });
-    return { count: monthTrips.filter(t => t.status !== '취소').length, people: people.size, sites: siteSet.size };
-  }, [monthTrips]);
 
   // ---------------------------------------------------------------------------
   // 주 단위 막대 배치 (여러 날짜 연속 막대 + 레인 배정)
@@ -928,12 +916,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
           }}>
             <Car size={isMobile ? 20 : 22} />
           </div>
-          <div>
-            <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>출장 캘린더</div>
-            <div style={{ fontSize: '11.5px', color: '#64748b', fontWeight: '600', marginTop: '2px' }}>
-              <span style={{ color: '#1e3a8a', fontWeight: '800' }}>{activeTeamKey === 'ALL' ? '전체 팀' : (activeTeam.team || '소속팀 미지정')}</span> · {monthStart.getMonth() + 1}월 출장 {monthStats.count}건 · 출장자 {monthStats.people}명 · 사업장 {monthStats.sites}곳
-            </div>
-          </div>
+          <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a', letterSpacing: '-0.3px' }}>출장 캘린더</div>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           <button
@@ -944,9 +927,6 @@ export default function TripCalendarTab({ onTriggerToast }) {
           >
             <UserCheck size={15} /> {isMobile ? '가용' : '가용 인원'}
             {pool.length > 0 && <span style={{ background: '#16a34a', color: '#ffffff', borderRadius: '10px', padding: '0 6px', fontSize: '10.5px' }}>{pool.length}</span>}
-          </button>
-          <button type="button" title="새로고침" onClick={loadData} style={iconBtn}>
-            <RefreshCw size={15} style={{ animation: isLoading ? 'spin 1s linear infinite' : 'none' }} />
           </button>
         </div>
       </div>
@@ -1006,7 +986,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
       </div>
 
       {/* 본문: 달력 + 상세 */}
-      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1fr) 420px', gap: '10px', alignItems: 'start' }}>
+      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : 'minmax(0, 1fr) 420px', gap: '10px', alignItems: isMobile ? 'stretch' : 'start', width: '100%' }}>
           <div className="glass-panel" style={{ ...cardStyle, padding: isMobile ? '8px 6px' : '12px', minWidth: 0 }}>
             {/* 요일 헤더 */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '4px' }}>
@@ -1146,7 +1126,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
               {fmtShort(availDate)}{!selectedDate ? '(오늘)' : ''} 가용 인원
               {pool.length > 0 && <span style={{ fontSize: '12px', color: '#15803d' }}>{availInfo.available.length}/{pool.length}명</span>}
             </div>
-            <button type="button" onClick={openPoolModal} style={{ ...chipBtn(false), borderRadius: '6px' }}>설정</button>
+            <button type="button" onClick={openPoolModal} style={{ ...chipBtn(false), borderRadius: '6px', border: '1.5px solid #cbd5e1' }}>설정</button>
           </div>
           {pool.length === 0 ? (
             <div style={{ fontSize: '12.5px', color: '#64748b', fontWeight: '600', lineHeight: 1.5 }}>
@@ -1161,8 +1141,8 @@ export default function TripCalendarTab({ onTriggerToast }) {
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '4px' }}>
                     {availInfo.available.map((m, i) => (
-                      <span key={i} title={`${travelerLabel(m)}${m.team ? ` · ${m.team}` : ''}`} style={{ fontSize: '11.5px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
-                        {travelerLabel(m)}{m.team ? <span style={{ color: '#86a397', fontWeight: '600' }}> · {m.team}</span> : null}
+                      <span key={i} title={`${travelerLabel(m)}${m.team ? ` · ${m.team}` : ''}`} style={{ fontSize: '11.5px', fontWeight: '700', padding: '3px 8px', borderRadius: '10px', background: 'transparent', color: '#0f172a', border: 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                        {travelerLabel(m)}{m.team ? <span style={{ color: '#94a3b8', fontWeight: '600' }}> · {m.team}</span> : null}
                       </span>
                     ))}
                   </div>
@@ -1280,7 +1260,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '5px', maxHeight: '320px', overflowY: 'auto' }}>
                   {poolDraft.map((m, i) => (
-                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 4px 4px 10px', borderRadius: '14px', background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: '12.5px', fontWeight: '700', minWidth: 0 }}>
+                    <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 4px 4px 10px', borderRadius: '14px', background: 'transparent', border: 'none', color: '#0f172a', fontSize: '12.5px', fontWeight: '700', minWidth: 0 }}>
                       <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${travelerLabel(m)}${m.team ? ` · ${m.team}` : ''}`}>
                         {travelerLabel(m)}{m.team && <span style={{ color: '#64748b', fontWeight: '600', fontSize: '11px' }}> · {m.team}</span>}
                       </span>
