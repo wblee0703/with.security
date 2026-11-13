@@ -1270,7 +1270,7 @@ export default function WorkLogTab({ onTriggerToast }) {
     const isMine = (l) => (authorUsername ? (l.authorUsername === authorUsername) : (l.authorName === authorName));
     const overlapped = new Set();
     workLogs
-      .filter(l => isMine(l) && isVacationLog(l))
+      .filter(l => l && isMine(l) && isVacationLog(l))
       .forEach(l => getVacationDays(l).forEach(d => { if (dates.includes(d)) overlapped.add(d); }));
     if (overlapped.size > 0) {
       const list = Array.from(overlapped).sort();
@@ -4171,9 +4171,10 @@ export default function WorkLogTab({ onTriggerToast }) {
       {isVacationModalOpen && (() => {
         const labelSt = { fontSize: '12px', color: '#475569', display: 'block', marginBottom: '6px', fontWeight: '700' };
         const inputSt = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '4px', background: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', fontSize: '13px', outline: 'none' };
+        // isRange를 먼저 선언해야 함 (선언 전 참조 시 ReferenceError로 모달이 열리지 않음)
+        const isRange = isVacationRangeType(vacationForm.type);
         const invalidRange = isRange && vacationForm.startDate && vacationForm.endDate && vacationForm.endDate < vacationForm.startDate;
         const tooLong = vacationDates.length > VACATION_MAX_DAYS;
-        const isRange = isVacationRangeType(vacationForm.type);
         return (
           <div
             onClick={() => !isSavingVacation && setIsVacationModalOpen(false)}
