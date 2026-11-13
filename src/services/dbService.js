@@ -2633,6 +2633,8 @@ class SecurityDatabase {
     const division = String(item.division || item.authorDivision || '').trim();
     const rawDueDate = item.due_date || item.dueDate || '';
     const dueDate = rawDueDate ? normalizeKstDate(rawDueDate) : '';
+    const rawEndDate = item.end_date || item.endDate || '';
+    const endDate = rawEndDate ? normalizeKstDate(rawEndDate) : '';
     const subCategory = String(item.sub_category || item.subCategory || '').trim();
 
     const rawIsCompleted = item.isCompleted ?? item.is_completed;
@@ -2653,6 +2655,8 @@ class SecurityDatabase {
       sub_category: subCategory,
       dueDate: dueDate,
       due_date: dueDate,
+      endDate: endDate,
+      end_date: endDate,
       isCompleted: isCompletedVal,
       is_completed: isCompletedVal ? 1 : 0,
       completedAt: item.completedAt || item.completed_at || '',
@@ -3883,6 +3887,7 @@ class SecurityDatabase {
 
     const cleanDate = normalizeKstDate(logItem.date || logItem.log_date) || new Date().toLocaleDateString('sv-SE');
     const cleanDueDate = normalizeKstDate(logItem.dueDate || logItem.due_date);
+    const cleanEndDate = normalizeKstDate(logItem.endDate || logItem.end_date);
 
     const isCompletedVal = Boolean(
       logItem.isCompleted ?? logItem.is_completed ?? (logItem.status === 'completed')
@@ -3896,6 +3901,8 @@ class SecurityDatabase {
       log_date: cleanDate,
       dueDate: cleanDueDate,
       due_date: cleanDueDate,
+      endDate: cleanEndDate,
+      end_date: cleanEndDate,
       isCompleted: isCompletedVal,
       is_completed: isCompletedVal ? 1 : 0,
       completedAt: isCompletedVal ? (logItem.completedAt || logItem.completed_at || new Date().toISOString()) : null,
@@ -4017,6 +4024,8 @@ class SecurityDatabase {
       subCategory: preparedLog.subCategory || preparedLog.sub_category || '',
       due_date: cleanDueDate,
       dueDate: cleanDueDate,
+      end_date: cleanEndDate,
+      endDate: cleanEndDate,
       is_completed: (preparedLog.isCompleted ?? preparedLog.is_completed) ? 1 : 0,
       isCompleted: Boolean(preparedLog.isCompleted ?? preparedLog.is_completed),
       completed_at: preparedLog.completedAt || preparedLog.completed_at || '',
@@ -4128,6 +4137,8 @@ class SecurityDatabase {
         subCategory: log.subCategory || log.sub_category || '',
         due_date: log.dueDate || log.due_date || '',
         dueDate: log.dueDate || log.due_date || '',
+        end_date: log.endDate || log.end_date || '',
+        endDate: log.endDate || log.end_date || '',
         is_completed: (log.isCompleted ?? log.is_completed) ? 1 : 0,
         isCompleted: Boolean(log.isCompleted ?? log.is_completed),
         completed_at: log.completedAt || log.completed_at || '',

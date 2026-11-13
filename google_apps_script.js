@@ -45,7 +45,9 @@ const SCHEMAS = {
   work_logs: [
     'id', 'log_id', 'name', 'writer_id', 'division', 'team', 'rank', 'role',
     'category', 'sub_category', 'due_date', 'site_name', 'log_date', 'title',
-    'tasks_done', 'is_shared', 'shared_with', 'shared_at', 'is_completed', 'created_at'
+    'tasks_done', 'is_shared', 'shared_with', 'shared_at', 'is_completed', 'created_at',
+    // 휴가 종료일 (휴가는 시작일 log_date ~ 종료일 end_date 1줄로 기록)
+    'end_date'
   ],
   // 4. 보안 서약 관리 (MySQL: security_log)
   security_logs: [
@@ -1752,6 +1754,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
     const lDate = rawLogDate ? formatKstDate(rawLogDate, true) : Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
     const rawDueDate = obj.due_date || obj.dueDate || '';
     const dDate = rawDueDate ? formatKstDate(rawDueDate, true) : '';
+    const rawEndDate = obj.end_date || obj.endDate || '';
+    const eDate = rawEndDate ? formatKstDate(rawEndDate, true) : '';
     const sWith = obj.shared_with || obj.sharedWith || '';
     let isSh = 0;
     if (obj.is_shared !== undefined) isSh = obj.is_shared ? 1 : 0;
@@ -1787,7 +1791,8 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       shared_at: obj.shared_at || obj.sharedAt || '',
       is_completed: isComp,
       completed_at: obj.completed_at || obj.completedAt || '',
-      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      end_date: eDate
     };
   }
 
@@ -2364,6 +2369,7 @@ function readSheetData(sheetName) {
         if (obj.is_shared !== undefined && obj.isShared === undefined) obj.isShared = Boolean(obj.is_shared);
         if (!obj.subCategory && obj.sub_category) obj.subCategory = obj.sub_category;
         if (!obj.dueDate && obj.due_date) obj.dueDate = obj.due_date;
+        if (!obj.endDate && obj.end_date) obj.endDate = obj.end_date;
       } else if (sheetName === 'security_logs') {
         // 호환성 별칭 매핑 (MySQL 표준 컬럼 -> 프론트엔드 카멜케이스)
         if (!obj.visitorName && obj.name) obj.visitorName = obj.name;

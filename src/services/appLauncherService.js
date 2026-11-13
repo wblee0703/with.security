@@ -1,6 +1,7 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
 import { getHolidayName } from '../data/holidays.js';
+import { getVacationRange, getVacationDays } from './vacationUtil';
 
 const NativeAppLauncher = registerPlugin('NativeAppLauncher');
 
@@ -177,7 +178,7 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
     const workDatesMap = {};
 
     // TBM 및 보안서약 항목 배제 (순수 업무 일지만 위젯에 반영)
-    const validLogs = (workLogs || []).filter(log => {
+    const filteredLogs = (workLogs || []).filter(log => {
       if (!log) return false;
       const title = String(log.workTitle || log.title || log.content || '').toLowerCase();
       const cat = String(log.category || '').toLowerCase();
@@ -186,6 +187,13 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
       if (cat.includes('보안서약') || cat.includes('tbm')) return false;
       if (sub.includes('보안서약') || sub.includes('서약') || sub.includes('tbm')) return false;
       return true;
+    });
+
+    // 기간 휴가(시작일~종료일 1건)는 기간 내 날짜별 항목으로 펼쳐서 위젯에 반영
+    const validLogs = filteredLogs.flatMap(log => {
+      const range = getVacationRange(log);
+      if (!range || !range.isMultiDay) return [log];
+      return getVacationDays(log).map(day => ({ ...log, date: day, endDate: '', end_date: '' }));
     });
 
     // Collect all distinct dates from valid workLogs (including due dates)

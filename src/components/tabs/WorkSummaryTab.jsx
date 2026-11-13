@@ -38,6 +38,10 @@ import { Capacitor } from '@capacitor/core';
 import { shareReportText } from '../../services/appLauncherService';
 import { isSamePerson, isTargetMatchingUser } from '../../services/userMatcher';
 import { getHolidayName } from '../../data/holidays.js';
+import { isVacationLog, getVacationDays, vacationCoversDate } from '../../services/vacationUtil';
+
+// 해당 날짜의 업무 일지 여부 (기간 휴가는 시작일~종료일 모든 날짜에 포함)
+const isLogOnDate = (log, iso) => Boolean(log) && ((log.date || '').startsWith(iso) || vacationCoversDate(log, iso));
 
 // ---- 업무 정리 작성 내용(일일/주간 보고 입력칸) 계정별 로컬 저장 헬퍼 ----
 const getActiveUsername = () => {
@@ -994,7 +998,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const isTomorrow = dailyDate === tomorrowIso;
   const isFuture = dailyDate > todayIso;
 
-  const dailyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(dailyDate));
+  const dailyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => isLogOnDate(log, dailyDate));
   const dailyOwnLogs = dailyAllLogs.filter(isMyAuthoredLog);
   const dailySharedReceivedLogs = dailyAllLogs.filter(isSharedToMe);
   const dailyMySharedLogs = dailyOwnLogs.filter(l => l && l.isShared);
@@ -1252,7 +1256,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
 
   // Tomorrow's logs for quick reference / preview
-  const tomorrowAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(tomorrowIso));
+  const tomorrowAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => isLogOnDate(log, tomorrowIso));
   const tomorrowOwnLogs = tomorrowAllLogs.filter(isMyAuthoredLog);
   const tomorrowInitialGroups = getInitialWorkGroups(tomorrowOwnLogs);
 
@@ -1268,7 +1272,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const nextDailyIso = getNextDayIso(dailyDate);
-  const nextDayAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => log && (log.date || '').startsWith(isToday ? tomorrowIso : nextDailyIso));
+  const nextDayAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => isLogOnDate(log, isToday ? tomorrowIso : nextDailyIso));
   const nextDayOwnLogs = nextDayAllLogs.filter(isMyAuthoredLog);
   const nextDayInitialGroups = getInitialWorkGroups(nextDayOwnLogs);
 
@@ -1362,7 +1366,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const weeklyAllLogs = (Array.isArray(workLogs) ? workLogs : []).filter(log => {
     if (!log) return false;
     const d = log.date || '';
-    return d >= weeklyRange.monIso && d <= weeklyRange.sunIso;
+    if (d >= weeklyRange.monIso && d <= weeklyRange.sunIso) return true;
+    // 지난주부터 이어지는 기간 휴가도 이번 주 보고에 포함
+    return isVacationLog(log) && getVacationDays(log).some(day => day >= weeklyRange.monIso && day <= weeklyRange.sunIso);
   });
   const weeklyOwnLogs = weeklyAllLogs.filter(isMyAuthoredLog);
   const weeklySharedReceivedLogs = weeklyAllLogs.filter(isSharedToMe);

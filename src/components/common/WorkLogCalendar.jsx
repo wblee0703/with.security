@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { getHolidayName } from '../../data/holidays.js';
 import { normalizeKstDate } from '../../services/dbService';
+import { getVacationRange, getVacationDays } from '../../services/vacationUtil';
 
 // Helper for distinguishing category labels by color while keeping card styling uniform
 const getCalendarLabelColor = (token) => {
@@ -173,6 +174,8 @@ export default function WorkLogCalendar({
   // Map work logs by date for O(1) cell lookup (including dueDate markers)
   const logsByDate = (Array.isArray(workLogs) ? workLogs : []).reduce((acc, log) => {
     if (!log) return acc;
+    // 여러 날짜 휴가는 날짜 칸 목록 대신 기간 막대(vacationBars)로 표시
+    if (getVacationRange(log)?.isMultiDay) return acc;
     const d = normalizeKstDate(log.date || log.log_date) || log.date;
     if (d) {
       if (!acc[d]) acc[d] = [];
@@ -192,6 +195,71 @@ export default function WorkLogCalendar({
     }
     return acc;
   }, {});
+
+  // ---------------------------------------------------------------------------
+  // 기간 휴가 막대: 주(행)마다 연속된 날짜 구간을 하나의 긴 막대로 표시
+  // ---------------------------------------------------------------------------
+  const VAC_BAR_HEIGHT = 18;
+  const VAC_BAR_GAP = 2;
+  const VAC_LANE = VAC_BAR_HEIGHT + VAC_BAR_GAP;
+  // 셀 상단 패딩(6) + 날짜 헤더(20) + 헤더 하단 여백(2) + 셀 내부 gap(4)
+  const VAC_BAR_TOP = 32;
+
+  const { vacationBars, vacationLanesByRow } = (() => {
+    const bars = [];
+    const lanesByRow = {};
+    const dateIndex = {};
+    calendarDays.forEach((c, i) => { if (c.dateStr) dateIndex[c.dateStr] = i; });
+    const rowCount = Math.ceil(calendarDays.length / 7);
+    const rowLaneEnds = Array.from({ length: rowCount }, () => []);
+
+    const vacLogs = (Array.isArray(workLogs) ? workLogs : [])
+      .filter(l => getVacationRange(l)?.isMultiDay)
+      .sort((a, b) => {
+        const ra = getVacationRange(a);
+        const rb = getVacationRange(b);
+        return ra.start.localeCompare(rb.start) || rb.end.localeCompare(ra.end);
+      });
+
+    for (const log of vacLogs) {
+      const range = getVacationRange(log);
+      const days = getVacationDays(log).filter(d => dateIndex[d] !== undefined);
+      if (days.length === 0) continue;
+      // 연속된 칸(같은 주 안)끼리 구간으로 묶기
+      let seg = null;
+      const segs = [];
+      for (const d of days) {
+        const idx = dateIndex[d];
+        const row = Math.floor(idx / 7);
+        const col = idx % 7;
+        if (seg && seg.row === row && col === seg.colEnd + 1) {
+          seg.colEnd = col;
+          seg.endDate = d;
+        } else {
+          seg = { row, colStart: col, colEnd: col, startDate: d, endDate: d };
+          segs.push(seg);
+        }
+      }
+      for (const s of segs) {
+        // 같은 주에서 겹치지 않는 가장 위 레인 배정
+        const ends = rowLaneEnds[s.row];
+        let lane = ends.findIndex(endCol => endCol < s.colStart);
+        if (lane === -1) lane = ends.length;
+        ends[lane] = s.colEnd;
+        lanesByRow[s.row] = Math.max(lanesByRow[s.row] || 0, lane + 1);
+        bars.push({
+          ...s,
+          lane,
+          log,
+          range,
+          isStart: s.startDate === range.start,
+          isEnd: s.endDate === range.end,
+          key: `vac-${log.id || log.log_id}-${s.row}-${s.colStart}`
+        });
+      }
+    }
+    return { vacationBars: bars, vacationLanesByRow: lanesByRow };
+  })();
 
   // HTML5 Drag Handlers
   const handleDragStart = (e, log) => {
@@ -621,6 +689,9 @@ export default function WorkLogCalendar({
               onDragLeave={(e) => handleCellDragLeave(e, cell.dateStr)}
               onDrop={(e) => handleCellDrop(e, cell.dateStr)}
               style={{
+                // 기간 휴가 막대를 같은 행 위에 겹쳐 그리기 위해 칸 위치를 명시
+                gridRow: Math.floor(idx / 7) + 1,
+                gridColumn: (idx % 7) + 1,
                 background: isDropHovered
                   ? '#dbeafe'
                   : (isToday
@@ -661,10 +732,14 @@ export default function WorkLogCalendar({
                   marginBottom: '2px',
                   minWidth: 0,
                   width: '100%',
-                  gap: '4px'
+                  gap: '4px',
+                  // 기간 휴가 막대 위치(VAC_BAR_TOP)와 맞추기 위해 헤더 높이 고정
+                  height: '20px',
+                  flexShrink: 0,
+                  overflow: 'hidden'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: 0, flexWrap: 'nowrap', overflow: 'hidden' }}>
                   <span
                     style={{
                       fontSize: '13.5px',
@@ -728,7 +803,8 @@ export default function WorkLogCalendar({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         maxWidth: '68px',
-                        flexShrink: 0
+                        minWidth: 0,
+                        flexShrink: 1
                       }}
                       title={holidayName}
                     >
@@ -790,6 +866,17 @@ export default function WorkLogCalendar({
                   </span>
                 )}
               </div>
+
+              {/* 기간 휴가 막대 자리 확보 (막대는 그리드 위에 겹쳐 표시) */}
+              {(vacationLanesByRow[Math.floor(idx / 7)] || 0) > 0 && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    height: `${vacationLanesByRow[Math.floor(idx / 7)] * VAC_LANE - VAC_BAR_GAP}px`,
+                    flexShrink: 0
+                  }}
+                />
+              )}
 
               {/* Work Log Titles List inside Calendar Day Box */}
               <div
@@ -1062,6 +1149,71 @@ export default function WorkLogCalendar({
                   });
                 })()}
               </div>
+            </div>
+          );
+        })}
+
+        {/* 기간 휴가 막대 (시작일~종료일을 한 번에 길게 표시) */}
+        {vacationBars.map((bar) => {
+          const log = bar.log;
+          const userAccount = String(currentUser?.username || currentUser?.userId || currentUser?.id || '').trim().toLowerCase();
+          const logWriter = String(log.writer_id || log.writerId || log.authorUsername || log.author_username || log.username || '').trim().toLowerCase();
+          const isOthers = (logWriter && userAccount && logWriter !== userAccount) ||
+            (!logWriter && log.authorName && currentUser?.name && log.authorName !== currentUser.name);
+          const label = isOthers
+            ? `[${log.authorName || log.name || '공유'}] ${log.title || '휴가'}`
+            : `[휴가] ${log.title || '휴가'}`;
+          const span = bar.colEnd - bar.colStart + 1;
+          const periodText = `${bar.range.start} ~ ${bar.range.end}`;
+          return (
+            <div
+              key={bar.key}
+              title={`${label}\n기간: ${periodText}${bar.range.excludeWeekends ? ' (주말 제외)' : ''}\n작성자: ${log.authorName || log.name || ''} (${log.authorTeam || log.team || ''})${log.details ? `\n세부내용: ${log.details}` : ''}`}
+              onClick={(e) => {
+                // 막대에서 클릭한 위치의 날짜를 선택
+                if (!onSelectDate) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                const col = bar.colStart + Math.min(span - 1, Math.max(0, Math.floor(ratio * span)));
+                const target = calendarDays[bar.row * 7 + col]?.dateStr;
+                if (target) onSelectDate(target);
+              }}
+              style={{
+                gridRow: bar.row + 1,
+                gridColumn: `${bar.colStart + 1} / ${bar.colEnd + 2}`,
+                alignSelf: 'start',
+                marginTop: `${VAC_BAR_TOP + bar.lane * VAC_LANE}px`,
+                marginLeft: bar.isStart ? '6px' : '0',
+                marginRight: bar.isEnd ? '6px' : '0',
+                height: `${VAC_BAR_HEIGHT}px`,
+                zIndex: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px',
+                padding: '0 6px',
+                boxSizing: 'border-box',
+                minWidth: 0,
+                overflow: 'hidden',
+                background: isOthers ? '#f5f3ff' : '#fdf2f8',
+                border: `1px solid ${isOthers ? '#c4b5fd' : '#fbcfe8'}`,
+                borderLeftWidth: bar.isStart ? '3px' : '1px',
+                borderLeftColor: isOthers ? '#7c3aed' : '#db2777',
+                borderRadius: `${bar.isStart ? '4px' : '0'} ${bar.isEnd ? '4px' : '0'} ${bar.isEnd ? '4px' : '0'} ${bar.isStart ? '4px' : '0'}`,
+                color: isOthers ? '#6d28d9' : '#be185d',
+                fontSize: '10px',
+                fontWeight: '800',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                {label}
+                {span > 1 && (
+                  <span style={{ fontWeight: '700', opacity: 0.75, marginLeft: '4px' }}>
+                    {bar.range.start.slice(5).replace('-', '/')}~{bar.range.end.slice(5).replace('-', '/')}
+                  </span>
+                )}
+              </span>
             </div>
           );
         })}

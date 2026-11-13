@@ -21,6 +21,7 @@ import {
   Check
 } from 'lucide-react';
 import { dbService } from '../../services/dbService';
+import { getVacationDays } from '../../services/vacationUtil';
 import { getHolidayName } from '../../data/holidays';
 import { useModalBack } from '../../services/modalBackHandler';
 
@@ -204,8 +205,9 @@ export default function TripCalendarTab({ onTriggerToast }) {
         if (!alive || !Array.isArray(logs)) return;
         setVacationLogs(logs
           .filter(l => l && String(l.subCategory || l.sub_category || '').trim() === '휴가')
-          .map(l => ({
-            date: String(l.date || l.log_date || '').slice(0, 10),
+          // 기간 휴가(시작일~종료일 1건)는 기간 내 날짜별로 펼쳐서 반영
+          .flatMap(l => getVacationDays(l).map(day => ({
+            date: day,
             title: String(l.title || '휴가').trim(),
             member: {
               name: String(l.authorName || l.name || '').trim(),
@@ -213,7 +215,7 @@ export default function TripCalendarTab({ onTriggerToast }) {
               team: l.authorTeam || l.team || '',
               username: l.authorUsername || l.writer_id || l.username || ''
             }
-          }))
+          })))
           .filter(v => v.date && v.member.name));
       } catch (e) {
         console.warn('Failed to load vacation logs:', e);
