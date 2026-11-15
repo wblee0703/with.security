@@ -1100,8 +1100,8 @@ export default function TripCalendarTab({ onTriggerToast }) {
                           )}
                           {inMonth && pool.length > 0 && availCountByDay[d] !== undefined && (
                             <span style={{ marginLeft: 'auto', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: isMobile ? '2px' : '3px' }}>
-                            {/* 휴가 인원 (마우스를 올리면 휴가자 이름과 종류 표시) */}
-                            {(vacationByDay[d] || []).length > 0 && (
+                            {/* 휴가 인원 (마우스를 올리면 휴가자 이름과 종류 표시) - 모바일에서는 숨김 */}
+                            {!isMobile && (vacationByDay[d] || []).length > 0 && (
                               <span
                                 title={`휴가 ${vacationByDay[d].length}명\n${vacationByDay[d].map(vacationLabel).join('\n')}`}
                                 style={{
