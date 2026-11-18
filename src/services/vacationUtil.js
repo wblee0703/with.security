@@ -53,7 +53,8 @@ export const getVacationRange = (log) => {
   // 세부내용 기간 표기는 이 일지가 기간의 시작일일 때만 사용 (과거 날짜별 분할 등록 데이터와 구분)
   if (!end && m && m[1] === start) end = m[2];
   if (!end || end < start) end = start;
-  const excludeWeekends = Boolean(m && m[4]);
+  // 기간 휴가는 주말 제외가 기본. 예전 데이터는 세부내용의 기간 표기(주말 제외 여부)를 그대로 따름
+  const excludeWeekends = (m && m[1] === start) ? Boolean(m[4]) : true;
   return { start, end, excludeWeekends, isMultiDay: end > start };
 };
 

@@ -162,19 +162,11 @@ export async function shareReportText({ title, text }) {
 }
 
 /**
- * Synchronize current work logs to Android Native Home Screen Calendar Widget (Excluding TBM & Security Pledges)
- * @param {{ workLogs?: Array<any> }} options
+ * 위젯 캘린더와 동일한 날짜별 요약 데이터(workDatesMap) 생성 (앱 내 모바일 캘린더에서도 재사용)
+ * @param {Array<any>} workLogs
+ * @returns {Record<string, any>}
  */
-export async function syncCalendarWidget({ workLogs = [] } = {}) {
-  if (!Capacitor.isNativePlatform()) return;
-
-  try {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const todayStr = `${year}-${month}-${day}`;
-
+export function buildCalendarWidgetData(workLogs = []) {
     const workDatesMap = {};
 
     // TBM 및 보안서약 항목 배제 (순수 업무 일지만 위젯에 반영)
@@ -408,6 +400,21 @@ export async function syncCalendarWidget({ workLogs = [] } = {}) {
         count: dateLogs.length
       };
     });
+
+    return workDatesMap;
+}
+
+/**
+ * Synchronize current work logs to Android Native Home Screen Calendar Widget (Excluding TBM & Security Pledges)
+ * @param {{ workLogs?: Array<any> }} options
+ */
+export async function syncCalendarWidget({ workLogs = [] } = {}) {
+  if (!Capacitor.isNativePlatform()) return;
+
+  try {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const workDatesMap = buildCalendarWidgetData(workLogs);
 
     // Find today's specific info
     const todayInfo = workDatesMap[todayStr];
