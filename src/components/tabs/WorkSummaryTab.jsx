@@ -116,6 +116,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [isWeeklyShareModalOpen, setIsWeeklyShareModalOpen] = useState(false);
   const [weeklyShareTargets, setWeeklyShareTargets] = useState([]);
   const [weeklyShareSearchQuery, setWeeklyShareSearchQuery] = useState('');
+  const [weeklyShareMonday, setWeeklyShareMonday] = useState('');
 
   // Daily In-App Share Modal State (사내 사용자 일일 업무 공유 모달)
   const [isDailyShareModalOpen, setIsDailyShareModalOpen] = useState(false);
@@ -170,6 +171,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const draftUserRef = useRef(getActiveUsername());
   const [weeklyCustomReports, setWeeklyCustomReports] = useState(() => readReportDraft('weekly', draftUserRef.current));
   const [isWeeklyDirty, setIsWeeklyDirty] = useState(false);
+  // 웹 모드 '2주 동시 보기' (금주 + 차주 업무 보고를 나란히 작성/저장/공유)
+  const [isDualWeekView, setIsDualWeekView] = useState(false);
+  const [isNextWeeklyDirty, setIsNextWeeklyDirty] = useState(false);
 
   // Daily Custom Section State (일자별 1. 특이사항, 2. 금일 진행 내역, 3. 익일 예정 업무)
   const [dailyCustomReports, setDailyCustomReports] = useState(() => readReportDraft('daily', draftUserRef.current));
@@ -189,6 +193,24 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   dailyDateRef.current = dailyDate;
   const weeklyMondayRef = useRef(weeklyMonday);
   weeklyMondayRef.current = weeklyMonday;
+
+  // 2주 동시 보기에서 오른쪽에 표시할 다음 주 월요일 (로컬 날짜 기준)
+  const dualNextMonday = (() => {
+    const [y, m, d] = String(weeklyMonday).split('-').map(Number);
+    return formatIso(new Date(y, m - 1, d + 7));
+  })();
+  const isNextWeeklyDirtyRef = useRef(false);
+  isNextWeeklyDirtyRef.current = isNextWeeklyDirty;
+  const dualNextMondayRef = useRef(dualNextMonday);
+  dualNextMondayRef.current = dualNextMonday;
+  const isAnyWeeklyDirty = isWeeklyDirty || isNextWeeklyDirty;
+  const isWeekDirty = (mon) => (mon === weeklyMonday ? isWeeklyDirty : (mon === dualNextMonday ? isNextWeeklyDirty : false));
+  const setWeekDirty = (mon, value) => {
+    if (mon === weeklyMonday) setIsWeeklyDirty(value);
+    else setIsNextWeeklyDirty(value);
+  };
+  const EMPTY_WEEKLY_CUSTOM = { mainTasks: '', infoSharing: '', teamCoop: '', workSupport: '', etcTasks: '' };
+  const getWeeklyCustomFor = (mon) => weeklyCustomReports[mon] || EMPTY_WEEKLY_CUSTOM;
 
   const currentWeeklyCustom = weeklyCustomReports[weeklyMonday] || {
     mainTasks: '',
@@ -213,14 +235,16 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
 
   // 입력 시 React State 업데이트 및 즉시 로컬 스토리지 임시 드래프트 저장 (동기화 및 새로고침 유실 원천 방지)
-  const handleWeeklyCustomChange = (field, value) => {
-    setIsWeeklyDirty(true);
+  const handleWeeklyCustomChange = (field, value, mon = weeklyMonday) => {
+    setWeekDirty(mon, true);
     setWeeklyCustomReports(prev => {
       const updated = {
         ...prev,
-        [weeklyMonday]: {
-          ...(prev[weeklyMonday] || { mainTasks: '', infoSharing: '', teamCoop: '', workSupport: '', etcTasks: '' }),
-          [field]: value
+        [mon]: {
+          ...(prev[mon] || { mainTasks: '', infoSharing: '', teamCoop: '', workSupport: '', etcTasks: '' }),
+          [field]: value,
+          // 업무 지원은 teamCoop/workSupport 두 필드로 저장되므로 함께 갱신 (저장 시 이전 값으로 덮이는 문제 방지)
+          ...(field === 'teamCoop' ? { workSupport: value } : {})
         }
       };
       writeReportDraft('weekly', draftUserRef.current, updated);
@@ -230,7 +254,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   // 새로고침 및 창 닫기 시 저장되지 않은 수정사항 브라우저 경고 & 전역 탭 이동 감지
   useEffect(() => {
-    const isAnyDirty = isWeeklyDirty || isDailyDirty;
+    const isAnyDirty = isWeeklyDirty || isNextWeeklyDirty || isDailyDirty;
     window.__WITH_SECURITY_UNSAVED_CHANGES__ = isAnyDirty;
 
     const handleBeforeUnload = (e) => {
@@ -260,7 +284,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('with_security_prompt_unsaved_tab', handleTabChangePrompt);
     };
-  }, [isWeeklyDirty, isDailyDirty]);
+  }, [isWeeklyDirty, isNextWeeklyDirty, isDailyDirty]);
 
   // Weekly Textarea Auto-Resize Refs & Helpers
   const mainTasksRef = useRef(null);
@@ -285,7 +309,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         autoResizeTextarea(ref.current);
       }
     });
-  }, [weeklyMonday, currentWeeklyCustom]);
+  }, [weeklyMonday, currentWeeklyCustom, isDualWeekView]);
 
   useEffect(() => {
     [dailyIssuesRef, dailyTodayTasksRef, dailyTomorrowPlanRef].forEach(ref => {
@@ -296,7 +320,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }, [dailyDate, dailyCustomReports, workLogs]);
 
   // 주간 업무 보고(1~4번) 명시적 저장 핸들러 (저장 버튼 누를 때 사내공유 대상자에게도 즉시 자동 공유)
-  const handleSaveWeeklyCustomReport = async () => {
+  const handleSaveWeeklyCustomReport = async (monArg) => {
+    const mon = typeof monArg === 'string' ? monArg : weeklyMonday;
+    const custom = getWeeklyCustomFor(mon);
+    const ownLogs = getOwnLogsForWeek(mon);
     const timeStr = `${formatIso(new Date())} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
 
     // 1. 사내 공유 대상자 조회 (한 번 지정해둔 대상자 목록 자동 불러오기)
@@ -329,20 +356,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }).filter(Boolean);
 
     const payload = {
-      id: `weekly-rep-${currentUser?.username || currentUser?.id || currentUser?.name || 'user'}-${weeklyMonday}`,
-      weeklyMonday: weeklyMonday,
-      weekText: getWeekText(weeklyMonday),
+      id: `weekly-rep-${currentUser?.username || currentUser?.id || currentUser?.name || 'user'}-${mon}`,
+      weeklyMonday: mon,
+      weekText: getWeekText(mon),
       authorUsername: currentUser?.username || currentUser?.id || '',
       authorName: currentUser?.name || '작성자',
       authorTeam: currentUser?.team || currentUser?.department || '운영팀',
       authorRank: currentUser?.rank || '대리',
       authorDivision: currentUser?.division || '',
       authorRole: currentUser?.role || '일반',
-      mainTasks: currentWeeklyCustom.mainTasks || '',
-      infoSharing: currentWeeklyCustom.infoSharing || '',
-      workSupport: currentWeeklyCustom.workSupport || currentWeeklyCustom.teamCoop || '',
-      teamCoop: currentWeeklyCustom.workSupport || currentWeeklyCustom.teamCoop || '',
-      etcTasks: currentWeeklyCustom.etcTasks || '',
+      mainTasks: custom.mainTasks || '',
+      infoSharing: custom.infoSharing || '',
+      workSupport: custom.workSupport || custom.teamCoop || '',
+      teamCoop: custom.workSupport || custom.teamCoop || '',
+      etcTasks: custom.etcTasks || '',
       sharedWith: formattedTargets,
       sharedAt: formattedTargets.length > 0 ? timeStr : '',
       createdAt: timeStr
@@ -350,7 +377,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     // 2. LocalStorage 즉시 저장 및 dirty 플래그 리셋 (0ms 즉각 반응)
     writeReportDraft('weekly', draftUserRef.current, weeklyCustomReports);
-    setIsWeeklyDirty(false);
+    setWeekDirty(mon, false);
 
     // 3. UI 즉시 낙관적 갱신 (0ms 지연)
     setSharedWeeklyReports(prev => {
@@ -363,8 +390,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       return [payload, ...prev];
     });
 
-    if (formattedTargets.length > 0 && weeklyOwnLogs.length > 0) {
-      const targetIds = new Set(weeklyOwnLogs.map(l => String(l.id || l.log_id || '')));
+    if (formattedTargets.length > 0 && ownLogs.length > 0) {
+      const targetIds = new Set(ownLogs.map(l => String(l.id || l.log_id || '')));
       setWorkLogs(prev => prev.map(log => {
         const id = String(log.id || log.log_id || '');
         if (targetIds.has(id)) {
@@ -386,8 +413,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     (async () => {
       try {
         await dbService.saveWeeklyReport(payload);
-        if (formattedTargets.length > 0 && weeklyOwnLogs.length > 0) {
-          const logsToUpdate = weeklyOwnLogs.map(logItem => ({
+        if (formattedTargets.length > 0 && ownLogs.length > 0) {
+          const logsToUpdate = ownLogs.map(logItem => ({
             ...logItem,
             isShared: true,
             sharedWith: formattedTargets,
@@ -465,7 +492,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 미저장 팝업 - 저장 후 이동
   const handleConfirmSaveAndNavigate = async () => {
     if (isWeeklyDirty) {
-      await handleSaveWeeklyCustomReport();
+      await handleSaveWeeklyCustomReport(weeklyMonday);
+    }
+    if (isNextWeeklyDirty) {
+      await handleSaveWeeklyCustomReport(dualNextMonday);
     }
     if (isDailyDirty) {
       await handleSaveDailyCustomReport();
@@ -484,6 +514,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       setDailyCustomReports(readReportDraft('daily', draftUserRef.current));
     } catch (e) { }
     setIsWeeklyDirty(false);
+    setIsNextWeeklyDirty(false);
     setIsDailyDirty(false);
     setIsUnsavedPromptOpen(false);
     if (typeof pendingAction === 'function') {
@@ -506,6 +537,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     setWeeklyCustomReports(readReportDraft('weekly', uname));
     setDailyCustomReports(readReportDraft('daily', uname));
     setIsWeeklyDirty(false);
+    setIsNextWeeklyDirty(false);
     setIsDailyDirty(false);
   };
 
@@ -522,6 +554,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         if (!wMon || author !== myUser) return;
         // 현재 작성 중인 주차는 서버 값으로 덮어쓰지 않음
         if (isWeeklyDirtyRef.current && wMon === weeklyMondayRef.current) return;
+        if (isNextWeeklyDirtyRef.current && wMon === dualNextMondayRef.current) return;
         const local = updated[wMon];
         const localHasText = Boolean(local && ['mainTasks', 'infoSharing', 'workSupport', 'teamCoop', 'etcTasks']
           .some(k => String(local[k] || '').trim()));
@@ -659,7 +692,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   }, []);
 
   // --- Weekly Share Target Helpers ---
-  const handleOpenWeeklyShareModal = () => {
+  const handleOpenWeeklyShareModal = (monArg) => {
+    setWeeklyShareMonday(typeof monArg === 'string' ? monArg : weeklyMonday);
     // 서버 동기화된 공유 대상자 설정 로드 (업무 일지 공유 대상과 공통)
     const initialTargets = dbService.getShareTargets(currentUser, 'summary') || [];
     setWeeklyShareTargets(initialTargets);
@@ -722,13 +756,13 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   // 주간 공유받은 업무 카드 전체 접기/펼치기 토글
-  const handleToggleAllSharedCards = (collapseAll) => {
+  const handleToggleAllSharedCards = (collapseAll, list = receivedWeeklyCustomReports) => {
     const updated = {};
-    (receivedWeeklyCustomReports || []).forEach((rep, idx) => {
+    (list || []).forEach((rep, idx) => {
       const cardKey = rep.id || `shared-rep-${idx}`;
       updated[cardKey] = collapseAll;
     });
-    setCollapsedSharedCards(updated);
+    setCollapsedSharedCards(prev => ({ ...prev, ...updated }));
   };
 
   // 일일 공유받은 업무 카드 개별 접기/펼치기 토글 (기본값: 접힘)
@@ -750,17 +784,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const handleConfirmWeeklyShare = async () => {
+    const mon = weeklyShareMonday || weeklyMonday;
+    const custom = getWeeklyCustomFor(mon);
+    const ownLogs = getOwnLogsForWeek(mon);
     // 기본 대상자 저장 (0명이면 빈 배열 저장) - 로컬 즉시 반영 + 서버 동기화
     dbService.saveShareTargets(currentUser, weeklyShareTargets, 'summary').catch(() => { });
 
     const hasCustomText = Boolean(
-      (currentWeeklyCustom.mainTasks && toReportText(currentWeeklyCustom.mainTasks).trim()) ||
-      (currentWeeklyCustom.infoSharing && toReportText(currentWeeklyCustom.infoSharing).trim()) ||
-      (currentWeeklyCustom.teamCoop && toReportText(currentWeeklyCustom.teamCoop).trim()) ||
-      (currentWeeklyCustom.etcTasks && toReportText(currentWeeklyCustom.etcTasks).trim())
+      (custom.mainTasks && toReportText(custom.mainTasks).trim()) ||
+      (custom.infoSharing && toReportText(custom.infoSharing).trim()) ||
+      (custom.teamCoop && toReportText(custom.teamCoop).trim()) ||
+      (custom.etcTasks && toReportText(custom.etcTasks).trim())
     );
 
-    if (!hasCustomText && weeklyOwnLogs.length === 0) {
+    if (!hasCustomText && ownLogs.length === 0) {
       if (onTriggerToast) onTriggerToast('공유할 주간 업무 내용(1~4번) 또는 등록된 업무가 없습니다.', 'warning');
       return;
     }
@@ -783,20 +820,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     // 1. 주간 직접 입력 1~4번 보고서 객체 저장 (사내 공유)
     const weeklyReportPayload = {
-      id: `weekly-rep-${currentUser?.username || currentUser?.id || currentUser?.name}-${weeklyMonday}`,
-      weeklyMonday: weeklyMonday,
-      weekText: getWeekText(weeklyMonday),
+      id: `weekly-rep-${currentUser?.username || currentUser?.id || currentUser?.name}-${mon}`,
+      weeklyMonday: mon,
+      weekText: getWeekText(mon),
       authorUsername: currentUser?.username || currentUser?.id || '',
       authorName: currentUser?.name || '작성자',
       authorTeam: currentUser?.team || currentUser?.department || '운영팀',
       authorRank: currentUser?.rank || '대리',
       authorDivision: currentUser?.division || '',
       authorRole: currentUser?.role || '일반',
-      mainTasks: currentWeeklyCustom.mainTasks || '',
-      infoSharing: currentWeeklyCustom.infoSharing || '',
-      workSupport: currentWeeklyCustom.workSupport || currentWeeklyCustom.teamCoop || '',
-      teamCoop: currentWeeklyCustom.workSupport || currentWeeklyCustom.teamCoop || '',
-      etcTasks: currentWeeklyCustom.etcTasks || '',
+      mainTasks: custom.mainTasks || '',
+      infoSharing: custom.infoSharing || '',
+      workSupport: custom.workSupport || custom.teamCoop || '',
+      teamCoop: custom.workSupport || custom.teamCoop || '',
+      etcTasks: custom.etcTasks || '',
       sharedWith: formattedTargets,
       sharedAt: isSharingActive ? timeStr : '',
       createdAt: timeStr
@@ -815,8 +852,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       return [weeklyReportPayload, ...prev];
     });
 
-    if (weeklyOwnLogs.length > 0) {
-      const targetIds = new Set(weeklyOwnLogs.map(l => String(l.id || l.log_id || '')));
+    if (ownLogs.length > 0) {
+      const targetIds = new Set(ownLogs.map(l => String(l.id || l.log_id || '')));
       setWorkLogs(prev => prev.map(log => {
         const id = String(log.id || log.log_id || '');
         if (targetIds.has(id)) {
@@ -828,7 +865,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     if (onTriggerToast) {
       if (isSharingActive) {
-        onTriggerToast(`이번 주 주간 업무가 ${formattedTargets.length}명에게 공유 등록되었습니다.`, 'success');
+        onTriggerToast(`${getWeekText(mon)} 주간 업무가 ${formattedTargets.length}명에게 공유 등록되었습니다.`, 'success');
       } else {
         onTriggerToast('주간 업무 공유 대상자가 0명으로 등록(공유 해제)되었습니다.', 'success');
       }
@@ -838,8 +875,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     (async () => {
       try {
         await dbService.saveWeeklyReport(weeklyReportPayload);
-        if (weeklyOwnLogs.length > 0) {
-          const logsToUpdate = weeklyOwnLogs.map(logItem => ({
+        if (ownLogs.length > 0) {
+          const logsToUpdate = ownLogs.map(logItem => ({
             ...logItem,
             isShared: isSharingActive,
             sharedWith: formattedTargets,
@@ -1320,7 +1357,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const mon = new Date(weeklyMonday);
     mon.setDate(mon.getDate() - 7);
     const targetIso = formatIso(mon);
-    if (isWeeklyDirty) {
+    if (isAnyWeeklyDirty) {
       setPendingAction(() => () => setWeeklyMonday(targetIso));
       setIsUnsavedPromptOpen(true);
     } else {
@@ -1332,7 +1369,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const mon = new Date(weeklyMonday);
     mon.setDate(mon.getDate() + 7);
     const targetIso = formatIso(mon);
-    if (isWeeklyDirty) {
+    if (isAnyWeeklyDirty) {
       setPendingAction(() => () => setWeeklyMonday(targetIso));
       setIsUnsavedPromptOpen(true);
     } else {
@@ -1342,7 +1379,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const handleThisWeek = () => {
     const targetIso = formatIso(getMonday(new Date()));
-    if (isWeeklyDirty) {
+    if (isAnyWeeklyDirty) {
       setPendingAction(() => () => setWeeklyMonday(targetIso));
       setIsUnsavedPromptOpen(true);
     } else {
@@ -1371,6 +1408,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     return isVacationLog(log) && getVacationDays(log).some(day => day >= weeklyRange.monIso && day <= weeklyRange.sunIso);
   });
   const weeklyOwnLogs = weeklyAllLogs.filter(isMyAuthoredLog);
+
+  // 지정한 주차의 내 업무 일지 (2주 동시 보기에서 차주 보고 저장/공유 시 사용)
+  const getOwnLogsForWeek = (mon) => {
+    if (mon === weeklyMonday) return weeklyOwnLogs;
+    const r = getWeeklyDateRange(mon);
+    return (Array.isArray(workLogs) ? workLogs : []).filter(log => {
+      if (!log) return false;
+      const d = log.date || '';
+      const inWeek = (d >= r.monIso && d <= r.sunIso) ||
+        (isVacationLog(log) && getVacationDays(log).some(day => day >= r.monIso && day <= r.sunIso));
+      return inWeek && isMyAuthoredLog(log);
+    });
+  };
   const weeklySharedReceivedLogs = weeklyAllLogs.filter(isSharedToMe);
   const weeklyMySharedLogs = weeklyOwnLogs.filter(l => l && l.isShared);
   const weeklyInternalLogs = weeklyOwnLogs.filter(l => l && l.category === '사내 업무');
@@ -1411,9 +1461,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   // 이번 주에 다른 동료로부터 사내 공유받은 주간 직접 입력 1~4번 보고서 목록
   // ---- 💬 일일/주간 보고 피드백 댓글 ----
   // 현재 선택한 주/일자의 내 보고서 (받은 피드백 확인 및 답글용)
-  const myWeeklyReport = (sharedWeeklyReports || []).find(r =>
-    r && currentUser && normalizeKstDate(r.weeklyMonday || r.weekly_monday || '') === weeklyMonday && isMyAuthoredLog(r)
+  const getMyWeeklyReport = (mon) => (sharedWeeklyReports || []).find(r =>
+    r && currentUser && normalizeKstDate(r.weeklyMonday || r.weekly_monday || '') === mon && isMyAuthoredLog(r)
   );
+  const myWeeklyReport = getMyWeeklyReport(weeklyMonday);
   const myDailyReport = (sharedDailyReports || []).find(r =>
     r && currentUser && (normalizeKstDate(r.dailyDate || r.daily_date || '') || '') === (normalizeKstDate(dailyDate) || dailyDate) && isMyAuthoredLog(r)
   );
@@ -1451,10 +1502,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     );
   };
 
-  const receivedWeeklyCustomReports = (sharedWeeklyReports || []).filter(rep => {
+  const getReceivedWeeklyReports = (mon) => (sharedWeeklyReports || []).filter(rep => {
     if (!currentUser || !rep) return false;
     // 시트에서 UTC ISO 형식으로 내려온 날짜도 KST 'yyyy-MM-dd'로 맞춰 비교
-    if (normalizeKstDate(rep.weeklyMonday || rep.weekly_monday || '') !== weeklyMonday) return false;
+    if (normalizeKstDate(rep.weeklyMonday || rep.weekly_monday || '') !== mon) return false;
     if (isMyAuthoredLog(rep)) return false;
 
     let targets = [];
@@ -1472,6 +1523,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
     return targets.some(target => isTargetMatchingMe(target, currentUser));
   });
+  const receivedWeeklyCustomReports = getReceivedWeeklyReports(weeklyMonday);
 
   // Initial work registration counts for weekly (처음 등록 기준 건수)
   const weeklyInitialGroups = getInitialWorkGroups(weeklyOwnLogs);
@@ -1817,10 +1869,12 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     return t;
   };
 
-  const generateWeeklyReportText = () => {
-    let t = `• ${getWeekText(weeklyMonday)} (${weeklyRange.monIso} ~ ${weeklyRange.sunIso})\n\n`;
+  const generateWeeklyReportText = (monArg) => {
+    const mon = typeof monArg === 'string' ? monArg : weeklyMonday;
+    const r = getWeeklyDateRange(mon);
+    let t = `• ${getWeekText(mon)} (${r.monIso} ~ ${r.sunIso})\n\n`;
 
-    const custom = currentWeeklyCustom;
+    const custom = getWeeklyCustomFor(mon);
 
     t += `1. 주요 내용\n`;
     if (custom.mainTasks && toReportText(custom.mainTasks).trim()) {
@@ -1851,6 +1905,511 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     }
 
     return t;
+  };
+
+  // 주간 업무 보고 작성부 (주차 지정: 기본 화면 / 2주 동시 보기의 금주·차주 공용)
+  const renderWeeklyEditor = (mon, { title, isPrimary, showRange }) => {
+    const wc = getWeeklyCustomFor(mon);
+    const dirty = isWeekDirty(mon);
+    const myRep = getMyWeeklyReport(mon);
+    const range = getWeeklyDateRange(mon);
+    const reportLabel = showRange ? `${title}서` : `${getWeeklyHeaderTitle()} 보고서`;
+    const resizeRef = (el) => { if (el) autoResizeTextarea(el); };
+    // LEFT: 직접 입력 주간 업무 보고 (1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무)
+    return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
+
+            {/* 주간 업무 보고 헤더 바 (저장, 복사, 다른 앱 공유 버튼 통합) */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '8px',
+              paddingBottom: '2px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
+                <FileText size={17} color="#0f172a" />
+                <span>{title}</span>
+                {showRange && (
+                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                    ({range.monIso.slice(2)} ~ {range.sunIso.slice(2)})
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
+                <button
+                  type="button"
+                  disabled={!dirty}
+                  onClick={() => handleSaveWeeklyCustomReport(mon)}
+                  style={{
+                    background: dirty ? '#ecfdf5' : '#f1f5f9',
+                    border: dirty ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
+                    color: dirty ? '#047857' : '#94a3b8',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: dirty ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    opacity: dirty ? 1 : 0.7,
+                    transition: 'all 0.2s ease',
+                    boxShadow: dirty ? '0 2px 6px rgba(5, 150, 105, 0.15)' : 'none'
+                  }}
+                  title={dirty ? `${title} 내용 저장` : '수정된 내용이 없습니다'}
+                >
+                  <Save size={13} color={dirty ? '#059669' : '#94a3b8'} />
+                  <span>저장</span>
+                </button>
+
+                {/* 사내 사용자 주간 업무 공유 버튼 (인앱 공유) - 저장 버튼 오른쪽 위치 */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenWeeklyShareModal(mon)}
+                  style={{
+                    background: '#ecfdf5',
+                    border: '1.5px solid #a7f3d0',
+                    color: '#047857',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
+                  }}
+                  title="주간 업무를 사내 동료에게 공유하기"
+                >
+                  <Users size={13} color="#059669" />
+                  <span>공유</span>
+                </button>
+
+                {/* 텍스트 복사 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(generateWeeklyReportText(mon), `${reportLabel}`)}
+                  style={{
+                    background: '#eff6ff',
+                    border: '1.5px solid #cbd5e1',
+                    color: '#0f172a',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
+                  }}
+                  title={`${reportLabel} 텍스트 복사`}
+                >
+                  <Copy size={13} />
+                </button>
+
+                {/* 다른 앱 공유 버튼 (네이티브 모바일 환경) */}
+                {isNative && (
+                  <button
+                    type="button"
+                    onClick={() => handleShareText(generateWeeklyReportText(mon), `${reportLabel}`)}
+                    style={{
+                      background: '#1e3a8a',
+                      border: '1.5px solid #1e3a8a',
+                      color: '#ffffff',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
+                    }}
+                    title={`${reportLabel} 공유 (카카오톡, 메신저 등)`}
+                  >
+                    <Share2 size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 1. 주요 내용 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                <span>1. 주요 내용</span>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
+                <textarea
+                  spellCheck={false}
+                  autoCorrect="off"
+                  ref={isPrimary ? mainTasksRef : resizeRef}
+                  className="borderless-textarea"
+                  value={wc.mainTasks}
+                  onInput={(e) => autoResizeTextarea(e.target)}
+                  onChange={(e) => {
+                    handleWeeklyCustomChange('mainTasks', e.target.value, mon);
+                    autoResizeTextarea(e.target);
+                  }}
+                  placeholder="이번 주 핵심 업무 내용을 입력하세요."
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    minHeight: '70px',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    lineHeight: '1.6',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 2. 정보 공유 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                <span>2. 정보 공유</span>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
+                <textarea
+                  spellCheck={false}
+                  autoCorrect="off"
+                  ref={isPrimary ? infoSharingRef : resizeRef}
+                  className="borderless-textarea"
+                  value={wc.infoSharing}
+                  onInput={(e) => autoResizeTextarea(e.target)}
+                  onChange={(e) => {
+                    handleWeeklyCustomChange('infoSharing', e.target.value, mon);
+                    autoResizeTextarea(e.target);
+                  }}
+                  placeholder="예) ISO 내부심사 : 2026.08.19"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    minHeight: '44px',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    lineHeight: '1.5',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 3. 업무 지원 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                <span>3. 업무 지원</span>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
+                <textarea
+                  spellCheck={false}
+                  autoCorrect="off"
+                  ref={isPrimary ? teamCoopRef : resizeRef}
+                  className="borderless-textarea"
+                  value={wc.teamCoop}
+                  onInput={(e) => autoResizeTextarea(e.target)}
+                  onChange={(e) => {
+                    handleWeeklyCustomChange('teamCoop', e.target.value, mon);
+                    autoResizeTextarea(e.target);
+                  }}
+                  placeholder="예) 영업팀 지원 : SEC 평택 장비 납품"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    minHeight: '44px',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    lineHeight: '1.5',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 4. 기타 업무 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
+                <span>4. 기타 업무</span>
+              </div>
+              <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
+                <textarea
+                  spellCheck={false}
+                  autoCorrect="off"
+                  ref={isPrimary ? etcTasksRef : resizeRef}
+                  className="borderless-textarea"
+                  value={wc.etcTasks}
+                  onInput={(e) => autoResizeTextarea(e.target)}
+                  onChange={(e) => {
+                    handleWeeklyCustomChange('etcTasks', e.target.value, mon);
+                    autoResizeTextarea(e.target);
+                  }}
+                  placeholder="예) 업무 전&후 TBM 진행"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    minHeight: '44px',
+                    border: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    overflow: 'hidden',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    lineHeight: '1.5',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 💬 내 주간 업무 보고에 받은 피드백 (확인 및 답글) */}
+            {shouldShowMyReportFeedback(myRep) && (
+              <ReportComments
+                comments={getReportComments(myRep)}
+                currentUser={currentUser}
+                onAdd={(text) => handleAddReportComment('weekly', myRep, text)}
+                onDelete={(c) => handleDeleteReportComment('weekly', myRep, c)}
+                placeholder="받은 피드백에 답글을 입력하세요"
+              />
+            )}
+          </div>
+    );
+  };
+
+  // 공유받은 주간 업무 목록 (주차 지정)
+  const renderWeeklySharedList = (mon, title) => {
+    const received = getReceivedWeeklyReports(mon);
+    // RIGHT: 2. 주간 공유받은 업무 실적
+    return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '8px',
+              borderLeft: '3px solid #2563eb',
+              paddingLeft: '8px'
+            }}>
+              <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Share2 size={16} color="#2563eb" />
+                <span>{title} ({received.length}건)</span>
+              </div>
+              {received.length > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllSharedCards(true, received)}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '5px',
+                      padding: '3px 7px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#475569',
+                      cursor: 'pointer'
+                    }}
+                    title="모든 공유 카드 접기"
+                  >
+                    모두 접기
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllSharedCards(false, received)}
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '5px',
+                      padding: '3px 7px',
+                      fontSize: '11px',
+                      fontWeight: '700',
+                      color: '#0f172a',
+                      cursor: 'pointer'
+                    }}
+                    title="모든 공유 카드 펼치기"
+                  >
+                    모두 펼치기
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {received.length === 0 ? (
+              <div style={{ paddingLeft: '4px' }}>
+                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
+                  - 공유받은 내역 없음
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px' }}>
+                {/* 공유받은 주간 보고서 카드 (1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무) */}
+                {received.map((rep, rIdx) => {
+                  const authorLabel = `${rep.authorName || '동료'}${rep.authorRank ? ` ${rep.authorRank}` : ''}${rep.authorTeam ? ` (${formatOnlyTeam(rep.authorTeam)})` : ''}`;
+                  const cardKey = rep.id || `shared-rep-${rIdx}`;
+                  const isCollapsed = collapsedSharedCards[cardKey] !== false;
+
+                  const hasMain = Boolean(rep.mainTasks && toReportText(rep.mainTasks).trim());
+                  const hasInfo = Boolean(rep.infoSharing && toReportText(rep.infoSharing).trim());
+                  const hasTeam = Boolean(rep.teamCoop && toReportText(rep.teamCoop).trim());
+                  const hasEtc = Boolean(rep.etcTasks && toReportText(rep.etcTasks).trim());
+
+                  return (
+                    <div key={cardKey} style={{
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: isCollapsed ? '0px' : '10px',
+                      transition: 'all 0.2s ease'
+                    }}>
+                      {/* Author Header (클릭 시 접기/펼치기 토글) */}
+                      <div
+                        onClick={() => toggleSharedCard(cardKey)}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '8px',
+                          borderBottom: isCollapsed ? 'none' : '1.5px solid #e2e8f0',
+                          paddingBottom: isCollapsed ? '0px' : '8px',
+                          cursor: 'pointer',
+                          userSelect: 'none'
+                        }}
+                        title={isCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '13.5px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                            👤 공유자: <strong style={{ color: '#0f172a' }}>{authorLabel}</strong>
+                          </span>
+                          {renderCommentCountBadge(rep)}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            fontSize: '11.5px',
+                            fontWeight: '800',
+                            background: isCollapsed ? '#ffffff' : '#f1f5f9',
+                            color: '#0f172a',
+                            border: '1px solid #cbd5e1',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}>
+                            {isCollapsed ? (
+                              <><ChevronDown size={14} /></>
+                            ) : (
+                              <><ChevronUp size={14} /></>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* 4 Custom Sections inside Shared Card (펼쳐졌을 때만 렌더링) */}
+                      {!isCollapsed && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {/* 1. 주요 내용 */}
+                          {hasMain && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+                                1. 주요 내용
+                              </div>
+                              <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                {rep.mainTasks}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 2. 정보 공유 */}
+                          {hasInfo && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+                                2. 정보 공유
+                              </div>
+                              <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                {rep.infoSharing}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 3. 업무 지원 */}
+                          {hasTeam && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+                                3. 업무 지원
+                              </div>
+                              <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                {rep.teamCoop}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 4. 기타 업무 */}
+                          {hasEtc && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                              <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
+                                4. 기타 업무
+                              </div>
+                              <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                {rep.etcTasks}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 💬 피드백 댓글 */}
+                          <ReportComments
+                            comments={getReportComments(rep)}
+                            currentUser={currentUser}
+                            onAdd={(text) => handleAddReportComment('weekly', rep, text)}
+                            onDelete={(c) => handleDeleteReportComment('weekly', rep, c)}
+                            placeholder={`${rep.authorName || '공유자'}님 주간 업무에 대한 피드백을 입력하세요`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+    );
   };
 
   return (
@@ -3122,6 +3681,38 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   {weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)}
                 </span>
               </div>
+
+              {/* 2주 동시 보기 토글 (금주 + 차주 업무 보고 나란히) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isDualWeekView && isNextWeeklyDirty) {
+                    setPendingAction(() => () => setIsDualWeekView(false));
+                    setIsUnsavedPromptOpen(true);
+                    return;
+                  }
+                  setIsDualWeekView(v => !v);
+                }}
+                style={{
+                  background: isDualWeekView ? '#1d4ed8' : '#eff6ff',
+                  border: `1.5px solid ${isDualWeekView ? '#1d4ed8' : '#93c5fd'}`,
+                  color: isDualWeekView ? '#ffffff' : '#1d4ed8',
+                  padding: '7px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease'
+                }}
+                title={isDualWeekView ? '한 주만 보기로 돌아가기' : '금주·차주 업무 보고를 나란히 보기'}
+              >
+                <CalendarDays size={14} />
+                <span>{isDualWeekView ? '1주 보기' : '2주 동시 보기'}</span>
+              </button>
             </div>
           )}
 
@@ -3332,500 +3923,42 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             })}
           </div>
 
-          {/* Weekly Content Grid: Split into Left (Own Weekly Tasks) & Right (Shared Weekly Tasks) */}
-          <div
-            className="work-summary-responsive-grid"
-            style={{
-              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-              gap: '14px',
-              alignItems: 'start',
-              width: '100%',
-              marginTop: '6px'
-            }}
-          >
-            {/* LEFT: 직접 입력 주간 업무 보고 (1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무) */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
-
-              {/* 주간 업무 보고 헤더 바 (저장, 복사, 다른 앱 공유 버튼 통합) */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '8px',
-                paddingBottom: '2px',
-                flexWrap: 'wrap'
-              }}>
-                <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
-                  <FileText size={17} color="#0f172a" />
-                  <span>주간 업무 보고</span>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                  {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
-                  <button
-                    type="button"
-                    disabled={!isWeeklyDirty}
-                    onClick={handleSaveWeeklyCustomReport}
-                    style={{
-                      background: isWeeklyDirty ? '#ecfdf5' : '#f1f5f9',
-                      border: isWeeklyDirty ? '1.5px solid #a7f3d0' : '1.5px solid #cbd5e1',
-                      color: isWeeklyDirty ? '#047857' : '#94a3b8',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '800',
-                      cursor: isWeeklyDirty ? 'pointer' : 'not-allowed',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      opacity: isWeeklyDirty ? 1 : 0.7,
-                      transition: 'all 0.2s ease',
-                      boxShadow: isWeeklyDirty ? '0 2px 6px rgba(5, 150, 105, 0.15)' : 'none'
-                    }}
-                    title={isWeeklyDirty ? '주간 업무 보고 내용 저장' : '수정된 내용이 없습니다'}
-                  >
-                    <Save size={13} color={isWeeklyDirty ? '#059669' : '#94a3b8'} />
-                    <span>저장</span>
-                  </button>
-
-                  {/* 사내 사용자 주간 업무 공유 버튼 (인앱 공유) - 저장 버튼 오른쪽 위치 */}
-                  <button
-                    type="button"
-                    onClick={handleOpenWeeklyShareModal}
-                    style={{
-                      background: '#ecfdf5',
-                      border: '1.5px solid #a7f3d0',
-                      color: '#047857',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 2px 6px rgba(5, 150, 105, 0.1)'
-                    }}
-                    title="주간 업무를 사내 동료에게 공유하기"
-                  >
-                    <Users size={13} color="#059669" />
-                    <span>공유</span>
-                  </button>
-
-                  {/* 텍스트 복사 버튼 */}
-                  <button
-                    type="button"
-                    onClick={() => handleCopyText(generateWeeklyReportText(), `${getWeeklyHeaderTitle()} 보고서`)}
-                    style={{
-                      background: '#eff6ff',
-                      border: '1.5px solid #cbd5e1',
-                      color: '#0f172a',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 2px 8px rgba(15, 23, 42, 0.08)'
-                    }}
-                    title={`${getWeeklyHeaderTitle()} 보고서 텍스트 복사`}
-                  >
-                    <Copy size={13} />
-                  </button>
-
-                  {/* 다른 앱 공유 버튼 (네이티브 모바일 환경) */}
-                  {isNative && (
-                    <button
-                      type="button"
-                      onClick={() => handleShareText(generateWeeklyReportText(), `${getWeeklyHeaderTitle()} 보고서`)}
-                      style={{
-                        background: '#1e3a8a',
-                        border: '1.5px solid #1e3a8a',
-                        color: '#ffffff',
-                        padding: '6px 10px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        fontWeight: '700',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        transition: 'all 0.2s ease',
-                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.25)'
-                      }}
-                      title={`${getWeeklyHeaderTitle()} 보고서 공유 (카카오톡, 메신저 등)`}
-                    >
-                      <Share2 size={13} />
-                    </button>
-                  )}
-                </div>
+          {/* Weekly Content Grid: 기본 = 왼쪽 내 주간 보고 / 오른쪽 공유받은 업무, 2주 동시 보기 = 왼쪽 금주(보고+공유) / 오른쪽 차주(보고+공유) */}
+          {(!isMobile && isDualWeekView) ? (
+            <div
+              className="work-summary-responsive-grid"
+              style={{
+                gridTemplateColumns: '1fr 1fr',
+                gap: '14px',
+                alignItems: 'start',
+                width: '100%',
+                marginTop: '6px'
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', minWidth: 0 }}>
+                {renderWeeklyEditor(weeklyMonday, { title: `${getWeeklyHeaderTitle()} 보고`, isPrimary: true, showRange: true })}
+                {renderWeeklySharedList(weeklyMonday, '주간 업무 공유')}
               </div>
-
-              {/* 1. 주요 내용 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
-                  <span>1. 주요 내용</span>
-                </div>
-                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '10px 12px' }}>
-                  <textarea
-                    spellCheck={false}
-                    autoCorrect="off"
-                    ref={mainTasksRef}
-                    className="borderless-textarea"
-                    value={currentWeeklyCustom.mainTasks}
-                    onInput={(e) => autoResizeTextarea(e.target)}
-                    onChange={(e) => {
-                      handleWeeklyCustomChange('mainTasks', e.target.value);
-                      autoResizeTextarea(e.target);
-                    }}
-                    placeholder="이번 주 핵심 업무 내용을 입력하세요."
-                    rows={4}
-                    style={{
-                      width: '100%',
-                      minHeight: '70px',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      background: 'transparent',
-                      resize: 'none',
-                      overflow: 'hidden',
-                      fontSize: '13.5px',
-                      color: '#0f172a',
-                      lineHeight: '1.6',
-                      fontFamily: 'inherit',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', minWidth: 0 }}>
+                {renderWeeklyEditor(dualNextMonday, { title: isThisWeek ? '차주 업무 보고' : '다음 주 업무 보고', isPrimary: false, showRange: true })}
+                {renderWeeklySharedList(dualNextMonday, isThisWeek ? '차주 업무 공유' : '다음 주 업무 공유')}
               </div>
-
-              {/* 2. 정보 공유 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
-                  <span>2. 정보 공유</span>
-                </div>
-                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
-                  <textarea
-                    spellCheck={false}
-                    autoCorrect="off"
-                    ref={infoSharingRef}
-                    className="borderless-textarea"
-                    value={currentWeeklyCustom.infoSharing}
-                    onInput={(e) => autoResizeTextarea(e.target)}
-                    onChange={(e) => {
-                      handleWeeklyCustomChange('infoSharing', e.target.value);
-                      autoResizeTextarea(e.target);
-                    }}
-                    placeholder="예) ISO 내부심사 : 2026.08.19"
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      minHeight: '44px',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      background: 'transparent',
-                      resize: 'none',
-                      overflow: 'hidden',
-                      fontSize: '13.5px',
-                      color: '#0f172a',
-                      lineHeight: '1.5',
-                      fontFamily: 'inherit',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* 3. 업무 지원 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
-                  <span>3. 업무 지원</span>
-                </div>
-                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
-                  <textarea
-                    spellCheck={false}
-                    autoCorrect="off"
-                    ref={teamCoopRef}
-                    className="borderless-textarea"
-                    value={currentWeeklyCustom.teamCoop}
-                    onInput={(e) => autoResizeTextarea(e.target)}
-                    onChange={(e) => {
-                      handleWeeklyCustomChange('teamCoop', e.target.value);
-                      autoResizeTextarea(e.target);
-                    }}
-                    placeholder="예) 영업팀 지원 : SEC 평택 장비 납품"
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      minHeight: '44px',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      background: 'transparent',
-                      resize: 'none',
-                      overflow: 'hidden',
-                      fontSize: '13.5px',
-                      color: '#0f172a',
-                      lineHeight: '1.5',
-                      fontFamily: 'inherit',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* 4. 기타 업무 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ fontSize: '14px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', paddingLeft: '2px' }}>
-                  <span>4. 기타 업무</span>
-                </div>
-                <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '7px 10px' }}>
-                  <textarea
-                    spellCheck={false}
-                    autoCorrect="off"
-                    ref={etcTasksRef}
-                    className="borderless-textarea"
-                    value={currentWeeklyCustom.etcTasks}
-                    onInput={(e) => autoResizeTextarea(e.target)}
-                    onChange={(e) => {
-                      handleWeeklyCustomChange('etcTasks', e.target.value);
-                      autoResizeTextarea(e.target);
-                    }}
-                    placeholder="예) 업무 전&후 TBM 진행"
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      minHeight: '44px',
-                      border: 'none',
-                      outline: 'none',
-                      boxShadow: 'none',
-                      background: 'transparent',
-                      resize: 'none',
-                      overflow: 'hidden',
-                      fontSize: '13.5px',
-                      color: '#0f172a',
-                      lineHeight: '1.5',
-                      fontFamily: 'inherit',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* 💬 내 주간 업무 보고에 받은 피드백 (확인 및 답글) */}
-              {shouldShowMyReportFeedback(myWeeklyReport) && (
-                <ReportComments
-                  comments={getReportComments(myWeeklyReport)}
-                  currentUser={currentUser}
-                  onAdd={(text) => handleAddReportComment('weekly', myWeeklyReport, text)}
-                  onDelete={(c) => handleDeleteReportComment('weekly', myWeeklyReport, c)}
-                  placeholder="받은 피드백에 답글을 입력하세요"
-                />
-              )}
             </div>
-
-            {/* RIGHT: 2. 주간 공유받은 업무 실적 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: '8px',
-                borderLeft: '3px solid #2563eb',
-                paddingLeft: '8px'
-              }}>
-                <div style={{ fontSize: '14.5px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Share2 size={16} color="#2563eb" />
-                  <span>주간 업무 공유 ({receivedWeeklyCustomReports.length}건)</span>
-                </div>
-                {receivedWeeklyCustomReports.length > 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAllSharedCards(true)}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '5px',
-                        padding: '3px 7px',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#475569',
-                        cursor: 'pointer'
-                      }}
-                      title="모든 공유 카드 접기"
-                    >
-                      모두 접기
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleAllSharedCards(false)}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '5px',
-                        padding: '3px 7px',
-                        fontSize: '11px',
-                        fontWeight: '700',
-                        color: '#0f172a',
-                        cursor: 'pointer'
-                      }}
-                      title="모든 공유 카드 펼치기"
-                    >
-                      모두 펼치기
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {receivedWeeklyCustomReports.length === 0 ? (
-                <div style={{ paddingLeft: '4px' }}>
-                  <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: '8px', padding: '11px 14px', fontSize: '13.5px', color: '#0f172a', fontWeight: '700' }}>
-                    - 공유받은 내역 없음
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', paddingLeft: '4px' }}>
-                  {/* 공유받은 주간 보고서 카드 (1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무) */}
-                  {receivedWeeklyCustomReports.map((rep, rIdx) => {
-                    const authorLabel = `${rep.authorName || '동료'}${rep.authorRank ? ` ${rep.authorRank}` : ''}${rep.authorTeam ? ` (${formatOnlyTeam(rep.authorTeam)})` : ''}`;
-                    const cardKey = rep.id || `shared-rep-${rIdx}`;
-                    const isCollapsed = collapsedSharedCards[cardKey] !== false;
-
-                    const hasMain = Boolean(rep.mainTasks && toReportText(rep.mainTasks).trim());
-                    const hasInfo = Boolean(rep.infoSharing && toReportText(rep.infoSharing).trim());
-                    const hasTeam = Boolean(rep.teamCoop && toReportText(rep.teamCoop).trim());
-                    const hasEtc = Boolean(rep.etcTasks && toReportText(rep.etcTasks).trim());
-
-                    return (
-                      <div key={cardKey} style={{
-                        background: '#f8fafc',
-                        border: '1.5px solid #cbd5e1',
-                        borderRadius: '10px',
-                        padding: '12px 14px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: isCollapsed ? '0px' : '10px',
-                        transition: 'all 0.2s ease'
-                      }}>
-                        {/* Author Header (클릭 시 접기/펼치기 토글) */}
-                        <div
-                          onClick={() => toggleSharedCard(cardKey)}
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '8px',
-                            borderBottom: isCollapsed ? 'none' : '1.5px solid #e2e8f0',
-                            paddingBottom: isCollapsed ? '0px' : '8px',
-                            cursor: 'pointer',
-                            userSelect: 'none'
-                          }}
-                          title={isCollapsed ? '클릭하여 내용 펼치기' : '클릭하여 내용 접기'}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '13.5px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              👤 공유자: <strong style={{ color: '#0f172a' }}>{authorLabel}</strong>
-                            </span>
-                            {renderCommentCountBadge(rep)}
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{
-                              fontSize: '11.5px',
-                              fontWeight: '800',
-                              background: isCollapsed ? '#ffffff' : '#f1f5f9',
-                              color: '#0f172a',
-                              border: '1px solid #cbd5e1',
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '4px'
-                            }}>
-                              {isCollapsed ? (
-                                <><ChevronDown size={14} /></>
-                              ) : (
-                                <><ChevronUp size={14} /></>
-                              )}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* 4 Custom Sections inside Shared Card (펼쳐졌을 때만 렌더링) */}
-                        {!isCollapsed && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                            {/* 1. 주요 내용 */}
-                            {hasMain && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
-                                  1. 주요 내용
-                                </div>
-                                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                  {rep.mainTasks}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 2. 정보 공유 */}
-                            {hasInfo && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
-                                  2. 정보 공유
-                                </div>
-                                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                  {rep.infoSharing}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 3. 업무 지원 */}
-                            {hasTeam && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
-                                  3. 업무 지원
-                                </div>
-                                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                  {rep.teamCoop}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 4. 기타 업무 */}
-                            {hasEtc && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#0f172a' }}>
-                                  4. 기타 업무
-                                </div>
-                                <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '8px 10px', fontSize: '13px', color: '#0f172a', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                  {rep.etcTasks}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* 💬 피드백 댓글 */}
-                            <ReportComments
-                              comments={getReportComments(rep)}
-                              currentUser={currentUser}
-                              onAdd={(text) => handleAddReportComment('weekly', rep, text)}
-                              onDelete={(c) => handleDeleteReportComment('weekly', rep, c)}
-                              placeholder={`${rep.authorName || '공유자'}님 주간 업무에 대한 피드백을 입력하세요`}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          ) : (
+            <div
+              className="work-summary-responsive-grid"
+              style={{
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                gap: '14px',
+                alignItems: 'start',
+                width: '100%',
+                marginTop: '6px'
+              }}
+            >
+              {renderWeeklyEditor(weeklyMonday, { title: '주간 업무 보고', isPrimary: true, showRange: false })}
+              {renderWeeklySharedList(weeklyMonday, '주간 업무 공유')}
             </div>
-          </div>
+          )}
         </div>
 
       </div>
@@ -3889,7 +4022,11 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                     주간 업무 공유
                   </div>
                   <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
-                    {getWeekText(weeklyMonday)} ({weeklyRange.monIso.slice(2)} ~ {weeklyRange.sunIso.slice(2)})
+                    {(() => {
+                      const shareMon = weeklyShareMonday || weeklyMonday;
+                      const r = getWeeklyDateRange(shareMon);
+                      return `${getWeekText(shareMon)} (${r.monIso.slice(2)} ~ ${r.sunIso.slice(2)})`;
+                    })()}
                   </div>
                 </div>
               </div>
