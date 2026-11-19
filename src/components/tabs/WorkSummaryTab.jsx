@@ -299,17 +299,20 @@ export default function WorkSummaryTab({ onTriggerToast }) {
 
   const autoResizeTextarea = (element) => {
     if (!element) return;
+    // 숨겨진 탭(display: none)에서는 높이가 0으로 계산되어 입력칸이 줄어드므로 건너뜀 (탭이 보일 때 다시 계산)
+    if (element.offsetParent === null) return;
     element.style.height = 'auto';
     element.style.height = `${element.scrollHeight}px`;
   };
 
+  // 일일/주간 탭 전환, 화면 폭 변경 시에도 다시 계산해 처음부터 내용 전체가 보이도록 함
   useEffect(() => {
     [mainTasksRef, infoSharingRef, teamCoopRef, etcTasksRef].forEach(ref => {
       if (ref.current) {
         autoResizeTextarea(ref.current);
       }
     });
-  }, [weeklyMonday, currentWeeklyCustom, isDualWeekView]);
+  }, [weeklyMonday, currentWeeklyCustom, isDualWeekView, mobileReportTab, containerWidth]);
 
   useEffect(() => {
     [dailyIssuesRef, dailyTodayTasksRef, dailyTomorrowPlanRef].forEach(ref => {
@@ -317,7 +320,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         autoResizeTextarea(ref.current);
       }
     });
-  }, [dailyDate, dailyCustomReports, workLogs]);
+  }, [dailyDate, dailyCustomReports, workLogs, mobileReportTab, containerWidth]);
 
   // 주간 업무 보고(1~4번) 명시적 저장 핸들러 (저장 버튼 누를 때 사내공유 대상자에게도 즉시 자동 공유)
   const handleSaveWeeklyCustomReport = async (monArg) => {
