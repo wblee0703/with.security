@@ -331,29 +331,91 @@ function doGet(e) {
  * POST 요청 핸들러 (데이터 추가, 수정, 삭제, 일괄 동기화)
  */
 function doPost(e) {
+  // 요청 본문은 잠금 전에 해석 (해석 실패 시 바로 오류 응답)
+  let payload = null;
+  try {
+    if (e && e.postData && e.postData.contents) {
+      payload = JSON.parse(e.postData.contents);
+    }
+  } catch (err) {
+    return jsonResponse({ success: false, error: 'Invalid payload: ' + err.toString() });
+  }
+  if (!payload) {
+    return jsonResponse({ success: false, error: 'Empty payload' });
+  }
+
+  // ⚡ 사진(base64) 구글 드라이브 업로드는 시간이 오래 걸리므로 잠금 밖에서 먼저 처리
+  //    (잠금 안에서 업로드하면 그동안 다른 사용자의 저장이 줄을 서다가 잠금 대기 시간 초과로 실패할 수 있음)
+  try {
+    preUploadPayloadPhotos(payload.data);
+  } catch (err) {
+    Logger.log('preUploadPayloadPhotos error: ' + err.toString());
+  }
+
   // ⚡ 동시 저장 보호: 여러 사용자가 동시에 저장할 때 같은 행을 중복 생성하거나 서로 덮어쓰지 않도록
-  //    스크립트 잠금으로 쓰기 요청을 순서대로 처리 (최대 30초 대기)
+  //    스크립트 잠금으로 쓰기 요청을 순서대로 처리 (최대 30초 대기, 실패 시 앱이 자동 재전송)
   const lock = LockService.getScriptLock();
   let locked = false;
   try {
     locked = lock.tryLock(30000);
   } catch (err) { }
   if (!locked) {
-    return jsonResponse({ success: false, error: 'Server busy (lock timeout). Please retry.' });
+    return jsonResponse({ success: false, error: 'Server busy (lock timeout). Please retry.', retryable: true });
   }
   try {
-    return doPostInternal(e);
+    return doPostInternal(payload);
   } finally {
     try { lock.releaseLock(); } catch (err) { }
   }
 }
 
-function doPostInternal(e) {
+/**
+ * 요청 데이터 안의 base64 사진(data:image...)을 미리 구글 드라이브에 저장하고 URL로 교체
+ * - { dataUrl / url / viewUrl } 형태의 사진 객체와 문자열 사진 모두 처리
+ * - 같은 요청 안의 동일 사진은 _driveSaveCache로 한 번만 업로드
+ */
+function preUploadPayloadPhotos(node, depth) {
+  depth = depth || 0;
+  if (!node || depth > 8) return;
+  if (Array.isArray(node)) {
+    for (var i = 0; i < node.length; i++) {
+      var item = node[i];
+      if (typeof item === 'string' && item.indexOf('data:image') === 0) {
+        var infoS = saveBase64ImageToDrive(item, 'tbm_photo.jpg', 'WithSharing_TBM_Photos');
+        if (infoS && infoS.url) node[i] = infoS.url;
+      } else {
+        preUploadPayloadPhotos(item, depth + 1);
+      }
+    }
+    return;
+  }
+  if (typeof node !== 'object') return;
+
+  var src = '';
+  ['dataUrl', 'url', 'viewUrl'].forEach(function (k) {
+    if (!src && typeof node[k] === 'string' && node[k].indexOf('data:image') === 0) src = node[k];
+  });
+  if (src) {
+    var info = saveBase64ImageToDrive(src, node.name || 'tbm_photo.jpg', 'WithSharing_TBM_Photos');
+    if (info && info.url) {
+      delete node.dataUrl;
+      node.url = info.url;
+      node.viewUrl = info.viewUrl || info.url;
+      node.thumbnailUrl = info.thumbnailUrl || info.url;
+      if (info.fileId) node.driveFileId = info.fileId;
+      if (info.size && !node.size) node.size = info.size;
+    }
+  }
+  for (var key in node) {
+    if (Object.prototype.hasOwnProperty.call(node, key) && node[key] && typeof node[key] === 'object') {
+      preUploadPayloadPhotos(node[key], depth + 1);
+    }
+  }
+}
+
+function doPostInternal(payload) {
   try {
-    let payload = {};
-    if (e && e.postData && e.postData.contents) {
-      payload = JSON.parse(e.postData.contents);
-    } else {
+    if (!payload || typeof payload !== 'object') {
       return jsonResponse({ success: false, error: 'Empty payload' });
     }
 
@@ -1947,8 +2009,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
         if (dataUrl.startsWith('data:image')) {
           driveInfo = saveBase64ImageToDrive(dataUrl, pName, 'WithSharing_TBM_Photos');
         } else if (dataUrl.startsWith('http://') || dataUrl.startsWith('https://')) {
-          pUrl = dataUrl;
-          pViewUrl = dataUrl;
+          // 미리 업로드된 사진(url/viewUrl이 따로 있는 경우)은 각 값을 그대로 유지
+          pUrl = pUrl || dataUrl;
+          pViewUrl = pViewUrl || dataUrl;
         }
       }
 
@@ -1967,7 +2030,7 @@ function normalizeObjectForSheet(sheetName, rawObj) {
         size: (driveInfo && driveInfo.size) || pSize,
         takenAt: pTaken,
         timestamp: pTaken,
-        driveFileId: (driveInfo && driveInfo.fileId) || '',
+        driveFileId: (driveInfo && driveInfo.fileId) || ((p && typeof p === 'object' && p.driveFileId) ? p.driveFileId : ''),
         url: finalUrl,
         viewUrl: finalViewUrl,
         thumbnailUrl: finalThumb

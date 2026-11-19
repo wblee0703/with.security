@@ -355,6 +355,216 @@ async function isWriteRequestAccepted(res) {
   }
 }
 
+// =====================================================================
+// ✉️ 구글 시트 쓰기 실패 자동 재전송 대기열 (Write Outbox)
+// - 여러 사람이 동시에 저장해 서버가 바쁘거나(잠금 대기 초과), 네트워크가 끊겨 저장이 실패한 경우
+//   요청을 이 기기에 보관했다가 자동으로 다시 보냄 (서버 저장은 같은 ID 기준 덮어쓰기라 재전송해도 중복되지 않음)
+// - 같은 항목을 다시 저장하면 이전 대기 요청은 최신 요청으로 대체 (오래된 내용이 새 내용을 덮어쓰지 않음)
+// =====================================================================
+const WRITE_OUTBOX_KEY = 'with_security_write_outbox';
+const OUTBOX_ACTIONS = new Set(['create', 'update', 'delete', 'add_comment', 'delete_comment']);
+const OUTBOX_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const OUTBOX_MAX_ATTEMPTS = 50;
+const OUTBOX_MAX_BODY_CHARS = 1500000; // 사진이 포함된 매우 큰 요청은 기기 저장 공간 한도 때문에 보관 제외
+const OUTBOX_FLUSH_DELAY_MS = 30000;
+// 서버 응답을 읽을 수 없는(CORS 차단) 환경이 반복 확인되면 이후 쓰기는 no-cors로만 전송
+let gasCorsWriteFailCount = 0;
+let gasWriteSeq = 0;
+const gasWriteLatestSeq = new Map();
+let outboxFlushing = false;
+let outboxTimer = null;
+
+function parseGasWriteBody(body) {
+  if (!body) return null;
+  if (typeof body === 'object') return body;
+  try { return JSON.parse(body); } catch (e) { return null; }
+}
+
+function readWriteOutbox() {
+  try {
+    const list = JSON.parse(localStorage.getItem(WRITE_OUTBOX_KEY) || '[]');
+    return Array.isArray(list) ? list.filter(e => e && e.body && e.key) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeWriteOutbox(list) {
+  try {
+    if (!list || list.length === 0) localStorage.removeItem(WRITE_OUTBOX_KEY);
+    else localStorage.setItem(WRITE_OUTBOX_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn('[WriteOutbox] 재전송 대기열 저장 실패 (기기 저장 공간 부족 가능):', e?.message || e);
+  }
+}
+
+// 같은 시트·같은 항목에 대한 쓰기 요청을 하나로 묶는 키
+function getGasWriteKey(b) {
+  if (!b || !OUTBOX_ACTIONS.has(b.action)) return null;
+  const sheet = String(b.sheet || '');
+  if (b.action === 'add_comment' || b.action === 'delete_comment') {
+    const cid = String(b.commentId || b.data?.id || '').trim();
+    return cid ? `cmt:${sheet}:${String(b.id || '').trim()}:${cid}` : null;
+  }
+  const d = b.data || {};
+  const id = String(
+    b.id || (sheet === 'users' ? d.username : '') || d.id || d.log_id || d.report_id || d.reportId || d.username || ''
+  ).trim();
+  return id ? `rec:${sheet}:${id}` : null;
+}
+
+// 구글 시트 쓰기 응답 판정: 'ok' | 'retry'(나중에 다시 보내면 되는 실패) | 'fail'(데이터 자체 문제)
+async function evaluateGasWriteResponse(res) {
+  if (!res) return 'retry'; // 네트워크 오류, 시간 초과
+  if (res.type === 'opaque' || res.status === 0) return 'ok'; // no-cors 전송: 결과 확인 불가 → 전송 성공으로 간주
+  if (!res.ok) return 'retry';
+  let json = null;
+  try {
+    json = await res.clone().json();
+  } catch (e) {
+    return 'retry'; // 구글 서버 오류 페이지(HTML) 등
+  }
+  if (json && json.success === false) {
+    const err = String(json.error || '');
+    if (json.retryable) return 'retry';
+    if (/유효하지 않은|Unknown action|User not found|Key field not found|Empty|only supported|Invalid payload|is required/i.test(err)) {
+      return 'fail';
+    }
+    return 'retry'; // 잠금 대기 초과, 구글 서비스 일시 오류, 동시 실행 한도 초과 등
+  }
+  return 'ok';
+}
+
+function enqueueGasWrite(key, body) {
+  const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+  if (bodyStr.length > OUTBOX_MAX_BODY_CHARS) {
+    console.warn('[WriteOutbox] 요청이 너무 커서 재전송 대기열에 보관하지 않습니다.');
+    return;
+  }
+  const list = readWriteOutbox().filter(e => e.key !== key);
+  list.push({ key, body: bodyStr, queuedAt: Date.now(), attempts: 0 });
+  writeWriteOutbox(list);
+  scheduleOutboxFlush();
+}
+
+// 새 쓰기 요청 시작: 같은 항목의 대기 중 요청은 최신 요청으로 대체
+function beginGasWrite(body) {
+  const b = parseGasWriteBody(body);
+  if (!b || !OUTBOX_ACTIONS.has(b.action)) return null;
+  const key = getGasWriteKey(b) || `once:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const seq = ++gasWriteSeq;
+  gasWriteLatestSeq.set(key, seq);
+  const list = readWriteOutbox();
+  const next = list.filter(e => e.key !== key);
+  if (next.length !== list.length) writeWriteOutbox(next);
+  return { key, seq, body };
+}
+
+// 쓰기 결과 처리: 다시 보내야 하는 실패이고, 그 사이 같은 항목의 더 새로운 요청이 없을 때만 대기열에 보관
+async function finishGasWrite(ticket, res) {
+  if (!ticket) return;
+  const result = await evaluateGasWriteResponse(res);
+  if (result === 'retry' && gasWriteLatestSeq.get(ticket.key) === ticket.seq) {
+    enqueueGasWrite(ticket.key, ticket.body);
+  }
+}
+
+// 구글 시트 쓰기 전송 (응답 확인 가능한 CORS 우선, 차단 환경이면 no-cors)
+async function sendGasWriteRaw(baseUrl, body, timeoutMs = 35000) {
+  const send = async (mode) => {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(baseUrl, {
+        method: 'POST',
+        mode,
+        redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body,
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(tid);
+    }
+  };
+  const useNoCors = gasCorsWriteFailCount >= 2;
+  try {
+    return await send(useNoCors ? 'no-cors' : 'cors');
+  } catch (err) {
+    if (useNoCors || err?.name === 'AbortError') return null;
+    try {
+      const r = await send('no-cors');
+      gasCorsWriteFailCount++;
+      return r;
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
+function scheduleOutboxFlush(delay = OUTBOX_FLUSH_DELAY_MS) {
+  if (typeof window === 'undefined' || outboxTimer) return;
+  outboxTimer = setTimeout(() => {
+    outboxTimer = null;
+    flushWriteOutbox();
+  }, delay);
+}
+
+// 재전송 대기열 비우기 (앱 시작, 온라인 복귀, 화면 복귀, 30초 주기)
+export async function flushWriteOutbox() {
+  if (outboxFlushing) return;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (readWriteOutbox().length) scheduleOutboxFlush();
+    return;
+  }
+  const baseUrl = getApiServerUrl();
+  if (!baseUrl || !baseUrl.includes('script.google.com')) return;
+
+  outboxFlushing = true;
+  let sentCount = 0;
+  try {
+    const now = Date.now();
+    const initial = readWriteOutbox();
+    const valid = initial.filter(e => now - Number(e.queuedAt || 0) < OUTBOX_MAX_AGE_MS && Number(e.attempts || 0) < OUTBOX_MAX_ATTEMPTS);
+    if (valid.length !== initial.length) writeWriteOutbox(valid);
+
+    for (const entry of valid) {
+      const isSame = (e) => e.key === entry.key && e.queuedAt === entry.queuedAt;
+      if (!readWriteOutbox().some(isSame)) continue; // 그 사이 최신 요청으로 대체됨
+      const seq = ++gasWriteSeq;
+      gasWriteLatestSeq.set(entry.key, seq);
+
+      const res = await sendGasWriteRaw(baseUrl, entry.body);
+      const result = await evaluateGasWriteResponse(res);
+      const current = readWriteOutbox();
+      if (result === 'retry') {
+        writeWriteOutbox(current.map(e => (isSame(e) ? { ...e, attempts: Number(e.attempts || 0) + 1 } : e)));
+        break; // 서버가 바쁘거나 오프라인 → 다음 주기에 이어서 재전송
+      }
+      writeWriteOutbox(current.filter(e => !isSame(e)));
+      if (result === 'ok') sentCount++;
+      else console.warn('[WriteOutbox] 서버가 거부한 요청을 대기열에서 제외했습니다.');
+    }
+  } finally {
+    outboxFlushing = false;
+    if (readWriteOutbox().length) scheduleOutboxFlush();
+  }
+  if (sentCount > 0) {
+    console.info(`[WriteOutbox] 대기 중이던 저장 ${sentCount}건을 서버에 반영했습니다.`);
+    notifyDataChanged();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => { flushWriteOutbox(); });
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') flushWriteOutbox();
+    });
+  }
+  setTimeout(() => { flushWriteOutbox(); }, 5000);
+}
+
 // 사용자 id 유효성: 1 이상의 순차 정수 (예: 1, 2, 3 ...)
 function isValidNumericUserId(val) {
   if (val === undefined || val === null || val === '') return false;
@@ -419,6 +629,9 @@ async function safeFetchApi(endpoint, options = {}) {
     }
   }
 
+  // 구글 시트 쓰기 요청: 같은 항목의 재전송 대기 요청을 최신 요청으로 대체하고, 실패 시 대기열에 보관
+  const gasWriteTicket = (isGoogleSheet && method !== 'GET') ? beginGasWrite(finalOptions.body) : null;
+
   const fetchPromise = (async () => {
     try {
       const timeoutMs = finalOptions.timeout || (isGoogleSheet ? 35000 : 8000);
@@ -435,7 +648,9 @@ async function safeFetchApi(endpoint, options = {}) {
         // 웹 브라우저 환경에서 구글 스프레드시트 POST/PUT/DELETE 변경 시 브라우저 CORS 차단(Redirect preflight error)을
         // 방지하기 위해 mode: 'no-cors'를 적용합니다. mode: 'no-cors'로 요청하면 브라우저가 CORS 에러를 발생시키지 않고
         // payload를 Google Apps Script doPost(e)로 100% 온전하게 전달합니다.
-        if (method !== 'GET') {
+        // 쓰기 요청은 서버 응답(성공/실패)을 확인할 수 있도록 CORS로 먼저 보내고,
+        // 응답을 읽을 수 없는 환경이 반복 확인되면 no-cors로 전송 (Content-Type: text/plain이라 preflight 없음)
+        if (method !== 'GET' && gasCorsWriteFailCount >= 2) {
           finalOptions.mode = 'no-cors';
         }
       } else {
@@ -486,14 +701,16 @@ async function safeFetchApi(endpoint, options = {}) {
           }
 
           // 일반 CORS fetch 실패 시 mode: 'no-cors'로 즉시 재전송 시도하여 스프레드시트 저장 보장
-          if (isGoogleSheet && method !== 'GET' && finalOptions.mode !== 'no-cors') {
+          if (isGoogleSheet && method !== 'GET' && finalOptions.mode !== 'no-cors' && !controller.signal.aborted) {
             try {
-              return await fetch(fullUrl, {
+              const noCorsRes = await fetch(fullUrl, {
                 ...finalOptions,
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 signal: controller.signal
               });
+              gasCorsWriteFailCount++;
+              return noCorsRes;
             } catch (retryErr) { }
           }
 
@@ -507,6 +724,10 @@ async function safeFetchApi(endpoint, options = {}) {
       };
 
       const res = await executeFetch(false);
+
+      if (gasWriteTicket) {
+        try { await finishGasWrite(gasWriteTicket, res); } catch (e) { }
+      }
 
       if (res && res.ok && method === 'GET') {
         recentResponseCache.set(fullUrl, {
