@@ -180,6 +180,72 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const [isDailyDirty, setIsDailyDirty] = useState(false);
   const [isDailyOwnCollapsed, setIsDailyOwnCollapsed] = useState(false);
 
+  // 관리 사업장 선택 (일일 업무 보고서 복사 시 상단에 표시, 계정별 로컬 저장)
+  const managedSiteKey = draftUserRef.current ? `with_report_managed_site_${draftUserRef.current}` : '';
+  const [reportSites, setReportSites] = useState([]);
+  const [managedSite, setManagedSite] = useState(() => {
+    try { return managedSiteKey ? (localStorage.getItem(managedSiteKey) || '') : ''; } catch (e) { return ''; }
+  });
+  const handleManagedSiteChange = (value) => {
+    setManagedSite(value);
+    try {
+      if (managedSiteKey) {
+        if (value) localStorage.setItem(managedSiteKey, value);
+        else localStorage.removeItem(managedSiteKey);
+      }
+    } catch (e) { }
+  };
+  useEffect(() => {
+    let alive = true;
+    const loadReportSites = async () => {
+      try {
+        const list = await dbService.getSites();
+        if (alive) setReportSites(Array.isArray(list) ? list : []);
+      } catch (e) { }
+    };
+    loadReportSites();
+    window.addEventListener('with_security_data_changed', loadReportSites);
+    return () => { alive = false; window.removeEventListener('with_security_data_changed', loadReportSites); };
+  }, []);
+  // 사업장 표시명: "사업장명 (위치)" — 예: SKH (이천)
+  const getSiteDisplayName = (s) => {
+    const name = String(s?.name || s?.site_name || s?.siteName || '').trim();
+    const addr = String(s?.address || '').trim();
+    if (!name) return addr;
+    return addr && !name.includes('(') ? `${name} (${addr})` : name;
+  };
+  const reportSiteOptions = Array.from(new Set(reportSites.map(getSiteDisplayName).filter(Boolean)));
+  if (managedSite && !reportSiteOptions.includes(managedSite)) reportSiteOptions.unshift(managedSite);
+
+  const managedSiteSelect = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 1, minWidth: 0 }}>
+      <Building2 size={isMobile ? 14 : 16} color="#64748b" style={{ flexShrink: 0 }} />
+      <select
+        value={managedSite}
+        onChange={(e) => handleManagedSiteChange(e.target.value)}
+        title="관리 사업장 선택 (일일 업무 보고서 복사 시 상단에 표시)"
+        style={{
+          height: isMobile ? '32px' : '38px',
+          padding: '0 8px',
+          borderRadius: '6px',
+          border: '1.5px solid #cbd5e1',
+          background: '#f8fafc',
+          color: managedSite ? '#0f172a' : '#94a3b8',
+          fontSize: isMobile ? '12px' : '13px',
+          fontWeight: '700',
+          cursor: 'pointer',
+          maxWidth: isMobile ? '150px' : '220px',
+          minWidth: 0
+        }}
+      >
+        <option value="">관리 사업장 선택</option>
+        {reportSiteOptions.map(opt => (
+          <option key={opt} value={opt}>{opt}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   // 미저장 변경사항 이동 안내 모달 상태
   const [isUnsavedPromptOpen, setIsUnsavedPromptOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -1961,7 +2027,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   };
 
   const generateDailyReportText = () => {
-    let t = `• ${isFuture ? '예정 일자' : '보고 일자'}: ${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}\n\n`;
+    // 상단 형식: <일일 업무 보고서> / 관리사업장, 날짜 — 예: SKH (이천), 2026년 11월 27일 (금)
+    const siteLine = [managedSite, `${getFormattedKoreanDate(dailyDate)}${isFuture ? ' (예정)' : ''}`].filter(Boolean).join(', ');
+    let t = `<${isFuture ? '예정 업무 보고서' : '일일 업무 보고서'}>\n${siteLine}\n\n`;
 
     const issues = (currentDailyCustom.issues || '').trim();
     const todayTasks = (currentDailyCustom.todayTasks || '').trim();
@@ -1985,7 +2053,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
   const generateWeeklyReportText = (monArg) => {
     const mon = typeof monArg === 'string' ? monArg : weeklyMonday;
     const r = getWeeklyDateRange(mon);
-    let t = `• ${getWeekText(mon)} (${r.monIso} ~ ${r.sunIso})\n\n`;
+    // 상단 형식: <주간 업무 보고서> - 2026년 11월 4주차 / 관리사업장, 기간 — 예: SKH (이천), 2026-11-23 ~ 2026-11-29
+    const siteLine = [managedSite, `${r.monIso} ~ ${r.sunIso}`].filter(Boolean).join(', ');
+    let t = `<주간 업무 보고서> - ${getWeekText(mon)}\n${siteLine}\n\n`;
 
     const custom = getWeeklyCustomFor(mon);
 
@@ -2599,7 +2669,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         justifyContent: 'space-between',
         gap: isMobile ? '12px' : '10px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'space-between', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           <div style={{
             width: isMobile ? '36px' : '40px',
             height: isMobile ? '36px' : '40px',
@@ -2619,14 +2690,19 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             업무 정리 보고서
           </div>
         </div>
+        {/* 모바일: 관리 사업장 선택을 제목과 같은 줄 오른쪽 정렬 */}
+        {isMobile && managedSiteSelect}
+        </div>
 
-        {/* 일일업무 & 주간업무 전환 버튼 (모바일: 제목 아래 전체 폭 / 데스크톱: 제목과 같은 줄 오른쪽) */}
+        {/* 일일업무 & 주간업무 전환 버튼 (모바일: 제목 아래 전체 폭 / 데스크톱: 제목과 같은 줄 오른쪽, 관리 사업장 선택은 버튼 왼쪽) */}
         {(
           <div style={{
             display: 'flex',
+            alignItems: 'center',
             gap: '6px',
             width: isMobile ? '100%' : 'auto'
           }}>
+            {!isMobile && <div style={{ marginRight: '4px' }}>{managedSiteSelect}</div>}
             <button
               type="button"
               onClick={() => setMobileReportTab('DAILY')}
