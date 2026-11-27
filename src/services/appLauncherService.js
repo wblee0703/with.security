@@ -135,6 +135,9 @@ export async function launchApp(targetScheme) {
  * @returns {Promise<{ success: boolean, aborted?: boolean }>}
  */
 export async function shareReportText({ title, text }) {
+  // 복사 버튼과 동일한 형식으로 전달 (끝 공백 정리). navigator.share 에는 title 을 넘기지 않음:
+  // 일부 앱이 title 을 본문 앞에 덧붙여 보고서 형식이 달라지기 때문
+  text = String(text || '').replace(/\s+$/, '');
   if (Capacitor.isNativePlatform()) {
     try {
       await NativeAppLauncher.shareText({ title, text });
@@ -143,7 +146,7 @@ export async function shareReportText({ title, text }) {
       console.warn('NativeAppLauncher.shareText error, trying navigator.share fallback:', e);
       if (navigator.share) {
         try {
-          await navigator.share({ title, text });
+          await navigator.share({ text });
           return { success: true };
         } catch (shareErr) {
           if (shareErr.name === 'AbortError') return { success: false, aborted: true };
@@ -152,7 +155,7 @@ export async function shareReportText({ title, text }) {
     }
   } else if (navigator.share) {
     try {
-      await navigator.share({ title, text });
+      await navigator.share({ text });
       return { success: true };
     } catch (shareErr) {
       if (shareErr.name === 'AbortError') return { success: false, aborted: true };

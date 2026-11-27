@@ -85,8 +85,9 @@ public class NativeAppLauncherPlugin extends Plugin {
         try {
             Intent sendIntent = new Intent();
             sendIntent.setAction(Intent.ACTION_SEND);
+            // 본문만 전달: EXTRA_SUBJECT를 넣으면 메시지/메일/메모 앱 등에서 제목이 본문 앞에 덧붙어
+            // 복사한 보고서 형식(<일일 업무 보고서> ...)과 달라지므로 제목은 공유 선택창 제목으로만 사용
             sendIntent.putExtra(Intent.EXTRA_TEXT, text);
-            sendIntent.putExtra(Intent.EXTRA_SUBJECT, title);
             sendIntent.setType("text/plain");
 
             Intent shareIntent = Intent.createChooser(sendIntent, title);
