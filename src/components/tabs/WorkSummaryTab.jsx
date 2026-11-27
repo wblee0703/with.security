@@ -2121,7 +2121,9 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                {/* 완료 처리 버튼 (주황: 미완료 → 누르면 녹색 '완료', 다시 누르면 완료 취소) */}
+                {/* 완료 처리 버튼 (주황: 미완료 → 누르면 녹색 '완료', 다시 누르면 완료 취소)
+                    금주·이전 주차에서만 표시 (차주 이후 주차는 숨김) */}
+                {mon <= thisMondayIso && (
                 <button
                   type="button"
                   onClick={() => handleToggleWeeklyComplete(mon)}
@@ -2147,6 +2149,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   <CheckCircle2 size={13} color="#ffffff" />
                   <span>{isCompleted ? '완료' : '완료 처리'}</span>
                 </button>
+                )}
 
                 {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
                 <button
