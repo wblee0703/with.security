@@ -256,6 +256,8 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
   const [hostedServerUrlInput, setHostedServerUrlInput] = useState('');
   const [activeHostedServerUrl, setActiveHostedServerUrl] = useState('');
   const [sheetsUrlInput, setSheetsUrlInput] = useState('');
+  // 잠금 해제 시 확인된 개발자 계정 (URL 변경을 모든 기기에 알릴 때 인증용, 메모리에만 보관)
+  const serverAdminAuthRef = useRef(null);
   const [activeSheetsUrl, setActiveSheetsUrl] = useState('');
 
   const [isTestingHosted, setIsTestingHosted] = useState(false);
@@ -893,8 +895,34 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
 
   // 5. Save Both URLs & Apply Lock
   const handleSaveServerUrls = async () => {
+    const previousSheetsUrl = dbService.getGoogleSheetsUrl();
     dbService.setHostedServerUrl(hostedServerUrlInput);
     dbService.setGoogleSheetsUrl(sheetsUrlInput);
+
+    // 구글 스프레드시트 URL이 바뀌었으면 기존 URL에 새 URL을 기록 → 다른 PC·핸드폰도 다음 동기화 때 자동 전환
+    const nextSheetsUrl = dbService.getGoogleSheetsUrl();
+    if (nextSheetsUrl !== previousSheetsUrl && nextSheetsUrl.includes('script.google.com')) {
+      let auth = serverAdminAuthRef.current;
+      if (!auth) {
+        const pw = window.prompt('모든 기기에 새 URL을 적용하려면 개발자 계정 비밀번호를 입력해 주세요.\n(취소하면 이 기기에만 적용됩니다)');
+        if (pw && pw.trim() && currentUser?.username) {
+          auth = { username: currentUser.username, passwordHash: await hashPassword(pw.trim()) };
+        }
+      }
+      if (auth) {
+        const pub = await dbService.publishActiveApiUrl(nextSheetsUrl, previousSheetsUrl, auth);
+        if (onTriggerToast) {
+          if (pub.success) {
+            onTriggerToast('새 구글 스프레드시트 URL이 등록되었습니다. 다른 PC·핸드폰도 다음 동기화 때 자동으로 전환됩니다.', 'success');
+          } else {
+            const err = (pub.results || []).map(r => r.error).filter(Boolean)[0] || '기존 스크립트가 최신 버전이 아닐 수 있습니다';
+            onTriggerToast(`이 기기에만 적용되었습니다. 다른 기기 자동 전환 등록 실패: ${err}`, 'warning');
+          }
+        }
+      } else if (onTriggerToast) {
+        onTriggerToast('이 기기에만 새 URL이 적용되었습니다. (다른 기기 자동 전환 미등록)', 'info');
+      }
+    }
 
     const updatedH = dbService.getHostedServerUrl();
     const updatedS = dbService.getGoogleSheetsUrl();
@@ -959,12 +987,14 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     let isValid = false;
 
     // 1. Check logged-in user if developer / admin
+    let matchedUsername = '';
     if (currentUser?.role === '개발자' || currentUser?.username === 'admin') {
       if (currentUser?.passwordHash && (await verifyPasswordHash(inputPass, currentUser.passwordHash))) {
         isValid = true;
       } else if (currentUser?.password && (inputPass === currentUser.password || (await verifyPasswordHash(inputPass, currentUser.password)))) {
         isValid = true;
       }
+      if (isValid) matchedUsername = currentUser?.username || '';
     }
 
     // 2. Check registered users list (developer or admin account)
@@ -975,10 +1005,12 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
         for (const dev of devUsers) {
           if (dev.passwordHash && (await verifyPasswordHash(inputPass, dev.passwordHash))) {
             isValid = true;
+            matchedUsername = dev.username || '';
             break;
           }
           if (dev.password && (inputPass === dev.password || (await verifyPasswordHash(inputPass, dev.password)))) {
             isValid = true;
+            matchedUsername = dev.username || '';
             break;
           }
         }
@@ -988,6 +1020,9 @@ export default function UserSettingTab({ onTriggerToast, setActiveTab }) {
     }
 
     if (isValid) {
+      serverAdminAuthRef.current = matchedUsername
+        ? { username: matchedUsername, passwordHash: await hashPassword(inputPass) }
+        : null;
       localStorage.removeItem('with_security_server_locked');
       setIsServerLocked(false);
       setIsServerUnlockModalOpen(false);

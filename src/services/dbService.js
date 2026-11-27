@@ -4577,6 +4577,10 @@ class SecurityDatabase {
       sharedWith: this._cleanSharedWithList(item.shared_with || item.sharedWith || localItem?.sharedWith),
       sharedAt: this._normalizeKstDateTime(item.shared_at || item.sharedAt || localItem?.sharedAt || ''),
       createdAt: this._normalizeKstDateTime(item.created_at || item.createdAt || localItem?.createdAt || ''),
+      isCompleted: (item.is_completed !== undefined || item.isCompleted !== undefined)
+        ? ['y', 'true', '1', '완료'].includes(String(item.is_completed ?? item.isCompleted).trim().toLowerCase())
+        : Boolean(localItem?.isCompleted),
+      completedAt: this._normalizeKstDateTime(item.completed_at || item.completedAt || ''),
       comments: this._mergeReportComments(item.comments, localItem?.comments)
     };
   }
@@ -4847,6 +4851,8 @@ class SecurityDatabase {
       sharedWith: cleanSharedWith,
       sharedAt: report.sharedAt || '',
       createdAt: report.createdAt || new Date().toISOString().replace('T', ' ').slice(0, 16),
+      isCompleted: Boolean(report.isCompleted),
+      completedAt: report.isCompleted ? (report.completedAt || '') : '',
       // 이 기기에서 저장한 시각 (시트 반영 전 백그라운드 동기화가 이전 서버 값으로 덮어쓰는 것을 방지)
       _localSavedAt: Date.now()
     };
@@ -4890,6 +4896,8 @@ class SecurityDatabase {
         shared_with: normalized.sharedWith,
         shared_at: normalized.sharedAt,
         created_at: normalized.createdAt,
+        is_completed: normalized.isCompleted ? 'Y' : '',
+        completed_at: normalized.completedAt,
         // 구버전 Apps Script 배포본 호환용 camelCase 키 (최신 스크립트는 SCHEMAS 컬럼만 기록하므로 잉여 컬럼 생성 없음)
         reportId: targetId,
         weeklyMonday: normalized.weeklyMonday,
@@ -5004,6 +5012,7 @@ class SecurityDatabase {
               sharedAt: item.sharedAt || item.shared_at || localItem?.sharedAt || '',
               createdAt: item.createdAt || item.created_at || localItem?.createdAt || '',
               updatedAt: item.updatedAt || item.updated_at || localItem?.updatedAt || '',
+              ...this._resolveDailyCompletion(item, localItem),
               comments: this._mergeReportComments(item.comments, localItem?.comments)
             };
           });
@@ -5028,6 +5037,20 @@ class SecurityDatabase {
     } catch (e) { }
 
     return localOverrides;
+  }
+
+  // 일일 보고 완료 상태 결정: 이 기기에서 3분 안에 바꾼 값은 서버 반영 전이므로 로컬 값 우선
+  _resolveDailyCompletion(item, localItem) {
+    const localFresh = localItem && localItem._completedSavedAt && (Date.now() - Number(localItem._completedSavedAt)) < 3 * 60 * 1000;
+    if (localFresh) {
+      return { isCompleted: Boolean(localItem.isCompleted), completedAt: localItem.completedAt || '', _completedSavedAt: localItem._completedSavedAt };
+    }
+    const raw = item?.is_completed ?? item?.isCompleted;
+    if (raw === undefined || raw === null) {
+      return { isCompleted: Boolean(localItem?.isCompleted), completedAt: localItem?.completedAt || '' };
+    }
+    const done = raw === true || ['y', 'true', '1', '완료'].includes(String(raw).trim().toLowerCase());
+    return { isCompleted: done, completedAt: done ? this._normalizeKstDateTime(item.completed_at || item.completedAt || '') : '' };
   }
 
   async saveDailyReport(report) {
@@ -5067,7 +5090,13 @@ class SecurityDatabase {
             : []),
       sharedAt: report.sharedAt || report.shared_at || '',
       createdAt: report.createdAt || nowStr,
-      updatedAt: nowStr
+      updatedAt: nowStr,
+      // 완료 처리 상태: 요청에 담긴 경우에만 갱신 (없으면 기존 값 유지)
+      ...(('isCompleted' in report) ? {
+        isCompleted: Boolean(report.isCompleted),
+        completedAt: report.isCompleted ? (report.completedAt || '') : '',
+        _completedSavedAt: Date.now()
+      } : {})
     };
 
     const idx = current.findIndex(r => (r.id || r.reportId) === targetId || (r.dailyDate === normalized.dailyDate && (r.authorUsername || r.authorName) === (normalized.authorUsername || normalized.authorName)));
@@ -5125,7 +5154,11 @@ class SecurityDatabase {
         shared_with: Array.isArray(normalized.sharedWith) ? normalized.sharedWith.join(', ') : (normalized.sharedWith || ''),
         shared_at: normalized.sharedAt || '',
         created_at: normalized.createdAt,
-        updated_at: normalized.updatedAt
+        updated_at: normalized.updatedAt,
+        ...(('isCompleted' in report) ? {
+          is_completed: normalized.isCompleted ? 'Y' : '',
+          completed_at: normalized.completedAt || ''
+        } : {})
       })
     }).catch(e => console.warn('Background daily report save warning:', e));
 
@@ -6574,7 +6607,7 @@ class SecurityDatabase {
         const localDailyMap = new Map((Array.isArray(localDaily) ? localDaily : []).map(r => [String(r?.id || r?.reportId || ''), r]));
         const mergedDaily = syncData.daily_reports.map(r => {
           const lo = localDailyMap.get(String(r?.id || r?.reportId || ''));
-          return { ...r, comments: this._mergeReportComments(r?.comments, lo?.comments) };
+          return { ...r, ...this._resolveDailyCompletion(r, lo), comments: this._mergeReportComments(r?.comments, lo?.comments) };
         });
         localStorage.setItem('with_sec_daily_reports_list', JSON.stringify(mergedDaily));
       } catch (e) {
@@ -6652,6 +6685,11 @@ class SecurityDatabase {
         }
 
         if (json && json.success && json.data) {
+          // 관리자가 다른 웹 앱 URL을 지정해 두었다면 새 URL로 자동 전환 후 새 URL에서 다시 동기화
+          if (sheetUrl === getGoogleSheetsUrl()) {
+            const switchedUrl = await this._followActiveApiUrl(json.activeApiUrl, sheetUrl);
+            if (switchedUrl) return await this.syncFromGoogleSheets(switchedUrl);
+          }
           return await this._applySyncPayload(json.data, true);
         } else {
           return { success: false, message: `구글 스프레드시트 응답 오류: ${json?.error || '데이터 없음'}` };
@@ -6662,6 +6700,70 @@ class SecurityDatabase {
     } catch (err) {
       return { success: false, message: `구글 스프레드시트 통신 실패: ${err.message}` };
     }
+  }
+
+  /**
+   * 🔗 관리자가 지정한 웹 앱 URL(activeApiUrl)이 현재 URL과 다르면 새 URL 연결 확인 후 자동 전환
+   * - 반환: 전환한 새 URL (전환하지 않았으면 '')
+   * - 같은 실행 중에는 한 URL로 한 번만 전환 시도 (서로 가리키는 경우 무한 전환 방지)
+   */
+  async _followActiveApiUrl(activeApiUrl, currentUrl) {
+    const target = String(activeApiUrl || '').trim().replace(/\/+$/, '');
+    const current = String(currentUrl || '').trim().replace(/\/+$/, '');
+    if (!target || target === current) return '';
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(target)) return '';
+    if (!this._triedActiveUrls) this._triedActiveUrls = new Set();
+    if (this._triedActiveUrls.has(target)) return '';
+    this._triedActiveUrls.add(target);
+
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 20000);
+      const res = await fetch(`${target}?action=ping`, { method: 'GET', redirect: 'follow', signal: controller.signal });
+      clearTimeout(tid);
+      if (!res.ok) return '';
+      const json = JSON.parse(await res.text());
+      if (!json || !json.success) return '';
+    } catch (e) {
+      console.warn('Active API URL check failed:', e);
+      return '';
+    }
+
+    setGoogleSheetsUrl(target);
+    recentResponseCache.clear();
+    console.info('[DB] 관리자가 지정한 새 구글 스프레드시트 URL로 자동 전환:', target);
+    return target;
+  }
+
+  /**
+   * 🔗 모든 기기가 사용할 웹 앱 URL 지정 (개발자 계정 확인 후 기존 URL·새 URL 양쪽 스크립트에 기록)
+   * - auth: { username, passwordHash }
+   * - 반환: { success, results: [{ url, success, error }] }
+   */
+  async publishActiveApiUrl(newUrl, previousUrl, auth = {}) {
+    const target = String(newUrl || '').trim().replace(/\/+$/, '');
+    const prev = String(previousUrl || '').trim().replace(/\/+$/, '');
+    const passwordHash = auth.passwordHash || '';
+    const username = auth.username || '';
+    const endpoints = Array.from(new Set([prev, target].filter(u => u && u.includes('script.google.com'))));
+    const results = [];
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'set_active_url', url: target, username, passwordHash })
+        });
+        const json = JSON.parse(await res.text());
+        results.push({ url: endpoint, success: Boolean(json && json.success), error: json?.error || '' });
+      } catch (e) {
+        results.push({ url: endpoint, success: false, error: e.message });
+      }
+    }
+    // 기존 URL(다른 기기들이 아직 쓰고 있는 곳)에 기록되어야 자동 전환이 가능
+    const prevResult = results.find(r => r.url === prev);
+    return { success: prevResult ? prevResult.success : results.some(r => r.success), results };
   }
 
   /**

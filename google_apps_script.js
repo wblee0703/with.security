@@ -23,7 +23,7 @@
  */
 
 // 스크립트 버전 (웹 앱 URL?action=ping 응답의 scriptVersion 으로 배포 반영 여부 확인)
-const SCRIPT_VERSION = '2026-11-12-business-trips-team';
+const SCRIPT_VERSION = '2026-11-27-daily-complete';
 
 // 테이블별 컬럼 스키마 정의 (Withsharing_DB 표준 컬럼 체계)
 const SCHEMAS = {
@@ -61,7 +61,9 @@ const SCHEMAS = {
     'author_team', 'author_rank', 'author_division', 'author_role', 'main_tasks',
     'info_sharing', 'work_support', 'etc_tasks', 'shared_with', 'shared_at', 'created_at',
     // 공유받은 사람/작성자 피드백 댓글 (한 줄에 1건: "작성 날짜, 소속팀, 이름 직급, 내용")
-    'comments'
+    'comments',
+    // 주간 업무 보고 완료 처리 여부('Y' / 빈 값) 및 완료 처리 시각
+    'is_completed', 'completed_at'
   ],
   // 5-1. 일일 업무 보고서 (daily_reports) - id 단일화 및 공유자/공유대상 분리 컬럼 관리
   daily_reports: [
@@ -71,7 +73,9 @@ const SCHEMAS = {
     'shared_by', 'shared_with', 'shared_at',
     'created_at', 'updated_at',
     // 공유받은 사람/작성자 피드백 댓글 (한 줄에 1건: "작성 날짜, 소속팀, 이름 직급, 내용")
-    'comments'
+    'comments',
+    // 일일 업무 보고 완료 처리 여부('Y' / 빈 값) 및 완료 처리 시각
+    'is_completed', 'completed_at'
   ],
   // 6. 교육 수료 관리 (MySQL: edu_log)
   edu_logs: [
@@ -284,9 +288,11 @@ function doGet(e) {
         app: 'Withsharing_DB',
         // 배포된 스크립트 버전 확인용 (재배포가 실제로 반영되었는지 웹 앱 URL?action=ping 으로 확인)
         scriptVersion: SCRIPT_VERSION,
-        features: ['share_targets2', 'report_comments', 'business_trips'],
+        features: ['share_targets2', 'report_comments', 'business_trips', 'active_api_url'],
         message: '구글 스프레드시트 데이터베이스 통신 정상',
-        counts: counts
+        counts: counts,
+        // 관리자가 지정한 '현재 사용할 웹 앱 URL' (모든 기기 자동 전환용)
+        activeApiUrl: getActiveApiUrl()
       });
     }
 
@@ -311,7 +317,9 @@ function doGet(e) {
       return jsonResponse({
         success: true,
         app: 'Withsharing_DB',
-        data: allData
+        data: allData,
+        // 관리자가 지정한 '현재 사용할 웹 앱 URL' (모든 기기 자동 전환용)
+        activeApiUrl: getActiveApiUrl()
       });
     }
 
@@ -462,6 +470,11 @@ function doPostInternal(payload) {
     if (action === 'sync_headers' || action === 'init') {
       const result = syncDatabaseHeaders();
       return jsonResponse(result);
+    }
+
+    // [0-1-1] 모든 기기가 사용할 웹 앱 URL 지정 (개발자/admin 계정 비밀번호 확인 후 저장)
+    if (action === 'set_active_url') {
+      return handleSetActiveApiUrl(payload);
     }
 
     // [0-2] 보고서 피드백 댓글 추가 / 삭제 (weekly_reports, daily_reports 전용)
@@ -1906,7 +1919,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       etc_tasks: obj.etc_tasks || obj.etcTasks || '',
       shared_with: (typeof sWith === 'object' && sWith !== null) ? JSON.stringify(sWith) : String(sWith || ''),
       shared_at: obj.shared_at || obj.sharedAt || '',
-      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss')
+      created_at: obj.created_at || obj.createdAt || Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss'),
+      is_completed: (obj.is_completed === true || ['y', 'true', '1'].indexOf(String(obj.is_completed !== undefined ? obj.is_completed : (obj.isCompleted || '')).trim().toLowerCase()) !== -1) ? 'Y' : '',
+      completed_at: obj.completed_at || obj.completedAt || ''
     };
   }
 
@@ -1940,7 +1955,9 @@ function normalizeObjectForSheet(sheetName, rawObj) {
       shared_with: sharedWithStr,
       shared_at: obj.shared_at || obj.sharedAt || '',
       created_at: obj.created_at || obj.createdAt || nowStr,
-      updated_at: obj.updated_at || obj.updatedAt || nowStr
+      updated_at: obj.updated_at || obj.updatedAt || nowStr,
+      is_completed: (obj.is_completed === true || ['y', 'true', '1'].indexOf(String(obj.is_completed !== undefined ? obj.is_completed : (obj.isCompleted || '')).trim().toLowerCase()) !== -1) ? 'Y' : '',
+      completed_at: obj.completed_at || obj.completedAt || ''
     };
   }
 
@@ -2473,6 +2490,8 @@ function readSheetData(sheetName) {
         if (!obj.sharedWith && obj.shared_with) obj.sharedWith = obj.shared_with;
         if (!obj.sharedAt && obj.shared_at) obj.sharedAt = obj.shared_at;
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
+        if (obj.isCompleted === undefined) obj.isCompleted = String(obj.is_completed || '').trim().toUpperCase() === 'Y';
+        if (!obj.completedAt && obj.completed_at) obj.completedAt = obj.completed_at;
       } else if (sheetName === 'daily_reports') {
         if (!obj.reportId && obj.id) obj.reportId = obj.id;
         if (!obj.id && obj.report_id) obj.id = obj.report_id;
@@ -2491,6 +2510,8 @@ function readSheetData(sheetName) {
         if (!obj.sharedAt && obj.shared_at) obj.sharedAt = obj.shared_at;
         if (!obj.createdAt && obj.created_at) obj.createdAt = obj.created_at;
         if (!obj.updatedAt && obj.updated_at) obj.updatedAt = obj.updated_at;
+        if (obj.isCompleted === undefined) obj.isCompleted = String(obj.is_completed || '').trim().toUpperCase() === 'Y';
+        if (!obj.completedAt && obj.completed_at) obj.completedAt = obj.completed_at;
       } else if (sheetName === 'edu_logs') {
         if (!obj.eduId && obj.edu_id) obj.eduId = obj.edu_id;
         if (!obj.userId && obj.user_id) obj.userId = obj.user_id;
@@ -2846,6 +2867,66 @@ function cleanupDuplicates() {
     totalDeleted: grandTotalDeleted,
     details: results
   };
+}
+
+/**
+ * 🔗 관리자가 지정한 '현재 사용할 웹 앱 URL' 조회 (스크립트 속성 ACTIVE_API_URL)
+ */
+function getActiveApiUrl() {
+  try {
+    return String(PropertiesService.getScriptProperties().getProperty('ACTIVE_API_URL') || '').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
+ * 🔗 모든 기기가 사용할 웹 앱 URL 지정
+ * - payload.url: 새 웹 앱 URL (https://script.google.com/macros/s/.../exec) / 빈 값이면 지정 해제
+ * - payload.username, payload.passwordHash: 개발자(또는 admin) 계정 확인용 (SHA-256 솔트 해시)
+ * - 앱은 동기화/핑 응답의 activeApiUrl 이 현재 URL과 다르면 새 URL로 자동 전환
+ */
+function handleSetActiveApiUrl(payload) {
+  const url = String(payload.url || '').trim().replace(/\/+$/, '');
+  const username = String(payload.username || '').trim().toLowerCase();
+  const passHash = hashPasswordInGas(String(payload.passwordHash || '').trim());
+
+  if (url && !/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(url)) {
+    return jsonResponse({ success: false, error: '웹 앱 URL 형식이 올바르지 않습니다. (https://script.google.com/macros/s/.../exec)' });
+  }
+  if (!username || !passHash) {
+    return jsonResponse({ success: false, error: '관리자 계정 확인 정보가 없습니다.' });
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('users');
+  if (!sheet || sheet.getLastRow() <= 1) {
+    return jsonResponse({ success: false, error: '사용자 시트를 찾을 수 없습니다.' });
+  }
+  const rows = sheet.getDataRange().getValues();
+  const headers = rows[0].map(h => String(h || '').trim());
+  const uIdx = headers.indexOf('username');
+  const pIdx = headers.indexOf('password');
+  const rIdx = headers.indexOf('role');
+  let authorized = false;
+  for (let i = 1; i < rows.length; i++) {
+    const rowUser = uIdx !== -1 ? String(rows[i][uIdx] || '').trim().toLowerCase() : '';
+    if (rowUser !== username) continue;
+    const rowRole = rIdx !== -1 ? String(rows[i][rIdx] || '').trim() : '';
+    const rowPass = pIdx !== -1 ? String(rows[i][pIdx] || '').trim().toLowerCase() : '';
+    const isDev = rowRole === '개발자' || rowUser === 'admin';
+    if (isDev && rowPass && rowPass === passHash) {
+      authorized = true;
+      break;
+    }
+  }
+  if (!authorized) {
+    return jsonResponse({ success: false, error: '개발자 계정 인증에 실패했습니다.' });
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  if (url) props.setProperty('ACTIVE_API_URL', url);
+  else props.deleteProperty('ACTIVE_API_URL');
+  return jsonResponse({ success: true, activeApiUrl: url });
 }
 
 /**

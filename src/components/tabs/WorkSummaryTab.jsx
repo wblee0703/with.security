@@ -322,6 +322,56 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     });
   }, [dailyDate, dailyCustomReports, workLogs, mobileReportTab, containerWidth]);
 
+  // 주간 업무 보고 완료 처리 / 완료 취소 토글 (내용·공유 대상은 그대로 두고 완료 상태만 변경)
+  const handleToggleWeeklyComplete = async (mon) => {
+    const existing = getMyWeeklyReport(mon);
+    const nextCompleted = !existing?.isCompleted;
+    const now = new Date();
+    const timeStr = `${formatIso(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const custom = getWeeklyCustomFor(mon);
+    const base = existing || {
+      id: `weekly-rep-${currentUser?.username || currentUser?.id || currentUser?.name || 'user'}-${mon}`,
+      weeklyMonday: mon,
+      weekText: getWeekText(mon),
+      authorUsername: currentUser?.username || currentUser?.id || '',
+      authorName: currentUser?.name || '작성자',
+      authorTeam: currentUser?.team || currentUser?.department || '운영팀',
+      authorRank: currentUser?.rank || '대리',
+      authorDivision: currentUser?.division || '',
+      authorRole: currentUser?.role || '일반',
+      mainTasks: custom.mainTasks || '',
+      infoSharing: custom.infoSharing || '',
+      workSupport: custom.workSupport || custom.teamCoop || '',
+      teamCoop: custom.workSupport || custom.teamCoop || '',
+      etcTasks: custom.etcTasks || '',
+      sharedWith: [],
+      sharedAt: '',
+      createdAt: timeStr
+    };
+    const payload = { ...base, isCompleted: nextCompleted, completedAt: nextCompleted ? timeStr : '' };
+
+    // UI 즉시 반영
+    setSharedWeeklyReports(prev => {
+      const idx = prev.findIndex(r => r.id === payload.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], isCompleted: payload.isCompleted, completedAt: payload.completedAt };
+        return next;
+      }
+      return [payload, ...prev];
+    });
+    if (onTriggerToast) {
+      onTriggerToast(nextCompleted ? '주간 업무 보고가 완료 처리되었습니다.' : '주간 업무 보고 완료가 취소되었습니다.', 'success');
+    }
+
+    try {
+      await dbService.saveWeeklyReport(payload);
+    } catch (e) {
+      console.warn('Weekly complete toggle save warning:', e);
+      if (onTriggerToast) onTriggerToast('완료 상태 저장 중 오류가 발생했습니다.', 'error');
+    }
+  };
+
   // 주간 업무 보고(1~4번) 명시적 저장 핸들러 (저장 버튼 누를 때 사내공유 대상자에게도 즉시 자동 공유)
   const handleSaveWeeklyCustomReport = async (monArg) => {
     const mon = typeof monArg === 'string' ? monArg : weeklyMonday;
@@ -375,7 +425,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       etcTasks: custom.etcTasks || '',
       sharedWith: formattedTargets,
       sharedAt: formattedTargets.length > 0 ? timeStr : '',
-      createdAt: timeStr
+      createdAt: timeStr,
+      // 완료 처리 상태는 내용 저장 시에도 그대로 유지
+      isCompleted: Boolean(getMyWeeklyReport(mon)?.isCompleted),
+      completedAt: getMyWeeklyReport(mon)?.completedAt || ''
     };
 
     // 2. LocalStorage 즉시 저장 및 dirty 플래그 리셋 (0ms 즉각 반응)
@@ -474,7 +527,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
         sharedWith: existingReport?.sharedWith || existingReport?.shared_with || [],
         sharedAt: existingReport?.sharedAt || existingReport?.shared_at || '',
         createdAt: existingReport?.createdAt || existingReport?.created_at || new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        // 완료 처리 상태는 내용 저장 시에도 그대로 유지
+        isCompleted: Boolean(existingReport?.isCompleted),
+        completedAt: existingReport?.completedAt || ''
       };
 
       dbService.saveDailyReport(payload).catch(err => {
@@ -491,6 +547,57 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       }
     }
   }
+
+  // 일일 업무 보고 완료 처리 / 완료 취소 토글 (내용·공유 대상은 그대로 두고 완료 상태만 변경)
+  const handleToggleDailyComplete = async () => {
+    const author = currentUser || {};
+    const username = author.username || author.id || 'user';
+    const targetId = `daily-rep-${username}-${dailyDate}`;
+    const existing = myDailyReport || (sharedDailyReports || []).find(r => r && (r.id === targetId || r.reportId === targetId));
+    const nextCompleted = !existing?.isCompleted;
+    const now = new Date();
+    const timeStr = `${formatIso(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const custom = dailyCustomReports[dailyDate] || {};
+    const base = existing || {
+      id: targetId,
+      dailyDate,
+      authorName: author.name || '작성자',
+      authorUsername: username,
+      authorTeam: author.team || author.department || '',
+      authorRank: author.rank || '',
+      authorDivision: author.division || '',
+      authorRole: author.role || '일반',
+      issues: custom.issues || '',
+      todayTasks: custom.todayTasks || '',
+      tomorrowPlan: custom.tomorrowPlan || '',
+      sharedBy: '',
+      sharedWith: [],
+      sharedAt: '',
+      createdAt: now.toISOString()
+    };
+    const payload = { ...base, isCompleted: nextCompleted, completedAt: nextCompleted ? timeStr : '' };
+
+    // UI 즉시 반영
+    setSharedDailyReports(prev => {
+      const idx = prev.findIndex(r => r.id === payload.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], isCompleted: payload.isCompleted, completedAt: payload.completedAt };
+        return next;
+      }
+      return [payload, ...prev];
+    });
+    if (onTriggerToast) {
+      onTriggerToast(nextCompleted ? '일일 업무 보고가 완료 처리되었습니다.' : '일일 업무 보고 완료가 취소되었습니다.', 'success');
+    }
+
+    try {
+      await dbService.saveDailyReport(payload);
+    } catch (e) {
+      console.warn('Daily complete toggle save warning:', e);
+      if (onTriggerToast) onTriggerToast('완료 상태 저장 중 오류가 발생했습니다.', 'error');
+    }
+  };
 
   // 미저장 팝업 - 저장 후 이동
   const handleConfirmSaveAndNavigate = async () => {
@@ -1242,7 +1349,10 @@ export default function WorkSummaryTab({ onTriggerToast }) {
       sharedWith: formattedTargets,
       sharedAt: isSharingActive ? timeStr : '',
       createdAt: timeStr,
-      updatedAt: timeStr
+      updatedAt: timeStr,
+      // 완료 처리 상태는 공유 설정 시에도 그대로 유지
+      isCompleted: Boolean(myDailyReport?.isCompleted),
+      completedAt: myDailyReport?.completedAt || ''
     };
 
     setIsDailyShareModalOpen(false);
@@ -1916,6 +2026,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
     const dirty = isWeekDirty(mon);
     const myRep = getMyWeeklyReport(mon);
     const range = getWeeklyDateRange(mon);
+    const isCompleted = Boolean(myRep?.isCompleted);
     const reportLabel = showRange ? `${title}서` : `${getWeeklyHeaderTitle()} 보고서`;
     const resizeRef = (el) => { if (el) autoResizeTextarea(el); };
     // LEFT: 직접 입력 주간 업무 보고 (1. 주요 내용, 2. 정보 공유, 3. 업무 지원, 4. 기타 업무)
@@ -1934,14 +2045,39 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               <div style={{ fontSize: '15px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px', borderLeft: '3px solid #0f172a', paddingLeft: '8px' }}>
                 <FileText size={17} color="#0f172a" />
                 <span>{title}</span>
-                {showRange && (
-                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
-                    ({range.monIso.slice(2)} ~ {range.sunIso.slice(2)})
-                  </span>
-                )}
+                <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
+                  ({range.monIso.slice(2)} ~ {range.sunIso.slice(2)})
+                </span>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                {/* 완료 처리 버튼 (주황: 미완료 → 누르면 녹색 '완료', 다시 누르면 완료 취소) */}
+                <button
+                  type="button"
+                  onClick={() => handleToggleWeeklyComplete(mon)}
+                  style={{
+                    background: isCompleted ? '#16a34a' : '#f97316',
+                    border: `1.5px solid ${isCompleted ? '#15803d' : '#ea580c'}`,
+                    color: '#ffffff',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '800',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isCompleted ? '0 2px 6px rgba(22, 163, 74, 0.25)' : '0 2px 6px rgba(249, 115, 22, 0.25)'
+                  }}
+                  title={isCompleted
+                    ? `완료됨${myRep?.completedAt ? ` (${myRep.completedAt})` : ''} · 누르면 완료 취소`
+                    : `${title} 완료 처리`}
+                >
+                  <CheckCircle2 size={13} color="#ffffff" />
+                  <span>{isCompleted ? '완료' : '완료 처리'}</span>
+                </button>
+
                 {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
                 <button
                   type="button"
@@ -2320,6 +2456,26 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                           <span style={{ fontSize: '13.5px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px' }}>
                             👤 공유자: <strong style={{ color: '#0f172a' }}>{authorLabel}</strong>
                           </span>
+                          {rep.isCompleted && (
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: '800',
+                                background: '#16a34a',
+                                color: '#ffffff',
+                                border: '1px solid #15803d',
+                                padding: '2px 7px',
+                                borderRadius: '10px',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px'
+                              }}
+                              title={rep.completedAt ? `완료 처리: ${rep.completedAt}` : '작성자가 완료 처리한 주간 업무 보고'}
+                            >
+                              <CheckCircle2 size={11} color="#ffffff" />
+                              완료
+                            </span>
+                          )}
                           {renderCommentCountBadge(rep)}
                         </div>
 
@@ -2862,6 +3018,32 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {/* 완료 처리 버튼 (주황: 미완료 → 누르면 녹색 '완료', 다시 누르면 완료 취소) */}
+                    <button
+                      type="button"
+                      onClick={handleToggleDailyComplete}
+                      style={{
+                        background: myDailyReport?.isCompleted ? '#16a34a' : '#f97316',
+                        border: `1.5px solid ${myDailyReport?.isCompleted ? '#15803d' : '#ea580c'}`,
+                        color: '#ffffff',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        transition: 'all 0.2s ease',
+                        boxShadow: myDailyReport?.isCompleted ? '0 2px 6px rgba(22, 163, 74, 0.25)' : '0 2px 6px rgba(249, 115, 22, 0.25)'
+                      }}
+                      title={myDailyReport?.isCompleted
+                        ? `완료됨${myDailyReport?.completedAt ? ` (${myDailyReport.completedAt})` : ''} · 누르면 완료 취소`
+                        : '일일 업무 보고 완료 처리'}
+                    >
+                      <CheckCircle2 size={13} color="#ffffff" />
+                      <span>{myDailyReport?.isCompleted ? '완료' : '완료 처리'}</span>
+                    </button>
 
                     {/* 저장 버튼 (수정사항이 있을 때만 활성화) */}
                     <button
@@ -3418,6 +3600,26 @@ export default function WorkSummaryTab({ onTriggerToast }) {
                                 <span style={{ fontSize: '13px', color: '#0f172a', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
                                   👤 공유자: <strong style={{ color: '#0f172a', marginLeft: '2px' }}>{group.authorLabel}</strong>
                                 </span>
+                                {rep?.isCompleted && (
+                                  <span
+                                    style={{
+                                      fontSize: '11px',
+                                      fontWeight: '800',
+                                      background: '#16a34a',
+                                      color: '#ffffff',
+                                      border: '1px solid #15803d',
+                                      padding: '2px 7px',
+                                      borderRadius: '10px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px'
+                                    }}
+                                    title={rep.completedAt ? `완료 처리: ${rep.completedAt}` : '작성자가 완료 처리한 일일 업무 보고'}
+                                  >
+                                    <CheckCircle2 size={11} color="#ffffff" />
+                                    완료
+                                  </span>
+                                )}
                                 {renderCommentCountBadge(rep)}
                               </div>
 
@@ -3719,7 +3921,8 @@ export default function WorkSummaryTab({ onTriggerToast }) {
             </div>
           )}
 
-          {/* Top 6 Workday Cards: 월~금요일 + 주말(토/일) 일일 업무 현황 카드 (6열 그리드) */}
+          {/* Top 6 Workday Cards: 월~금요일 + 주말(토/일) 일일 업무 현황 카드 (6열 그리드) — 모바일에서는 숨김 */}
+          {!isMobile && (
           <div style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? 'repeat(auto-fit, minmax(130px, 1fr))' : 'repeat(6, 1fr)',
@@ -3925,6 +4128,7 @@ export default function WorkSummaryTab({ onTriggerToast }) {
               );
             })}
           </div>
+          )}
 
           {/* Weekly Content Grid: 기본 = 왼쪽 내 주간 보고 / 오른쪽 공유받은 업무, 2주 동시 보기 = 왼쪽 금주(보고+공유) / 오른쪽 차주(보고+공유) */}
           {(!isMobile && isDualWeekView) ? (
